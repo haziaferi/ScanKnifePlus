@@ -10,6 +10,8 @@ ScanKnife+ is a fork of [PaperKnife+](https://github.com/potatameister/PaperKnif
 
 The document scanner (edge detection, perspective crop, filters and live scan logic) is ported from [OpenScan](https://github.com/ethereal-developers/OpenScan) by Vijay T S and Vikram H, used under the BSD 3-Clause License reproduced below.
 
+To give results identical to OpenScan, the port also reproduces Dart's `List.sort` algorithm, ported from the [Dart SDK](https://github.com/dart-lang/sdk) (`sdk/lib/internal/sort.dart`, Copyright (c) 2011, the Dart project authors, BSD 3-Clause License, same terms as below).
+
 ### OpenScan license
 
 BSD 3-Clause License

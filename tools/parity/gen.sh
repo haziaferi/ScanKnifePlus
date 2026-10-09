@@ -12,7 +12,7 @@ OUT="$HERE/../../scanner-core/src/test/resources/parity"
 rm -rf "$HERE/lib"
 mkdir -p "$HERE/lib/core/cv/models" "$HERE/lib/core/image_filter/utils"
 cp "$OPENSCAN"/lib/core/cv/models/*.dart "$HERE/lib/core/cv/models/"
-cp "$OPENSCAN"/lib/core/cv/edge_detection.dart "$HERE/lib/core/cv/"
+cp "$OPENSCAN"/lib/core/cv/edge_detection.dart "$OPENSCAN"/lib/core/cv/contours.dart "$HERE/lib/core/cv/"
 cp "$OPENSCAN"/lib/core/image_filter/utils/image_filter_utils.dart "$HERE/lib/core/image_filter/utils/"
 
 echo "OpenScan commit: $(git -C "$OPENSCAN" rev-parse HEAD)"
