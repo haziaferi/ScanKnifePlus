@@ -68,7 +68,7 @@ fun HomeView(
             Tool(id = "merge", name = "Merge", description = "COMBINE", subtitle = "Join Files", icon = Icons.Filled.Layers, category = "Edit", color = Color(0xFFF43F5E), bgColor = Color(0xFFFFF1F2)),
             Tool(id = "compress", name = "Compress", description = "OPTIMIZE", subtitle = "Reduce Size", icon = Icons.Filled.Bolt, category = "Optimize", color = Color(0xFFF59E0B), bgColor = Color(0xFFFFFBEB)),
             Tool(id = "unlock", name = "Unlock", description = "REMOVE LOCK", subtitle = "Remove Pass", icon = Icons.Filled.LockOpen, category = "Security", color = Color(0xFF8B5CF6), bgColor = Color(0xFFF5F3FF)),
-            Tool(id = "pdf_text", name = "PDF to Text", description = "EXTRACT", subtitle = "Plain Text", icon = Icons.AutoMirrored.Filled.Notes, category = "Convert", color = Color(0xFF10B981), bgColor = Color(0xFFECFDF5))
+            Tool(id = "pdf2text", name = "PDF to Text", description = "EXTRACT", subtitle = "Plain Text", icon = Icons.AutoMirrored.Filled.Notes, category = "Convert", color = Color(0xFF10B981), bgColor = Color(0xFFECFDF5))
         )
     }
 
