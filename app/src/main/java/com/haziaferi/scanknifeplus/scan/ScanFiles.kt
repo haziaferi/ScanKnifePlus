@@ -22,8 +22,8 @@ object ScanFiles {
      */
     fun stagingDir(context: Context): File = File(context.cacheDir, "scan-staging").apply { mkdirs() }
 
-    /** Deletes everything staged; returns false if something could not be deleted. */
-    fun clearStaging(context: Context): Boolean = stagingDir(context).let { dir -> dir.listFiles().orEmpty().all { it.deleteRecursively() } }
+    /** Deletes everything staged, trying every entry even after a failure; returns false if something could not be deleted. */
+    fun clearStaging(context: Context): Boolean = stagingDir(context).listFiles().orEmpty().map { it.deleteRecursively() }.all { it }
 
     /** The FileProvider authority declared in the manifest (`${applicationId}.fileprovider`). */
     fun authority(context: Context): String = "${context.packageName}.fileprovider"

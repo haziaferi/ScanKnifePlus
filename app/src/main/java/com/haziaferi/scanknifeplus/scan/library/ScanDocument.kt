@@ -48,6 +48,7 @@ data class ScanDocument(
         }))
 
     internal companion object {
+        /** Written for future migrations; records are read best-effort whatever their version, since every field read here is required in v1. */
         const val FORMAT_VERSION = 1
 
         fun fromJson(json: JSONObject): ScanDocument {
@@ -59,7 +60,13 @@ data class ScanDocument(
                 modified = json.getLong("modified"),
                 pages = (0 until pages.length()).map { i ->
                     val p = pages.getJSONObject(i)
-                    ScanPage(p.getString("id"), p.getString("image"), p.optStringOrNull("original"), p.optStringOrNull("unfiltered"), p.optStringOrNull("filter"))
+                    ScanPage(
+                        id = p.getString("id"),
+                        image = p.getString("image"),
+                        original = p.optStringOrNull("original"),
+                        unfiltered = p.optStringOrNull("unfiltered"),
+                        filter = p.optStringOrNull("filter"),
+                    )
                 },
             )
         }

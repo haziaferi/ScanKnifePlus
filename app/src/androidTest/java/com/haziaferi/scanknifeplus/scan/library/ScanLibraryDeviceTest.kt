@@ -23,9 +23,12 @@ class ScanLibraryDeviceTest {
     // A private root, so the test never touches the app's real library.
     private val root = File(context.cacheDir, "library-test-${System.nanoTime()}")
 
+    private val otherCache = File(context.cacheDir, "not-staging-${System.nanoTime()}.txt")
+
     @After
     fun cleanUp() {
         root.deleteRecursively()
+        otherCache.delete()
     }
 
     @Test
@@ -42,10 +45,9 @@ class ScanLibraryDeviceTest {
         assertEquals(PageSize(1200, 1600), ImageCodec.orientedSize(ImageSource.of(library.file(doc.id, page.original!!))))
 
         // Clearing the staging area removes the shot and nothing else in the cache.
-        val otherCache = File(context.cacheDir, "not-staging.txt").apply { writeText("keep") }
+        otherCache.writeText("keep")
         assertTrue(ScanFiles.clearStaging(context))
         assertFalse(photo.exists())
         assertTrue(otherCache.exists())
-        otherCache.delete()
     }
 }
