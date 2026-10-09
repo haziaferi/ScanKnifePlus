@@ -7,6 +7,7 @@ import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.cv.format
 import com.haziaferi.scanknifeplus.scanner.cv.quad
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -103,23 +104,77 @@ class LiveScanParityTest {
             assertEquals("worker frame $i", expected[i], "$name=${quad?.let { rotateQuadForPortrait(it, 320, 240) }.format()}")
         }
 
-        // The threaded controller, one frame at a time.
+        // The threaded controller, one frame at a time. Its executor is single-threaded, so a no-op submitted after a frame finishes only once
+        // that frame (and its callbacks) are done.
+        val expectedNotifications = c.raw("quad_notifications").split(',').map { it.toInt() }
+        var notifications = 0
         var latest: Quad? = null
-        var latch = CountDownLatch(1)
-        val controller = LiveScanController(onResult = { q, _ ->
+        val executor = Executors.newSingleThreadExecutor()
+        val controller = LiveScanController(onQuad = { q ->
             latest = q
-            latch.countDown()
-        })
+            notifications++
+        }, executor = executor)
         try {
             for ((i, name) in frameNames.withIndex()) {
-                latch = CountDownLatch(1)
                 assertTrue(controller.submitFrame(c.bytes("frame_$name"), 320, 240))
-                assertTrue("frame $i timed out", latch.await(30, TimeUnit.SECONDS))
+                executor.submit {}.get(30, TimeUnit.SECONDS)
                 assertEquals("controller frame $i", expected[i], "$name=${latest.format()}")
+                assertEquals("controller frame $i", expected[i], "$name=${controller.latestQuad.format()}")
+                assertEquals("notifications after frame $i", expectedNotifications[i], notifications)
             }
         } finally {
             controller.dispose()
         }
+        assertFalse(controller.submitFrame(ByteArray(4), 2, 2))
+    }
+
+    @Test
+    fun `controller copies the frame so the caller can reuse its buffer`() {
+        val c = cases.single { it.name == "live_worker" }
+        val frameNames = c.raw("frames").split(',')
+        val expected = c.raw("results").split('|')
+        val docIndex = frameNames.indexOf("doc131")
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        val controller = LiveScanController(onQuad = {}, executor = executor)
+        try {
+            // Hold the worker thread so the frame is still queued when the caller overwrites its buffer.
+            executor.execute {
+                started.countDown()
+                release.await()
+            }
+            started.await()
+            val buffer = c.bytes("frame_doc131")
+            assertTrue(controller.submitFrame(buffer, 320, 240))
+            buffer.fill(90)
+            release.countDown()
+            executor.submit {}.get(30, TimeUnit.SECONDS)
+            assertEquals(expected[docIndex], "doc131=${controller.latestQuad.format()}")
+        } finally {
+            controller.dispose()
+        }
+    }
+
+    @Test
+    fun `nothing is published after dispose`() {
+        val c = cases.single { it.name == "live_worker" }
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        var published = 0
+        val controller = LiveScanController(onQuad = { published++ }, onLatency = { published++ }, executor = executor)
+        executor.execute {
+            started.countDown()
+            // dispose() interrupts this wait; that is expected here.
+            runCatching { release.await() }
+        }
+        started.await()
+        assertTrue(controller.submitFrame(c.bytes("frame_doc131"), 320, 240))
+        controller.dispose()
+        release.countDown()
+        assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS))
+        assertEquals(0, published)
         assertFalse(controller.submitFrame(ByteArray(4), 2, 2))
     }
 

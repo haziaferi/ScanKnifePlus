@@ -8,6 +8,7 @@ import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -44,11 +45,14 @@ class LiveDetectionWorker {
  * ([rotateQuadForPortrait]).
  *
  * Only one frame is ever in flight: [submitFrame] drops frames while a previous one is still being processed, so work never backs up.
- * [onResult] is called on the background thread with the normalized quad (or null) and the round-trip latency in milliseconds; the caller hops to
- * its UI thread if needed.
+ *
+ * Results are published like OpenScan's two `ValueNotifier`s. [onQuad] fires when [latestQuad] changes: every detected quad is a new instance so it
+ * always fires, but a miss after a miss does not fire again. [onLatency] fires when [lastLatencyMs] changes value. Both run on the background
+ * thread, so the caller hops to its UI thread if needed. The controller owns [executor] and shuts it down in [dispose].
  */
 class LiveScanController(
-    private val onResult: (quad: Quad?, latencyMs: Long) -> Unit,
+    private val onQuad: (Quad?) -> Unit,
+    private val onLatency: (Long) -> Unit = {},
     private val executor: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "live-scan-detection").apply { isDaemon = true } },
 ) {
     private val worker = LiveDetectionWorker()
@@ -56,31 +60,71 @@ class LiveScanController(
     private val nextRequestId = AtomicInteger(0)
 
     @Volatile
+    private var disposed = false
+
+    // Only touched on the executor thread.
     private var lastHandledRequestId = -1
+
+    /** Latest detected quad, normalized to portrait [0,1] space; null if nothing was detected in the most recent processed frame. */
+    @Volatile
+    var latestQuad: Quad? = null
+        private set
+
+    /** Round-trip latency (submit to result) of the most recently completed detection, in milliseconds. */
+    @Volatile
+    var lastLatencyMs: Long? = null
+        private set
 
     val isBusy: Boolean get() = detecting.get()
 
-    /** Submits a downsampled grayscale frame; returns false (frame dropped) if a previous frame is still being processed or after [dispose]. */
+    /**
+     * Submits a downsampled grayscale frame; returns false (frame dropped) if a previous frame is still being processed or after [dispose].
+     * The frame is copied, as Dart's `SendPort.send` copies it, so the caller may reuse its buffer as soon as this returns.
+     */
     fun submitFrame(gray: ByteArray, width: Int, height: Int): Boolean {
-        if (executor.isShutdown || !detecting.compareAndSet(false, true)) return false
+        if (disposed || !detecting.compareAndSet(false, true)) return false
+        val frame = gray.copyOf()
         val requestId = nextRequestId.getAndIncrement()
         val startedAt = System.nanoTime()
-        executor.execute {
-            val quad = try {
-                worker.process(gray, width, height)
-            } catch (e: Exception) {
-                null
-            }
-            val latencyMs = (System.nanoTime() - startedAt) / 1_000_000
+        try {
+            executor.execute { handleFrame(frame, width, height, requestId, startedAt) }
+        } catch (e: RejectedExecutionException) {
+            // dispose() shut the executor down between the check above and here.
             detecting.set(false)
-            if (requestId < lastHandledRequestId) return@execute
-            lastHandledRequestId = requestId
-            onResult(quad?.let { rotateQuadForPortrait(it, width, height) }, latencyMs)
+            return false
         }
         return true
     }
 
+    private fun handleFrame(frame: ByteArray, width: Int, height: Int, requestId: Int, startedAt: Long) {
+        var quad: Quad? = null
+        try {
+            quad = worker.process(frame, width, height)
+        } catch (e: Exception) {
+            // A failed detection counts as "nothing found" so the session keeps running; OpenScan's isolate would stop answering instead.
+        } finally {
+            detecting.set(false)
+        }
+        if (disposed) return
+
+        val latencyMs = (System.nanoTime() - startedAt) / 1_000_000
+        if (latencyMs != lastLatencyMs) {
+            lastLatencyMs = latencyMs
+            onLatency(latencyMs)
+        }
+        // Kept from OpenScan; with one frame in flight on one thread a stale result cannot actually arrive.
+        if (requestId < lastHandledRequestId) return
+        lastHandledRequestId = requestId
+
+        val published = quad?.let { rotateQuadForPortrait(it, width, height) }
+        if (published == null && latestQuad == null) return
+        latestQuad = published
+        onQuad(published)
+    }
+
+    /** Stops detection; no result is published once this returns, except one whose callback had already started. */
     fun dispose() {
+        disposed = true
         executor.shutdownNow()
     }
 }

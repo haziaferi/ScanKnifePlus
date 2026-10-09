@@ -147,6 +147,10 @@ Future<void> main(List<String> args) async {
   w.startCase('live_worker');
   final stored = <String>{};
   final results = <String>[];
+  // latestQuad is a ValueNotifier: count its notifications so the Kotlin delivery semantics (null after null is not repeated) are pinned too.
+  var quadNotifications = 0;
+  controller.latestQuad.addListener(() => quadNotifications++);
+  final notificationCounts = <int>[];
   for (final (name, gray) in frames) {
     if (stored.add(name)) w.input('frame_$name', gray);
     controller.submitFrame(gray, 320, 240);
@@ -154,10 +158,12 @@ Future<void> main(List<String> args) async {
       await Future.delayed(const Duration(milliseconds: 1));
     }
     results.add('$name=${quadToString(controller.latestQuad.value)}');
+    notificationCounts.add(quadNotifications);
   }
   await controller.dispose();
   w.value('frames', frames.map((f) => f.$1).join(','));
   w.value('results', results.join('|'));
+  w.value('quad_notifications', notificationCounts.join(','));
 
   for (int i = 0; i < 20; i++) {
     w.startCase('rotate_$i');
