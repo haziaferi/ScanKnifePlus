@@ -2,6 +2,7 @@
 // Copyright (c) 2021, Vijay T S and Vikram H, BSD-3-Clause. See NOTICE.md.
 package com.haziaferi.scanknifeplus.scanner.cv
 
+import com.haziaferi.scanknifeplus.scanner.dartClamp
 import com.haziaferi.scanknifeplus.scanner.dartSort
 import kotlin.math.abs
 import kotlin.math.acos
@@ -107,7 +108,7 @@ object Contours {
             if (previousQuad != null) {
                 val match = bestCornerAssignment(result.points, previousQuad)
                 result = match.quad
-                val proximity = if (diagonal == 0.0) 0.0 else 1 - (match.totalDistance / diagonal).coerceIn(0.0, 1.0)
+                val proximity = if (diagonal == 0.0) 0.0 else 1 - (match.totalDistance / diagonal).dartClamp(0.0, 1.0)
                 score += PREVIOUS_QUAD_PROXIMITY_WEIGHT * proximity
             }
 
@@ -192,7 +193,7 @@ object Contours {
             val deviation = abs(angleAtVertexDegrees(a, b, c) - 90)
             if (deviation > maxDeviation) maxDeviation = deviation
         }
-        return (maxDeviation / 90).coerceIn(0.0, 1.0)
+        return (maxDeviation / 90).dartClamp(0.0, 1.0)
     }
 
     /**
@@ -442,7 +443,7 @@ object Contours {
         val magAB = sqrt(abx * abx + aby * aby)
         val magCB = sqrt(cbx * cbx + cby * cby)
         if (magAB == 0.0 || magCB == 0.0) return 0.0
-        val cosAngle = ((abx * cbx + aby * cby) / (magAB * magCB)).coerceIn(-1.0, 1.0)
+        val cosAngle = ((abx * cbx + aby * cby) / (magAB * magCB)).dartClamp(-1.0, 1.0)
         return acos(cosAngle) * 180 / Math.PI
     }
 
