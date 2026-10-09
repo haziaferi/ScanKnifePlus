@@ -23,3 +23,21 @@ class DartMathTest {
         assertEquals(200, b.u8(0))
     }
 }
+
+class DartMathNonFiniteTest {
+    @Test(expected = UnsupportedOperationException::class)
+    fun `dartRound throws on NaN like Dart`() {
+        dartRound(Double.NaN)
+    }
+
+    @Test(expected = UnsupportedOperationException::class)
+    fun `dartFloor throws on infinity like Dart`() {
+        dartFloor(Double.POSITIVE_INFINITY)
+    }
+
+    @Test
+    fun `dartToInt truncates towards zero`() {
+        assertEquals(-2, dartToInt(-2.9))
+        assertEquals(2, dartToInt(2.9))
+    }
+}

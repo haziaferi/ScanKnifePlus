@@ -31,15 +31,15 @@ class ParityCase(val name: String, private val values: Map<String, String>) {
         val v = raw(key)
         when {
             v.startsWith("b64:") -> assertArrayEquals("$name: $key", Base64.getDecoder().decode(v.removePrefix("b64:")), actual)
-            v.startsWith("sha256:") -> assertEquals("$name: $key", v.removePrefix("sha256:"), sha256(actual))
+            v.startsWith("sha256:") -> assertEquals("$name: $key", v.removePrefix("sha256:"), sha256Hex(actual))
             else -> error("$name: '$key' is not an output buffer")
         }
     }
 
     override fun toString(): String = name
-
-    private fun sha256(b: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
 }
+
+internal fun sha256Hex(b: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
 
 object ParityFixture {
     /** Loads `parity/<fileName>` from test resources: `case<TAB>name` starts a case, then `key<TAB>value` lines. */
