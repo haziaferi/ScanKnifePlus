@@ -11,20 +11,26 @@ package com.haziaferi.scanknifeplus.scanner
  */
 internal fun dartRound(x: Double): Int {
     if (x.isNaN() || x.isInfinite()) throw UnsupportedOperationException("Infinity or NaN toInt")
-    return if (x < 0) -Math.round(-x).toInt() else Math.round(x).toInt()
+    return saturateToInt(if (x < 0) -Math.round(-x) else Math.round(x))
 }
 
 /** Dart's `double.floor()` to int, which also throws on NaN or infinity. */
 internal fun dartFloor(x: Double): Int {
     if (x.isNaN() || x.isInfinite()) throw UnsupportedOperationException("Infinity or NaN toInt")
-    return kotlin.math.floor(x).toInt()
+    return saturateToInt(kotlin.math.floor(x).toLong())
 }
 
 /** Dart's `double.toInt()` (truncation towards zero), which also throws on NaN or infinity. */
 internal fun dartToInt(x: Double): Int {
     if (x.isNaN() || x.isInfinite()) throw UnsupportedOperationException("Infinity or NaN toInt")
-    return x.toInt()
+    return saturateToInt(x.toLong())
 }
+
+/**
+ * Dart ints are 64-bit and saturate at the int64 limits, as do [Math.round] and [Double.toLong]. Narrowing with [Long.toInt] would keep only the
+ * low 32 bits and could flip the sign, so saturate instead: any later clamp to a range inside Int then gives the same answer as Dart's.
+ */
+private fun saturateToInt(v: Long): Int = v.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()
 
 /** Reads a pixel byte as Dart's `Uint8List` would: 0..255, never negative. */
 internal fun ByteArray.u8(i: Int): Int = this[i].toInt() and 0xFF
