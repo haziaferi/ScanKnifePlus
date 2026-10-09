@@ -1,0 +1,5 @@
+# Minimal stand-in for the parts of package:flutter/foundation.dart that OpenScan's live-scan logic imports, so the parity tool runs on plain Dart.
+name: flutter
+publish_to: none
+environment:
+  sdk: '>=3.10.0 <4.0.0'

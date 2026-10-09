@@ -9,3 +9,5 @@ dependencies:
   # Same version as OpenScan's pubspec.lock.
   image: 4.2.0
   crypto: ^3.0.0
+  flutter:
+    path: flutter_stub
