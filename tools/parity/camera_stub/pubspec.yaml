@@ -1,0 +1,5 @@
+# Minimal stand-in for package:camera_platform_interface: OpenScan's frame_adapter.dart imports only its ImageFormatGroup enum.
+name: camera_platform_interface
+publish_to: none
+environment:
+  sdk: '>=3.10.0 <4.0.0'

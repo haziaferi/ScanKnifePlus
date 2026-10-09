@@ -11,3 +11,5 @@ dependencies:
   crypto: ^3.0.0
   flutter:
     path: flutter_stub
+  camera_platform_interface:
+    path: camera_stub
