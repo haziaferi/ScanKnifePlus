@@ -99,7 +99,10 @@ object PerspectiveCrop {
         // Homography mapping output-rectangle coordinates -> source quad coordinates, used to inverse-sample the source for each output pixel.
         val h = solveHomography(outWidth.toDouble(), outHeight.toDouble(), quad.topLeft, quad.topRight, quad.bottomRight, quad.bottomLeft)
 
-        val outRgba = ByteArray(outWidth * outHeight * 4)
+        // Long so a large page cannot wrap to a small or negative size; past the JVM's array limit, fail into null like Dart's catch-all would.
+        val byteCount = outWidth.toLong() * outHeight * 4
+        require(byteCount <= Int.MAX_VALUE - 8) { "Output too large: $outWidth x $outHeight" }
+        val outRgba = ByteArray(byteCount.toInt())
         val sampled = IntArray(4)
         for (y in 0 until outHeight) {
             for (x in 0 until outWidth) {
