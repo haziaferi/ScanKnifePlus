@@ -2,6 +2,7 @@
 // Copyright (c) 2021, Vijay T S and Vikram H, BSD-3-Clause. See NOTICE.md.
 package com.haziaferi.scanknifeplus.scanner.cv
 
+import com.haziaferi.scanknifeplus.scanner.dartClamp
 import com.haziaferi.scanknifeplus.scanner.dartRound
 import com.haziaferi.scanknifeplus.scanner.setU8
 import com.haziaferi.scanknifeplus.scanner.u8
@@ -67,7 +68,7 @@ object EdgeDetection {
                 val gy = -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1) +
                     at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
                 val mag = sqrt((gx * gx + gy * gy).toDouble())
-                out.setU8(y * width + x, dartRound(mag.coerceIn(0.0, 255.0)))
+                out.setU8(y * width + x, dartRound(mag.dartClamp(0.0, 255.0)))
             }
         }
         return out
