@@ -8,7 +8,7 @@ import 'package:openscan/core/cv/frame_adapter.dart';
 
 import '../tool_lib/fixture.dart';
 
-/// A Y plane (or BGRA buffer) with [padding] extra bytes per row filled with noise, as camera HALs pad rows; the adapter must never read them.
+/// A Y plane with [padding] extra bytes per row filled with noise, as camera HALs pad rows; the adapter must never read them.
 Uint8List padRows(Uint8List packed, int rowBytes, int rows, int padding, int seed) {
   final r = Random(seed);
   final stride = rowBytes + padding;
@@ -53,9 +53,10 @@ void main(List<String> args) {
     w.value('width', width);
     w.value('height', height);
     w.value('bytes_per_row', width + padding);
-    w.input('plane', padRows(y, width, height, padding, seed + 100));
+    final plane = padRows(y, width, height, padding, seed + 100);
+    w.input('plane', plane);
     final gray = grayscaleFromFrame(
-      yPlaneOrBgraBytes: padRows(y, width, height, padding, seed + 100),
+      yPlaneOrBgraBytes: plane,
       bytesPerRow: width + padding,
       width: width,
       height: height,
@@ -66,13 +67,13 @@ void main(List<String> args) {
     w.value('out_size', '$cw,$ch');
     w.value('out_len', gray.length);
     w.bytes('gray', gray);
-
   }
 
   // Other target edges, to pin the size maths (the screen always passes 320).
   w.startCase('target_sizes');
   final targets = <String>[];
-  for (final (width, height) in [(1280, 720), (1001, 563), (7, 3), (3000, 1), (1, 3000)]) {
+  // 1280x722 scales its short edge to exactly 180.5, pinning the tie rounding.
+  for (final (width, height) in [(1280, 720), (1280, 722), (1001, 563), (7, 3), (3000, 1), (1, 3000)]) {
     for (final target in [1, 50, 320, 1000, 5000]) {
       final out = grayscaleFromFrame(
         yPlaneOrBgraBytes: Uint8List((width + 1) * height),

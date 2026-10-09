@@ -10,7 +10,7 @@ Requirements: a Dart SDK (3.10 or newer, no Flutter needed) and a checkout of [O
 tools/parity/gen.sh /path/to/OpenScan [/path/to/dart]
 ```
 
-The script copies the needed OpenScan sources into `tools/parity/lib/` (ignored by git) and runs every `bin/gen_*.dart` generator. The current fixtures were generated from OpenScan commit `841d25ace0c9634b9919ac5da44a866e411c17cf`.
+The script copies the needed OpenScan sources into `tools/parity/lib/` (ignored by git) and runs every `bin/gen_*.dart` generator. `flutter_stub/` and `camera_stub/` are minimal path-dependency stand-ins for the only Flutter and camera-plugin symbols the copied sources import, so they run on plain Dart. The current fixtures were generated from OpenScan commit `841d25ace0c9634b9919ac5da44a866e411c17cf`.
 
 ## Fixture format
 

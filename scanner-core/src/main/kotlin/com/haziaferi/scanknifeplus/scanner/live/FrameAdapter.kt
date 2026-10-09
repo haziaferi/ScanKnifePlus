@@ -15,7 +15,10 @@ object FrameAdapter {
     /** Longest edge (px) live detection runs at; the overlay is guidance only, and the captured photo is detected again at full resolution. */
     const val LIVE_DETECTION_MAX_DIMENSION = 320
 
-    /** Size of the downsampled frame: scaled so the longest edge is [targetLongEdge], never upscaled; null for an empty frame. */
+    /**
+     * Size of the downsampled frame: scaled so the longest edge is [targetLongEdge], never upscaled; null for an empty frame. OpenScan's screen
+     * recomputes this without the clamp to 1; the two differ only above a 640:1 aspect ratio, which cameras do not deliver.
+     */
     fun downsampledSize(width: Int, height: Int, targetLongEdge: Int = LIVE_DETECTION_MAX_DIMENSION): Pair<Int, Int>? {
         if (width <= 0 || height <= 0) return null
         val scale = targetLongEdge.toDouble() / maxOf(width, height)
