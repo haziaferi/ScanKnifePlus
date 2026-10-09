@@ -1,8 +1,10 @@
 <img src="icon.png" width="128" height="128" align="left" style="margin-right: 16px">
 
-# PaperKnife+
+# ScanKnife+
 
-A privacy-first PDF utility for Android. Works 100% offline - no internet, no trackers.
+A privacy-first PDF utility and document scanner for Android. Works 100% offline - no internet, no trackers.
+
+ScanKnife+ is a personal-use fork of [PaperKnife+](https://github.com/potatameister/PaperKnifePlus) by potatameister, with the document scanner ported from [OpenScan](https://github.com/ethereal-developers/OpenScan) by Vijay T S and Vikram H. See [NOTICE.md](NOTICE.md) for credits and licenses.
 
 <a href="https://github.com/potatameister/PaperKnifePlus/releases/latest">
   <img src="https://img.shields.io/badge/Download-APK-green?style=for-the-badge" alt="Download APK">

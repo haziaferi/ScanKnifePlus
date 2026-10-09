@@ -9,7 +9,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.paperknifeplus.app"
+        applicationId = "com.haziaferi.scanknifeplus"
         minSdk = 24
         targetSdk = 34
         versionCode = 2
