@@ -9,6 +9,7 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,10 +44,23 @@ class ScanFilesTest {
         assertEquals("/shared/scan.pdf", ScanFiles.contentUri(app, shared).path)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test
     fun `files outside the two folders are not exposed`() {
         assumePosixPaths()
-        ScanFiles.contentUri(app, File(app.filesDir, "signatures/sig.png").apply { parentFile!!.mkdirs(); writeText("x") })
+        val outside = listOf(
+            File(app.filesDir, "signatures/sig.png"),
+            File(app.filesDir, "scans2/x.txt"), // shares the "scans" prefix but is a different folder
+            File(app.cacheDir, "other.txt"),
+        )
+        for (f in outside) {
+            f.parentFile!!.mkdirs()
+            f.writeText("x")
+            try {
+                ScanFiles.contentUri(app, f)
+                fail("$f must not get a content URI")
+            } catch (expected: IllegalArgumentException) {
+            }
+        }
     }
 
     @Test

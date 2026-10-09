@@ -6,6 +6,9 @@
     <!-- The document scanner uses the camera. It is optional so the app still installs on devices without one (import works there). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- The CAMERA permission implies these two as required unless they are declared optional here. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:allowBackup="true"

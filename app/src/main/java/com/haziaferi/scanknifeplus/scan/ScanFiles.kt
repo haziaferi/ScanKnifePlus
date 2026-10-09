@@ -1,10 +1,7 @@
 package com.haziaferi.scanknifeplus.scan
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
 import android.net.Uri
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -24,9 +21,4 @@ object ScanFiles {
 
     /** A content URI other apps can read once granted; throws IllegalArgumentException for a file outside the two shared folders. */
     fun contentUri(context: Context, file: File): Uri = FileProvider.getUriForFile(context, authority(context), file)
-}
-
-object CameraPermission {
-    fun isGranted(context: Context): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 }
