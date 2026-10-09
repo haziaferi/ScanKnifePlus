@@ -8,6 +8,9 @@ coil = "2.6.0"
 junit = "4.13.2"
 junitVersion = "1.1.5"
 espresso = "3.5.1"
+robolectric = "4.16.1"
+# Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
+androidxTestCore = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,4 +29,6 @@ pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }

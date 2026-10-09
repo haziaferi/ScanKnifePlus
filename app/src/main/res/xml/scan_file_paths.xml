@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths the FileProvider may share: the scan library and a cache folder for share copies. Nothing else in app storage is reachable. -->
+<paths>
+    <files-path name="scans" path="scans/" />
+    <cache-path name="shared" path="shared/" />
+</paths>

@@ -74,6 +74,8 @@ android {
     }
     buildFeatures { compose = true }
     lint { abortOnError = false }
+    // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
+    testOptions { unitTests.isIncludeAndroidResources = true }
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {
@@ -82,6 +84,7 @@ tasks.withType<AbstractArchiveTask>().configureEach {
 }
 
 dependencies {
+    implementation(project(":scanner-core"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
@@ -94,6 +97,8 @@ dependencies {
     api(libs.pdfbox.android)
     implementation(libs.coil.compose)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

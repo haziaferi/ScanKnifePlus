@@ -3,6 +3,13 @@
 
     <!-- PaperKnife+ is 100% Offline. Do NOT add INTERNET permission. -->
 
+    <!-- The document scanner uses the camera. It is optional so the app still installs on devices without one (import works there). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+    <!-- The CAMERA permission implies these two as required unless they are declared optional here. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
@@ -27,6 +34,17 @@
                 <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
+
+        <!-- Shares scans from the app's own library; only the paths in scan_file_paths.xml are exposed. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/scan_file_paths" />
+        </provider>
     </application>
 
 </manifest>
