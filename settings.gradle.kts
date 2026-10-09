@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "ScanKnifePlus"
 include(":app")
+include(":scanner-core")
