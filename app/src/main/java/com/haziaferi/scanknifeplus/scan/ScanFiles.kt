@@ -16,6 +16,15 @@ object ScanFiles {
     /** Folder for copies handed to other apps when sharing; safe to clear at any time. */
     fun shareDir(context: Context): File = File(context.cacheDir, "shared").apply { mkdirs() }
 
+    /**
+     * Where camera shots wait between the shutter and the library. Only this folder is cleared after a scan session, unlike OpenScan, which
+     * wiped the whole cache directory (and with it every other tool's cached files).
+     */
+    fun stagingDir(context: Context): File = File(context.cacheDir, "scan-staging").apply { mkdirs() }
+
+    /** Deletes everything staged, trying every entry even after a failure; returns false if something could not be deleted. */
+    fun clearStaging(context: Context): Boolean = stagingDir(context).listFiles().orEmpty().map { it.deleteRecursively() }.all { it }
+
     /** The FileProvider authority declared in the manifest (`${applicationId}.fileprovider`). */
     fun authority(context: Context): String = "${context.packageName}.fileprovider"
 
