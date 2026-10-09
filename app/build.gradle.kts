@@ -85,6 +85,7 @@ tasks.withType<AbstractArchiveTask>().configureEach {
 
 dependencies {
     implementation(project(":scanner-core"))
+    implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.activity.compose)
