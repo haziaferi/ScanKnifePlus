@@ -20,3 +20,6 @@ build/
 
 # Claude Code personal settings (local permissions); never committed
 .claude/settings.local.json
+
+# Kotlin 2 compiler session data
+.kotlin/
