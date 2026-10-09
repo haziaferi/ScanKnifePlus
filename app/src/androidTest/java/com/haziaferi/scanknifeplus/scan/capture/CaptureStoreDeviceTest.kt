@@ -107,10 +107,12 @@ class CaptureStoreDeviceTest {
             Canvas(this).drawRect(100f, 100f, 200f, 200f, Paint().apply { color = Color.BLACK })
         }
         val src = File(dir, "logo.png").apply { outputStream().use { png.compress(Bitmap.CompressFormat.PNG, 100, it) } }
-        val stored = CaptureStore.store(ImageSource.of(src), null, File(dir, "page.jpg"), null)!!
-        val page = ImageCodec.decodeScaled(ImageSource.of(stored.page), 300)!!
-        assertColor(Color.WHITE, page.rgbAt(0.05, 0.05), "transparent corner")
-        assertColor(Color.BLACK, page.rgbAt(0.5, 0.5), "opaque centre")
+        val stored = CaptureStore.store(ImageSource.of(src), null, File(dir, "page.jpg"), File(dir, "orig.jpg"))!!
+        for (file in listOf(stored.page, stored.original!!)) {
+            val image = ImageCodec.decodeScaled(ImageSource.of(file), 300)!!
+            assertColor(Color.WHITE, image.rgbAt(0.05, 0.05), "${file.name} transparent corner")
+            assertColor(Color.BLACK, image.rgbAt(0.5, 0.5), "${file.name} opaque centre")
+        }
     }
 
     /** A dark 3000x4000 photo with a bright sheet covering the normalized rectangle 0.2..0.8 x 0.1..0.9. */
@@ -127,9 +129,8 @@ class CaptureStoreDeviceTest {
         val quad = Quad(Pt(0.2, 0.1), Pt(0.8, 0.1), Pt(0.8, 0.9), Pt(0.2, 0.9))
         val stored = CaptureStore.store(ImageSource.of(documentPhoto()), quad, File(dir, "page.jpg"), File(dir, "orig.jpg"))!!
         assertTrue(stored.cropped)
-        // The sheet is 1800x3200 at full size: decoded so it lands on the 2400 cap, giving a 1350x2400 page.
-        assertEquals(2400, maxOf(stored.pageWidth, stored.pageHeight))
-        assertTrue("page is portrait", stored.pageHeight > stored.pageWidth)
+        // The sheet is 1800x3200 at full size: the photo decodes at 3000 px (2250x3000) so the sheet lands on the cap as 1350x2400.
+        assertEquals(PageSize(1350, 2400), PageSize(stored.pageWidth, stored.pageHeight))
         val page = ImageCodec.decodeScaled(ImageSource.of(stored.page), 4000)!!
         assertEquals(PageSize(stored.pageWidth, stored.pageHeight), PageSize(page.width, page.height))
         for ((fx, fy) in listOf(0.05 to 0.05, 0.5 to 0.5, 0.95 to 0.95)) assertColor(Color.rgb(230, 230, 230), page.rgbAt(fx, fy), "sheet at $fx,$fy")
@@ -150,7 +151,8 @@ class CaptureStoreDeviceTest {
 
     @Test
     fun contentUrisWorkAsSources() {
-        val inLibrary = File(ScanFiles.libraryDir(context), "capture-test/photo.jpg").apply { parentFile!!.mkdirs() }
+        // A uniquely named folder, so the test can never touch a real document in the library.
+        val inLibrary = File(ScanFiles.libraryDir(context), "capture-test-${System.nanoTime()}/photo.jpg").apply { parentFile!!.mkdirs() }
         documentPhoto().copyTo(inLibrary, overwrite = true)
         try {
             val source = ImageSource.of(context.contentResolver, ScanFiles.contentUri(context, inLibrary))
@@ -180,5 +182,68 @@ class CaptureStoreDeviceTest {
         assertFalse(File(dir, "page.jpg.tmp").exists())
         val decoded = BitmapFactory.decodeFile(dest.path)
         assertNotNull(decoded)
+    }
+
+    @Test
+    fun aFailedOriginalStillKeepsThePage() {
+        val photo = documentPhoto()
+        var opens = 0
+        // The header takes two opens and the page decode one; the fourth open, for the original, fails.
+        val source = ImageSource { if (++opens >= 4) throw java.io.IOException("gone") else photo.inputStream() }
+        val orig = File(dir, "orig.jpg")
+        val stored = CaptureStore.store(source, null, File(dir, "page.jpg"), orig)!!
+        assertTrue(stored.page.exists())
+        assertNull(stored.original)
+        assertFalse(orig.exists())
+    }
+
+    @Test
+    fun sixteenBitImagesAreNormalisedToEightBit() {
+        val png = File(dir, "deep.png").apply { writeBytes(sixteenBitPng(64, 48, red = 0xFFFF, green = 0x8000, blue = 0)) }
+        val raw = BitmapFactory.decodeFile(png.path, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
+        val rawConfig = raw.config
+        raw.recycle()
+        android.util.Log.i("CaptureStoreDeviceTest", "16-bit PNG decodes as $rawConfig")
+        val image = ImageCodec.decodeScaled(ImageSource.of(png), 64)!!
+        assertEquals(PageSize(64, 48), PageSize(image.width, image.height))
+        assertColor(Color.rgb(255, 128, 0), image.rgbAt(0.5, 0.5), "16-bit colour (platform decoded it as $rawConfig)")
+        assertNotNull(CaptureStore.store(ImageSource.of(png), null, File(dir, "page.jpg"), null))
+    }
+
+    @Test
+    fun aWriteThatCannotCompleteLeavesTheDestinationAndNoTempFile() {
+        val image = ImageCodec.decodeScaled(ImageSource.of(jpeg(quadrants(), "q.jpg")), 400)!!
+        // A directory cannot be replaced by a file, so the final rename fails.
+        val dest = File(dir, "taken").apply { mkdirs() }
+        assertFalse(ImageCodec.writeJpeg(image, dest, 85))
+        assertTrue(dest.isDirectory)
+        assertFalse(File(dir, "taken.tmp").exists())
+    }
+
+    /** A minimal 16-bit-per-channel RGBA PNG of one colour, written by hand since Bitmap.compress only writes 8-bit PNGs. */
+    private fun sixteenBitPng(width: Int, height: Int, red: Int, green: Int, blue: Int): ByteArray {
+        fun chunk(out: java.io.ByteArrayOutputStream, type: String, data: ByteArray) {
+            val d = java.io.DataOutputStream(out)
+            d.writeInt(data.size)
+            val typed = type.toByteArray(Charsets.US_ASCII) + data
+            d.write(typed)
+            d.writeInt(java.util.zip.CRC32().apply { update(typed) }.value.toInt())
+        }
+        val raw = java.io.ByteArrayOutputStream()
+        val rows = java.io.DataOutputStream(raw)
+        repeat(height) {
+            rows.writeByte(0) // filter: none
+            repeat(width) { rows.writeShort(red); rows.writeShort(green); rows.writeShort(blue); rows.writeShort(0xFFFF) }
+        }
+        val ihdr = java.io.ByteArrayOutputStream().also {
+            java.io.DataOutputStream(it).apply { writeInt(width); writeInt(height); writeByte(16); writeByte(6); writeByte(0); writeByte(0); writeByte(0) }
+        }.toByteArray()
+        val compressed = java.io.ByteArrayOutputStream().also { o -> java.util.zip.DeflaterOutputStream(o).use { it.write(raw.toByteArray()) } }.toByteArray()
+        val out = java.io.ByteArrayOutputStream()
+        out.write(byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 0x0D, 0x0A, 0x1A, 0x0A))
+        chunk(out, "IHDR", ihdr)
+        chunk(out, "IDAT", compressed)
+        chunk(out, "IEND", ByteArray(0))
+        return out.toByteArray()
     }
 }
