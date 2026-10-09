@@ -1,15 +1,17 @@
-name: Build PaperKnife+
+name: Build ScanKnife+
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+    env:
+      # Signing is skipped (and the unsigned APK uploaded) when the repository has no signing key secret.
+      HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
     steps:
     - uses: actions/checkout@v4
 
@@ -38,6 +40,7 @@ jobs:
         gradle clean assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
 
     - name: Sign and Zipalign
+      if: env.HAS_SIGNING_KEY == 'true'
       run: |
         # Locate tools
         ZIPALIGN=$ANDROID_HOME/build-tools/34.0.0/zipalign
@@ -52,7 +55,7 @@ jobs:
           --ks-key-alias "${{ secrets.ALIAS }}" \
           --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" \
           --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
-          --out app/build/outputs/apk/release/PaperKnife+.apk \
+          --out app/build/outputs/apk/release/ScanKnife+.apk \
           app/build/outputs/apk/release/app-release-aligned.apk
         
         # Cleanup
@@ -60,17 +63,17 @@ jobs:
 
     - name: Log APK Size
       run: |
-        echo "=== SIGNED RELEASE APK SIZE ==="
-        ls -lh app/build/outputs/apk/release/PaperKnife+.apk
+        echo "=== RELEASE APK SIZE ==="
+        ls -lh app/build/outputs/apk/release/*.apk
 
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
       with:
-        name: PaperKnifePlus-Release-APK
-        path: app/build/outputs/apk/release/PaperKnife+.apk
+        name: ScanKnifePlus-Release-APK${{ env.HAS_SIGNING_KEY != 'true' && '-unsigned' || '' }}
+        path: app/build/outputs/apk/release/${{ env.HAS_SIGNING_KEY == 'true' && 'ScanKnife+.apk' || 'app-release-unsigned.apk' }}
 
     - name: Upload Release AAB
       uses: actions/upload-artifact@v4
       with:
-        name: PaperKnifePlus-Release-AAB
+        name: ScanKnifePlus-Release-AAB
         path: app/build/outputs/bundle/release/app-release.aab
