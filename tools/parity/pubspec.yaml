@@ -1,0 +1,11 @@
+# Named `openscan` on purpose: gen.sh copies OpenScan's pure-Dart sources into lib/, so their own `package:openscan/...` imports resolve here without the Flutter SDK.
+name: openscan
+publish_to: none
+
+environment:
+  sdk: '>=3.10.0 <4.0.0'
+
+dependencies:
+  # Same version as OpenScan's pubspec.lock.
+  image: 4.2.0
+  crypto: ^3.0.0

@@ -37,7 +37,7 @@ jobs:
 
     - name: Build Release APK and AAB
       run: |
-        gradle clean assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
+        gradle clean :scanner-core:test assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
 
     - name: Sign and Zipalign
       if: env.HAS_SIGNING_KEY == 'true'
