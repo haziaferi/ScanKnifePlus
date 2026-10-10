@@ -22,10 +22,12 @@ class FitToMaxEdgeParityTest {
         for (c in cases) {
             val src = RgbaImage(c.int("width"), c.int("height"), c.bytes("rgba"))
             val maxEdge = c.raw("max_edge").takeIf { it != "null" }?.toInt()
+            // The generator records "throws" if OpenScan ever throws; no case does today.
+            assertTrue("$c: OpenScan threw", c.raw("out_size") != "throws")
             val (w, h) = c.raw("out_size").split(',').map { it.toInt() }
             if (w == 0 || h == 0) {
-                // OpenScan returns an empty image here (a 400:1 aspect); an RgbaImage cannot be empty, so the port refuses instead, and a caller
-                // treats it as a failed page, as OpenScan's encoder would.
+                // OpenScan returns an empty image here (a 400:1 aspect), and image 4.2.0 even encodes it, so OpenScan would store a 100x0 page. An
+                // RgbaImage cannot be empty: the port refuses, and the edit fails with the page left as it was.
                 val thrown = runCatching { StoredImage.fitToMaxEdge(src, maxEdge) }.exceptionOrNull()
                 assertTrue("$c: should refuse", thrown is IllegalArgumentException)
                 continue

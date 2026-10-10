@@ -35,6 +35,7 @@ void main(List<String> args) {
       w.value('out_size', '${out.width},${out.height}');
       w.bytes('out', Uint8List.fromList(out.getBytes(order: img.ChannelOrder.rgba)));
     } catch (e) {
+      // Recorded so the Kotlin test fails loudly if OpenScan ever starts throwing here.
       w.value('out_size', 'throws');
     }
   }

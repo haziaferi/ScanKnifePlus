@@ -1,5 +1,6 @@
 package com.haziaferi.scanknifeplus.scan.capture
 
+import android.util.Log
 import com.haziaferi.scanknifeplus.scanner.cv.PerspectiveCrop
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
@@ -34,9 +35,11 @@ object AndroidPageImages : PageImages {
     }
 
     override fun crop(source: File, quad: Quad, quarterTurns: Int, dest: File): Boolean = attempt {
-        val image = ImageCodec.decodeScaled(ImageSource.of(source), 0) ?: return@attempt false
-        val cropped = PerspectiveCrop.cropToPage(image, quad.scaled(image.width.toDouble(), image.height.toDouble()), quarterTurns)
-            ?: return@attempt false
+        // Scoped so the decoded source can be collected before the resize allocates.
+        val cropped = run {
+            val image = ImageCodec.decodeScaled(ImageSource.of(source), 0) ?: return@attempt false
+            PerspectiveCrop.cropToPage(image, quad.scaled(image.width.toDouble(), image.height.toDouble()), quarterTurns)
+        } ?: return@attempt false
         ImageCodec.writeJpeg(StoredImage.fitToMaxEdge(cropped, StoredImage.PAGE_MAX_EDGE), dest, StoredImage.PAGE_QUALITY)
     }
 
@@ -49,8 +52,12 @@ object AndroidPageImages : PageImages {
     private inline fun attempt(block: () -> Boolean): Boolean = try {
         block()
     } catch (e: Exception) {
+        Log.w(TAG, "Page edit failed", e)
         false
     } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Page edit ran out of memory", e)
         false
     }
+
+    private const val TAG = "PageImages"
 }

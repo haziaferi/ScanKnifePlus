@@ -1,7 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.library
 
-import com.haziaferi.scanknifeplus.scan.capture.CaptureStore
 import com.haziaferi.scanknifeplus.scan.capture.AndroidPageImages
+import com.haziaferi.scanknifeplus.scan.capture.CaptureStore
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
@@ -118,7 +118,8 @@ class ScanLibrary(
     /**
      * Applies [filterName] to page [pageId] without ever losing the unfiltered page, as OpenScan does: the first filter keeps the current image
      * as the page's unfiltered copy, every later filter is computed from that copy (so filters never compound), and Original (or null) restores
-     * the copy. Returns the updated document, the unchanged document when there is nothing to do, or null if the page does not exist, the
+     * the copy. An unknown [filterName] means Original, as in OpenScan. Returns the updated document, the unchanged document when there is
+     * nothing to do, or null if the page does not exist, the
      * filter could not be computed, or the page changed meanwhile; on null the page is left exactly as it was.
      */
     fun applyFilter(id: String, pageId: String, filterName: String?): ScanDocument? {
@@ -150,7 +151,8 @@ class ScanLibrary(
      * Re-crops page [pageId] to [quad] (fractions of the source image's upright width and height), turned clockwise by [quarterTurns], as
      * OpenScan's crop step does: the crop comes from the kept original when there is one (else the unfiltered copy, else the page), so repeated
      * crops never eat into an earlier one; a page with no original first gets one, made from its unfiltered image at the original cap; the new
-     * page is fitted to the page cap and starts filter-free. Returns the updated document, or null if nothing changed.
+     * page is fitted to the page cap and starts filter-free. Returns the updated document, or null if nothing changed. Where OpenScan falls back to
+     * storing an unnormalized copy when normalizing fails, the whole re-crop fails here and the page stays as it was.
      */
     fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int = 0): ScanDocument? {
         val (_, page) = snapshot(id, pageId) ?: return null
@@ -181,7 +183,14 @@ class ScanLibrary(
         var stamp = nextStamp()
         // A clock that went back can repeat a stamp from an earlier run; never overwrite a file that exists.
         while (prefixes.any { File(folder, "$it$stamp.jpg").exists() }) stamp = nextStamp()
-        prefixes.map { File(folder, "$it$stamp.jpg").apply { createNewFile() } }
+        val created = mutableListOf<File>()
+        try {
+            prefixes.forEach { created += File(folder, "$it$stamp.jpg").apply { createNewFile() } }
+            created
+        } catch (e: IOException) {
+            created.forEach { it.delete() }
+            null
+        }
     }
 
     private fun discard(files: List<File>): ScanDocument? {
@@ -189,8 +198,9 @@ class ScanLibrary(
         return null
     }
 
+    // Plain streams rather than File.copyTo, which creates missing parent folders and could bring back a document deleted meanwhile.
     private fun copied(from: File, to: File): Boolean = try {
-        from.copyTo(to, overwrite = true)
+        from.inputStream().use { input -> FileOutputStream(to).use { input.copyTo(it) } }
         true
     } catch (e: IOException) {
         false
@@ -301,7 +311,9 @@ class ScanLibrary(
             tmp.delete()
             throw IOException("Could not replace the record of ${doc.id}")
         }
-        if (!tmp.renameTo(record)) throw IOException("Could not write the record of ${doc.id}; it is kept as $RECORD_TMP")
+        // If even this rename fails, the new record survives as the synced temp file and read() recovers it: it counts as written, and callers
+        // must not throw away the files it names.
+        tmp.renameTo(record)
     }
 
     private fun nextStamp(): Long {

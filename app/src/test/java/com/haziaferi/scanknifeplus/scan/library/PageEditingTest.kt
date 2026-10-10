@@ -10,9 +10,7 @@ import java.io.File
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -115,7 +113,7 @@ class PageEditingTest {
         val (id, page) = newPage()
         now += 1000
         val before = library.document(id)!!
-        assertSame(null, library.applyFilter(id, page.id, null)!!.pages.single().filter)
+        assertEquals(before, library.applyFilter(id, page.id, null))
         assertEquals(before, library.applyFilter(id, page.id, "Original"))
         library.applyFilter(id, page.id, "Auto")
         val filtered = library.document(id)!!
@@ -186,6 +184,25 @@ class PageEditingTest {
         assertEquals("Auto(page)", text(doc.id, filtered.image))
         val plain = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "Original")!!.pages.last()
         assertNull(plain.filter)
-        assertFalse(plain.unfiltered != null)
+        assertNull(plain.unfiltered)
+    }
+
+    @Test
+    fun `a default filter that fails leaves the new page unfiltered`() {
+        val doc = library.create()
+        images.failNext = true
+        val page = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "B&W")!!.pages.single()
+        assertNull(page.filter)
+        assertEquals("page", text(doc.id, page.image))
+        assertEquals(page.files.toSet(), folderFiles(doc.id))
+    }
+
+    @Test
+    fun `a page with neither an original nor a filter is cropped from itself`() {
+        val (id, page) = newPage(keepOriginal = false)
+        val recropped = library.recropPage(id, page.id, quad)!!.pages.single()
+        assertEquals("norm3200@80(page)", text(id, recropped.original))
+        assertEquals("crop0(page)", text(id, recropped.image))
+        assertEquals(recropped.files.toSet(), folderFiles(id))
     }
 }
