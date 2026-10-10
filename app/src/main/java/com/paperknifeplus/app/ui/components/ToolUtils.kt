@@ -141,6 +141,7 @@ object BitmapPool {
 
     fun put(bitmap: Bitmap) {
         if (!bitmap.isMutable) return
+        val config = bitmap.config ?: return
         synchronized(this) {
             if (currentCount >= maxPoolCount) {
                 // Remove oldest/any if full
@@ -148,7 +149,7 @@ object BitmapPool {
                 pool[randomKey]?.removeFirstOrNull()?.recycle()
                 currentCount--
             }
-            val key = Triple(bitmap.width, bitmap.height, bitmap.config)
+            val key = Triple(bitmap.width, bitmap.height, config)
             pool.getOrPut(key) { mutableListOf() }.add(bitmap)
             currentCount++
         }

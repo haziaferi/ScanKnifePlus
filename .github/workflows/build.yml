@@ -2,9 +2,12 @@ name: Build ScanKnife+
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -15,51 +18,44 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set SOURCE_DATE_EPOCH
-      run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
-    
-    - name: set up JDK 17
+    - name: set up JDK 21
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
+        java-version: '21'
         distribution: 'temurin'
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        packages: "build-tools;34.0.0"
+        packages: "build-tools;36.0.0"
 
+    # Validates the wrapper jar; caches are written only from the default branch.
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: 8.8
-        cache-disabled: true
+      uses: gradle/actions/setup-gradle@v4
 
-    - name: Build Release APK and AAB
+    - name: Test, lint and build release APK and AAB
       run: |
-        gradle clean :scanner-core:test :app:testDebugUnitTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
+        ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
 
-    - name: Sign and Zipalign
+    # AGP's unsigned APK is already aligned (CameraX .so files at 16 KB); re-running zipalign -v 4 could break that.
+    - name: Sign APK
       if: env.HAS_SIGNING_KEY == 'true'
+      env:
+        SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        KEY_ALIAS: ${{ secrets.ALIAS }}
+        KS_PASS: ${{ secrets.KEY_STORE_PASSWORD }}
+        KEY_PASS: ${{ secrets.KEY_PASSWORD }}
       run: |
-        # Locate tools
-        ZIPALIGN=$ANDROID_HOME/build-tools/34.0.0/zipalign
-        APKSIGNER=$ANDROID_HOME/build-tools/34.0.0/apksigner
-        
-        # Zipalign
-        $ZIPALIGN -v 4 app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/apk/release/app-release-aligned.apk
-        
-        # Sign
-        echo "${{ secrets.SIGNING_KEY }}" | base64 -d > keystore.jks
-        $APKSIGNER sign --ks keystore.jks \
-          --ks-key-alias "${{ secrets.ALIAS }}" \
-          --ks-pass pass:"${{ secrets.KEY_STORE_PASSWORD }}" \
-          --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+        BUILD_TOOLS=$ANDROID_HOME/build-tools/36.0.0
+        trap 'rm -f keystore.jks' EXIT
+        printf '%s' "$SIGNING_KEY" | base64 -d > keystore.jks
+        $BUILD_TOOLS/apksigner sign --ks keystore.jks \
+          --ks-key-alias "$KEY_ALIAS" \
+          --ks-pass env:KS_PASS \
+          --key-pass env:KEY_PASS \
           --out app/build/outputs/apk/release/ScanKnife+.apk \
-          app/build/outputs/apk/release/app-release-aligned.apk
-        
-        # Cleanup
-        rm keystore.jks
+          app/build/outputs/apk/release/app-release-unsigned.apk
+        $BUILD_TOOLS/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/ScanKnife+.apk
 
     - name: Log APK Size
       run: |

@@ -1,4 +1,6 @@
 [versions]
+agp = "8.13.2"
+kotlin = "2.3.21"
 coreKtx = "1.13.1"
 lifecycle = "2.8.1"
 activity = "1.9.0"
@@ -7,12 +9,11 @@ pdfbox = "2.0.27.0"
 coil = "2.6.0"
 junit = "4.13.2"
 junitVersion = "1.1.5"
-espresso = "3.5.1"
 robolectric = "4.16.1"
 exifinterface = "1.4.2"
 # Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
 androidxTestCore = "1.7.0"
-# 1.5 and later need compileSdk 35.
+# Held at 1.4.2 until the CameraX bump is approved and device-verified.
 camerax = "1.4.2"
 # Matches the androidx.test runner 1.5.x that androidx.test.ext:junit 1.1.5 brings.
 androidxTestRules = "1.5.0"
@@ -25,7 +26,6 @@ androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", versi
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
@@ -41,4 +41,9 @@ androidx-camera-core = { group = "androidx.camera", name = "camera-core", versio
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
-androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

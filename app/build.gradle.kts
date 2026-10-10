@@ -1,12 +1,12 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.paperknifeplus.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.haziaferi.scanknifeplus"
@@ -15,21 +15,8 @@ android {
         versionCode = 2
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        
         ndk {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a")
-        }
-    }
-
-    signingConfigs {
-        create("release") {
-            val keystoreFile = System.getenv("KEYSTORE_FILE_PATH")
-            if (keystoreFile != null) {
-                storeFile = file(keystoreFile)
-                storePassword = System.getenv("KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("KEY_ALIAS")
-                keyPassword = System.getenv("KEY_PASSWORD")
-            }
         }
     }
 
@@ -38,19 +25,9 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            
-            // Aggressive optimization
-            ndk {
-                debugSymbolLevel = "none"
-            }
-        }
-        debug {
-            isMinifyEnabled = false
-            isShrinkResources = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-    
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -60,22 +37,26 @@ android {
             excludes += "/*.properties"
             excludes += "/META-INF/*.version"
             excludes += "/META-INF/proguard/*"
-            excludes += "/com/google/android/material/**"
         }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
     buildFeatures { compose = true }
-    lint { abortOnError = false }
+    lint {
+        // Compose 1.6.8's bundled check cannot read Kotlin 2.3 metadata and crashes lint; remove when the Compose BOM is bumped.
+        disable += "CoroutineCreationDuringComposition"
+    }
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
     testOptions { unitTests.isIncludeAndroidResources = true }
+}
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {
@@ -95,19 +76,17 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
-    implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.extended)
-    api(libs.pdfbox.android)
+    implementation(libs.pdfbox.android)
     implementation(libs.coil.compose)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.test.rules)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.compose.ui.test.junit4)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }
