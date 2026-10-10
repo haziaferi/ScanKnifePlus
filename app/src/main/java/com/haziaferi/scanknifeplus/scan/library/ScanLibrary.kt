@@ -1,9 +1,13 @@
 package com.haziaferi.scanknifeplus.scan.library
 
+import com.haziaferi.scanknifeplus.scan.capture.AndroidPageImages
 import com.haziaferi.scanknifeplus.scan.capture.CaptureStore
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
+import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
+import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
+import com.haziaferi.scanknifeplus.scanner.store.StoredImage
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -34,6 +38,7 @@ class ScanLibrary(
     private val clock: () -> Long = System::currentTimeMillis,
     private val timeZone: TimeZone = TimeZone.getDefault(),
     private val capture: CaptureWriter = CaptureWriter(CaptureStore::store),
+    private val images: PageImages = AndroidPageImages,
 ) {
     /** All readable documents, newest first. Folders without a readable record are skipped; leftover tombstones are swept away. */
     fun documents(): List<ScanDocument> = synchronized(LOCK) {
@@ -71,10 +76,17 @@ class ScanLibrary(
 
     /**
      * Stores a capture or picked image as a new last page of document [id]: the page cropped to [quad] (fractional portrait coordinates, or null
-     * for the whole image) and, if [keepOriginal], the uncropped original. Returns the updated document, or null if the document does not exist,
+     * for the whole image) and, if [keepOriginal], the uncropped original. A [filter] other than Original is then applied, as OpenScan applies its
+     * default filter to new pages; if that fails the page stays unfiltered. Returns the updated document, or null if the document does not exist,
      * no page could be stored, or the record could not be updated; in every null case the new files are removed again.
      */
-    fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean): ScanDocument? {
+    fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean, filter: String? = null): ScanDocument? {
+        val (added, pageId) = addPage(id, source, quad, keepOriginal) ?: return null
+        if (filter == null || DocumentFilters.byName(filter) == DocumentFilters.default) return added
+        return applyFilter(id, pageId, filter) ?: document(id)
+    }
+
+    private fun addPage(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean): Pair<ScanDocument, String>? {
         val (pageFile, originalFile) = synchronized(LOCK) {
             val folder = folderOf(id)?.takeIf { read(it) != null } ?: return null
             var stamp = nextStamp()
@@ -83,7 +95,7 @@ class ScanLibrary(
             val page = File(folder, "$stamp.jpg").apply { createNewFile() } // reserved before the lock is released
             page to if (keepOriginal) File(folder, "orig_$stamp.jpg") else null
         }
-        fun discard(): ScanDocument? {
+        fun discard(): Pair<ScanDocument, String>? {
             pageFile.delete()
             originalFile?.delete()
             return null
@@ -96,12 +108,122 @@ class ScanLibrary(
             val doc = document(id) ?: return discard() // deleted while the capture was being stored
             val page = ScanPage(id = "p${pageFile.nameWithoutExtension}", image = pageFile.name, original = stored.original?.name)
             try {
-                update(doc.copy(pages = doc.pages + page))
+                update(doc.copy(pages = doc.pages + page)) to page.id
             } catch (e: IOException) {
                 discard()
             }
         }
     }
+
+    /**
+     * Applies [filterName] to page [pageId] without ever losing the unfiltered page, as OpenScan does: the first filter keeps the current image
+     * as the page's unfiltered copy, every later filter is computed from that copy (so filters never compound), and Original (or null) restores
+     * the copy. An unknown [filterName] means Original, as in OpenScan. Returns the updated document, the unchanged document when there is
+     * nothing to do, or null if the page does not exist, the
+     * filter could not be computed, or the page changed meanwhile; on null the page is left exactly as it was.
+     */
+    fun applyFilter(id: String, pageId: String, filterName: String?): ScanDocument? {
+        val filter = DocumentFilters.byName(filterName)
+        val (doc, page) = snapshot(id, pageId) ?: return null
+        if ((page.filter ?: DocumentFilters.default.name) == filter.name) return doc
+        if (filter == DocumentFilters.default) {
+            val unfiltered = page.unfiltered ?: return doc
+            return commit(id, page, page.copy(image = unfiltered, unfiltered = null, filter = null), emptyList(), listOf(page.image))
+        }
+
+        // The filtered page, plus (on a first filter) the copy that becomes the unfiltered page.
+        val reserved = reserve(id, if (page.unfiltered == null) listOf("", "unfilt_") else listOf("")) ?: return null
+        val filtered = reserved[0]
+        val promoted = reserved.getOrNull(1)
+        val source = if (promoted != null) {
+            if (!copied(file(id, page.image), promoted)) return discard(reserved)
+            promoted
+        } else {
+            file(id, page.unfiltered!!)
+        }
+        if (!images.filter(source, filter, filtered)) return discard(reserved)
+        val edited = page.copy(image = filtered.name, unfiltered = promoted?.name ?: page.unfiltered, filter = filter.name)
+        // The old filtered image goes; on a first filter that is the page itself, which lives on as the promoted copy.
+        return commit(id, page, edited, reserved, listOf(page.image))
+    }
+
+    /**
+     * Re-crops page [pageId] to [quad] (fractions of the source image's upright width and height), turned clockwise by [quarterTurns], as
+     * OpenScan's crop step does: the crop comes from the kept original when there is one (else the unfiltered copy, else the page), so repeated
+     * crops never eat into an earlier one; a page with no original first gets one, made from its unfiltered image at the original cap; the new
+     * page is fitted to the page cap and starts filter-free. Returns the updated document, or null if nothing changed. Where OpenScan falls back to
+     * storing an unnormalized copy when normalizing fails, the whole re-crop fails here and the page stays as it was.
+     */
+    fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int = 0): ScanDocument? {
+        val (_, page) = snapshot(id, pageId) ?: return null
+        val reserved = reserve(id, if (page.original == null) listOf("", "orig_") else listOf("")) ?: return null
+        val cropped = reserved[0]
+        val promoted = reserved.getOrNull(1)
+        if (promoted != null &&
+            !images.normalize(file(id, page.unfiltered ?: page.image), promoted, StoredImage.ORIGINAL_MAX_EDGE, StoredImage.ORIGINAL_QUALITY)
+        ) {
+            return discard(reserved)
+        }
+        val source = file(id, page.original ?: page.unfiltered ?: page.image)
+        if (!images.crop(source, quad, quarterTurns, cropped)) return discard(reserved)
+        val edited = page.copy(image = cropped.name, original = page.original ?: promoted!!.name, unfiltered = null, filter = null)
+        return commit(id, page, edited, reserved, listOfNotNull(page.image, page.unfiltered))
+    }
+
+    /** The document and its page [pageId], read under the lock. */
+    private fun snapshot(id: String, pageId: String): Pair<ScanDocument, ScanPage>? = synchronized(LOCK) {
+        val doc = document(id) ?: return null
+        val page = doc.pages.firstOrNull { it.id == pageId } ?: return null
+        doc to page
+    }
+
+    /** Reserves new empty files named `<prefix><stamp>.jpg` (one stamp for all) in document [id], so nothing else can take those names. */
+    private fun reserve(id: String, prefixes: List<String>): List<File>? = synchronized(LOCK) {
+        val folder = folderOf(id) ?: return null
+        var stamp = nextStamp()
+        // A clock that went back can repeat a stamp from an earlier run; never overwrite a file that exists.
+        while (prefixes.any { File(folder, "$it$stamp.jpg").exists() }) stamp = nextStamp()
+        val created = mutableListOf<File>()
+        try {
+            prefixes.forEach { created += File(folder, "$it$stamp.jpg").apply { createNewFile() } }
+            created
+        } catch (e: IOException) {
+            created.forEach { it.delete() }
+            null
+        }
+    }
+
+    private fun discard(files: List<File>): ScanDocument? {
+        files.forEach { it.delete() }
+        return null
+    }
+
+    // Plain streams rather than File.copyTo, which creates missing parent folders and could bring back a document deleted meanwhile.
+    private fun copied(from: File, to: File): Boolean = try {
+        from.inputStream().use { input -> FileOutputStream(to).use { input.copyTo(it) } }
+        true
+    } catch (e: IOException) {
+        false
+    }
+
+    /**
+     * Replaces [before] with [after] in document [id] if the page is still exactly [before], then deletes the [obsolete] files [after] no longer
+     * uses. If the page changed meanwhile, or the record cannot be written, the [created] files are removed and null is returned.
+     */
+    private fun commit(id: String, before: ScanPage, after: ScanPage, created: List<File>, obsolete: List<String>): ScanDocument? =
+        synchronized(LOCK) {
+            val doc = document(id)
+            val index = doc?.pages?.indexOf(before) ?: -1
+            if (doc == null || index < 0) return discard(created)
+            val updated = try {
+                update(doc.copy(pages = doc.pages.toMutableList().apply { set(index, after) }))
+            } catch (e: IOException) {
+                return discard(created)
+            }
+            // Deleted only after the record no longer names them, so a crash leaves stray files rather than a page pointing at nothing.
+            obsolete.filter { it !in after.files }.forEach { file(id, it).delete() }
+            updated
+        }
 
     /** Renames document [id]; a blank [name] clears it, so the generated name shows again. The folder itself is never renamed. */
     fun rename(id: String, name: String?): ScanDocument? = synchronized(LOCK) {
@@ -189,7 +311,9 @@ class ScanLibrary(
             tmp.delete()
             throw IOException("Could not replace the record of ${doc.id}")
         }
-        if (!tmp.renameTo(record)) throw IOException("Could not write the record of ${doc.id}; it is kept as $RECORD_TMP")
+        // If even this rename fails, the new record survives as the synced temp file and read() recovers it: it counts as written, and callers
+        // must not throw away the files it names.
+        tmp.renameTo(record)
     }
 
     private fun nextStamp(): Long {
