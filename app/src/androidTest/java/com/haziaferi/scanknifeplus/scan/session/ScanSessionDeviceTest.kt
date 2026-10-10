@@ -28,9 +28,13 @@ class ScanSessionDeviceTest {
     @After
     fun cleanUp() {
         root.deleteRecursively()
+        shotDir.deleteRecursively()
     }
 
-    private fun shot(name: String, color: Int): File = File(ScanFiles.stagingDir(context), name).also { file ->
+    // The session works in its own folder inside the app's real staging folder, as in the app; nothing else in there is touched.
+    private val shotDir = ScanFiles.newFolder(ScanFiles.stagingDir(context), "session-test-")!!
+
+    private fun shot(name: String, color: Int): File = File(shotDir, name).also { file ->
         Bitmap.createBitmap(3000, 4000, Bitmap.Config.ARGB_8888).apply { eraseColor(color) }.let { b ->
             file.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 90, it) }
             b.recycle()
@@ -38,9 +42,9 @@ class ScanSessionDeviceTest {
     }
 
     @Test
-    fun shotsBecomePagesInOrderAndStagingIsCleared() {
+    fun shotsBecomePagesInOrderAndTheSessionFolderIsDeleted() {
         val library = ScanLibrary(root)
-        val session = ScanSession(library, defaultFilter = "Grayscale", clearStaging = { ScanFiles.clearStaging(context) })
+        val session = ScanSession(library, shotDir, defaultFilter = "Grayscale")
         val half = Quad(Pt(0.0, 0.0), Pt(0.5, 0.0), Pt(0.5, 1.0), Pt(0.0, 1.0))
         val shots = listOf(shot("a.jpg", Color.RED), shot("b.jpg", Color.BLUE), shot("c.jpg", Color.GREEN))
         assertTrue(session.capture(shots[0], half))
@@ -59,6 +63,6 @@ class ScanSessionDeviceTest {
         assertTrue("$first", first.width < first.height / 1.5)
         assertTrue("$second", Math.abs(second.width * 4 - second.height * 3) <= 8)
         shots.forEach { assertFalse(it.exists()) }
-        assertTrue(ScanFiles.stagingDir(context).list()!!.isEmpty())
+        assertFalse(shotDir.exists())
     }
 }
