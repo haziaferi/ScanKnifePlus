@@ -71,8 +71,9 @@ object Contours {
             val hull = convexHull(members)
             if (hull.size < 4) continue
 
+            val split = if (hull.size > 4) ClosedPolygonSplit(hull) else null
             for (epsilonFactor in EPSILON_FACTORS) {
-                val simplified = if (hull.size <= 4) hull else simplifyClosedPolygon(hull, epsilonFactor)
+                val simplified = split?.simplify(epsilonFactor) ?: hull
                 if (simplified.size == 4 && isConvex(simplified)) {
                     val quad = sortCorners(simplified)
                     if (isPlausibleQuad(quad, width, height)) {
@@ -324,44 +325,55 @@ object Contours {
 
     /**
      * Ramer-Douglas-Peucker simplification of a closed polygon: splits at the two farthest-apart hull points into two open chains, simplifies each,
-     * then merges; stands in for `approxPolyDP(3% arc length)`.
+     * then merges; stands in for `approxPolyDP(3% arc length)`. The perimeter and the split do not depend on epsilon, so they are computed once
+     * per hull rather than once per epsilon factor as in OpenScan.
      */
-    private fun simplifyClosedPolygon(hull: List<Pt>, epsilonFactor: Double): List<Pt> {
-        var perimeter = 0.0
-        for (i in hull.indices) {
-            perimeter += dist(hull[i], hull[(i + 1) % hull.size])
-        }
-        val epsilon = epsilonFactor * perimeter
+    private class ClosedPolygonSplit(hull: List<Pt>) {
+        private val perimeter: Double
+        private val chain1: List<Pt>
+        private val chain2: List<Pt>
 
-        var ai = 0
-        var bi = 0
-        var best = -1.0
-        for (i in hull.indices) {
-            for (j in i + 1 until hull.size) {
-                val d = dist(hull[i], hull[j])
-                if (d > best) {
-                    best = d
-                    ai = i
-                    bi = j
+        init {
+            var sum = 0.0
+            for (i in hull.indices) {
+                sum += dist(hull[i], hull[(i + 1) % hull.size])
+            }
+            perimeter = sum
+
+            var ai = 0
+            var bi = 0
+            var best = -1.0
+            for (i in hull.indices) {
+                for (j in i + 1 until hull.size) {
+                    val d = dist(hull[i], hull[j])
+                    if (d > best) {
+                        best = d
+                        ai = i
+                        bi = j
+                    }
                 }
             }
-        }
 
-        fun chain(from: Int, to: Int): List<Pt> {
-            val result = ArrayList<Pt>()
-            var i = from
-            while (true) {
-                result += hull[i]
-                if (i == to) break
-                i = (i + 1) % hull.size
+            fun chain(from: Int, to: Int): List<Pt> {
+                val result = ArrayList<Pt>()
+                var i = from
+                while (true) {
+                    result += hull[i]
+                    if (i == to) break
+                    i = (i + 1) % hull.size
+                }
+                return result
             }
-            return result
+            chain1 = chain(ai, bi)
+            chain2 = chain(bi, ai)
         }
 
-        val chain1 = rdp(chain(ai, bi), epsilon)
-        val chain2 = rdp(chain(bi, ai), epsilon)
-
-        return chain1 + chain2.subList(1, chain2.size - 1)
+        fun simplify(epsilonFactor: Double): List<Pt> {
+            val epsilon = epsilonFactor * perimeter
+            val simplified1 = rdp(chain1, epsilon)
+            val simplified2 = rdp(chain2, epsilon)
+            return simplified1 + simplified2.subList(1, simplified2.size - 1)
+        }
     }
 
     private fun rdp(points: List<Pt>, epsilon: Double): List<Pt> {
