@@ -50,4 +50,27 @@ class ScanLibraryDeviceTest {
         assertFalse(photo.exists())
         assertTrue(otherCache.exists())
     }
+
+    @Test
+    fun aSweepRemovesOnlyStaleUnnamedFiles() {
+        val photo = File(context.cacheDir, "sweep-shot-${System.nanoTime()}.jpg")
+        Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.LTGRAY) }.let { b ->
+            photo.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            b.recycle()
+        }
+        val library = ScanLibrary(root)
+        val doc = library.create()
+        val page = library.addCapture(doc.id, ImageSource.of(photo), null, keepOriginal = true)!!.pages.single()
+        photo.delete()
+        val old = System.currentTimeMillis() - ScanLibrary.STALE_MILLIS - 60_000
+        val folder = File(root, doc.id)
+        folder.listFiles()!!.forEach { assertTrue(it.setLastModified(old)) } // the device's file system keeps the times set
+        val stale = File(folder, "1000.jpg").apply { writeText("half") }.also { assertTrue(it.setLastModified(old)) }
+        val fresh = File(folder, "1001.jpg").apply { writeText("half") }
+
+        assertEquals(1, library.sweep())
+        assertFalse(stale.exists())
+        assertTrue(fresh.exists())
+        assertEquals(setOf("document.json", fresh.name) + page.files, folder.list()!!.toSet())
+    }
 }
