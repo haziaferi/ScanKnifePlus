@@ -35,13 +35,6 @@ sealed class DetectionResult {
     /** Detection ran without error, but no suitable quad was found. */
     data class NotFound(val imageWidth: Int, val imageHeight: Int) : DetectionResult()
 
-    /** Detection threw (corrupt image, decode failure, timeout, etc). */
+    /** Detection threw (corrupt image, decode failure, etc). */
     data class Failure(val message: String) : DetectionResult()
-}
-
-/** Result of running the perspective crop. */
-sealed class CropResult {
-    data class Success(val path: String) : CropResult()
-
-    data class Failure(val message: String) : CropResult()
 }

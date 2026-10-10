@@ -12,7 +12,10 @@ import com.haziaferi.scanknifeplus.scanner.u8
  * frame is never materialized as grayscale. Only OpenScan's YUV420 path is ported: its BGRA8888 path is iOS-only and CameraX never delivers it.
  */
 object FrameAdapter {
-    /** Longest edge (px) live detection runs at; the overlay is guidance only, and the captured photo is detected again at full resolution. */
+    /**
+     * Longest edge (px) live detection runs at. Nothing re-detects the capture at full resolution: the smoothed live quad is reused to crop the
+     * full-resolution still.
+     */
     const val LIVE_DETECTION_MAX_DIMENSION = 320
 
     /**

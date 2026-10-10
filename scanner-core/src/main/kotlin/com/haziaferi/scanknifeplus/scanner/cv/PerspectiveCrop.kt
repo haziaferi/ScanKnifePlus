@@ -87,7 +87,7 @@ object PerspectiveCrop {
     }
 
     /** Inverse-samples [quad] out of [decoded] into an upright [width] x [height] rectangle (both default to the quad's own size); null on failure. */
-    fun warp(decoded: RgbaImage, quad: Quad, width: Int?, height: Int?): RgbaImage? = try {
+    internal fun warp(decoded: RgbaImage, quad: Quad, width: Int?, height: Int?): RgbaImage? = try {
         val srcWidth = decoded.width
         val srcHeight = decoded.height
         val srcRgba = decoded.pixels
@@ -118,7 +118,7 @@ object PerspectiveCrop {
             }
         }
         RgbaImage(outWidth, outHeight, outRgba)
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         null
     }
 

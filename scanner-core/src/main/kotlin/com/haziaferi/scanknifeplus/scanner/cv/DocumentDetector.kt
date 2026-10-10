@@ -22,7 +22,7 @@ object DocumentDetector {
     private val THRESHOLD_MULTIPLIERS = doubleArrayOf(0.7, 1.0, 1.3)
 
     /**
-     * Detects the document in a decoded RGBA image (stride 4) of [width] x [height]. Never throws: errors come back as [DetectionResult.Failure].
+     * Detects the document in a decoded RGBA image (stride 4) of [width] x [height]. Exceptions come back as [DetectionResult.Failure].
      *
      * This is the decode-independent part of OpenScan's `detectDocumentIsolateEntry`; the caller decodes the image file.
      */

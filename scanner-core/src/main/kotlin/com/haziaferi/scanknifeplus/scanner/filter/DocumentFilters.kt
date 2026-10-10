@@ -28,7 +28,7 @@ object DocumentFilters {
     val default: Filter get() = all.first()
 
     /** Looks a filter up by its stored name, falling back to [default] for an unknown or missing value. */
-    fun byName(name: String?): Filter = if (name == null) default else all.firstOrNull { it.name == name } ?: default
+    fun byName(name: String?): Filter = all.firstOrNull { it.name == name } ?: default
 
     /** Fraction of the darkest/brightest pixels ignored when auto-levelling. */
     private const val CLIP_FRACTION = 0.005
