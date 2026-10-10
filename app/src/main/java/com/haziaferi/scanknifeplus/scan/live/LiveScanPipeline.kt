@@ -154,7 +154,7 @@ class LiveScanPipeline internal constructor(
 
 
     /** Turns auto-capture on or off (on by default). Persisting the choice is the caller's job. */
-    fun setAutoCaptureEnabled(enabled: Boolean) = synchronized(lock) {
+    fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
         if (disposed) return
         autoCapture.enabled = enabled
     }
@@ -171,7 +171,7 @@ class LiveScanPipeline internal constructor(
     }
 
     /** The still has been taken: starts the auto-capture cooldown, drops the smoothed track so the next document starts fresh, resumes frames. */
-    fun notifyCaptured() = synchronized(lock) {
+    fun notifyCaptured(): Unit = synchronized(lock) {
         if (disposed) return
         autoCapture.notifyCaptured()
         smoother.reset()
@@ -198,7 +198,7 @@ class LiveScanPipeline internal constructor(
         detector.dispose()
     }
 
-    private fun onRawQuad(quad: Quad?, mapping: QuadMapping) = synchronized(lock) {
+    private fun onRawQuad(quad: Quad?, mapping: QuadMapping): Unit = synchronized(lock) {
         if (disposed || mapping != frameMapping) return
         smoother.onRawQuad(quad?.let(mapping::map))
     }
