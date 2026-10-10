@@ -56,8 +56,8 @@ object ImageCodec {
     fun orientedSize(source: ImageSource): PageSize? = readHeader(source)?.oriented
 
     /**
-     * Decodes [source] as an upright bitmap, subsampled by the smallest power of two that fits its long edge within [maxEdge] and not otherwise
-     * scaled; null if it cannot. The caller owns the bitmap.
+     * Decodes [source] as an upright ARGB_8888 bitmap, subsampled by the smallest power of two that fits its long edge within [maxEdge] and not
+     * otherwise scaled; null if it cannot. The caller owns the bitmap.
      */
     fun decodeUpright(source: ImageSource, maxEdge: Int = Int.MAX_VALUE): Bitmap? {
         val header = readHeader(source) ?: return null
@@ -71,6 +71,7 @@ object ImageCodec {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
             bitmap = source.open().use { BitmapFactory.decodeStream(it, null, options) } ?: return null
+            bitmap = replaced(bitmap, ::argb8888)
             val matrix = orientationMatrix(header.orientation, bitmap.width, bitmap.height)
             if (!matrix.isIdentity) bitmap = replaced(bitmap) { Bitmap.createBitmap(it, 0, 0, it.width, it.height, matrix, true) }
             bitmap.also { bitmap = null }
@@ -105,8 +106,7 @@ object ImageCodec {
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
             bitmap = source.open().use { BitmapFactory.decodeStream(it, null, options) } ?: return null
-            // ARGB_8888 is only a preference: high bit-depth images (16-bit PNG, 10-bit HEIF) can decode as RGBA_F16 or RGBA_1010102.
-            bitmap = replaced(bitmap) { if (it.config == Bitmap.Config.ARGB_8888) it else it.copy(Bitmap.Config.ARGB_8888, false) }
+            bitmap = replaced(bitmap, ::argb8888)
             bitmap = transformed(bitmap, header.orientation, target)
 
             val buffer = ByteBuffer.allocate(bitmap.width * bitmap.height * 4)
@@ -150,6 +150,13 @@ object ImageCodec {
         source.open().use { ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }
     } catch (e: Exception) {
         ExifInterface.ORIENTATION_NORMAL
+    }
+
+    // ARGB_8888 is only a preference: high bit-depth images (16-bit PNG, 10-bit HEIF) can decode as RGBA_F16 or RGBA_1010102.
+    private fun argb8888(bitmap: Bitmap): Bitmap = if (bitmap.config == Bitmap.Config.ARGB_8888) {
+        bitmap
+    } else {
+        bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: error("Cannot convert to ARGB_8888")
     }
 
     /** Applies [transform] and recycles [bitmap] if a new bitmap came back. */

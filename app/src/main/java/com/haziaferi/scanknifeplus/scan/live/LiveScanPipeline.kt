@@ -21,15 +21,9 @@ import java.util.concurrent.Executors
 class CaptureRequest(val quad: Quad?)
 
 /**
- * The non-visual part of OpenScan's live-scan screen, as in OpenScan: every third analysis frame -> [FrameAdapter] grayscale -> [LowLightDetector]
- * and [LiveScanController] -> [QuadSmoother] -> [AutoCaptureDetector] -> [Listener.onAutoCapture]. The smoother and auto-capture only read [clock],
- * so they advance whenever a detection result arrives.
- *
- * Capture protocol: [beginCapture] (auto-capture calls it itself), then [notifyCaptured] once the still is taken, then [endCapture] when the page
- * is done or the capture failed; frames are ignored from [beginCapture] until [notifyCaptured] or [endCapture], as OpenScan stops its stream.
- *
- * Threading: [onFrame] runs on the analysis thread, everything else on any thread. Listener callbacks run under the pipeline's lock, so they arrive
- * in order and never after [dispose]; a callback must not block on another thread that calls into the pipeline.
+ * The non-visual part of OpenScan's live-scan screen: every third analysis frame -> [FrameAdapter] grayscale -> [LowLightDetector] and
+ * [LiveScanController] -> [QuadSmoother] -> [AutoCaptureDetector] -> [Listener.onAutoCapture], with the smoother and auto-capture advancing on
+ * [clock] whenever a result arrives. [onFrame] runs on the analysis thread and every other method on any thread.
  */
 class LiveScanPipeline internal constructor(
     private val listener: Listener,
@@ -39,7 +33,10 @@ class LiveScanPipeline internal constructor(
     /** Creates a pipeline that detects on its own background thread (owned by the pipeline and stopped in [dispose]). */
     constructor(listener: Listener, clock: MicrosClock = MicrosClock.SYSTEM) : this(listener, clock, { onQuad -> liveQuadDetector(onQuad) })
 
-    /** Receives the pipeline's state for the UI. All methods have empty defaults except [onAutoCapture]. See the class doc for threading. */
+    /**
+     * Receives the pipeline's state for the UI; all methods but [onAutoCapture] have empty defaults. Callbacks run under the pipeline's lock, so
+     * they arrive in order and never after [dispose]; one must not block on another thread that calls into the pipeline.
+     */
     interface Listener {
         /**
          * The smoothed document boundary changed (portrait, normalized to [0,1]; null when nothing is tracked). Runs on the detection thread, or
@@ -51,8 +48,8 @@ class LiveScanPipeline internal constructor(
         fun onLowLightChanged(lowLight: Boolean) {}
 
         /**
-         * An auto-capture is about to happen (for a visual cue), or no longer is. Runs on the detection thread, or on the thread that called
-         * [setAutoCaptureEnabled] or [notifyCaptured].
+         * An auto-capture is about to happen (for a visual cue), or no longer is. Runs on the detection thread, on the thread that called
+         * [setAutoCaptureEnabled] or [notifyCaptured], or on the analysis thread when the frames come from another camera.
          */
         fun onAutoCaptureImminentChanged(imminent: Boolean) {}
 
@@ -152,7 +149,6 @@ class LiveScanPipeline internal constructor(
         this.zooming = zooming
     }
 
-
     /** Turns auto-capture on or off (on by default). Persisting the choice is the caller's job. */
     fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
         if (disposed) return
@@ -160,8 +156,9 @@ class LiveScanPipeline internal constructor(
     }
 
     /**
-     * Starts a capture and snapshots the boundary on screen: the smoothed quad, or null when the frames do not map onto the still (the front
-     * camera, as before). Returns null, and does nothing, if a capture is already in progress or the pipeline is disposed.
+     * Starts a capture (auto-capture calls this itself) and snapshots the smoothed quad, null when the frames do not map onto the still (the
+     * front camera); follow with [notifyCaptured] once the still is taken and [endCapture] when done, and frames pause until then, as OpenScan
+     * stops its stream. Returns null, doing nothing, if a capture is in progress or the pipeline is disposed.
      */
     fun beginCapture(): CaptureRequest? = synchronized(lock) {
         if (disposed || capturing) return null

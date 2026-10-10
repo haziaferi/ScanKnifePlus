@@ -66,21 +66,10 @@ import kotlinx.coroutines.withContext
 typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int, rotationDegrees: Int, lens: CameraLens) -> Unit
 
 /**
- * The document scanner's camera, without any UI: CameraX preview (onto a surface the UI supplies), a low-resolution YUV analysis stream for live
- * detection, and full-resolution stills, which keep the sensor's pixel layout with the rotation in EXIF. Call every method on the main thread,
- * where [stateListener] is called too; nothing throws (failures show up in [ScanCameraState.error] or a null or false result), and [release]
- * stops the analysis thread.
- *
- * Differences from OpenScan, all deliberate:
- *  - Stills are the largest size of the sensor's shape ([CameraSizes]) at [ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY], not 720p, and the
- *    preview and analysis streams take the same shape, so the detected quad covers the photo's field of view.
- *  - The still flash is always off; the torch is the only light, and it is off whenever the camera is (re)opened.
- *  - The camera follows the screen's [LifecycleOwner]: CameraX serialises close and reopen, so OpenScan's manual dispose on pause and 500 ms
- *    reopen delay are not needed, and the camera stays open while the screen is paused but visible (multi-window).
- *  - Analysis keeps running while a picture is taken (one CameraX session runs both streams); OpenScan stopped its image stream.
- *  - OpenScan's open timeout and single retry are kept ([OpenWatchdog]); only a second timeout is reported, as [CameraError.OPEN_TIMEOUT], and
- *    no retry is made while CameraX reports a specific error, since it reopens by itself.
- *  - Front-camera stills are pinned unmirrored, so a document reads the right way round (CameraX 1.4.2's default on the OnePlus 6T too).
+ * The document scanner's camera without any UI, porting OpenScan's: CameraX preview, a YUV analysis stream for live detection, and stills at the
+ * sensor's full field of view ([CameraSizes]) with the flash off and the rotation in EXIF. Call every method on the main thread, where
+ * [stateListener] runs too; nothing throws (failures show in [ScanCameraState.error] or a null or false result), and [release] must be called
+ * when done, as the controller owns an analysis thread.
  */
 class ScanCameraController(context: Context) {
     companion object {
@@ -161,8 +150,8 @@ class ScanCameraController(context: Context) {
 
     /**
      * Opens the camera for [owner]'s lifecycle, facing [lens] (or the other way if there is no such camera, as OpenScan fell back to its first),
-     * replacing any earlier binding; [surfaceProvider] receives the preview, or null runs without one. Without the CAMERA permission it fails
-     * cleanly with [CameraError.PERMISSION_DENIED]: ask for it before calling.
+     * replacing any earlier binding; [surfaceProvider] receives the preview, or null runs without one. CameraX then closes and reopens the camera
+     * with the owner's lifecycle; without the CAMERA permission this fails cleanly with [CameraError.PERMISSION_DENIED].
      */
     @MainThread
     fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?, lens: CameraLens = CameraLens.BACK) =
@@ -284,6 +273,7 @@ class ScanCameraController(context: Context) {
             return@withContext null
         }
         val file = File(dir, "shot-${UUID.randomUUID()}.jpg")
+        // Pinned unmirrored, so a document taken with the front camera reads the right way round.
         val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = false }
         val options = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
         suspendCancellableCoroutine { cont ->

@@ -56,7 +56,7 @@ class ScanFilesTest {
         val outside = listOf(
             File(ScanFiles.libraryDir(app), "doc/page.jpg"),
             File(app.filesDir, "signatures/sig.png"),
-            File(app.filesDir, "scans2/x.txt"), // shares the "scans" prefix but is a different folder
+            File(app.cacheDir, "shared2/x.txt"), // shares the exposed "shared" prefix but is a different folder
             File(app.cacheDir, "other.txt"),
         )
         for (f in outside) {

@@ -15,7 +15,10 @@ object ScanFiles {
     private const val STAGING_FOLDER = "scan-staging"
     private const val EXPORT_FOLDER = "scan-export"
 
-    /** The names of the scanner's folders under the cache directory ([shareDir], [stagingDir], [exportDir]), e.g. for clearing the cache. */
+    /**
+     * The names of the scanner's folders under the cache directory ([shareDir], [stagingDir], [exportDir]), for reporting cache use. The scanner
+     * cleans these itself; deleting them while a scan session or export runs breaks it.
+     */
     val CACHE_FOLDERS: Set<String> = setOf(SHARE_FOLDER, STAGING_FOLDER, EXPORT_FOLDER)
 
     /** The scan library root; created on first use. */

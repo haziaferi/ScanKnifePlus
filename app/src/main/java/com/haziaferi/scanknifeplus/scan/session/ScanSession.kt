@@ -51,18 +51,10 @@ enum class SessionEnd { FINISHED, CANCELLED }
 data class ScanSessionResult(val documentId: String?, val pagesAdded: Int, val end: SessionEnd)
 
 /**
- * One scan session: the non-visual part of OpenScan's live-scan screen. Camera shots ([capture]) and gallery picks ([import]) join one queue
- * and are stored in that order on a background thread, each as a new last page of an existing document ([documentId]) or of a new one created
- * with the first stored page; a document the session did not create is never deleted, and one it created goes at the end only if left empty.
- *
- * Differences from OpenScan, each deliberate:
- *  - The shutter never waits for a page to be encoded (OpenScan's `_capturing` gate held shutter, auto-capture and Done until the last shot).
- *  - Pages go into the document as they are stored, not when the screen closes, so a stored page survives the process being killed.
- *  - A shot that cannot be stored is reported in [ScanSessionState.failures] at once; OpenScan retried it later and then skipped it silently.
- *  - Each session has its own staging folder, [shotDir], deleted when the session ends; OpenScan wiped the whole cache directory.
- *
- * Camera shots are deleted once stored, failed or undone; picked images are only read. [capture], [import] and [undoLast] return at once,
- * [finish], [cancel] and [close] block until the queue is done, and all methods are thread-safe; a session must be ended ([close] suits `use {}`).
+ * One scan session, the non-visual part of OpenScan's live-scan screen: camera shots and gallery picks are stored in the order handed in, on a
+ * background thread, as new last pages of an existing document ([documentId]) or of one created with the first stored page. Unlike OpenScan the
+ * shutter never waits for encoding, and each page is in the document as soon as it is stored. All methods are thread-safe, and a session must
+ * be ended ([close] suits `use {}`).
  */
 class ScanSession(
     private val library: ScanLibrary,
@@ -106,7 +98,8 @@ class ScanSession(
 
     /**
      * Queues camera shot [shot] (a JPEG the camera wrote into [shotDir]) to be stored cropped to [quad] (fractional portrait coordinates, null
-     * for the whole image). Returns at once; false if the session has already ended, in which case the shot file is deleted.
+     * for the whole image). Returns at once; the shot file is deleted once stored, failed or undone, or at once (returning false) if the session
+     * has already ended. A shot that cannot be stored shows up in [ScanSessionState.failures].
      */
     fun capture(shot: File, quad: Quad?): Boolean = enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), quad, shot)
 

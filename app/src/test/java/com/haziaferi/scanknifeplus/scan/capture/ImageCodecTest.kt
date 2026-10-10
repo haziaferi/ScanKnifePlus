@@ -56,6 +56,7 @@ class ImageCodecTest {
         ExifInterface(file).apply { setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString()) }.saveAttributes()
 
         val upright = ImageCodec.decodeUpright(ImageSource.of(file))!!
+        assertEquals(Bitmap.Config.ARGB_8888, upright.config)
         assertEquals(30, upright.width)
         assertEquals(40, upright.height)
         assertTrue(Color.red(upright.getPixel(15, 5)) > 200 && Color.blue(upright.getPixel(15, 5)) < 60)
@@ -64,6 +65,16 @@ class ImageCodecTest {
         val fitted = ImageCodec.decodeUpright(ImageSource.of(file), maxEdge = 20)!!
         assertEquals(15, fitted.width)
         assertEquals(20, fitted.height)
+    }
+
+    @Test
+    fun `a 16-bit PNG decodes as 8-bit ARGB`() {
+        val file = File(dir, "deep.png")
+        val deep = Bitmap.createBitmap(8, 6, Bitmap.Config.RGBA_F16).apply { eraseColor(Color.GREEN) }
+        file.outputStream().use { deep.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val decoded = ImageCodec.decodeUpright(ImageSource.of(file))!!
+        assertEquals(Bitmap.Config.ARGB_8888, decoded.config)
+        assertEquals(Color.GREEN, decoded.getPixel(4, 3))
     }
 
     @Test
