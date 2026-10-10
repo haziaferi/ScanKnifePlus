@@ -43,7 +43,7 @@ class ScanCameraControllerTest {
         assertEquals(CameraStatus.IDLE, controller.state.status)
         assertEquals(listOf(controller.state), states)
         assertFalse(controller.switchLens())
-        assertNull(runBlocking { controller.takePicture() })
+        assertNull(runBlocking { controller.takePicture(app.cacheDir) })
     }
 
     @Test
@@ -54,7 +54,7 @@ class ScanCameraControllerTest {
         controller.setZoom(2f)
         controller.finishZoom()
         assertFalse(controller.switchLens())
-        assertNull(runBlocking { controller.takePicture() })
+        assertNull(runBlocking { controller.takePicture(app.cacheDir) })
         controller.unbind()
         assertEquals(ScanCameraState(), controller.state)
         assertEquals(emptyList<ScanCameraState>(), states)

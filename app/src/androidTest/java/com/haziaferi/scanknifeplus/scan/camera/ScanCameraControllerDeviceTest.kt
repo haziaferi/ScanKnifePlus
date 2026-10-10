@@ -52,6 +52,9 @@ class ScanCameraControllerDeviceTest {
     private lateinit var owner: TestOwner
     private val readers = ArrayList<ImageReader>()
 
+    /** Stands in for a scan session's own staging folder; created by takePicture. */
+    private val shotDir by lazy { File(ScanFiles.stagingDir(context), "session-test") }
+
     private class TestOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
@@ -101,7 +104,7 @@ class ScanCameraControllerDeviceTest {
         return waitFor("the camera to open") { it.ready }
     }
 
-    private fun takePicture(): File? = runBlocking { withContext(Dispatchers.Main) { controller.takePicture() } }
+    private fun takePicture(): File? = runBlocking { withContext(Dispatchers.Main) { controller.takePicture(shotDir) } }
 
     /**
      * The still the controller should pick, worked out independently from camera2: the largest JPEG size with the sensor's active-array shape,
@@ -163,7 +166,7 @@ class ScanCameraControllerDeviceTest {
 
         val file = takePicture()
         assertNotNull(file)
-        assertEquals(ScanFiles.stagingDir(context), file!!.parentFile)
+        assertEquals(shotDir, file!!.parentFile)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
         val orientation = ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
@@ -186,8 +189,8 @@ class ScanCameraControllerDeviceTest {
         bind()
         val results = runBlocking {
             withContext(Dispatchers.Main) {
-                val first = async { controller.takePicture() }
-                val second = async { controller.takePicture() }
+                val first = async { controller.takePicture(shotDir) }
+                val second = async { controller.takePicture(shotDir) }
                 listOf(first.await(), second.await())
             }
         }

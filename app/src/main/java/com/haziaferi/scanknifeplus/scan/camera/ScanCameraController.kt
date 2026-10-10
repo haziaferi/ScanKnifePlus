@@ -78,7 +78,8 @@ typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, heigh
  *    capture as separate streams of one session, so nothing has to stop (the session's stream combination is configured for both).
  *  - OpenScan's open timeout plus one retry becomes CameraX's own open retry plus an [OPEN_TIMEOUT_MS] watchdog that reports
  *    [CameraError.OPEN_TIMEOUT] without giving up.
- *  - Front-camera stills are not mirrored (EXIF says so explicitly), so a document photographed with it reads the right way round.
+ *  - Front-camera stills are not mirrored, so a document photographed with it reads the right way round. CameraX 1.4.2 already behaves so
+ *    (checked on the OnePlus 6T: EXIF ROTATE_270, no flip); the metadata pins it in case a later version mirrors by default.
  *
  * Stills keep the sensor's pixel layout and carry the rotation in EXIF (CameraX's default when nothing is cropped); ImageCodec applies it.
  */
@@ -248,15 +249,17 @@ class ScanCameraController(context: Context) {
     }
 
     /**
-     * Takes a full-resolution still and writes it to a new file in [ScanFiles.stagingDir]. Returns the file as soon as it is written: processing
-     * the page is the caller's business, so the shutter never waits for it. Returns null if the camera is not bound, a picture is already being
-     * taken (OpenScan ignored a second press), or the capture fails. If the caller is cancelled first, the file is deleted when it arrives.
+     * Takes a full-resolution still and writes it to a new, uniquely named file in [dir] (a scan session's own folder under
+     * [ScanFiles.stagingDir]; created if missing). Returns the file as soon as it is written: processing the page is the caller's business, so the
+     * shutter never waits for it. Returns null if the camera is not bound, a picture is already being taken (OpenScan ignored a second press),
+     * [dir] cannot be created, or the capture fails. If the caller is cancelled first, the file is deleted when it arrives.
      */
     @MainThread
-    suspend fun takePicture(): File? {
+    suspend fun takePicture(dir: File): File? {
         val capture = imageCapture ?: return null
         if (state.capturing) return null
-        val file = File(ScanFiles.stagingDir(appContext), "shot-${UUID.randomUUID()}.jpg")
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        val file = File(dir, "shot-${UUID.randomUUID()}.jpg")
         val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = false }
         val options = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
         update { copy(capturing = true) }
