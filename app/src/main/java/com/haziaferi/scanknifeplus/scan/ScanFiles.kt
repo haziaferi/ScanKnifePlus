@@ -18,8 +18,8 @@ object ScanFiles {
     fun shareDir(context: Context): File = File(context.cacheDir, "shared").apply { mkdirs() }
 
     /**
-     * Where camera shots wait between the shutter and the library. Only this folder is cleared after a scan session, unlike OpenScan, which
-     * wiped the whole cache directory (and with it every other tool's cached files).
+     * Where camera shots wait between the shutter and the library. Each scan session works in its own folder in here and deletes only that one
+     * when it ends (ScanSession), unlike OpenScan, which wiped the whole cache directory (and with it every other tool's cached files).
      */
     fun stagingDir(context: Context): File = File(context.cacheDir, "scan-staging").apply { mkdirs() }
 

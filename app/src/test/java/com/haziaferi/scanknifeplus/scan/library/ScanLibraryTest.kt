@@ -116,6 +116,14 @@ class ScanLibraryTest {
     }
 
     @Test
+    fun `keepDocument leaves a document empty rather than deleting it`() {
+        val doc = library.create()
+        val page = library.addCapture(doc.id, anySource, null, keepOriginal = true)!!.pages.single()
+        assertEquals(emptyList<ScanPage>(), library.deletePage(doc.id, page.id, keepDocument = true)!!.pages)
+        assertEquals(listOf(ScanLibrary.RECORD), File(root, doc.id).list()!!.toList())
+    }
+
+    @Test
     fun `renaming keeps the folder and a blank name restores the generated one`() {
         val doc = library.create()
         assertEquals("Tax 2026", library.rename(doc.id, "  Tax 2026 ")!!.displayName)

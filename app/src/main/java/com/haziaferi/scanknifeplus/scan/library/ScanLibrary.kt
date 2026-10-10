@@ -283,13 +283,15 @@ class ScanLibrary(
 
     /**
      * Deletes page [pageId] and every file it owns, returning the updated document. Deleting the last page deletes the document too, as OpenScan
-     * does, and returns null, as does an unknown document or page. If the document could not be deleted it is returned unchanged.
+     * does, and returns null, as does an unknown document or page. If the document could not be deleted it is returned unchanged. With
+     * [keepDocument] the document stays even when it is left empty (a scan session taking back its own pages must never delete a document it
+     * did not create).
      */
-    fun deletePage(id: String, pageId: String): ScanDocument? = synchronized(LOCK) {
+    fun deletePage(id: String, pageId: String, keepDocument: Boolean = false): ScanDocument? = synchronized(LOCK) {
         val doc = document(id) ?: return null
         val page = doc.pages.firstOrNull { it.id == pageId } ?: return null
         val remaining = doc.pages - page
-        if (remaining.isEmpty()) return if (delete(id)) null else doc
+        if (remaining.isEmpty() && !keepDocument) return if (delete(id)) null else doc
         // The record is updated first, so a crash in between leaves stray files rather than a page pointing at nothing.
         val updated = update(doc.copy(pages = remaining))
         page.files.forEach { file(id, it).delete() }
