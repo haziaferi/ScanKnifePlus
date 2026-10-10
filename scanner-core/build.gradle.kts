@@ -1,6 +1,6 @@
 // Pure-Kotlin document scanner core (no Android dependencies), ported from OpenScan. See NOTICE.md.
 plugins {
-    id("org.jetbrains.kotlin.jvm")
+    alias(libs.plugins.kotlin.jvm)
 }
 
 java {
