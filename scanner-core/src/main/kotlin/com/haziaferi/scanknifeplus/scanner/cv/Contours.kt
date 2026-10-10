@@ -95,7 +95,7 @@ object Contours {
     fun pickBestQuad(candidates: List<Quad>, width: Int, height: Int, previousQuad: Quad? = null): Quad? {
         if (candidates.isEmpty()) return null
 
-        val diagonal = sqrt((width * width + height * height).toDouble())
+        val diagonal = sqrt((width.toLong() * width + height.toLong() * height).toDouble())
         val clusters = clusterCandidates(candidates, diagonal)
 
         var best: Quad? = null
@@ -178,7 +178,7 @@ object Contours {
 
     /** Area (as a fraction of the frame) weighted by squareness: larger, more rectangular quads score higher. */
     private fun qualityScore(quad: Quad, width: Int, height: Int): Double {
-        val areaRatio = polygonArea(quad.points) / (width * height)
+        val areaRatio = polygonArea(quad.points) / (width.toLong() * height)
         return areaRatio * (1 - maxAngleDeviationFraction(quad))
     }
 
@@ -420,7 +420,7 @@ object Contours {
 
         val area = polygonArea(pts)
         if (width <= 0 || height <= 0) return false
-        if (area / (width * height) < MIN_QUAD_AREA_RATIO) return false
+        if (area / (width.toLong() * height) < MIN_QUAD_AREA_RATIO) return false
 
         for (i in pts.indices) {
             val a = pts[(i - 1 + pts.size) % pts.size]
