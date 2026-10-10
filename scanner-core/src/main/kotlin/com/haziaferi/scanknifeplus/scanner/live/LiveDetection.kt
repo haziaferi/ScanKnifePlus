@@ -13,10 +13,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The per-frame detection state of a live-scan session (what OpenScan's worker isolate keeps): runs [DocumentDetector.detectQuadFromGrayscale]
- * and feeds the last detected quad back in as `previousQuad`, so candidate selection is biased toward what was last seen. The hint is dropped after
- * [FORGET_PREVIOUS_AFTER_MISSES] frames in a row with nothing detected, so a document that has gone away doesn't keep pulling later detections
- * toward where it was. Not thread-safe: use from one thread at a time.
+ * The per-frame detection state OpenScan's worker isolate keeps: the last detected quad is fed back as `previousQuad` to bias selection toward
+ * it, and dropped after [FORGET_PREVIOUS_AFTER_MISSES] misses in a row so a document that has gone away stops pulling detections toward where it
+ * was. Not thread-safe: use from one thread at a time.
  */
 class LiveDetectionWorker {
     companion object {
@@ -40,15 +39,10 @@ class LiveDetectionWorker {
 }
 
 /**
- * Runs live detection on one background thread for the lifetime of a live-scan session. Frames are submitted already grayscale and downsampled,
- * in sensor-native (landscape) coordinates; results are published rotated into portrait overlay space and normalized to [0,1]
- * ([rotateQuadForPortrait]).
- *
- * Only one frame is ever in flight: [submitFrame] drops frames while a previous one is still being processed, so work never backs up.
- *
- * Results are published like OpenScan's two `ValueNotifier`s. [onQuad] fires when [latestQuad] changes: every detected quad is a new instance so it
- * always fires, but a miss after a miss does not fire again. [onLatency] fires when [lastLatencyMs] changes value. Both run on the background
- * thread, so the caller hops to its UI thread if needed. The controller owns [executor] and shuts it down in [dispose].
+ * Runs live detection on one background thread for a live-scan session, one frame in flight at a time: [submitFrame] drops frames while one is
+ * still processing. Frames come in grayscale, downsampled and sensor-native; results go out on that thread, rotated into normalized portrait space
+ * ([rotateQuadForPortrait]), like OpenScan's two `ValueNotifier`s: [onQuad] for every detected quad but not a miss after a miss, [onLatency] when
+ * [lastLatencyMs] changes. The controller owns [executor] and shuts it down in [dispose].
  */
 class LiveScanController(
     private val onQuad: (Quad?) -> Unit,

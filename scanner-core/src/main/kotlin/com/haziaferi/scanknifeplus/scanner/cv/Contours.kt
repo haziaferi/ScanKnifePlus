@@ -15,23 +15,20 @@ data class CornerAssignment(val quad: Quad, val totalDistance: Double)
 /** One cluster of candidates describing the same shape: their corner-wise mean and how many candidates it was built from. */
 internal data class QuadCluster(val quad: Quad, val support: Int)
 
-/**
- * Finds document-shaped quadrilaterals in a binary edge mask (1 = edge), analogous to OpenCV's `findContours` + `approxPolyDP` + `sortPoints` pipeline.
- */
+/** Finds document-shaped quadrilaterals in a binary edge mask (1 = edge), like OpenCV's `findContours` + `approxPolyDP` + `sortPoints`. */
 object Contours {
     /**
-     * Weight given to proximity to the previous quad (in [pickBestQuad]) versus intrinsic candidate quality (area + squareness). Deliberately small:
-     * a strong pull toward the previous frame's position made the overlay chase poor candidates that merely sat close to last frame; this is a
-     * tie-breaker for temporal consistency between otherwise similarly-good candidates, not the primary signal.
+     * Weight of proximity to the previous quad in [pickBestQuad], against area and squareness. Deliberately small: a strong pull made the overlay
+     * chase poor candidates that merely sat close to last frame, so it only breaks ties between similarly good candidates.
      */
     const val PREVIOUS_QUAD_PROXIMITY_WEIGHT = 0.15
 
-    /** How far apart (average per-corner distance, as a fraction of the frame diagonal) two candidates may sit and still be treated as the same detection. */
+    /** How far apart two candidates may sit (average per-corner distance, as a fraction of the frame diagonal) and still be the same detection. */
     const val CANDIDATE_CLUSTER_FRACTION = 0.03
 
     /**
-     * Weight given to how many candidates back a cluster. A shape that several thresholds and several RDP epsilons all independently agree on is far
-     * more likely to be the real document edge than one that only a single parameter combination produced, and it is the one that will still be there next frame.
+     * Weight of how many candidates back a cluster. A shape that several thresholds and RDP epsilons agree on is far more likely to be the real
+     * document edge, and to still be there next frame, than one a single parameter combination produced.
      */
     const val CANDIDATE_SUPPORT_WEIGHT = 0.12
 
@@ -39,8 +36,8 @@ object Contours {
     const val MIN_QUAD_AREA_RATIO = 0.05
 
     /**
-     * Minimum interior angle, in degrees, considered legal for a document corner. A quad with an angle below this (or above `180 - MIN_QUAD_ANGLE_DEGREES`)
-     * has a corner that has effectively collapsed onto its neighbours: a sliver or near-triangle, not a usable crop target.
+     * Minimum interior angle, in degrees, of a document corner. A quad with an angle below this (or above `180 - MIN_QUAD_ANGLE_DEGREES`) has a
+     * corner collapsed onto its neighbours: a sliver or near-triangle, not a usable crop target.
      */
     const val MIN_QUAD_ANGLE_DEGREES = 15.0
 
@@ -71,8 +68,9 @@ object Contours {
             val hull = convexHull(members)
             if (hull.size < 4) continue
 
+            val split = if (hull.size > 4) ClosedPolygonSplit(hull) else null
             for (epsilonFactor in EPSILON_FACTORS) {
-                val simplified = if (hull.size <= 4) hull else simplifyClosedPolygon(hull, epsilonFactor)
+                val simplified = split?.simplify(epsilonFactor) ?: hull
                 if (simplified.size == 4 && isConvex(simplified)) {
                     val quad = sortCorners(simplified)
                     if (isPlausibleQuad(quad, width, height)) {
@@ -85,17 +83,14 @@ object Contours {
     }
 
     /**
-     * Picks the best detection from [candidates] (as gathered by [findDocumentQuadCandidates], possibly pooled from multiple masks).
-     *
-     * The pool is first clustered: candidates whose corners all sit within [CANDIDATE_CLUSTER_FRACTION] of each other are the same shape found several
-     * times over and are averaged into one consensus quad, so two near-identical shapes can't trade places from frame to frame. Clusters are then scored
-     * by area weighted by squareness, plus a bonus for how many candidates back the cluster ([CANDIDATE_SUPPORT_WEIGHT]), plus, if [previousQuad] is
-     * supplied, a small proximity bonus ([PREVIOUS_QUAD_PROXIMITY_WEIGHT]) toward whatever was detected last frame.
+     * Picks the best detection from [candidates] (from [findDocumentQuadCandidates], possibly pooled from several masks). Candidates within
+     * [CANDIDATE_CLUSTER_FRACTION] of each other are averaged into one consensus quad, so near-identical shapes can't trade places between frames.
+     * Clusters score by area times squareness, plus [CANDIDATE_SUPPORT_WEIGHT] for support and [PREVIOUS_QUAD_PROXIMITY_WEIGHT] near [previousQuad].
      */
     fun pickBestQuad(candidates: List<Quad>, width: Int, height: Int, previousQuad: Quad? = null): Quad? {
         if (candidates.isEmpty()) return null
 
-        val diagonal = sqrt((width * width + height * height).toDouble())
+        val diagonal = sqrt((width.toLong() * width + height.toLong() * height).toDouble())
         val clusters = clusterCandidates(candidates, diagonal)
 
         var best: Quad? = null
@@ -145,44 +140,30 @@ object Contours {
 
             if (matched == null) {
                 means += candidate
-                sums += scalars(candidate)
+                sums += candidate.toScalars()
                 counts += 1
                 continue
             }
 
             val sum = sums[matched]
-            val s = scalars(aligned)
+            val s = aligned.toScalars()
             for (i in 0 until 8) {
                 sum[i] += s[i]
             }
             counts[matched] = counts[matched] + 1
-            means[matched] = quadOfScalars(sum, counts[matched])
+            means[matched] = quadOf(sum, counts[matched])
         }
 
         return means.indices.map { QuadCluster(means[it], counts[it]) }
     }
 
-    private fun scalars(q: Quad): DoubleArray = doubleArrayOf(
-        q.topLeft.x, q.topLeft.y,
-        q.topRight.x, q.topRight.y,
-        q.bottomRight.x, q.bottomRight.y,
-        q.bottomLeft.x, q.bottomLeft.y,
-    )
-
-    private fun quadOfScalars(sums: DoubleArray, count: Int): Quad = Quad(
-        topLeft = Pt(sums[0] / count, sums[1] / count),
-        topRight = Pt(sums[2] / count, sums[3] / count),
-        bottomRight = Pt(sums[4] / count, sums[5] / count),
-        bottomLeft = Pt(sums[6] / count, sums[7] / count),
-    )
-
     /** Area (as a fraction of the frame) weighted by squareness: larger, more rectangular quads score higher. */
     private fun qualityScore(quad: Quad, width: Int, height: Int): Double {
-        val areaRatio = polygonArea(quad.points) / (width * height)
+        val areaRatio = polygonArea(quad.points) / (width.toLong() * height)
         return areaRatio * (1 - maxAngleDeviationFraction(quad))
     }
 
-    /** Largest per-corner deviation from 90 degrees, normalized to [0,1] (0 = every corner is exactly 90 degrees; 1 = a corner is 0 or 180 degrees). */
+    /** Largest per-corner deviation from 90 degrees, normalized to [0,1]: 0 when every corner is square, 1 when a corner is 0 or 180 degrees. */
     private fun maxAngleDeviationFraction(quad: Quad): Double {
         val pts = quad.points
         var maxDeviation = 0.0
@@ -197,8 +178,8 @@ object Contours {
     }
 
     /**
-     * Assigns [points] (exactly 4, unordered) to the corner slots of [reference], choosing whichever of the 24 permutations minimizes the total
-     * corner-to-corner distance. Keeps a physical corner mapped to the same slot across frames even when [sortCorners] would flip it near a 45-degree rotation.
+     * Assigns [points] (exactly 4, unordered) to the corner slots of [reference], choosing the permutation with the least total corner-to-corner
+     * distance. Keeps a physical corner in the same slot across frames even where [sortCorners] would flip it near a 45-degree rotation.
      */
     fun bestCornerAssignment(points: List<Pt>, reference: Quad): CornerAssignment {
         require(points.size == 4)
@@ -269,10 +250,34 @@ object Contours {
         return components
     }
 
-    /** Andrew's monotone-chain convex hull. */
-    private fun convexHull(points: List<Pt>): List<Pt> {
-        val pts = points.toMutableList()
-        pts.dartSort { a, b -> if (a.x != b.x) a.x.compareTo(b.x) else a.y.compareTo(b.y) }
+    /**
+     * Andrew's monotone-chain convex hull of distinct integer pixels. Only each column's top and bottom pixel can be a hull vertex, so the chain
+     * runs on those alone, already in (x, y) order; the result is identical to OpenScan's chain over every sorted pixel.
+     */
+    internal fun convexHull(points: List<Pt>): List<Pt> {
+        var minX = Int.MAX_VALUE
+        var maxX = Int.MIN_VALUE
+        for (p in points) {
+            val x = p.x.toInt()
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+        }
+        val columns = maxX - minX + 1
+        val yMin = IntArray(columns) { Int.MAX_VALUE }
+        val yMax = IntArray(columns) { Int.MIN_VALUE }
+        for (p in points) {
+            val c = p.x.toInt() - minX
+            val y = p.y.toInt()
+            if (y < yMin[c]) yMin[c] = y
+            if (y > yMax[c]) yMax[c] = y
+        }
+        val pts = ArrayList<Pt>(2 * columns)
+        for (c in 0 until columns) {
+            if (yMin[c] == Int.MAX_VALUE) continue
+            val x = (minX + c).toDouble()
+            pts += Pt(x, yMin[c].toDouble())
+            if (yMax[c] != yMin[c]) pts += Pt(x, yMax[c].toDouble())
+        }
         if (pts.size < 3) return pts
 
         fun cross(o: Pt, a: Pt, b: Pt): Double = (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
@@ -300,44 +305,55 @@ object Contours {
 
     /**
      * Ramer-Douglas-Peucker simplification of a closed polygon: splits at the two farthest-apart hull points into two open chains, simplifies each,
-     * then merges; stands in for `approxPolyDP(3% arc length)`.
+     * then merges; stands in for `approxPolyDP(3% arc length)`. The perimeter and the split do not depend on epsilon, so they are computed once
+     * per hull rather than once per epsilon factor as in OpenScan.
      */
-    private fun simplifyClosedPolygon(hull: List<Pt>, epsilonFactor: Double): List<Pt> {
-        var perimeter = 0.0
-        for (i in hull.indices) {
-            perimeter += dist(hull[i], hull[(i + 1) % hull.size])
-        }
-        val epsilon = epsilonFactor * perimeter
+    private class ClosedPolygonSplit(hull: List<Pt>) {
+        private val perimeter: Double
+        private val chain1: List<Pt>
+        private val chain2: List<Pt>
 
-        var ai = 0
-        var bi = 0
-        var best = -1.0
-        for (i in hull.indices) {
-            for (j in i + 1 until hull.size) {
-                val d = dist(hull[i], hull[j])
-                if (d > best) {
-                    best = d
-                    ai = i
-                    bi = j
+        init {
+            var sum = 0.0
+            for (i in hull.indices) {
+                sum += dist(hull[i], hull[(i + 1) % hull.size])
+            }
+            perimeter = sum
+
+            var ai = 0
+            var bi = 0
+            var best = -1.0
+            for (i in hull.indices) {
+                for (j in i + 1 until hull.size) {
+                    val d = dist(hull[i], hull[j])
+                    if (d > best) {
+                        best = d
+                        ai = i
+                        bi = j
+                    }
                 }
             }
-        }
 
-        fun chain(from: Int, to: Int): List<Pt> {
-            val result = ArrayList<Pt>()
-            var i = from
-            while (true) {
-                result += hull[i]
-                if (i == to) break
-                i = (i + 1) % hull.size
+            fun chain(from: Int, to: Int): List<Pt> {
+                val result = ArrayList<Pt>()
+                var i = from
+                while (true) {
+                    result += hull[i]
+                    if (i == to) break
+                    i = (i + 1) % hull.size
+                }
+                return result
             }
-            return result
+            chain1 = chain(ai, bi)
+            chain2 = chain(bi, ai)
         }
 
-        val chain1 = rdp(chain(ai, bi), epsilon)
-        val chain2 = rdp(chain(bi, ai), epsilon)
-
-        return chain1 + chain2.subList(1, chain2.size - 1)
+        fun simplify(epsilonFactor: Double): List<Pt> {
+            val epsilon = epsilonFactor * perimeter
+            val simplified1 = rdp(chain1, epsilon)
+            val simplified2 = rdp(chain2, epsilon)
+            return simplified1 + simplified2.subList(1, simplified2.size - 1)
+        }
     }
 
     private fun rdp(points: List<Pt>, epsilon: Double): List<Pt> {
@@ -373,13 +389,6 @@ object Contours {
         val projX = a.x + t * dx
         val projY = a.y + t * dy
         return dist(p, Pt(projX, projY))
-    }
-
-    // The original uses pow(d, 2); squaring by multiplication gives the same correctly rounded result.
-    private fun dist(a: Pt, b: Pt): Double {
-        val dx = a.x - b.x
-        val dy = a.y - b.y
-        return sqrt(dx * dx + dy * dy)
     }
 
     private fun isConvex(pts: List<Pt>): Boolean {
@@ -420,7 +429,7 @@ object Contours {
 
         val area = polygonArea(pts)
         if (width <= 0 || height <= 0) return false
-        if (area / (width * height) < MIN_QUAD_AREA_RATIO) return false
+        if (area / (width.toLong() * height) < MIN_QUAD_AREA_RATIO) return false
 
         for (i in pts.indices) {
             val a = pts[(i - 1 + pts.size) % pts.size]
@@ -448,11 +457,9 @@ object Contours {
     }
 
     /**
-     * Canonical corner order: top-left / top-right / bottom-right / bottom-left, clockwise as seen on screen (y grows downward).
-     *
-     * 1. The four points are put in convex cyclic order by angle around their centroid, so the polygon is a simple quadrilateral wound clockwise.
-     * 2. Of the four rotations of that cycle, the one whose labels best fit their names wins: top corners above bottom ones, right corners to the right
-     *    of left ones. Rotating a cycle can never duplicate or drop a point (unlike a per-slot sum/difference sort), so the result is always a permutation of the input.
+     * Canonical corner order: top-left, top-right, bottom-right, bottom-left, clockwise on screen. The points are cycled by angle around their
+     * centroid, then the rotation of that cycle whose labels best fit their names wins; unlike a per-slot sum/difference sort, this can never
+     * duplicate or drop a point.
      */
     fun sortCorners(pts: List<Pt>): Quad {
         require(pts.size == 4)

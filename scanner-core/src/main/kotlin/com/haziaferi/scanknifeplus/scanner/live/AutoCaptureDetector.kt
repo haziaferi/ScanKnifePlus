@@ -6,10 +6,8 @@ import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import kotlin.math.abs
 
 /**
- * Watches the stream of detected quads and decides when the document has been held stable and fully framed long enough to auto-capture.
- * Quads are expected to be plausibility-filtered already, so this only checks positional stability across consecutive frames.
- *
- * [onStable] fires when the stability condition is met; the caller must call [notifyCaptured] once it has captured (auto or manual) to start the
+ * Decides when the document has been held still long enough to auto-capture, checking only positional stability since quads arrive
+ * plausibility-filtered. [onStable] fires when it has; the caller calls [notifyCaptured] after any capture (auto or manual) to start the
  * cooldown. [onImminentChanged] reports whether an auto-capture is about to happen, for a visual cue.
  */
 class AutoCaptureDetector(

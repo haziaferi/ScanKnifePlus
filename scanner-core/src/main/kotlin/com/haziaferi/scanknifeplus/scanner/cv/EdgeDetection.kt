@@ -49,8 +49,8 @@ object EdgeDetection {
     }
 
     /**
-     * Sobel gradient magnitude, clamped to 0-255. Stands in for OpenCV's `Canny` step: rather than reproducing full non-max-suppression plus hysteresis,
-     * the magnitude image is thresholded (see [otsuThreshold]) and then dilated/closed, which is sufficient to find the outer boundary of a photographed document.
+     * Sobel gradient magnitude, clamped to 0-255. Stands in for OpenCV's `Canny`: instead of non-max suppression and hysteresis, the magnitude is
+     * thresholded ([otsuThreshold]) and dilated, which is enough to find the outer boundary of a photographed document.
      */
     fun sobelMagnitude(gray: ByteArray, width: Int, height: Int): ByteArray {
         val out = ByteArray(width * height)

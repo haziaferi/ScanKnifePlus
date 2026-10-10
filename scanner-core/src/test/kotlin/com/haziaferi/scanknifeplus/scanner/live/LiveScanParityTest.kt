@@ -2,9 +2,9 @@ package com.haziaferi.scanknifeplus.scanner.live
 
 import com.haziaferi.scanknifeplus.scanner.ParityCase
 import com.haziaferi.scanknifeplus.scanner.ParityFixture
-import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.cv.format
+import com.haziaferi.scanknifeplus.scanner.cv.parseQuad
 import com.haziaferi.scanknifeplus.scanner.cv.quad
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -27,12 +27,6 @@ class LiveScanParityTest {
     private fun steps(c: ParityCase): List<Pair<Long, Quad?>> = c.raw("steps").split('|').map { step ->
         val (micros, q) = step.split(':', limit = 2)
         micros.toLong() to parseQuad(q)
-    }
-
-    private fun parseQuad(v: String): Quad? {
-        if (v == "null") return null
-        val n = v.split(',').map { it.toDouble() }
-        return Quad(Pt(n[0], n[1]), Pt(n[2], n[3]), Pt(n[4], n[5]), Pt(n[6], n[7]))
     }
 
     @Test

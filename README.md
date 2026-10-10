@@ -36,6 +36,7 @@ ScanKnife+ is a personal-use fork of [PaperKnife+](https://github.com/potatameis
 - Convert Images to PDF
 - Export PDF pages as Images (ZIP)
 - Rotate and rearrange pages
+- Scan documents with the camera: automatic edge detection, perspective crop and document filters (ported from OpenScan)
 - And more!
 
 All processing happens on your device. Your files never leave your phone.
@@ -44,7 +45,9 @@ All processing happens on your device. Your files never leave your phone.
 
 ## Download
 
-Get the latest APK: [PaperKnife+ v1.1](https://github.com/potatameister/PaperKnifePlus/releases/latest)
+The release and store links below are upstream PaperKnife+'s (package `com.paperknifeplus.app`), not ScanKnife+'s, and do not include the document scanner.
+
+Latest upstream APK: [PaperKnife+ v1.1](https://github.com/potatameister/PaperKnifePlus/releases/latest)
 
 <a href="https://apt.izzysoft.de/fdroid/index/apk/com.paperknifeplus.app">
   <img src="https://img.shields.io/badge/IzzyOnDroid-F00000?style=for-the-badge" alt="IzzyOnDroid">
