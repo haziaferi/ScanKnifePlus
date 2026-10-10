@@ -1,0 +1,216 @@
+case	a4_2400x3200
+format	a4
+width	2400
+height	3200
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,780.36745,0,25.76115
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_3200x2400
+format	a4
+width	3200
+height	2400
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,438.95669,0,196.46654
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_1700x2200
+format	a4
+width	1700
+height	2200
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,757.41547,0,37.23715
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_100x80
+format	a4
+width	100
+height	80
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,468.22047,0,181.83465
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_900x900
+format	a4
+width	900
+height	900
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,585.27559,0,123.30709
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_12x2400
+format	a4
+width	12
+height	2400
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	4.15945,831.88976,290.55807,0
+page_width	595.275590551181
+page_height	841.8897637795275
+case	a4_2400x12
+format	a4
+width	2400
+height	12
+media_box	0 0 595.27559 841.88976
+margin	5,5
+draw	585.27559,2.92638,0,414.48169
+page_width	595.275590551181
+page_height	841.8897637795275
+case	letter_2400x3200
+format	letter
+width	2400
+height	3200
+media_box	0 0 612 792
+margin	5,5
+draw	586.5,782,7.75,0
+page_width	612.0
+page_height	792.0
+case	letter_3200x2400
+format	letter
+width	3200
+height	2400
+media_box	0 0 612 792
+margin	5,5
+draw	602,451.5,0,165.25
+page_width	612.0
+page_height	792.0
+case	letter_1700x2200
+format	letter
+width	1700
+height	2200
+media_box	0 0 612 792
+margin	5,5
+draw	602,779.05882,0,1.47059
+page_width	612.0
+page_height	792.0
+case	letter_100x80
+format	letter
+width	100
+height	80
+media_box	0 0 612 792
+margin	5,5
+draw	602,481.6,0,150.2
+page_width	612.0
+page_height	792.0
+case	letter_900x900
+format	letter
+width	900
+height	900
+media_box	0 0 612 792
+margin	5,5
+draw	602,602,0,90
+page_width	612.0
+page_height	792.0
+case	letter_12x2400
+format	letter
+width	12
+height	2400
+media_box	0 0 612 792
+margin	5,5
+draw	3.91,782,299.045,0
+page_width	612.0
+page_height	792.0
+case	letter_2400x12
+format	letter
+width	2400
+height	12
+media_box	0 0 612 792
+margin	5,5
+draw	602,3.01,0,389.495
+page_width	612.0
+page_height	792.0
+case	legal_2400x3200
+format	legal
+width	2400
+height	3200
+media_box	0 0 612 1008
+margin	5,5
+draw	602,802.66667,0,97.66667
+page_width	612.0
+page_height	1008.0
+case	legal_3200x2400
+format	legal
+width	3200
+height	2400
+media_box	0 0 612 1008
+margin	5,5
+draw	602,451.5,0,273.25
+page_width	612.0
+page_height	1008.0
+case	legal_1700x2200
+format	legal
+width	1700
+height	2200
+media_box	0 0 612 1008
+margin	5,5
+draw	602,779.05882,0,109.47059
+page_width	612.0
+page_height	1008.0
+case	legal_100x80
+format	legal
+width	100
+height	80
+media_box	0 0 612 1008
+margin	5,5
+draw	602,481.6,0,258.2
+page_width	612.0
+page_height	1008.0
+case	legal_900x900
+format	legal
+width	900
+height	900
+media_box	0 0 612 1008
+margin	5,5
+draw	602,602,0,198
+page_width	612.0
+page_height	1008.0
+case	legal_12x2400
+format	legal
+width	12
+height	2400
+media_box	0 0 612 1008
+margin	5,5
+draw	4.99,998,298.505,0
+page_width	612.0
+page_height	1008.0
+case	legal_2400x12
+format	legal
+width	2400
+height	12
+media_box	0 0 612 1008
+margin	5,5
+draw	602,3.01,0,497.495
+page_width	612.0
+page_height	1008.0
+case	name_0
+name_b64	SW52b2ljZSBNYXJjaA==
+export_name	Invoice_March
+case	name_1
+name_b64	ICBUYXggIHJldHVybgkyMDI2IA==
+export_name	Tax_return2026
+case	name_2
+name_b64	RmFjdHVyZSDDqXTDqTogbsKwMy80
+export_name	Facture_t_n34
+case	name_3
+name_b64	YVxiKmM/ImQ8ZT5mfGc=
+export_name	abcdefg
+case	name_4
+name_b64	Li4u
+export_name	OpenScan-1970-01-01-0
+case	name_5
+name_b64	
+export_name	OpenScan-1970-01-01-0
+case	name_6
+name_b64	U2NhbktuaWZlLTIwMjYtMTAtMTAtMTc5MTU5MDQwMDAwMA==
+export_name	ScanKnife-2026-10-10-1791590400000
+case	name_7
+name_b64	eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4
+export_name	xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+case	name_8
+name_b64	5pel5pys6Kqe44Gu44Oh44Oi
+export_name	OpenScan-1970-01-01-0
