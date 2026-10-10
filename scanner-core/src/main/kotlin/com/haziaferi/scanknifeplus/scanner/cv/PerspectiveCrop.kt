@@ -123,25 +123,39 @@ object PerspectiveCrop {
     }
 
     /** Turns [src] clockwise by [quarterTurns] quarter turns (the `image` package's `copyRotate` at multiples of 90 degrees). */
-    fun rotateQuarterTurns(src: RgbaImage, quarterTurns: Int): RgbaImage {
+    internal fun rotateQuarterTurns(src: RgbaImage, quarterTurns: Int): RgbaImage {
         val turns = ((quarterTurns % 4) + 4) % 4
-        if (turns == 0) return RgbaImage(src.width, src.height, src.pixels.copyOf())
+        val pixels = src.pixels
+        if (turns == 0) return RgbaImage(src.width, src.height, pixels.copyOf())
         val w = src.width
         val h = src.height
         val dstW = if (turns == 2) w else h
         val dstH = if (turns == 2) h else w
         val out = ByteArray(dstW * dstH * 4)
-        for (y in 0 until dstH) {
-            for (x in 0 until dstW) {
-                val (sx, sy) = when (turns) {
-                    1 -> y to (h - 1 - x)
-                    2 -> (w - 1 - x) to (h - 1 - y)
-                    else -> (w - 1 - y) to x
-                }
-                System.arraycopy(src.pixels, (sy * w + sx) * 4, out, (y * dstW + x) * 4, 4)
+        var o = 0
+        when (turns) {
+            1 -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, ((h - 1 - x) * w + y) * 4, out, o)
+                o += 4
+            }
+            2 -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, ((h - 1 - y) * w + w - 1 - x) * 4, out, o)
+                o += 4
+            }
+            else -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, (x * w + w - 1 - y) * 4, out, o)
+                o += 4
             }
         }
         return RgbaImage(dstW, dstH, out)
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun copyPixel(src: ByteArray, si: Int, dst: ByteArray, di: Int) {
+        dst[di] = src[si]
+        dst[di + 1] = src[si + 1]
+        dst[di + 2] = src[si + 2]
+        dst[di + 3] = src[si + 3]
     }
 
     /**
