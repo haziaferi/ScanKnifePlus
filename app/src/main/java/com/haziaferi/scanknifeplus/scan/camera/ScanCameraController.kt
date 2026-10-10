@@ -480,8 +480,10 @@ class ScanCameraController(context: Context) {
         }
         if (status == CameraStatus.OPENING) openWatchdog.opening() else openWatchdog.reset()
         if (status == CameraStatus.CLOSED) {
-            // A screen stopped mid-drag never sends the gesture's end; the camera's zoom was reset with it anyway.
+            // A screen stopped mid-drag never sends the gesture's end. CameraX may post its zoom reset just before CLOSING, while the gesture
+            // still held the ratio, so the camera's own value is read again once the gesture is dropped.
             zoomThrottle.cancel()
+            camera?.cameraInfo?.zoomState?.value?.let(::onZoomState)
         }
         update {
             // A watchdog timeout stands until the camera opens or CameraX reports something more specific.
