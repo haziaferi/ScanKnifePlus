@@ -41,9 +41,9 @@ object StoredImage {
     }
 
     /**
-     * The long edge to decode a [width] x [height] capture at so its stored page comes out at the page cap. Without a [quad] that is simply the
-     * cap. With one, the warp only reads the quad's region, so the decode is scaled for the quad's own natural size to land on the cap and the
-     * warp then runs about 1:1; a quad that is already within the cap decodes the capture whole. [quad] is in fractional portrait coordinates.
+     * The long edge to decode a [width] x [height] capture at so its stored page comes out at the page cap. With a [quad] (fractional portrait
+     * coordinates) the decode is scaled so the quad's natural size lands on the cap and the warp runs about 1:1; a quad already within the cap
+     * decodes the capture whole.
      */
     fun pageDecodeMaxEdge(width: Int, height: Int, quad: Quad?): Int {
         if (quad == null) return PAGE_MAX_EDGE

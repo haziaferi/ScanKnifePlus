@@ -2,8 +2,8 @@
 package com.haziaferi.scanknifeplus.scanner
 
 /**
- * Dart's `List.sort`: insertion sort for short ranges, otherwise Yaroslavskiy's dual-pivot quicksort. It is not stable, so where the original OpenScan
- * code sorts with ties (e.g. equally sized components), using it instead of Kotlin's stable sort keeps the resulting order, and so the results, identical.
+ * Dart's `List.sort`: insertion sort for short ranges, otherwise Yaroslavskiy's dual-pivot quicksort. It is not stable, so where OpenScan sorts
+ * with ties (e.g. equally sized components), using it instead of Kotlin's stable sort keeps the order, and so the results, identical.
  */
 internal fun <E> MutableList<E>.dartSort(compare: (E, E) -> Int) {
     DartSort.doSort(this, 0, size - 1, compare)
@@ -36,7 +36,7 @@ private object DartSort {
         val sixth = (right - left + 1) / 6
         val index1 = left + sixth
         val index5 = right - sixth
-        val index3 = (left + right) / 2 // The midpoint.
+        val index3 = (left + right) / 2
         val index2 = index3 - sixth
         val index4 = index3 + sixth
 
@@ -46,7 +46,6 @@ private object DartSort {
         var el4 = a[index4]
         var el5 = a[index5]
 
-        // Sort the selected 5 elements using a sorting network.
         if (compare(el1, el2) > 0) { val t = el1; el1 = el2; el2 = t }
         if (compare(el4, el5) > 0) { val t = el4; el4 = el5; el5 = t }
         if (compare(el1, el3) > 0) { val t = el1; el1 = el3; el3 = t }
@@ -147,13 +146,11 @@ private object DartSort {
             }
         }
 
-        // Move pivots into their final positions.
         a[left] = a[less - 1]
         a[less - 1] = pivot1
         a[right] = a[great + 1]
         a[great + 1] = pivot2
 
-        // Recursively sort the left and right partitions.
         doSort(a, left, less - 2, compare)
         doSort(a, great + 2, right, compare)
 

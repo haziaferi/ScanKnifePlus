@@ -42,14 +42,23 @@ object ImageFilterUtils {
 
     /** Contrast around mid-grey; [adj] runs -1 (flat) to 1 (harsh). */
     fun contrast(bytes: ByteArray, adj: Double) {
+        // OpenScan computes the factor once (a non-finite one does not throw) and throws only at the first pixel's round(), so an empty buffer
+        // must pass untouched.
+        if (bytes.isEmpty()) return
+        DocumentFilterUtils.applyLutToRgb(bytes, contrastLut(adj))
+    }
+
+    /**
+     * [contrast] as a lookup table: OpenScan's per-byte formula evaluated once per value. A finite factor stays below about 1e16, so no entry
+     * overflows, and a non-finite one throws here as it would on the first pixel.
+     */
+    internal fun contrastLut(adj: Double): ByteArray {
         val a = adj * 255
         val factor = (259 * (a + 255)) / (255 * (259 - a))
-        var i = 0
-        while (i < bytes.size) {
-            bytes.setU8(i, clampPixel(dartRound(factor * (bytes.u8(i) - 128) + 128)))
-            bytes.setU8(i + 1, clampPixel(dartRound(factor * (bytes.u8(i + 1) - 128) + 128)))
-            bytes.setU8(i + 2, clampPixel(dartRound(factor * (bytes.u8(i + 2) - 128) + 128)))
-            i += 4
+        val lut = ByteArray(256)
+        for (v in 0 until 256) {
+            lut.setU8(v, clampPixel(dartRound(factor * (v - 128) + 128)))
         }
+        return lut
     }
 }

@@ -14,12 +14,9 @@ fun interface Cancellable {
 }
 
 /**
- * Coalesces zoom-slider updates into camera zoom calls: at most one call per [INTERVAL_MICROS], always carrying the latest target rather than
- * replaying every value of a drag. Calls are issued without waiting for the previous one to finish. OpenScan measured a single zoom call taking
- * ~370 ms to resolve (it completes only once the zoom reaches a capture request), so chaining calls capped the preview at ~3 zoom steps a second;
- * superseding an in-flight call is fine, the camera drops the older request and applies the newer one.
- *
- * [apply] issues the actual zoom call; it must not block. Not thread-safe: use it, and let [scheduler] run its actions, on one thread.
+ * Coalesces zoom-slider updates into camera zoom calls: at most one per [INTERVAL_MICROS], always with the latest target. Calls do not wait for
+ * the previous one, which OpenScan measured taking ~370 ms to resolve; the camera simply supersedes the older request. [apply] must not block,
+ * and the throttle is not thread-safe: use it, and let [scheduler] run its actions, on one thread.
  */
 class ZoomThrottle(
     private val apply: (Float) -> Unit,

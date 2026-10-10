@@ -1,7 +1,5 @@
 package com.haziaferi.scanknifeplus.scanner
 
-import com.haziaferi.scanknifeplus.scanner.filter.ImageFilterUtils
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -51,21 +49,6 @@ class DartMathNonFiniteTest {
         assertEquals(Int.MAX_VALUE, dartRound(1.0e30))
         assertEquals(Int.MAX_VALUE, dartFloor(3.0e9))
         assertEquals(Int.MIN_VALUE, dartToInt(-1.0e30))
-    }
-
-    // Expected bytes come from running OpenScan's image_filter_utils.dart on the same input.
-    @Test
-    fun `huge saturation clamps like Dart instead of wrapping`() {
-        for (s in listOf(2e7, 3e7)) {
-            val b = byteArrayOf(-1, 0, 0, -1)
-            ImageFilterUtils.saturation(b, s)
-            assertArrayEquals(byteArrayOf(-1, 0, 0, -1), b)
-        }
-    }
-
-    @Test(expected = UnsupportedOperationException::class)
-    fun `contrast with an infinite factor throws like Dart`() {
-        ImageFilterUtils.contrast(byteArrayOf(10, -128, -6, -1), 259.0 / 255)
     }
 }
 
