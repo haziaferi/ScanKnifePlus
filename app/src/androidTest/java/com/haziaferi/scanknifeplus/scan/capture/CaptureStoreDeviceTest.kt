@@ -151,14 +151,14 @@ class CaptureStoreDeviceTest {
 
     @Test
     fun contentUrisWorkAsSources() {
-        // A uniquely named folder, so the test can never touch a real document in the library.
-        val inLibrary = File(ScanFiles.libraryDir(context), "capture-test-${System.nanoTime()}/photo.jpg").apply { parentFile!!.mkdirs() }
-        documentPhoto().copyTo(inLibrary, overwrite = true)
+        // A uniquely named folder, so the test can never touch a real share copy.
+        val shared = File(ScanFiles.newFolder(ScanFiles.shareDir(context), "capture-test-")!!, "photo.jpg")
+        documentPhoto().copyTo(shared, overwrite = true)
         try {
-            val source = ImageSource.of(context.contentResolver, ScanFiles.contentUri(context, inLibrary))
+            val source = ImageSource.of(context.contentResolver, ScanFiles.contentUri(context, shared))
             assertNotNull(CaptureStore.store(source, null, File(dir, "page.jpg"), null))
         } finally {
-            inLibrary.parentFile!!.deleteRecursively()
+            shared.parentFile!!.deleteRecursively()
         }
     }
 

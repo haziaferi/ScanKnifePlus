@@ -57,7 +57,7 @@ class PageEditingDeviceTest {
     @Test
     fun grayscaleThenOriginalRestoresTheExactPage() {
         val doc = library.create()
-        val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal = true)!!.document.pages.single()
         val pageBytes = library.file(doc.id, page.image).readBytes()
 
         val gray = library.applyFilter(doc.id, page.id, "Grayscale")!!.pages.single()
@@ -76,7 +76,7 @@ class PageEditingDeviceTest {
     @Test
     fun aRecropTakesTheQuadFromTheOriginalAndTurnsItClockwise() {
         val doc = library.create()
-        val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal = true)!!.document.pages.single()
         // The top half of the photo: 1200x800, orange on the left and green on the right.
         val topHalf = Quad(Pt(0.0, 0.0), Pt(1.0, 0.0), Pt(1.0, 0.5), Pt(0.0, 0.5))
         val upright = library.file(doc.id, library.recropPage(doc.id, page.id, topHalf)!!.pages.single().image)
@@ -97,7 +97,7 @@ class PageEditingDeviceTest {
     fun aRecropIsFittedToThePageCap() {
         val doc = library.create()
         // 3000x4000 is stored with a 2400x3200 original; the whole original re-cropped is fitted to 1800x2400.
-        val page = library.addCapture(doc.id, ImageSource.of(photo(3000, 4000)), null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, ImageSource.of(photo(3000, 4000)), null, keepOriginal = true)!!.document.pages.single()
         val whole = Quad(Pt(0.0, 0.0), Pt(1.0, 0.0), Pt(1.0, 1.0), Pt(0.0, 1.0))
         val recropped = library.recropPage(doc.id, page.id, whole)!!.pages.single()
         assertEquals(PageSize(1800, 2400), ImageCodec.orientedSize(ImageSource.of(library.file(doc.id, recropped.image))))

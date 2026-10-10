@@ -49,10 +49,8 @@ enum class CameraError(val recoverable: Boolean) {
 }
 
 /**
- * A snapshot of the scan camera, for whatever UI is built on top. Plain values only: no CameraX, LiveData or Compose types.
- *
- * Zoom: [zoomRatio] is the latest requested ratio, updated at once while a slider drags (the camera follows through the throttle), and the
- * camera's own ratio otherwise. [zooming] is true during a zoom gesture; live detection skips frames meanwhile, as in OpenScan.
+ * A snapshot of the scan camera for whatever UI is built on top, in plain values (no CameraX, LiveData or Compose types). [zoomRatio] is the
+ * requested ratio while a slider drags ([zooming], during which live detection pauses as in OpenScan) and the camera's own ratio otherwise.
  * Sizes are in sensor orientation; [sensorRotationDegrees] turns them upright for a portrait screen.
  */
 data class ScanCameraState(

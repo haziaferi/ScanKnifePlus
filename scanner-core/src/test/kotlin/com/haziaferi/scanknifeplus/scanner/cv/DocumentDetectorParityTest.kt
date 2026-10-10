@@ -25,11 +25,13 @@ class DocumentDetectorParityTest {
             val actual = DocumentDetector.detectFromRgba(c.bytes("rgba"), w, h)
             when (c.raw("result")) {
                 "success" -> {
+                    assertTrue("$c: $actual", actual is DetectionResult.Success)
                     actual as DetectionResult.Success
                     assertEquals("$c: quad", c.raw("quad"), actual.quad.format())
                     assertEquals("$c: size", c.raw("result_size"), "${actual.imageWidth},${actual.imageHeight}")
                 }
                 "not_found" -> {
+                    assertTrue("$c: $actual", actual is DetectionResult.NotFound)
                     actual as DetectionResult.NotFound
                     assertEquals("$c: size", c.raw("result_size"), "${actual.imageWidth},${actual.imageHeight}")
                 }

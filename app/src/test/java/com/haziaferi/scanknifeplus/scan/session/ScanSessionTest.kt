@@ -23,14 +23,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
  * The scan session (OpenScan live_scan_screen.dart and directory_cubit.dart createImage). The fake capture writer stores a shot's own text as
- * the page, so each test can read back which shot became which page; a shot whose text contains "bad" cannot be stored, and one whose text
- * contains "slow" waits for [gate] first.
+ * the page, so each test can read back which shot became which page; a shot whose text contains "bad" cannot be stored, one with "slow" waits
+ * for [gate] first, and filtering one with "held" waits for [filterGate].
  */
 @RunWith(RobolectricTestRunner::class)
 class ScanSessionTest {
@@ -59,8 +60,18 @@ class ScanSessionTest {
             StoredCapture(page, original, cropped = quad != null, pageWidth = 1, pageHeight = 1)
         }
     }
+    private val filtering = CountDownLatch(1)
+    private val filterGate = CountDownLatch(1)
     private val images = object : PageImages {
-        override fun filter(source: File, filter: Filter, dest: File) = true.also { dest.writeText("${filter.name}(${source.readText()})") }
+        override fun filter(source: File, filter: Filter, dest: File): Boolean {
+            val text = source.readText()
+            if ("held" in text) {
+                filtering.countDown()
+                filterGate.await(10, TimeUnit.SECONDS)
+            }
+            dest.writeText("${filter.name}($text)")
+            return true
+        }
         override fun crop(source: File, quad: Quad, quarterTurns: Int, dest: File) = false
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int) = false
     }
@@ -71,6 +82,8 @@ class ScanSessionTest {
     @After
     fun cleanUp() {
         gate.countDown()
+        filterGate.countDown()
+        library.setWritable(true)
         root.deleteRecursively()
     }
 
@@ -241,6 +254,32 @@ class ScanSessionTest {
         val left = File(library, id).list()!!.toSet()
         assertEquals(scans.document(id)!!.pages.flatMap { it.files }.toSet() + ScanLibrary.RECORD, left)
         assertFalse(scans.document(id)!!.pages.any { it.id == second })
+    }
+
+    @Test
+    fun `undo takes back the session's own page even after another instance moved it`() {
+        val existing = scans.create().id
+        scans.addCapture(existing, { "before".byteInputStream() }, null, keepOriginal = false)
+        val s = session(existing, filter = "Auto")
+        s.shoot("held 1")
+        assertTrue(filtering.await(10, TimeUnit.SECONDS)) // stored, and now being filtered
+        assertEquals(2, ScanLibrary(library).movePage(existing, 1, 0)!!.pages.size) // the new page goes first, "before" last
+        filterGate.countDown()
+        s.idle()
+        assertTrue(s.undoLast())
+        s.cancel()
+        assertEquals(listOf("before"), pages(existing))
+    }
+
+    @Test
+    fun `a document that cannot be created fails the shot, and the session still ends`() {
+        library.mkdirs()
+        assumeTrue("needs a read-only folder: not on Windows, not as root", library.setWritable(false) && !File(library, "probe").mkdir())
+        val s = session()
+        assertTrue(s.import { "page 1".byteInputStream() })
+        val result = Background { s.finish() }.join()
+        assertNull(result.documentId)
+        assertEquals(listOf(ShotFailure(0, ShotOrigin.IMPORT)), s.state.value.failures)
     }
 
     @Test

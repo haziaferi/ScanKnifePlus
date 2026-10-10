@@ -3,8 +3,12 @@ package com.haziaferi.scanknifeplus.scan.library
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.TimeZone
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,6 +17,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.json.JSONObject
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -41,6 +46,7 @@ class ScanLibraryTest {
 
     @After
     fun cleanUp() {
+        root.setWritable(true)
         root.deleteRecursively()
     }
 
@@ -69,11 +75,29 @@ class ScanLibraryTest {
     }
 
     @Test
+    fun `create throws instead of spinning when no folder can be made`() {
+        library.create()
+        assumeTrue("needs a read-only folder: not on Windows, not as root", root.setWritable(false) && !File(root, "probe").mkdir())
+        // On another thread with a bounded wait, so a regression fails here rather than hanging the run.
+        val creating = Executors.newSingleThreadExecutor { r -> Thread(r).apply { isDaemon = true } }.submit<ScanDocument> { library.create() }
+        try {
+            creating.get(10, TimeUnit.SECONDS)
+            fail("create() must fail")
+        } catch (e: ExecutionException) {
+            assertTrue(e.cause.toString(), e.cause is IOException)
+        } finally {
+            root.setWritable(true)
+        }
+    }
+
+    @Test
     fun `captures become pages with unique files and optional originals`() {
         val doc = library.create()
         library.addCapture(doc.id, anySource, null, keepOriginal = true)
-        val updated = library.addCapture(doc.id, anySource, null, keepOriginal = false)!!
+        val added = library.addCapture(doc.id, anySource, null, keepOriginal = false)!!
+        val updated = added.document
         assertEquals(2, updated.pages.size)
+        assertEquals(updated.pages[1].id, added.pageId)
         val (first, second) = updated.pages
         assertNotEquals(first.image, second.image)
         assertEquals("orig_${first.image}", first.original)
@@ -118,7 +142,7 @@ class ScanLibraryTest {
     @Test
     fun `keepDocument leaves a document empty rather than deleting it`() {
         val doc = library.create()
-        val page = library.addCapture(doc.id, anySource, null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, anySource, null, keepOriginal = true)!!.document.pages.single()
         assertEquals(emptyList<ScanPage>(), library.deletePage(doc.id, page.id, keepDocument = true)!!.pages)
         assertEquals(listOf(ScanLibrary.RECORD), File(root, doc.id).list()!!.toList())
     }

@@ -16,7 +16,7 @@ object DocumentFilterUtils {
      * Summed-area table of a single-channel buffer, `(width + 1) * (height + 1)` so row/column 0 is an all-zero border. Entries wrap at 2^32
      * like the original's `Uint32List`, which is wide enough for a fully white image of ~16.8 megapixels.
      */
-    fun integralImage(gray: ByteArray, width: Int, height: Int): LongArray {
+    internal fun integralImage(gray: ByteArray, width: Int, height: Int): LongArray {
         val stride = width + 1
         val table = LongArray(stride * (height + 1))
         for (y in 0 until height) {
@@ -33,7 +33,7 @@ object DocumentFilterUtils {
     }
 
     /** Sum of the [integralImage] window with inclusive corners (x0, y0)-(x1, y1). Coordinates are clamped by the caller. */
-    fun boxSum(table: LongArray, width: Int, x0: Int, y0: Int, x1: Int, y1: Int): Long {
+    internal fun boxSum(table: LongArray, width: Int, x0: Int, y0: Int, x1: Int, y1: Int): Long {
         val stride = width + 1
         val top = y0 * stride
         val bottom = (y1 + 1) * stride
@@ -124,15 +124,6 @@ object DocumentFilterUtils {
             lut.setU8(v, ImageFilterUtils.clampPixel(dartRound(((v - low) / span) * 255)))
         }
         return lut
-    }
-
-    /** Applies [lut] to one channel of an RGBA buffer, in place. */
-    fun applyLutToChannel(rgba: ByteArray, channel: Int, lut: ByteArray) {
-        var i = channel
-        while (i < rgba.size) {
-            rgba[i] = lut[rgba.u8(i)]
-            i += 4
-        }
     }
 
     /** Applies [lut] to all three colour channels of an RGBA buffer, in place, leaving alpha untouched. */

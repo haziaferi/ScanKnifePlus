@@ -10,7 +10,6 @@ import com.haziaferi.scanknifeplus.scanner.dartToInt
 import com.haziaferi.scanknifeplus.scanner.u8
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.sqrt
 
 /** The pixel size of a warped page. */
 data class PageSize(val width: Int, val height: Int)
@@ -39,8 +38,8 @@ object PerspectiveCrop {
         val tr = quad.topRight
         val br = quad.bottomRight
         val bl = quad.bottomLeft
-        val width = max(dist(tl.x, tl.y, tr.x, tr.y), dist(bl.x, bl.y, br.x, br.y))
-        val height = max(dist(tl.x, tl.y, bl.x, bl.y), dist(tr.x, tr.y, br.x, br.y))
+        val width = max(dist(tl, tr), dist(bl, br))
+        val height = max(dist(tl, bl), dist(tr, br))
         return PageSize(dartRound(width).coerceIn(1, 1 shl 16), dartRound(height).coerceIn(1, 1 shl 16))
     }
 
@@ -87,7 +86,7 @@ object PerspectiveCrop {
     }
 
     /** Inverse-samples [quad] out of [decoded] into an upright [width] x [height] rectangle (both default to the quad's own size); null on failure. */
-    fun warp(decoded: RgbaImage, quad: Quad, width: Int?, height: Int?): RgbaImage? = try {
+    internal fun warp(decoded: RgbaImage, quad: Quad, width: Int?, height: Int?): RgbaImage? = try {
         val srcWidth = decoded.width
         val srcHeight = decoded.height
         val srcRgba = decoded.pixels
@@ -118,30 +117,44 @@ object PerspectiveCrop {
             }
         }
         RgbaImage(outWidth, outHeight, outRgba)
-    } catch (e: Exception) {
+    } catch (_: Exception) {
         null
     }
 
     /** Turns [src] clockwise by [quarterTurns] quarter turns (the `image` package's `copyRotate` at multiples of 90 degrees). */
-    fun rotateQuarterTurns(src: RgbaImage, quarterTurns: Int): RgbaImage {
+    internal fun rotateQuarterTurns(src: RgbaImage, quarterTurns: Int): RgbaImage {
         val turns = ((quarterTurns % 4) + 4) % 4
-        if (turns == 0) return RgbaImage(src.width, src.height, src.pixels.copyOf())
+        val pixels = src.pixels
+        if (turns == 0) return RgbaImage(src.width, src.height, pixels.copyOf())
         val w = src.width
         val h = src.height
         val dstW = if (turns == 2) w else h
         val dstH = if (turns == 2) h else w
         val out = ByteArray(dstW * dstH * 4)
-        for (y in 0 until dstH) {
-            for (x in 0 until dstW) {
-                val (sx, sy) = when (turns) {
-                    1 -> y to (h - 1 - x)
-                    2 -> (w - 1 - x) to (h - 1 - y)
-                    else -> (w - 1 - y) to x
-                }
-                System.arraycopy(src.pixels, (sy * w + sx) * 4, out, (y * dstW + x) * 4, 4)
+        var o = 0
+        when (turns) {
+            1 -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, ((h - 1 - x) * w + y) * 4, out, o)
+                o += 4
+            }
+            2 -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, ((h - 1 - y) * w + w - 1 - x) * 4, out, o)
+                o += 4
+            }
+            else -> for (y in 0 until dstH) for (x in 0 until dstW) {
+                copyPixel(pixels, (x * w + w - 1 - y) * 4, out, o)
+                o += 4
             }
         }
         return RgbaImage(dstW, dstH, out)
+    }
+
+    @Suppress("NOTHING_TO_INLINE")
+    private inline fun copyPixel(src: ByteArray, si: Int, dst: ByteArray, di: Int) {
+        dst[di] = src[si]
+        dst[di + 1] = src[si + 1]
+        dst[di + 2] = src[si + 2]
+        dst[di + 3] = src[si + 3]
     }
 
     /**
@@ -153,14 +166,20 @@ object PerspectiveCrop {
         val out = ByteArray(width * height * 4)
         val dy = src.height.toDouble() / height
         val dx = src.width.toDouble() / width
+        val ax1s = IntArray(width)
+        val ax2s = IntArray(width)
+        for (x in 0 until width) {
+            ax1s[x] = dartToInt(x * dx)
+            ax2s[x] = dartToInt((x + 1) * dx)
+            if (ax2s[x] == ax1s[x]) ax2s[x]++
+        }
         for (y in 0 until height) {
             val ay1 = dartToInt(y * dy)
             var ay2 = dartToInt((y + 1) * dy)
             if (ay2 == ay1) ay2++
             for (x in 0 until width) {
-                val ax1 = dartToInt(x * dx)
-                var ax2 = dartToInt((x + 1) * dx)
-                if (ax2 == ax1) ax2++
+                val ax1 = ax1s[x]
+                val ax2 = ax2s[x]
                 var r = 0L
                 var g = 0L
                 var b = 0L
@@ -184,13 +203,6 @@ object PerspectiveCrop {
             }
         }
         return RgbaImage(width, height, out)
-    }
-
-    // The original uses pow(d, 2); squaring by multiplication gives the same correctly rounded result.
-    private fun dist(x1: Double, y1: Double, x2: Double, y2: Double): Double {
-        val dx = x2 - x1
-        val dy = y2 - y1
-        return sqrt(dx * dx + dy * dy)
     }
 
     /**

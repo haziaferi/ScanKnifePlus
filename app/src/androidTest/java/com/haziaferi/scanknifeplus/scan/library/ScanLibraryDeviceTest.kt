@@ -9,46 +9,63 @@ import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scanner.cv.PageSize
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The library with the real capture pipeline, plus staging clean-up, on a device. */
+/** The library with the real capture pipeline on a device. */
 @RunWith(AndroidJUnit4::class)
 class ScanLibraryDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     // A private root, so the test never touches the app's real library.
     private val root = File(context.cacheDir, "library-test-${System.nanoTime()}")
-
-    private val otherCache = File(context.cacheDir, "not-staging-${System.nanoTime()}.txt")
+    private val shotDir = ScanFiles.newFolder(ScanFiles.stagingDir(context), "test-")!!
 
     @After
     fun cleanUp() {
+        root.setWritable(true)
         root.deleteRecursively()
-        otherCache.delete()
+        shotDir.deleteRecursively()
     }
 
     @Test
     fun aCaptureIsStoredAsAPageWithItsOriginal() {
-        val photo = File(ScanFiles.stagingDir(context), "shot.jpg")
+        val photo = File(shotDir, "shot.jpg")
         Bitmap.createBitmap(1200, 1600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.LTGRAY) }.let { b ->
             photo.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 90, it) }
             b.recycle()
         }
         val library = ScanLibrary(root)
         val doc = library.create()
-        val page = library.addCapture(doc.id, ImageSource.of(photo), null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, ImageSource.of(photo), null, keepOriginal = true)!!.document.pages.single()
         assertEquals(PageSize(1200, 1600), ImageCodec.orientedSize(ImageSource.of(library.file(doc.id, page.image))))
         assertEquals(PageSize(1200, 1600), ImageCodec.orientedSize(ImageSource.of(library.file(doc.id, page.original!!))))
+    }
 
-        // Clearing the staging area removes the shot and nothing else in the cache.
-        otherCache.writeText("keep")
-        assertTrue(ScanFiles.clearStaging(context))
-        assertFalse(photo.exists())
-        assertTrue(otherCache.exists())
+    @Test
+    fun createOnAReadOnlyLibraryThrowsInsteadOfSpinning() {
+        val library = ScanLibrary(root)
+        library.create()
+        assertTrue(root.setWritable(false))
+        assertFalse("the app's own folder is read-only now", File(root, "probe").mkdir())
+        // On another thread with a bounded wait, so a regression fails here rather than hanging the run.
+        val creating = Executors.newSingleThreadExecutor { r -> Thread(r).apply { isDaemon = true } }.submit<ScanDocument> { library.create() }
+        try {
+            creating.get(10, TimeUnit.SECONDS)
+            fail("create() must fail")
+        } catch (e: ExecutionException) {
+            assertTrue(e.cause.toString(), e.cause is IOException)
+        } finally {
+            root.setWritable(true)
+        }
     }
 
     @Test
@@ -60,7 +77,7 @@ class ScanLibraryDeviceTest {
         }
         val library = ScanLibrary(root)
         val doc = library.create()
-        val page = library.addCapture(doc.id, ImageSource.of(photo), null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, ImageSource.of(photo), null, keepOriginal = true)!!.document.pages.single()
         photo.delete()
         val old = System.currentTimeMillis() - ScanLibrary.STALE_MILLIS - 60_000
         val folder = File(root, doc.id)
