@@ -49,9 +49,9 @@ These libraries ship inside the ScanKnife+ APK.
 
 ### pdfbox-android
 
-[PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) 2.0.27.0 by Tom Roush, licensed under the Apache License, Version 2.0, is a port of [Apache PDFBox](https://pdfbox.apache.org/) 2.0.27 (also Apache License 2.0); see the Apache PDFBox NOTICE file. Its library carries these third-party resources:
+[PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) 2.0.27.0 by Tom Roush, licensed under the Apache License, Version 2.0, is a port of [Apache PDFBox](https://pdfbox.apache.org/) 2.0.27 (also Apache License 2.0), whose NOTICE is reproduced below. Its library carries these third-party resources:
 
-- **Liberation Sans** 2.1.5 (`LiberationSans-Regular.ttf`): "Digitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc." Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent and Trademark Office and certain other jurisdictions. Licensed under the SIL Open Font License, Version 1.1 (http://scripts.sil.org/OFL).
+- **Liberation Sans** 2.1.5 (`LiberationSans-Regular.ttf`): "Digitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc." Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent and Trademark Office and certain other jurisdictions. Licensed under the SIL Open Font License, Version 1.1; the full license text is at https://openfontlicense.org/open-font-license-official-text/ (and in OFL.txt of https://github.com/liberationfonts/liberation-fonts).
 - **Adobe Core 14 font metrics** (the 14 standard `.afm` files), carrying these notices:
   - Copyright (c) 1985, 1987, 1988, 1989, 1997 Adobe Systems Incorporated. All Rights Reserved. ITC Zapf Dingbats is a registered trademark of International Typeface Corporation.
   - Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems Incorporated. All Rights Reserved. Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
@@ -61,6 +61,81 @@ These libraries ship inside the ScanKnife+ APK.
   - Copyright (c) 1989, 1990, 1991, 1993, 1997 Adobe Systems Incorporated. All Rights Reserved.
 - **Adobe Glyph List** (`glyphlist.txt`, Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated) and the ITC Zapf Dingbats glyph list (`zapfdingbats.txt`, Copyright 2002, 2010 Adobe Systems Incorporated), both under the BSD 3-Clause terms below.
 - **Unicode Character Database** data files `Scripts.txt` (Scripts-10.0.0, © 2017 Unicode, Inc.) and `BidiMirroring.txt` (BidiMirroring-8.0.0, Copyright (c) 1991-2015 Unicode, Inc.), used under the Unicode terms of use (http://www.unicode.org/terms_of_use.html). Unicode and the Unicode Logo are registered trademarks of Unicode, Inc. in the U.S. and other countries.
+
+#### Apache PDFBox 2.0.27 NOTICE
+
+Source: https://github.com/apache/pdfbox/blob/2.0.27/NOTICE.txt
+
+```
+Apache PDFBox
+Copyright 2014 The Apache Software Foundation
+
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+Based on source code originally developed in the PDFBox and
+FontBox projects.
+
+Copyright (c) 2002-2007, www.pdfbox.org
+
+Based on source code originally developed in the PaDaF project.
+Copyright (c) 2010 Atos Worldline SAS
+
+Includes the Adobe Glyph List
+Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
+
+Includes the Zapf Dingbats Glyph List
+Copyright 2002, 2010 Adobe Systems Incorporated.
+
+Includes OSXAdapter
+Copyright (C) 2003-2007 Apple, Inc., All Rights Reserved
+```
+
+#### Unicode license
+
+Source: https://www.unicode.org/license.txt
+
+```
+UNICODE LICENSE V3
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright © 1991-2026 Unicode, Inc.
+
+NOTICE TO USER: Carefully read the following legal agreement. BY
+DOWNLOADING, INSTALLING, COPYING OR OTHERWISE USING DATA FILES, AND/OR
+SOFTWARE, YOU UNEQUIVOCALLY ACCEPT, AND AGREE TO BE BOUND BY, ALL OF THE
+TERMS AND CONDITIONS OF THIS AGREEMENT. IF YOU DO NOT AGREE, DO NOT
+DOWNLOAD, INSTALL, COPY, DISTRIBUTE OR USE THE DATA FILES OR SOFTWARE.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of data files and any associated documentation (the "Data Files") or
+software and any associated documentation (the "Software") to deal in the
+Data Files or Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, and/or sell
+copies of the Data Files or Software, and to permit persons to whom the
+Data Files or Software are furnished to do so, provided that either (a)
+this copyright and permission notice appear with all copies of the Data
+Files or Software, or (b) this copyright and permission notice appear in
+associated Documentation.
+
+THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF
+THIRD PARTY RIGHTS.
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS NOTICE
+BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL DAMAGES,
+OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS,
+WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
+ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THE DATA
+FILES OR SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall
+not be used in advertising or otherwise to promote the sale, use or other
+dealings in these Data Files or Software without prior written
+authorization of the copyright holder.
+```
 
 #### Adobe Glyph List license
 
