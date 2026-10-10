@@ -314,9 +314,20 @@ class LiveScanPipelineTest {
     }
 
     @Test
-    fun `other rotations and the front camera give no overlay and no capture quad`() {
-        for ((rotation, lens) in listOf(0 to CameraLens.BACK, 180 to CameraLens.BACK, 90 to CameraLens.FRONT, 270 to CameraLens.FRONT)) {
-            feed(3, rotation = rotation, lens = lens)
+    fun `the front camera shows the overlay and auto-captures, but without a quad`() {
+        feed(3, rotation = 270, lens = CameraLens.FRONT)
+        assertEquals(QuadMapping.FRONT, detector.submitted.single().mapping)
+        detect(doc, times = 8)
+        assertSame(doc, recorder.quads.first())
+        assertNull(recorder.captures.single().quad)
+        pipeline.endCapture()
+        assertNull(pipeline.beginCapture()!!.quad)
+    }
+
+    @Test
+    fun `a back camera at 0 or 180 degrees gives no overlay and no capture quad`() {
+        for (rotation in listOf(0, 180)) {
+            feed(3, rotation = rotation)
             assertEquals(QuadMapping.NONE, detector.submitted.last().mapping)
             detect(doc, times = 8)
             assertNull(pipeline.smoothedQuad)

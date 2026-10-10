@@ -107,8 +107,8 @@ class LiveScanPipeline internal constructor(
 
     /**
      * Handles one frame from [lens]: the Y plane of a YUV_420_888 image in sensor orientation (pixel stride 1, rows [rowStride] bytes apart, read
-     * from the buffer's position, which is left unchanged) and the [rotationDegrees] that turn it upright. Only a back camera at 90 or 270 degrees
-     * yields quads (OpenScan assumed 90); every third frame is analysed, none while detection is busy, zooming or the shutter is open.
+     * from the buffer's position, which is left unchanged) and the [rotationDegrees] that turn it upright. A back camera at 90 or 270 degrees and
+     * the front camera (as in OpenScan) yield quads; every third frame is analysed, none while detection is busy, zooming or the shutter is open.
      */
     fun onFrame(yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int, rotationDegrees: Int, lens: CameraLens) {
         if (disposed || shutterOpen) return
@@ -160,14 +160,14 @@ class LiveScanPipeline internal constructor(
     }
 
     /**
-     * Starts a capture and snapshots the boundary on screen: the smoothed quad, always null for a camera that yields none. Returns null, and does
-     * nothing, if a capture is already in progress or the pipeline is disposed.
+     * Starts a capture and snapshots the boundary on screen: the smoothed quad, or null when the frames do not map onto the still (the front
+     * camera, as before). Returns null, and does nothing, if a capture is already in progress or the pipeline is disposed.
      */
     fun beginCapture(): CaptureRequest? = synchronized(lock) {
         if (disposed || capturing) return null
         capturing = true
         shutterOpen = true
-        CaptureRequest(smoother.smoothedQuad)
+        CaptureRequest(if (frameMapping.mapsOntoStill) smoother.smoothedQuad else null)
     }
 
     /** The still has been taken: starts the auto-capture cooldown, drops the smoothed track so the next document starts fresh, resumes frames. */
@@ -229,22 +229,24 @@ class LiveScanPipeline internal constructor(
 
 /**
  * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
- * 270 degrees sees the page turned half way round, and the front camera's frames do not match its unmirrored still.
+ * 270 degrees sees the page turned half way round. The front camera keeps OpenScan's mapping for the overlay and auto-capture, but its frames
+ * do not match its unmirrored still; other rotations yield no quad.
  */
-internal enum class QuadMapping {
-    AS_IS,
-    HALF_TURN,
-    NONE;
+internal enum class QuadMapping(val mapsOntoStill: Boolean) {
+    AS_IS(true),
+    HALF_TURN(true),
+    FRONT(false),
+    NONE(false);
 
     fun map(quad: Quad): Quad? = when (this) {
-        AS_IS -> quad
+        AS_IS, FRONT -> quad
         HALF_TURN -> Contours.sortCorners(quad.points.map { Pt(1 - it.x, 1 - it.y) })
         NONE -> null
     }
 
     companion object {
         fun of(rotationDegrees: Int, lens: CameraLens): QuadMapping = when {
-            lens != CameraLens.BACK -> NONE
+            lens != CameraLens.BACK -> FRONT
             rotationDegrees == 90 -> AS_IS
             rotationDegrees == 270 -> HALF_TURN
             else -> NONE
