@@ -71,6 +71,27 @@ class CameraSizesTest {
     }
 
     @Test
+    fun `sensor shapes a little off a standard ratio snap to it`() {
+        assertEquals(Dim(4, 3), CameraSizes.standardShape(Dim(4208, 3120))) // 1.349: outputs are 4:3
+        assertEquals(Dim(4, 3), CameraSizes.standardShape(Dim(4656, 3496)))
+        assertEquals(Dim(3, 4), CameraSizes.standardShape(Dim(3120, 4208))) // orientation kept
+        assertEquals(Dim(16, 9), CameraSizes.standardShape(Dim(4032, 2268)))
+        assertEquals(Dim(1, 1), CameraSizes.standardShape(Dim(3000, 2960)))
+        assertEquals(Dim(3, 2), CameraSizes.standardShape(Dim(6000, 4000)))
+        assertEquals(Dim(2000, 1000), CameraSizes.standardShape(Dim(2000, 1000))) // 2:1 is nothing standard: unchanged
+        assertEquals(Dim(4200, 3000), CameraSizes.standardShape(Dim(4200, 3000))) // 1.4: 5% off 4:3, unchanged
+    }
+
+    @Test
+    fun `a 4208x3120 sensor gets its 4 to 3 outputs once snapped`() {
+        val sizes = listOf(Dim(4160, 3120), Dim(4208, 3120), Dim(3264, 2448), Dim(960, 720), Dim(1280, 720))
+        assertFalse(CameraSizes.sameShape(Dim(4160, 3120), Dim(4208, 3120))) // why snapping is needed
+        val shape = CameraSizes.standardShape(Dim(4208, 3120))
+        assertEquals(Dim(4160, 3120), CameraSizes.stillPreference(sizes, shape).first())
+        assertEquals(Dim(960, 720), CameraSizes.streamPreference(sizes, shape, CameraSizes.ANALYSIS_BOUND).first())
+    }
+
+    @Test
     fun `shape comparison tolerates rounding and ignores orientation`() {
         assertTrue(CameraSizes.sameShape(Dim(4656, 3496), Dim(4, 3)))
         assertTrue(CameraSizes.sameShape(Dim(720, 960), Dim(960, 720)))

@@ -21,7 +21,9 @@ data class Dim(val width: Int, val height: Int) {
  * Here every stream takes the shape of the sensor's active array (4:3 on most phones), so the still covers the sensor's whole field of view and
  * the frame live detection sees covers the same view as the photo the quad is applied to. The still is the largest size of that shape CameraX
  * offers. That is not always the largest size the camera lists: CameraX leaves out sizes known to fail on a device (on the OnePlus 6T back
- * camera its ExcludedSupportedSizesQuirk drops the 4000x3000 JPEG, leaving 3264x2448), and a larger size of another shape would be a crop.
+ * camera its ExcludedSupportedSizesQuirk drops the 4000x3000 and 4160x3120 JPEGs, leaving 3264x2448), and a larger size of another shape would
+ * be a crop. The sensor's shape is snapped to the nearest standard ratio first ([standardShape]), because active arrays are often a little off
+ * the ratio of the sizes they output (4208x3120 is 1.349 but outputs 4:3).
  * Analysis keeps OpenScan's 720 px short edge as a bound: 960x720 (or the next smaller 4:3 size) instead of 1280x720, and detection, which
  * downsamples to a 320 px long edge anyway, runs at 320x240 instead of 320x180.
  */
@@ -34,6 +36,19 @@ object CameraSizes {
 
     /** Two shapes count as the same within this tolerance on the long/short ratio (sizes are rounded to even or 16-px steps). */
     private const val ASPECT_TOLERANCE = 0.01
+
+    /** How far a sensor's active array may be from a standard ratio and still be snapped to it. */
+    private const val SNAP_TOLERANCE = 0.02
+
+    /** The ratios camera outputs come in, long edge by short edge. */
+    val STANDARD_SHAPES = listOf(Dim(4, 3), Dim(16, 9), Dim(1, 1), Dim(3, 2))
+
+    /** [sensor] snapped to the nearest of [STANDARD_SHAPES] when within 2% of it (keeping its orientation), otherwise unchanged. */
+    fun standardShape(sensor: Dim): Dim {
+        val nearest = STANDARD_SHAPES.minByOrNull { abs(it.aspect - sensor.aspect) } ?: return sensor
+        if (abs(nearest.aspect - sensor.aspect) > SNAP_TOLERANCE * nearest.aspect) return sensor
+        return if (sensor.width >= sensor.height) Dim(nearest.longEdge, nearest.shortEdge) else Dim(nearest.shortEdge, nearest.longEdge)
+    }
 
     fun sameShape(a: Dim, b: Dim): Boolean = abs(a.aspect - b.aspect) <= ASPECT_TOLERANCE * b.aspect
 

@@ -25,8 +25,12 @@ import com.haziaferi.scanknifeplus.scan.ScanFiles
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.After
@@ -41,6 +45,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /** The scan camera on real hardware: streams, a full-resolution still, torch, zoom, lens switching, lifecycle and unbinding. */
+@OptIn(DelicateCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class ScanCameraControllerDeviceTest {
     @get:Rule
@@ -195,6 +200,54 @@ class ScanCameraControllerDeviceTest {
             }
         }
         assertEquals(1, results.count { it != null })
+    }
+
+    @Test
+    fun aPictureIsRefusedUntilTheCameraIsOpen() {
+        // In one main-thread turn: bound, but CameraX has not opened the camera yet.
+        val early = runBlocking {
+            withContext(Dispatchers.Main) {
+                controller.bind(owner, surfaceProvider, CameraLens.BACK)
+                assertEquals(CameraStatus.OPENING, controller.state.status)
+                controller.takePicture(shotDir)
+            }
+        }
+        assertEquals(null, early)
+        assertFalse("a refused shot leaves nothing in flight", state().capturing)
+        waitFor("the camera to open") { it.ready }
+        assertNotNull(takePicture())
+    }
+
+    @Test
+    fun cancellingATakeKeepsTheShutterBlockedUntilCameraXFinishes() {
+        val s = bind()
+        val job = runBlocking { withContext(Dispatchers.Main) { GlobalScope.launch(Dispatchers.Main) { controller.takePicture(shotDir) } } }
+        waitFor("the capture to start") { it.capturing }
+        Thread.sleep(100) // past the folder check, into CameraX's capture (which takes far longer)
+        runBlocking { job.cancelAndJoin() }
+        assertTrue("still capturing after the caller was cancelled", state().capturing)
+        assertFalse("no lens switch mid-capture", main { controller.switchLens() })
+        assertEquals("no second shot mid-capture", null, takePicture())
+        waitFor("CameraX to finish the cancelled shot") { !it.capturing }
+        assertEquals(s.lens, state().lens)
+        // The shot that arrived after the cancellation is deleted (on an IO thread).
+        val end = System.currentTimeMillis() + 5_000
+        while (shotDir.listFiles().orEmpty().isNotEmpty() && System.currentTimeMillis() < end) Thread.sleep(20)
+        assertEquals(emptyList<File>(), shotDir.listFiles().orEmpty().toList())
+        assertNotNull("the shutter works again", takePicture())
+    }
+
+    @Test
+    fun stoppingTheScreenMidZoomClearsTheGesture() {
+        val s = bind()
+        assumeTrue("camera can zoom", s.zoomSupported)
+        main { controller.setZoom(s.maxZoom / 2) }
+        assertTrue(state().zooming)
+        main { owner.registry.currentState = Lifecycle.State.CREATED } // no finishZoom: the screen just went away
+        waitFor("the camera to close") { it.status == CameraStatus.CLOSED }
+        assertFalse(state().zooming)
+        main { owner.registry.currentState = Lifecycle.State.RESUMED }
+        waitFor("the camera to reopen with the zoom reset") { it.ready && it.zoomRatio == 1f && !it.zooming }
     }
 
     @Test

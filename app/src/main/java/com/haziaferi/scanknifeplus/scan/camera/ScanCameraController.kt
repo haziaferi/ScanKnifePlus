@@ -24,6 +24,7 @@ import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
@@ -39,6 +40,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
+import com.google.common.util.concurrent.ListenableFuture
 import com.haziaferi.scanknifeplus.scan.CameraPermission
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scanner.live.Cancellable
@@ -51,7 +53,10 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 /**
  * Receives each analysis frame's Y (luma) plane in sensor orientation: [yPlane] holds [height] rows of [rowStride] bytes (the last row may be
@@ -63,7 +68,7 @@ typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, heigh
  * The document scanner's camera, without any UI: CameraX preview (onto a surface the UI supplies), a low-resolution YUV analysis stream for live
  * detection, and full-resolution stills written to [ScanFiles.stagingDir]. Ports the camera side of OpenScan's live scan screen; see the
  * differences listed below. Every method must be called on the main thread; state changes reach [stateListener] there too. Nothing here throws:
- * failures show up as [ScanCameraState.error], a null picture or a false result.
+ * failures show up as [ScanCameraState.error], a null picture or a false result. Call [release] when done with it: it owns an analysis thread.
  *
  * Differences from OpenScan, all deliberate:
  *  - Stills are the largest size of the sensor's shape that CameraX offers (the sensor's whole field of view), taken with
@@ -76,8 +81,9 @@ typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, heigh
  *    also released on `inactive` (onPause); CameraX keeps the camera while the screen is paused but visible, e.g. in multi-window.
  *  - The analysis stream keeps running while a picture is taken. OpenScan stopped its image stream around takePicture; CameraX runs analysis and
  *    capture as separate streams of one session, so nothing has to stop (the session's stream combination is configured for both).
- *  - OpenScan's open timeout plus one retry becomes CameraX's own open retry plus an [OPEN_TIMEOUT_MS] watchdog that reports
- *    [CameraError.OPEN_TIMEOUT] without giving up.
+ *  - OpenScan's open timeout and single retry are kept ([OpenWatchdog]): an open that takes over [OPEN_TIMEOUT_MS] is released and bound again
+ *    at once, and only a second timeout is reported, as [CameraError.OPEN_TIMEOUT]. CameraX keeps trying after that, and the error clears if
+ *    the camera opens. No retry is made while CameraX reports a specific error (another app holds the camera, say): it reopens by itself.
  *  - Front-camera stills are not mirrored, so a document photographed with it reads the right way round. CameraX 1.4.2 already behaves so
  *    (checked on the OnePlus 6T: EXIF ROTATE_270, no flip); the metadata pins it in case a later version mirrors by default.
  *
@@ -99,7 +105,10 @@ class ScanCameraController(context: Context) {
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val mainExecutor = ContextCompat.getMainExecutor(appContext)
-    private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "ScanCameraAnalysis") }
+    private val ioExecutor = Dispatchers.IO.asExecutor()
+
+    // A daemon, so a controller that is never released cannot keep the process alive; release() still has to be called to stop it.
+    private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "ScanCameraAnalysis").apply { isDaemon = true } }
 
     /** Current state; replaced, never mutated. */
     var state = ScanCameraState()
@@ -134,16 +143,20 @@ class ScanCameraController(context: Context) {
     private var imageAnalysis: ImageAnalysis? = null
     private var generation = 0
     private var released = false
-    private var openTimeout: Runnable? = null
+    private var captureToken = 0
+
+    private val mainScheduler = DelayScheduler { delayMicros, action ->
+        val runnable = Runnable(action)
+        mainHandler.postDelayed(runnable, delayMicros / 1_000)
+        Cancellable { mainHandler.removeCallbacks(runnable) }
+    }
 
     private val zoomThrottle = ZoomThrottle(
         apply = { ratio -> camera?.cameraControl?.setZoomRatio(ratio)?.let { ignoreSuperseded(it, "zoom") } },
-        scheduler = DelayScheduler { delayMicros, action ->
-            val runnable = Runnable(action)
-            mainHandler.postDelayed(runnable, delayMicros / 1_000)
-            Cancellable { mainHandler.removeCallbacks(runnable) }
-        },
+        scheduler = mainScheduler,
     )
+
+    private val openWatchdog = OpenWatchdog(mainScheduler, OPEN_TIMEOUT_MS * 1_000, onRetry = ::retryOpen, onTimeout = ::reportOpenTimeout)
 
     private val cameraStateObserver = Observer<CameraState> { onCameraState(it) }
     private val torchObserver = Observer<Int> { update { copy(torchOn = it == TorchState.ON) } }
@@ -159,9 +172,14 @@ class ScanCameraController(context: Context) {
      * earlier binding. Fails cleanly, with [CameraError.PERMISSION_DENIED], if the CAMERA permission is missing: ask for it before calling.
      */
     @MainThread
-    fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?, lens: CameraLens = CameraLens.BACK) {
+    fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?, lens: CameraLens = CameraLens.BACK) =
+        bind(owner, surfaceProvider, lens, fresh = true)
+
+    /** [fresh] is false only for the watchdog's retry, which must not earn itself another retry. */
+    private fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?, lens: CameraLens, fresh: Boolean) {
         if (released) return
         unbind()
+        if (fresh) openWatchdog.reset()
         if (!CameraPermission.isGranted(appContext)) {
             update { ScanCameraState(error = CameraError.PERMISSION_DENIED) }
             return
@@ -172,6 +190,8 @@ class ScanCameraController(context: Context) {
         requestedLens = lens
         owner.lifecycle.addObserver(lifecycleObserver)
         update { ScanCameraState(status = CameraStatus.OPENING) }
+        // A screen that is not started yet opens nothing; CameraX reports OPENING when it starts, which arms the watchdog then.
+        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) openWatchdog.opening()
 
         val token = generation
         val future = try {
@@ -204,7 +224,7 @@ class ScanCameraController(context: Context) {
     @MainThread
     fun unbind() {
         generation++
-        cancelOpenTimeout()
+        openWatchdog.pause()
         zoomThrottle.cancel()
         detachCamera()
         val p = provider
@@ -251,40 +271,58 @@ class ScanCameraController(context: Context) {
     /**
      * Takes a full-resolution still and writes it to a new, uniquely named file in [dir] (a scan session's own folder under
      * [ScanFiles.stagingDir]; created if missing). Returns the file as soon as it is written: processing the page is the caller's business, so the
-     * shutter never waits for it. Returns null if the camera is not bound, a picture is already being taken (OpenScan ignored a second press),
-     * [dir] cannot be created, or the capture fails. If the caller is cancelled first, the file is deleted when it arrives.
+     * shutter never waits for it. Returns null if the camera is not open and streaming ([ScanCameraState.ready]), a picture is already being
+     * taken (OpenScan ignored a second press), [dir] cannot be created, or the capture fails.
+     *
+     * Cancelling the caller does not stop the camera: [ScanCameraState.capturing] stays set, so the shutter and [switchLens] stay blocked, until
+     * CameraX reports the shot saved or failed, and a shot that arrives after the cancellation is deleted. Runs on the main thread whatever the
+     * caller's dispatcher; the file system work happens on an IO thread.
      */
-    @MainThread
-    suspend fun takePicture(dir: File): File? {
-        val capture = imageCapture ?: return null
-        if (state.capturing) return null
-        if (!dir.isDirectory && !dir.mkdirs()) return null
+    suspend fun takePicture(dir: File): File? = withContext(Dispatchers.Main.immediate) {
+        val capture = imageCapture
+        if (capture == null || !state.ready || state.capturing) return@withContext null
+        val token = ++captureToken
+        update { copy(capturing = true) }
+        val dirReady = try {
+            withContext(Dispatchers.IO) { dir.isDirectory || dir.mkdirs() }
+        } catch (e: Throwable) {
+            endCapture(token)
+            throw e
+        }
+        // The camera may have been released or rebound while the folder was being made.
+        if (!dirReady || capture !== imageCapture || !state.ready) {
+            endCapture(token)
+            return@withContext null
+        }
         val file = File(dir, "shot-${UUID.randomUUID()}.jpg")
         val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = false }
         val options = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
-        update { copy(capturing = true) }
-        return try {
-            suspendCancellableCoroutine { cont ->
-                try {
-                    capture.takePicture(options, mainExecutor, object : ImageCapture.OnImageSavedCallback {
-                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                            cont.resume(file) { file.delete() }
-                        }
+        suspendCancellableCoroutine { cont ->
+            try {
+                capture.takePicture(options, mainExecutor, object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        endCapture(token)
+                        cont.resume(file) { ioExecutor.execute { file.delete() } }
+                    }
 
-                        override fun onError(exception: ImageCaptureException) {
-                            Log.w(TAG, "Capture failed", exception)
-                            file.delete()
-                            cont.resume(null)
-                        }
-                    })
-                } catch (e: Exception) {
-                    Log.w(TAG, "Capture failed", e)
-                    cont.resume(null)
-                }
+                    override fun onError(exception: ImageCaptureException) {
+                        Log.w(TAG, "Capture failed", exception)
+                        endCapture(token)
+                        ioExecutor.execute { file.delete() }
+                        cont.resume(null)
+                    }
+                })
+            } catch (e: Exception) {
+                Log.w(TAG, "Capture failed", e)
+                endCapture(token)
+                cont.resume(null)
             }
-        } finally {
-            update { copy(capturing = false) }
         }
+    }
+
+    /** Clears [ScanCameraState.capturing] for the capture [token], unless a newer capture has started since (after a rebind). */
+    private fun endCapture(token: Int) {
+        if (token == captureToken) update { copy(capturing = false) }
     }
 
     /** Turns the torch on or off ([onResult] gets false if the camera refused, like OpenScan's "torch unavailable"); state follows CameraX. */
@@ -385,7 +423,7 @@ class ScanCameraController(context: Context) {
         val selector = if (lens == CameraLens.BACK) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
         try {
             val info = selector.filter(p.availableCameraInfos).first()
-            val shape = sensorShape(info)
+            val shape = sensorShape(info)?.let { CameraSizes.standardShape(it) }
             val preview = Preview.Builder()
                 .setResolutionSelector(streamSelector(shape, CameraSizes.PREVIEW_BOUND))
                 .setTargetRotation(targetRotation)
@@ -461,12 +499,32 @@ class ScanCameraController(context: Context) {
             CameraState.Type.OPEN -> CameraStatus.READY
             CameraState.Type.CLOSING, CameraState.Type.CLOSED -> CameraStatus.CLOSED
         }
-        if (status == CameraStatus.OPENING) startOpenTimeout() else cancelOpenTimeout()
+        if (status == CameraStatus.OPENING) openWatchdog.opening() else openWatchdog.reset()
+        if (status == CameraStatus.CLOSED) {
+            // A screen stopped mid-drag never sends the gesture's end; the camera's zoom was reset with it anyway.
+            zoomThrottle.cancel()
+        }
         update {
             // A watchdog timeout stands until the camera opens or CameraX reports something more specific.
             val keptTimeout = this.error == CameraError.OPEN_TIMEOUT && status == CameraStatus.OPENING && error == null
-            copy(status = status, error = if (keptTimeout) CameraError.OPEN_TIMEOUT else error)
+            copy(
+                status = status,
+                error = if (keptTimeout) CameraError.OPEN_TIMEOUT else error,
+                zooming = zooming && status != CameraStatus.CLOSED,
+            )
         }
+    }
+
+    /** The watchdog's one retry: release the camera and bind it again, unless CameraX already knows why it is not open and is retrying. */
+    private fun retryOpen() {
+        val owner = owner ?: return
+        if (state.error != null) return
+        Log.w(TAG, "Camera did not open within $OPEN_TIMEOUT_MS ms; releasing it and trying once more")
+        bind(owner, surfaceProvider, state.lens ?: requestedLens, fresh = false)
+    }
+
+    private fun reportOpenTimeout() {
+        if (state.status == CameraStatus.OPENING && state.error == null) update { copy(error = CameraError.OPEN_TIMEOUT) }
     }
 
     private fun onZoomState(z: ZoomState) {
@@ -477,23 +535,7 @@ class ScanCameraController(context: Context) {
         }
     }
 
-    private fun startOpenTimeout() {
-        if (openTimeout != null) return
-        val token = generation
-        val r = Runnable {
-            openTimeout = null
-            if (token == generation && state.status == CameraStatus.OPENING && state.error == null) update { copy(error = CameraError.OPEN_TIMEOUT) }
-        }
-        openTimeout = r
-        mainHandler.postDelayed(r, OPEN_TIMEOUT_MS)
-    }
-
-    private fun cancelOpenTimeout() {
-        openTimeout?.let { mainHandler.removeCallbacks(it) }
-        openTimeout = null
-    }
-
-    private fun analyze(image: androidx.camera.core.ImageProxy) {
+    private fun analyze(image: ImageProxy) {
         try {
             val listener = frameListener ?: return
             val y = image.planes[0]
@@ -507,7 +549,7 @@ class ScanCameraController(context: Context) {
 
     private fun fail(error: CameraError, e: Exception?) {
         Log.w(TAG, "Camera unavailable: $error", e)
-        cancelOpenTimeout()
+        openWatchdog.reset()
         update { ScanCameraState(error = error) }
     }
 
@@ -557,7 +599,7 @@ class ScanCameraController(context: Context) {
         false
     }
 
-    private fun ignoreSuperseded(future: com.google.common.util.concurrent.ListenableFuture<Void>, what: String) {
+    private fun ignoreSuperseded(future: ListenableFuture<Void>, what: String) {
         // A superseded call fails with OperationCanceledException, which is expected (OpenScan swallowed these too).
         future.addListener({
             try {
