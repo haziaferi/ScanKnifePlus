@@ -22,6 +22,12 @@ object ScanFiles {
      */
     fun stagingDir(context: Context): File = File(context.cacheDir, "scan-staging").apply { mkdirs() }
 
+    /**
+     * Work folders for PDF exports: re-encoded page copies and the PDF being written. Separate from [stagingDir] so ending a scan session cannot
+     * pull files out from under an export.
+     */
+    fun exportDir(context: Context): File = File(context.cacheDir, "scan-export").apply { mkdirs() }
+
     /** Deletes everything staged, trying every entry even after a failure; returns false if something could not be deleted. */
     fun clearStaging(context: Context): Boolean = stagingDir(context).listFiles().orEmpty().map { it.deleteRecursively() }.all { it }
 
