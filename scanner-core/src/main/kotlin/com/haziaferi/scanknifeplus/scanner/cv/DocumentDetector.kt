@@ -73,10 +73,11 @@ object DocumentDetector {
         if (srcW == dstW && srcH == dstH) return src
 
         val dst = ByteArray(dstW * dstH * 4)
+        val sxs = IntArray(dstW) { x -> floor((x.toLong() * srcW).toDouble() / dstW).toInt().coerceIn(0, srcW - 1) }
         for (y in 0 until dstH) {
             val sy = floor((y.toLong() * srcH).toDouble() / dstH).toInt().coerceIn(0, srcH - 1)
             for (x in 0 until dstW) {
-                val sx = floor((x.toLong() * srcW).toDouble() / dstW).toInt().coerceIn(0, srcW - 1)
+                val sx = sxs[x]
                 val srcIdx = (sy * srcW + sx) * 4
                 val dstIdx = (y * dstW + x) * 4
                 dst[dstIdx] = src[srcIdx]

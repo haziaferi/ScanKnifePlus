@@ -40,15 +40,22 @@ object FrameAdapter {
     ): ByteArray? {
         val (dstW, dstH) = downsampledSize(width, height, targetLongEdge) ?: return null
         val dst = ByteArray(dstW * dstH)
+        // The three clamped source columns around each output column's nearest pixel.
+        val columns = IntArray(dstW * 3)
+        for (x in 0 until dstW) {
+            val sx0 = dartFloor(x.toDouble() * width / dstW).coerceIn(0, width - 1)
+            for (dx in -1..1) {
+                columns[x * 3 + dx + 1] = (sx0 + dx).coerceIn(0, width - 1)
+            }
+        }
         for (y in 0 until dstH) {
             val sy0 = dartFloor(y.toDouble() * height / dstH).coerceIn(0, height - 1)
             for (x in 0 until dstW) {
-                val sx0 = dartFloor(x.toDouble() * width / dstW).coerceIn(0, width - 1)
                 var sum = 0
                 for (dy in -1..1) {
                     val rowOffset = (sy0 + dy).coerceIn(0, height - 1) * bytesPerRow
-                    for (dx in -1..1) {
-                        sum += yPlane.u8(rowOffset + (sx0 + dx).coerceIn(0, width - 1))
+                    for (c in x * 3 until x * 3 + 3) {
+                        sum += yPlane.u8(rowOffset + columns[c])
                     }
                 }
                 dst.setU8(y * dstW + x, dartRound(sum / 9.0))

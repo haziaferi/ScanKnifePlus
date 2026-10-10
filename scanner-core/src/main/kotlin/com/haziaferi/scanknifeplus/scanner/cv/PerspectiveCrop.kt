@@ -167,14 +167,20 @@ object PerspectiveCrop {
         val out = ByteArray(width * height * 4)
         val dy = src.height.toDouble() / height
         val dx = src.width.toDouble() / width
+        val ax1s = IntArray(width)
+        val ax2s = IntArray(width)
+        for (x in 0 until width) {
+            ax1s[x] = dartToInt(x * dx)
+            ax2s[x] = dartToInt((x + 1) * dx)
+            if (ax2s[x] == ax1s[x]) ax2s[x]++
+        }
         for (y in 0 until height) {
             val ay1 = dartToInt(y * dy)
             var ay2 = dartToInt((y + 1) * dy)
             if (ay2 == ay1) ay2++
             for (x in 0 until width) {
-                val ax1 = dartToInt(x * dx)
-                var ax2 = dartToInt((x + 1) * dx)
-                if (ax2 == ax1) ax2++
+                val ax1 = ax1s[x]
+                val ax2 = ax2s[x]
                 var r = 0L
                 var g = 0L
                 var b = 0L

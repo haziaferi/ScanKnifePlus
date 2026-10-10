@@ -126,12 +126,13 @@ object DocumentFilters {
         override fun apply(pixels: ByteArray, width: Int, height: Int) {
             val gray = EdgeDetection.rgbaToGrayscale(pixels, width, height)
             val mean = localMeanField(gray, width, height)
+            val meanColumns = mean.columnsFor(width)
 
             for (y in 0 until height) {
                 val meanRow = (y * mean.height / height) * mean.width
                 val row = y * width
                 for (x in 0 until width) {
-                    val local = mean.values.u8(meanRow + (x * mean.width / width))
+                    val local = mean.values.u8(meanRow + meanColumns[x])
                     val ink = gray.u8(row + x) < local * (1 - BIAS)
                     val v = if (ink) 0 else 255
                     val i = (row + x) * 4
@@ -151,14 +152,13 @@ object DocumentFilters {
         override fun apply(pixels: ByteArray, width: Int, height: Int) {
             val gray = EdgeDetection.rgbaToGrayscale(pixels, width, height)
             val illumination = illuminationField(gray, width, height)
+            val fieldColumns = illumination.columnsFor(width)
 
             for (y in 0 until height) {
                 val fieldRow = (y * illumination.height / height) * illumination.width
                 val row = y * width
                 for (x in 0 until width) {
-                    val level = illumination.values.u8(fieldRow + (x * illumination.width / width))
-                    // Guard the divisor: a genuinely black region would otherwise blow up to pure white.
-                    val scale = 255.0 / max(level, 16)
+                    val scale = SCALE_BY_LEVEL[illumination.values.u8(fieldRow + fieldColumns[x])]
                     val i = (row + x) * 4
                     pixels.setU8(i, ImageFilterUtils.clampPixel(dartRound(pixels.u8(i) * scale)))
                     pixels.setU8(i + 1, ImageFilterUtils.clampPixel(dartRound(pixels.u8(i + 1) * scale)))
@@ -169,10 +169,16 @@ object DocumentFilters {
             ImageFilterUtils.saturation(pixels, 0.35)
             ImageFilterUtils.contrast(pixels, 0.15)
         }
+
+        /** `255 / level` per illumination level, with the divisor guarded so a genuinely black region does not blow up to pure white. */
+        private val SCALE_BY_LEVEL = DoubleArray(256) { 255.0 / max(it, 16) }
     }
 
     /** A low-frequency single-channel field sampled back up to image size by the filter that asked for it. */
-    private class Field(val values: ByteArray, val width: Int, val height: Int)
+    private class Field(val values: ByteArray, val width: Int, val height: Int) {
+        /** The field column each of [imageWidth] image columns samples. */
+        fun columnsFor(imageWidth: Int): IntArray = IntArray(imageWidth) { x -> x * width / imageWidth }
+    }
 
     /** Longest edge the mean/illumination fields are computed at; both are smooth by construction, so downscaling costs no visible quality. */
     private const val FIELD_MAX_EDGE = 640
