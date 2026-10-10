@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.os.Build
 import android.hardware.display.DisplayManager
 import android.media.ImageReader
 import android.os.Handler
@@ -102,10 +103,21 @@ class ScanCameraControllerDeviceTest {
 
     private fun takePicture(): File? = runBlocking { withContext(Dispatchers.Main) { controller.takePicture() } }
 
-    private fun largestJpeg(cameraId: String): Dim {
-        val manager = context.getSystemService(CameraManager::class.java)
-        val map = manager.getCameraCharacteristics(cameraId).get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-        return map.getOutputSizes(ImageFormat.JPEG).map { Dim(it.width, it.height) }.maxByOrNull { it.area }!!
+    /**
+     * The still the controller should pick, worked out independently from camera2: the largest JPEG size with the sensor's active-array shape,
+     * minus the sizes CameraX 1.4.2's ExcludedSupportedSizesQuirk withholds on this device (OnePlus 6T camera 0: 4160x3120 and 4000x3000).
+     */
+    private fun expectedStill(cameraId: String): Dim {
+        val chars = context.getSystemService(CameraManager::class.java).getCameraCharacteristics(cameraId)
+        val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)!!.let { Dim(it.width(), it.height()) }
+        val jpeg = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(ImageFormat.JPEG).map { Dim(it.width, it.height) }
+        val excluded = if (Build.BRAND.equals("OnePlus", true) && Build.DEVICE.equals("OnePlus6T", true) && cameraId == "0") {
+            setOf(Dim(4160, 3120), Dim(4000, 3000))
+        } else {
+            emptySet()
+        }
+        Log.i(TAG, "camera $cameraId: active array $active, largest JPEG ${jpeg.maxByOrNull { it.area }}, excluded by CameraX $excluded")
+        return jpeg.filter { CameraSizes.sameShape(it, active) && it !in excluded }.maxByOrNull { it.area }!!
     }
 
     @Before
@@ -136,9 +148,9 @@ class ScanCameraControllerDeviceTest {
         assertEquals(CameraLens.BACK, s.lens)
         val still = s.stillSize!!
         val analysis = s.analysisSize!!
-        val largest = largestJpeg(s.cameraId!!)
-        Log.i(TAG, "camera ${s.cameraId}: still $still (largest JPEG $largest), analysis $analysis, sensor ${s.sensorRotationDegrees} deg")
-        assertEquals(largest, still)
+        val expected = expectedStill(s.cameraId!!)
+        Log.i(TAG, "camera ${s.cameraId}: still $still (expected $expected), analysis $analysis, sensor ${s.sensorRotationDegrees} deg")
+        assertEquals(expected, still)
         assertTrue("analysis $analysis has the still's shape", CameraSizes.sameShape(analysis, still))
         assertTrue("analysis $analysis within 1280x720", analysis.longEdge <= 1280 && analysis.shortEdge <= 720)
 
@@ -157,7 +169,7 @@ class ScanCameraControllerDeviceTest {
         val orientation = ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         Log.i(TAG, "still ${bounds.outWidth}x${bounds.outHeight}, EXIF orientation $orientation, ${file.length()} bytes")
         // CameraX leaves the pixels in sensor orientation and records the rotation in EXIF: a portrait still from a 90-degree back sensor.
-        assertEquals(largest, Dim(bounds.outWidth, bounds.outHeight))
+        assertEquals(expected, Dim(bounds.outWidth, bounds.outHeight))
         assertEquals(ExifInterface.ORIENTATION_ROTATE_90, orientation)
         assertFalse(state().capturing)
 
@@ -189,7 +201,9 @@ class ScanCameraControllerDeviceTest {
         var ok: Boolean? = null
         main { controller.toggleTorch { ok = it } }
         waitFor("torch on") { it.torchOn }
-        assertEquals(true, ok)
+        val end = System.currentTimeMillis() + 5_000
+        while (main { ok } == null && System.currentTimeMillis() < end) Thread.sleep(20)
+        assertEquals(true, main { ok })
         main { controller.setTorch(false) }
         waitFor("torch off") { !it.torchOn }
         main { controller.setTorch(true) }
@@ -234,13 +248,13 @@ class ScanCameraControllerDeviceTest {
         val orientation = ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.path, bounds)
-        Log.i(TAG, "front still ${bounds.outWidth}x${bounds.outHeight} (largest ${largestJpeg(s.cameraId!!)}), EXIF orientation $orientation")
+        Log.i(TAG, "front still ${bounds.outWidth}x${bounds.outHeight} (expected ${expectedStill(s.cameraId!!)}), EXIF orientation $orientation")
         assertTrue(
             "EXIF $orientation must not flip",
             orientation !in listOf(ExifInterface.ORIENTATION_FLIP_HORIZONTAL, ExifInterface.ORIENTATION_FLIP_VERTICAL,
                 ExifInterface.ORIENTATION_TRANSPOSE, ExifInterface.ORIENTATION_TRANSVERSE),
         )
-        assertEquals(largestJpeg(s.cameraId!!), Dim(bounds.outWidth, bounds.outHeight))
+        assertEquals(expectedStill(s.cameraId!!), Dim(bounds.outWidth, bounds.outHeight))
     }
 
     @Test

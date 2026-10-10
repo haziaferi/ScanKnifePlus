@@ -4,7 +4,6 @@ package com.haziaferi.scanknifeplus.scan.camera
 
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
-import android.graphics.ImageFormat
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -67,8 +66,9 @@ typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, heigh
  * failures show up as [ScanCameraState.error], a null picture or a false result.
  *
  * Differences from OpenScan, all deliberate:
- *  - Stills are the largest JPEG the camera offers, with [ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY], instead of ResolutionPreset.high's 720p.
- *    The preview and analysis streams take the still's shape (see [CameraSizes]) so the detected quad lands on the same field of view.
+ *  - Stills are the largest size of the sensor's shape that CameraX offers (the sensor's whole field of view), taken with
+ *    [ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY], instead of ResolutionPreset.high's 720p. The preview and analysis streams take the same shape
+ *    (see [CameraSizes]) so the detected quad lands on the same field of view.
  *  - The still flash is always off; the torch is the only light, and it is off whenever the camera is (re)opened.
  *  - Lifecycle: the camera is bound to the screen's [LifecycleOwner], so CameraX closes it when the screen stops and reopens it when it starts.
  *    OpenScan disposed its controller by hand on pause and reopened after a 500 ms delay, because a new camera2 session could race the old one's
@@ -382,9 +382,9 @@ class ScanCameraController(context: Context) {
         val selector = if (lens == CameraLens.BACK) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
         try {
             val info = selector.filter(p.availableCameraInfos).first()
-            val still = largestJpegSize(info)
+            val shape = sensorShape(info)
             val preview = Preview.Builder()
-                .setResolutionSelector(streamSelector(still, CameraSizes.PREVIEW_BOUND))
+                .setResolutionSelector(streamSelector(shape, CameraSizes.PREVIEW_BOUND))
                 .setTargetRotation(targetRotation)
                 .build()
                 .also { it.setSurfaceProvider(surfaceProvider) }
@@ -392,13 +392,13 @@ class ScanCameraController(context: Context) {
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 .setFlashMode(ImageCapture.FLASH_MODE_OFF)
                 .setJpegQuality(STILL_JPEG_QUALITY)
-                .setResolutionSelector(stillSelector())
+                .setResolutionSelector(stillSelector(shape))
                 .setTargetRotation(targetRotation)
                 .build()
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
-                .setResolutionSelector(streamSelector(still, CameraSizes.ANALYSIS_BOUND))
+                .setResolutionSelector(streamSelector(shape, CameraSizes.ANALYSIS_BOUND))
                 .setTargetRotation(targetRotation)
                 .build()
                 .also { it.setAnalyzer(analysisExecutor, ::analyze) }
@@ -515,26 +515,27 @@ class ScanCameraController(context: Context) {
         stateListener?.invoke(next)
     }
 
-    private fun stillSelector(): ResolutionSelector = ResolutionSelector.Builder()
+    private fun stillSelector(shape: Dim?): ResolutionSelector = ResolutionSelector.Builder()
         .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-        .setResolutionFilter(ResolutionFilter { sizes, _ -> CameraSizes.stillPreference(sizes.map { it.toDim() }).map { it.toSize() } })
+        .setResolutionFilter(ResolutionFilter { sizes, _ -> CameraSizes.stillPreference(sizes.map { it.toDim() }, shape).map { it.toSize() } })
         .build()
 
-    private fun streamSelector(still: Dim?, bound: Dim): ResolutionSelector {
+    private fun streamSelector(shape: Dim?, bound: Dim): ResolutionSelector {
         val builder = ResolutionSelector.Builder()
             .setResolutionStrategy(ResolutionStrategy(Size(bound.width, bound.height), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
-        if (still != null) {
+        if (shape != null) {
             builder.setResolutionFilter(ResolutionFilter { sizes, _ ->
-                CameraSizes.streamPreference(sizes.map { it.toDim() }, still, bound).map { it.toSize() }
+                CameraSizes.streamPreference(sizes.map { it.toDim() }, shape, bound).map { it.toSize() }
             })
         }
         return builder.build()
     }
 
     @OptIn(markerClass = [ExperimentalCamera2Interop::class])
-    private fun largestJpegSize(info: CameraInfo): Dim? = try {
-        val map = Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-        CameraSizes.largest(map?.getOutputSizes(ImageFormat.JPEG).orEmpty().map { it.toDim() })
+    private fun sensorShape(info: CameraInfo): Dim? = try {
+        Camera2CameraInfo.from(info).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+            ?.takeIf { it.width() > 0 && it.height() > 0 }
+            ?.let { Dim(it.width(), it.height()) }
     } catch (e: Exception) {
         null
     }
