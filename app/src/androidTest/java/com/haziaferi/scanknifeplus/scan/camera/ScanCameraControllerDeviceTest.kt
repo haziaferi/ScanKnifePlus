@@ -25,6 +25,7 @@ import com.haziaferi.scanknifeplus.scan.ScanFiles
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -33,6 +34,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -204,15 +206,18 @@ class ScanCameraControllerDeviceTest {
 
     @Test
     fun aPictureIsRefusedUntilTheCameraIsOpen() {
-        // In one main-thread turn: bound, but CameraX has not opened the camera yet.
-        val early = runBlocking {
-            withContext(Dispatchers.Main) {
-                controller.bind(owner, surfaceProvider, CameraLens.BACK)
-                assertEquals(CameraStatus.OPENING, controller.state.status)
-                controller.takePicture(shotDir)
+        // Press the shutter the moment the use cases are bound to a camera that CameraX has not opened yet (CameraX would queue that capture).
+        val result = CompletableDeferred<File?>()
+        main {
+            controller.stateListener = { s ->
+                if (s.lens != null && s.status == CameraStatus.OPENING && result.isActive) {
+                    controller.stateListener = null
+                    GlobalScope.launch(Dispatchers.Main.immediate) { result.complete(controller.takePicture(shotDir)) }
+                }
             }
+            controller.bind(owner, surfaceProvider, CameraLens.BACK)
         }
-        assertEquals(null, early)
+        assertEquals(null, runBlocking { withTimeout(10_000) { result.await() } })
         assertFalse("a refused shot leaves nothing in flight", state().capturing)
         waitFor("the camera to open") { it.ready }
         assertNotNull(takePicture())
