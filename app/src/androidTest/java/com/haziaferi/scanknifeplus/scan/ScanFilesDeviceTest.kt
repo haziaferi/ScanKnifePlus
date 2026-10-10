@@ -30,21 +30,18 @@ class ScanFilesDeviceTest {
     }
 
     @Test
-    fun libraryAndShareFilesGetReadableContentUris() {
-        val uri = ScanFiles.contentUri(context, file(ScanFiles.libraryDir(context), "doc/page.jpg"))
-        assertEquals("content", uri.scheme)
-        assertEquals("/scans/doc/page.jpg", uri.path)
-        // Reading through the resolver proves the manifest authority and paths, not just the URI string.
-        context.contentResolver.openInputStream(uri)!!.use { assertEquals("x", it.readBytes().decodeToString()) }
-
+    fun shareFilesGetReadableContentUris() {
         val shared = ScanFiles.contentUri(context, file(ScanFiles.shareDir(context), "scan.pdf", "y"))
+        assertEquals("content", shared.scheme)
         assertEquals("/shared/scan.pdf", shared.path)
+        // Reading through the resolver proves the manifest authority and paths, not just the URI string.
         context.contentResolver.openInputStream(shared)!!.use { assertEquals("y", it.readBytes().decodeToString()) }
     }
 
     @Test
-    fun filesOutsideTheTwoFoldersAreNotExposed() {
+    fun filesOutsideTheShareFolderAreNotExposed() {
         val outside = listOf(
+            file(ScanFiles.libraryDir(context), "doc/page.jpg"),
             file(context.filesDir, "outside.txt"),
             file(context.filesDir, "scans2/x.txt"), // shares the "scans" prefix but is a different folder
             file(context.cacheDir, "other.txt"),

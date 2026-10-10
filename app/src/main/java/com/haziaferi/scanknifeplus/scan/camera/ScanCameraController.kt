@@ -59,35 +59,28 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /**
- * Receives each analysis frame's Y (luma) plane in sensor orientation: [yPlane] holds [height] rows of [rowStride] bytes (the last row may be
- * only [width] long), pixel stride 1. Called on the analysis thread; the buffer is only valid during the call, so copy what you keep.
+ * Receives each analysis frame's Y (luma) plane in sensor orientation, from the camera facing [lens]: [yPlane] holds [height] rows of [rowStride]
+ * bytes (the last row may be only [width] long), pixel stride 1, and [rotationDegrees] turn it upright for a portrait screen (the sensor's mount).
+ * Called on the analysis thread; the buffer is only valid during the call.
  */
-typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int) -> Unit
+typealias FrameListener = (yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int, rotationDegrees: Int, lens: CameraLens) -> Unit
 
 /**
  * The document scanner's camera, without any UI: CameraX preview (onto a surface the UI supplies), a low-resolution YUV analysis stream for live
- * detection, and full-resolution stills written to [ScanFiles.stagingDir]. Ports the camera side of OpenScan's live scan screen; see the
- * differences listed below. Every method must be called on the main thread; state changes reach [stateListener] there too. Nothing here throws:
- * failures show up as [ScanCameraState.error], a null picture or a false result. Call [release] when done with it: it owns an analysis thread.
+ * detection, and full-resolution stills, which keep the sensor's pixel layout with the rotation in EXIF. Call every method on the main thread,
+ * where [stateListener] is called too; nothing throws (failures show up in [ScanCameraState.error] or a null or false result), and [release]
+ * stops the analysis thread.
  *
  * Differences from OpenScan, all deliberate:
- *  - Stills are the largest size of the sensor's shape that CameraX offers (the sensor's whole field of view), taken with
- *    [ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY], instead of ResolutionPreset.high's 720p. The preview and analysis streams take the same shape
- *    (see [CameraSizes]) so the detected quad lands on the same field of view.
+ *  - Stills are the largest size of the sensor's shape ([CameraSizes]) at [ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY], not 720p, and the
+ *    preview and analysis streams take the same shape, so the detected quad covers the photo's field of view.
  *  - The still flash is always off; the torch is the only light, and it is off whenever the camera is (re)opened.
- *  - Lifecycle: the camera is bound to the screen's [LifecycleOwner], so CameraX closes it when the screen stops and reopens it when it starts.
- *    OpenScan disposed its controller by hand on pause and reopened after a 500 ms delay, because a new camera2 session could race the old one's
- *    close. CameraX serialises close and reopen on its own camera thread (the same device object is reused), so no delay is needed. OpenScan
- *    also released on `inactive` (onPause); CameraX keeps the camera while the screen is paused but visible, e.g. in multi-window.
- *  - The analysis stream keeps running while a picture is taken. OpenScan stopped its image stream around takePicture; CameraX runs analysis and
- *    capture as separate streams of one session, so nothing has to stop (the session's stream combination is configured for both).
- *  - OpenScan's open timeout and single retry are kept ([OpenWatchdog]): an open that takes over [OPEN_TIMEOUT_MS] is released and bound again
- *    at once, and only a second timeout is reported, as [CameraError.OPEN_TIMEOUT]. CameraX keeps trying after that, and the error clears if
- *    the camera opens. No retry is made while CameraX reports a specific error (another app holds the camera, say): it reopens by itself.
- *  - Front-camera stills are not mirrored, so a document photographed with it reads the right way round. CameraX 1.4.2 already behaves so
- *    (checked on the OnePlus 6T: EXIF ROTATE_270, no flip); the metadata pins it in case a later version mirrors by default.
- *
- * Stills keep the sensor's pixel layout and carry the rotation in EXIF (CameraX's default when nothing is cropped); ImageCodec applies it.
+ *  - The camera follows the screen's [LifecycleOwner]: CameraX serialises close and reopen, so OpenScan's manual dispose on pause and 500 ms
+ *    reopen delay are not needed, and the camera stays open while the screen is paused but visible (multi-window).
+ *  - Analysis keeps running while a picture is taken (one CameraX session runs both streams); OpenScan stopped its image stream.
+ *  - OpenScan's open timeout and single retry are kept ([OpenWatchdog]); only a second timeout is reported, as [CameraError.OPEN_TIMEOUT], and
+ *    no retry is made while CameraX reports a specific error, since it reopens by itself.
+ *  - Front-camera stills are pinned unmirrored, so a document reads the right way round (CameraX 1.4.2's default on the OnePlus 6T too).
  */
 class ScanCameraController(context: Context) {
     companion object {
@@ -107,7 +100,7 @@ class ScanCameraController(context: Context) {
     private val mainExecutor = ContextCompat.getMainExecutor(appContext)
     private val ioExecutor = Dispatchers.IO.asExecutor()
 
-    // A daemon, so a controller that is never released cannot keep the process alive; release() still has to be called to stop it.
+    // A daemon, so a controller that is never released cannot keep the process alive.
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor { Thread(it, "ScanCameraAnalysis").apply { isDaemon = true } }
 
     /** Current state; replaced, never mutated. */
@@ -167,9 +160,9 @@ class ScanCameraController(context: Context) {
     }
 
     /**
-     * Opens the camera for [owner]'s lifecycle, facing [lens] (or the other way if the device has no such camera, as OpenScan fell back to its
-     * first camera). [surfaceProvider] receives the preview; pass null to run without one (analysis and stills still work). Replaces any
-     * earlier binding. Fails cleanly, with [CameraError.PERMISSION_DENIED], if the CAMERA permission is missing: ask for it before calling.
+     * Opens the camera for [owner]'s lifecycle, facing [lens] (or the other way if there is no such camera, as OpenScan fell back to its first),
+     * replacing any earlier binding; [surfaceProvider] receives the preview, or null runs without one. Without the CAMERA permission it fails
+     * cleanly with [CameraError.PERMISSION_DENIED]: ask for it before calling.
      */
     @MainThread
     fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?, lens: CameraLens = CameraLens.BACK) =
@@ -269,14 +262,10 @@ class ScanCameraController(context: Context) {
     }
 
     /**
-     * Takes a full-resolution still and writes it to a new, uniquely named file in [dir] (a scan session's own folder under
-     * [ScanFiles.stagingDir]; created if missing). Returns the file as soon as it is written: processing the page is the caller's business, so the
-     * shutter never waits for it. Returns null if the camera is not open and streaming ([ScanCameraState.ready]), a picture is already being
-     * taken (OpenScan ignored a second press), [dir] cannot be created, or the capture fails.
-     *
-     * Cancelling the caller does not stop the camera: [ScanCameraState.capturing] stays set, so the shutter and [switchLens] stay blocked, until
-     * CameraX reports the shot saved or failed, and a shot that arrives after the cancellation is deleted. Runs on the main thread whatever the
-     * caller's dispatcher; the file system work happens on an IO thread.
+     * Takes a full-resolution still into a new file in [dir] (a scan session's folder under [ScanFiles.stagingDir], created if missing) and
+     * returns it once written; null if the camera is not [ScanCameraState.ready], a picture is already being taken (OpenScan ignored a second
+     * press), or the capture fails. Cancelling the caller leaves [ScanCameraState.capturing] set until CameraX is done, and a shot arriving
+     * after the cancellation is deleted.
      */
     suspend fun takePicture(dir: File): File? = withContext(Dispatchers.Main.immediate) {
         val capture = imageCapture
@@ -442,7 +431,7 @@ class ScanCameraController(context: Context) {
                 .setResolutionSelector(streamSelector(shape, CameraSizes.ANALYSIS_BOUND))
                 .setTargetRotation(targetRotation)
                 .build()
-                .also { it.setAnalyzer(analysisExecutor, ::analyze) }
+                .also { it.setAnalyzer(analysisExecutor) { image -> analyze(image, lens) } }
             this.preview = preview
             this.imageCapture = capture
             this.imageAnalysis = analysis
@@ -535,11 +524,12 @@ class ScanCameraController(context: Context) {
         }
     }
 
-    private fun analyze(image: ImageProxy) {
+    private fun analyze(image: ImageProxy, lens: CameraLens) {
         try {
             val listener = frameListener ?: return
             val y = image.planes[0]
-            listener(y.buffer.apply { rewind() }, y.rowStride, image.width, image.height)
+            // With targetRotation ROTATION_0 this is the sensor's mount relative to the portrait screen.
+            listener(y.buffer.apply { rewind() }, y.rowStride, image.width, image.height, image.imageInfo.rotationDegrees, lens)
         } catch (e: Exception) {
             Log.w(TAG, "Frame listener failed", e)
         } finally {

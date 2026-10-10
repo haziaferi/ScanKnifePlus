@@ -19,22 +19,20 @@ import java.util.Locale
 import java.util.TimeZone
 import org.json.JSONObject
 
+/** What [ScanLibrary.addCapture] stored: the updated [document] and the id of the page it added, wherever that page now is. */
+data class AddedPage(val document: ScanDocument, val pageId: String)
+
 /** Stores a capture into the given files; [CaptureStore.store] in the app, a fake in tests. */
 fun interface CaptureWriter {
     fun store(source: ImageSource, quad: Quad?, pageDest: File, originalDest: File?): StoredCapture?
 }
 
 /**
- * The scan library: one folder per document under [root], each holding its page images and a `document.json` record. Plain files and JSON
- * rather than OpenScan's SQLite database, so there is no schema or migration and a document is self-contained on disk.
- *
- * Safety: records are synced to disk and renamed into place, and one left mid-write is recovered from its temp file; folders are claimed
- * atomically; a deleted document is first renamed to a tombstone, so it disappears whole; page file names read from a record must stay inside
- * their folder. All access, from any instance, goes through one process-wide lock, which is not held while a capture is decoded and encoded.
- * What a crash leaves behind (stray page files, temp files, a folder whose record was never written) is removed by [sweep].
- *
- * Every change updates the document's modified time (OpenScan only touched it when pages were added). Every method is blocking: call off the
- * main thread. Writing a record can fail with IOException (for example when storage is full).
+ * The scan library: one folder per document under [root], each holding its page images and a `document.json` record (plain files rather than
+ * OpenScan's SQLite database, so a document is self-contained on disk). Records are synced and renamed into place, a deleted document goes
+ * through an atomic tombstone rename, and what a crash leaves behind is removed by [sweep]; all access, from any instance, goes through one
+ * process-wide lock that is not held while a capture is decoded and encoded. Every change updates the modified time (OpenScan's only did on new
+ * pages); every method is blocking, and writing a record can fail with IOException.
  */
 class ScanLibrary(
     private val root: File,
@@ -71,7 +69,8 @@ class ScanLibrary(
 
     /**
      * Creates an empty document named [defaultName] for the current time, made unique if a document already has it. It exists from now on, unlike
-     * OpenScan's, which appeared with its first page: a caller whose first scan session stores no page should [delete] it.
+     * OpenScan's, which appeared with its first page: a caller whose first scan session stores no page should [delete] it. Throws IOException if
+     * its folder or record cannot be written.
      */
     fun create(name: String? = null): ScanDocument = synchronized(LOCK) {
         root.mkdirs()
@@ -79,9 +78,11 @@ class ScanLibrary(
         val base = defaultName(now, timeZone)
         var id = base
         var n = 2
-        // mkdir is atomic and fails if the folder exists, so two creations can never share a folder.
-        while (!File(root, id).mkdir()) {
-            if (!root.isDirectory) throw IOException("Cannot create the library at $root")
+        // mkdir is atomic, so two creations never share a folder; only a name that is taken moves on to the next suffix.
+        while (true) {
+            val dir = File(root, id)
+            if (dir.mkdir()) break
+            if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
             id = "$base-${n++}"
         }
         val doc = ScanDocument(id, name?.trim()?.takeIf { it.isNotEmpty() }, now, now, emptyList())
@@ -97,13 +98,14 @@ class ScanLibrary(
     /**
      * Stores a capture or picked image as a new last page of document [id]: the page cropped to [quad] (fractional portrait coordinates, or null
      * for the whole image) and, if [keepOriginal], the uncropped original. A [filter] other than Original is then applied, as OpenScan applies its
-     * default filter to new pages; if that fails the page stays unfiltered. Returns the updated document, or null if the document does not exist,
-     * no page could be stored, or the record could not be updated; in every null case the new files are removed again.
+     * default filter to new pages; if that fails the page stays unfiltered. Returns the updated document with the new page's id, or null if the
+     * document does not exist, no page could be stored, or the record could not be updated; in every null case the new files are removed again.
      */
-    fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean, filter: String? = null): ScanDocument? {
+    fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean, filter: String? = null): AddedPage? {
         val (added, pageId) = addPage(id, source, quad, keepOriginal) ?: return null
-        if (filter == null || DocumentFilters.byName(filter) == DocumentFilters.default) return added
-        return applyFilter(id, pageId, filter) ?: document(id)
+        if (filter == null || DocumentFilters.byName(filter) == DocumentFilters.default) return AddedPage(added, pageId)
+        val doc = applyFilter(id, pageId, filter) ?: document(id) ?: return null
+        return AddedPage(doc, pageId)
     }
 
     private fun addPage(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean): Pair<ScanDocument, String>? {
@@ -144,9 +146,8 @@ class ScanLibrary(
     /**
      * Applies [filterName] to page [pageId] without ever losing the unfiltered page, as OpenScan does: the first filter keeps the current image
      * as the page's unfiltered copy, every later filter is computed from that copy (so filters never compound), and Original (or null) restores
-     * the copy. An unknown [filterName] means Original, as in OpenScan. Returns the updated document, the unchanged document when there is
-     * nothing to do, or null if the page does not exist, the
-     * filter could not be computed, or the page changed meanwhile; on null the page is left exactly as it was.
+     * the copy; an unknown [filterName] means Original. Returns the updated (or, with nothing to do, unchanged) document, or null, leaving the
+     * page as it was, if the page does not exist, the filter could not be computed, or the page changed meanwhile.
      */
     fun applyFilter(id: String, pageId: String, filterName: String?): ScanDocument? {
         val filter = DocumentFilters.byName(filterName)
@@ -178,11 +179,10 @@ class ScanLibrary(
     }
 
     /**
-     * Re-crops page [pageId] to [quad] (fractions of the source image's upright width and height), turned clockwise by [quarterTurns], as
-     * OpenScan's crop step does: the crop comes from the kept original when there is one (else the unfiltered copy, else the page), so repeated
-     * crops never eat into an earlier one; a page with no original first gets one, made from its unfiltered image at the original cap; the new
-     * page is fitted to the page cap and starts filter-free. Returns the updated document, or null if nothing changed. Where OpenScan falls back to
-     * storing an unnormalized copy when normalizing fails, the whole re-crop fails here and the page stays as it was.
+     * Re-crops page [pageId] to [quad] (fractions of the source's upright size), turned clockwise by [quarterTurns], as OpenScan's crop step does:
+     * from the kept original (else the unfiltered copy, else the page), so crops never compound, giving a page without an original one first; the
+     * new page is fitted to the page cap and filter-free. Returns the updated document, or null if nothing changed; where OpenScan stores an
+     * unnormalized copy when normalizing fails, the re-crop fails here.
      */
     fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int = 0): ScanDocument? {
         val (_, page) = snapshot(id, pageId) ?: return null
@@ -282,10 +282,9 @@ class ScanLibrary(
     }
 
     /**
-     * Deletes page [pageId] and every file it owns, returning the updated document. Deleting the last page deletes the document too, as OpenScan
-     * does, and returns null, as does an unknown document or page. If the document could not be deleted it is returned unchanged. With
-     * [keepDocument] the document stays even when it is left empty (a scan session taking back its own pages must never delete a document it
-     * did not create).
+     * Deletes page [pageId] and its files, returning the updated document. Deleting the last page deletes the document too, as OpenScan does, and
+     * returns null, as does an unknown document or page (a document that could not be deleted comes back unchanged). [keepDocument] keeps even an
+     * emptied document, for a scan session taking back its own pages.
      */
     fun deletePage(id: String, pageId: String, keepDocument: Boolean = false): ScanDocument? = synchronized(LOCK) {
         val doc = document(id) ?: return null
@@ -311,25 +310,11 @@ class ScanLibrary(
     }
 
     /**
-     * Removes what a crash or a killed process can leave in the library, and returns how many files and folders it removed. Blocking, and holds
-     * the library lock while it runs; [documents] runs it once per process, so the app does not need to call it.
-     *
-     * - Tombstones (documents whose deletion was interrupted) go whole.
-     * - In a document with a readable record, a file goes only if it has a name the library makes (`<stamp>.jpg`, `orig_<stamp>.jpg`,
-     *   `unfilt_<stamp>.jpg`, any of those with `.tmp`, or the record's temp file), the record does not name it, no edit in progress in this
-     *   process holds it, and it was last modified more than a day ago. Other files and folders are never touched.
-     * - A folder with no readable record goes only if it holds nothing but a record or record temp file that is empty, or was read in full and
-     *   does not even start like JSON (what a crash during [create] can leave), and everything in it (for an empty folder, the folder) is more
-     *   than a day old. A record that starts like JSON but does not parse is kept, with its folder: it may be damaged or from a newer app
-     *   version. A folder with any page image, a record that could not be read (an I/O error may be transient), or anything else in it is
-     *   kept, as are folders starting with a dot.
-     *
-     * Why edits in progress are safe: page files are only created under the lock (by [reserve], and by the reservation for a new page in
-     * [addPage]), and are held from that moment until the record names them or they are deleted again; the sweep runs entirely under the same
-     * lock, so it never sees a file that is reserved but not yet held, or a record half-way through being written ([create] makes its folder and
-     * writes its record in one locked step). Holds live in memory, so they cannot protect an edit running in another process; there the age
-     * limit does (an edit takes seconds), and it also keeps the sweep away from files whose modification time is in the future or unknown. A
-     * crash in this process ends every hold with it, and leaves only files that no record will ever name.
+     * Removes what a crash or a killed process can leave in the library and returns how many files and folders it removed; blocking, under the
+     * library lock, and run once per process by [documents]. It deletes tombstones, files with a library-made name that no record names and no
+     * edit in this process holds, and folders whose only content is an empty or non-JSON record (a crash during [create]), the last two only when
+     * more than a day old; a record that starts like JSON but does not parse is kept with its folder. Edits in this process are safe because their
+     * files are created and held under the same lock; the age limit covers edits in another process.
      */
     @WorkerThread
     fun sweep(): Int = sweepAndRead().first

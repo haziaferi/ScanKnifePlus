@@ -18,10 +18,9 @@ fun interface PdfAssembler {
 }
 
 /**
- * OpenScan's createPdf with pdfbox: each JPEG is embedded as it is (no decode or re-encode) and drawn where [PdfLayout] puts it. The document is
- * buffered in temporary files under the work folder rather than in memory, so a long scan cannot run the app out of heap. Failures, including
- * running out of memory, return false. Pages are expected as the scan library stores them: upright with no EXIF orientation, and 3-component
- * (colour) JPEGs, since pdfbox labels every JPEG DeviceRGB whatever its component count.
+ * OpenScan's createPdf with pdfbox: each JPEG is embedded as it is and drawn where [PdfLayout] puts it, buffered in temp files under the work
+ * folder so a long scan cannot run out of heap; any failure returns false. Pages must be as the library stores them: upright without EXIF
+ * orientation, and 3-component JPEGs, since pdfbox labels every JPEG DeviceRGB.
  */
 object PdfBoxAssembler : PdfAssembler {
     override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File): Boolean = try {

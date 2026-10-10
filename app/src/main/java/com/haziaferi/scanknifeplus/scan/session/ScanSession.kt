@@ -51,31 +51,18 @@ enum class SessionEnd { FINISHED, CANCELLED }
 data class ScanSessionResult(val documentId: String?, val pagesAdded: Int, val end: SessionEnd)
 
 /**
- * One scan session: the non-visual part of OpenScan's live-scan screen, between the camera and the scan library. Camera shots ([capture]) and
- * gallery picks ([import]) join one queue and are stored, in the order they were handed in, on one background thread through
- * [ScanLibrary.addCapture], each as a new last page of the session's document with the session's [keepOriginal] and [defaultFilter].
- *
- * The session fills an existing document ([documentId] given: pages are added after the ones it has) or a new one, created when the first page
- * is stored, so a session that stores nothing leaves no document behind. Taking pages back never deletes the document: one the session did
- * not create is never deleted at all, even when it is left empty, and one it created stays (with a stable id) until the session ends, which
- * deletes it if it has no page.
+ * One scan session: the non-visual part of OpenScan's live-scan screen. Camera shots ([capture]) and gallery picks ([import]) join one queue
+ * and are stored in that order on a background thread, each as a new last page of an existing document ([documentId]) or of a new one created
+ * with the first stored page; a document the session did not create is never deleted, and one it created goes at the end only if left empty.
  *
  * Differences from OpenScan, each deliberate:
- *  - The shutter never waits for a page to be encoded. OpenScan's `_capturing` gate held the shutter, auto-capture and Done until the last shot
- *    was processed; here [capture] only queues, and the shots are worked off in the background in shutter order.
- *  - Pages go into the document as they are stored, not all at once when the screen is closed, so the document (and [state]) grows while the
- *    user frames the next page, and a page already stored survives the process being killed.
- *  - One attempt per shot: a shot that cannot be stored is reported in [ScanSessionState.failures] right away. OpenScan staged it raw, tried
- *    again when the document adopted it, and then skipped it silently.
+ *  - The shutter never waits for a page to be encoded (OpenScan's `_capturing` gate held shutter, auto-capture and Done until the last shot).
+ *  - Pages go into the document as they are stored, not when the screen closes, so a stored page survives the process being killed.
+ *  - A shot that cannot be stored is reported in [ScanSessionState.failures] at once; OpenScan retried it later and then skipped it silently.
  *  - Each session has its own staging folder, [shotDir], deleted when the session ends; OpenScan wiped the whole cache directory.
  *
- * Shot files: the camera writes its shots into [shotDir]. [ScanLibrary.addCapture] only reads its source, so the session deletes each camera
- * shot itself once it is stored, has failed or was undone; picked images are only read. If the process dies, shots still in the queue are
- * lost (their folder is swept by the next [start]); pages stored before that stay in the document.
- *
- * [capture], [import] and [undoLast] return at once and may be called from the main thread; [finish], [cancel] and [close] block until the
- * queue is done. All methods are thread-safe. A session must be ended: [close] (cancel unless already ended) lets `use {}` make sure its
- * thread and folder do not outlive it.
+ * Camera shots are deleted once stored, failed or undone; picked images are only read. [capture], [import] and [undoLast] return at once,
+ * [finish], [cancel] and [close] block until the queue is done, and all methods are thread-safe; a session must be ended ([close] suits `use {}`).
  */
 class ScanSession(
     private val library: ScanLibrary,
@@ -160,17 +147,15 @@ class ScanSession(
     }
 
     /**
-     * Ends the session (Done): waits for every queued shot, deletes [shotDir], deletes the document if this session created it and it has no
-     * page, and returns the document with the number of pages kept. Shots handed in afterwards are refused. If the session was already ended,
-     * the first ending stands (see [ScanSessionResult.end]). Blocking.
+     * Ends the session (Done): waits for every queued shot, deletes [shotDir] and, if this session created it and it has no page, the document,
+     * and returns the document with the number of pages kept. Later shots are refused, and an earlier ending stands. Blocking.
      */
     @WorkerThread
     fun finish(): ScanSessionResult = end(SessionEnd.FINISHED)
 
     /**
-     * Ends the session without keeping it (back without Done). As in OpenScan, where leaving the screen without Done returned no pages, every
-     * page this session stored is removed again and a document it created is deleted; a document it did not create, and the pages it had
-     * before, are kept. If the session was already ended, the first ending stands (see [ScanSessionResult.end]). Blocking.
+     * Ends the session without keeping it (back without Done): as in OpenScan, every page this session stored is removed again and a document it
+     * created is deleted, while an existing document keeps its earlier pages. An earlier ending stands. Blocking.
      */
     @WorkerThread
     fun cancel(): ScanSessionResult = end(SessionEnd.CANCELLED)
@@ -215,7 +200,7 @@ class ScanSession(
         val skip = synchronized(lock) { entry.undone }
         var pageId: String? = null
         if (!skip) {
-            // Nothing in the pipeline should throw, but a task that did would leave its shot pending for good.
+            // Any exception (create() throws when no document can be made) is a failed shot; a task that threw would leave it pending for good.
             pageId = try {
                 store(entry)
             } catch (e: Exception) {
@@ -235,19 +220,14 @@ class ScanSession(
         if (pageId != null && undone) removeUndone(entry)
     }
 
-    /** Stores [entry] as the new last page of the session's document, creating that document on the first page; the new page's id or null. */
+    /** Stores [entry] as a new page of the session's document, creating that document on the first page; the new page's id or null. */
     private fun store(entry: Entry): String? {
-        val id = docId ?: try {
-            library.create().id.also {
-                docId = it
-                created = true
-            }
-        } catch (e: IOException) {
-            return null
+        val id = docId ?: library.create().id.also {
+            docId = it
+            created = true
         }
-        val doc = library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter) ?: return null
-        // addCapture appends, and only this worker adds pages for this session, so the new page is the last.
-        return doc.pages.lastOrNull()?.id
+        val added = library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter) ?: return null
+        return added.pageId.takeIf { pageId -> added.document.pages.any { it.id == pageId } }
     }
 
     /**

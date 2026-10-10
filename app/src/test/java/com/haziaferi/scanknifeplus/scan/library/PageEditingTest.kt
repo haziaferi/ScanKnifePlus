@@ -69,7 +69,7 @@ class PageEditingTest {
 
     private fun newPage(keepOriginal: Boolean = true): Pair<String, ScanPage> {
         val doc = library.create()
-        return doc.id to library.addCapture(doc.id, anySource, null, keepOriginal)!!.pages.single()
+        return doc.id to library.addCapture(doc.id, anySource, null, keepOriginal)!!.document.pages.single()
     }
 
     private fun text(id: String, name: String?) = library.file(id, name!!).readText()
@@ -179,10 +179,10 @@ class PageEditingTest {
     @Test
     fun `new pages get the default filter, and Original means none`() {
         val doc = library.create()
-        val filtered = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "Auto")!!.pages.single()
+        val filtered = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "Auto")!!.document.pages.single()
         assertEquals("Auto", filtered.filter)
         assertEquals("Auto(page)", text(doc.id, filtered.image))
-        val plain = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "Original")!!.pages.last()
+        val plain = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "Original")!!.document.pages.last()
         assertNull(plain.filter)
         assertNull(plain.unfiltered)
     }
@@ -191,7 +191,7 @@ class PageEditingTest {
     fun `a default filter that fails leaves the new page unfiltered`() {
         val doc = library.create()
         images.failNext = true
-        val page = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "B&W")!!.pages.single()
+        val page = library.addCapture(doc.id, anySource, null, keepOriginal = false, filter = "B&W")!!.document.pages.single()
         assertNull(page.filter)
         assertEquals("page", text(doc.id, page.image))
         assertEquals(page.files.toSet(), folderFiles(doc.id))

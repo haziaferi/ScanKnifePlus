@@ -25,9 +25,9 @@ import java.io.IOException
 data class SavedPdf(val uri: Uri, val pages: Int)
 
 /**
- * The two ways a scan leaves the app, kept apart as in OpenScan. [save] writes to a location the user picked with the system file picker
- * (ACTION_CREATE_DOCUMENT), so nothing is written to a hard-coded Downloads folder and nothing is overwritten, and records the PDF in History.
- * [share] writes a throwaway copy under `cache/shared/` for a share sheet. Both block: call off the main thread.
+ * The two ways a scan leaves the app, kept apart as in OpenScan: [save] writes where the user picked with the system file picker (never a
+ * hard-coded Downloads folder) and records the PDF in History, and [share] writes a throwaway copy under `cache/shared/` for a share sheet.
+ * Both block.
  */
 class ScanExport(
     private val context: Context,
@@ -108,9 +108,9 @@ class ScanExport(
         private const val TAG = "ScanExport"
         private const val SHARE_LIFETIME_MILLIS = 24L * 60 * 60 * 1000
 
-        /** An ACTION_SEND intent for a PDF from [share], with read access granted to the receiving app; wrap it in a chooser to show it. */
-        fun shareIntent(uri: Uri, subject: String): Intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/pdf"
+        /** An ACTION_SEND intent for a file such as a PDF from [share], with read access granted to the receiving app; wrap it in a chooser. */
+        fun shareIntent(uri: Uri, subject: String, mimeType: String = "application/pdf"): Intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, subject)
             // The grant reaches the receiving app through ClipData; EXTRA_STREAM alone is not enough on every Android version.
