@@ -73,7 +73,8 @@ class LiveScanPipeline internal constructor(
     private val lowLightDetector = LowLightDetector()
     private val detector: QuadDetector
 
-    // Analysis thread only.
+    // Analysis thread only. Only kept frames (at most one in three) are copied: about 1 MB at the 1280x720 analysis size, well under a millisecond,
+    // and it lets FrameAdapter stay the parity-tested ByteArray port.
     private var frameCounter = 0
     private var frameCopy = ByteArray(0)
 
@@ -175,8 +176,13 @@ class LiveScanPipeline internal constructor(
         shutterOpen = false
     }
 
-    /** The capture is over (its page is processed, or it failed): manual and auto-capture are allowed again and frames resume. */
+    /**
+     * The capture is over (its page is processed, or it failed): manual and auto-capture are allowed again and frames resume. A capture that ended
+     * without [notifyCaptured] (the still failed) still starts the auto-capture cooldown. OpenScan left its stream stopped after a failure; with
+     * frames resuming, an unchanged scene would otherwise trigger the next auto-capture at once, and a camera that keeps failing would loop.
+     */
     fun endCapture() = synchronized(lock) {
+        if (capturing && shutterOpen && !disposed) autoCapture.notifyCaptured()
         capturing = false
         shutterOpen = false
     }
@@ -196,15 +202,18 @@ class LiveScanPipeline internal constructor(
     }
 
     // Called by the smoother, under lock.
+    // The disposed checks cover a listener that calls dispose() from inside a callback on the same thread (the lock is reentrant).
     private fun onSmoothedQuadChanged(quad: Quad?) {
+        if (disposed) return
         smoothedQuad = quad
         listener.onSmoothedQuadChanged(quad)
-        if (zooming) return
+        if (zooming || disposed) return
         autoCapture.onQuadUpdate(quad)
     }
 
     // Called by the auto-capture detector, under lock.
     private fun onImminentChanged(imminent: Boolean) {
+        if (disposed) return
         isAutoCaptureImminent = imminent
         listener.onAutoCaptureImminentChanged(imminent)
     }

@@ -46,9 +46,11 @@ class LiveScanPipelineTest {
         val quads = mutableListOf<Quad?>()
         val captures = mutableListOf<CaptureRequest>()
         var onCapture: (CaptureRequest) -> Unit = {}
+        var onQuad: () -> Unit = {}
         override fun onSmoothedQuadChanged(quad: Quad?) {
             quads += quad
             events += "quad"
+            onQuad()
         }
         override fun onLowLightChanged(lowLight: Boolean) {
             events += "lowLight=$lowLight"
@@ -208,11 +210,40 @@ class LiveScanPipelineTest {
     }
 
     @Test
-    fun `a failed capture ends without a cooldown`() {
+    fun `a failed capture still starts the cooldown, so a failing camera cannot loop`() {
         detect(doc, times = 8)
-        pipeline.endCapture()
-        detect(doc)
+        pipeline.endCapture() // no notifyCaptured: the still failed
+        assertFalse(pipeline.isCapturing)
+        detect(doc, times = 19) // 1.9 s, still inside the 2 s cooldown
+        assertEquals(1, recorder.captures.size)
+        detect(doc, times = 9)
+        assertEquals("auto-capture works again after the cooldown", 2, recorder.captures.size)
+    }
+
+    @Test
+    fun `a listener may finish the capture from inside onAutoCapture`() {
+        recorder.onCapture = {
+            pipeline.notifyCaptured()
+            pipeline.endCapture()
+        }
+        detect(doc, times = 8)
+        assertEquals(1, recorder.captures.size)
+        assertFalse(pipeline.isCapturing)
+        assertNull("the track was dropped by notifyCaptured", pipeline.smoothedQuad)
+        detect(doc, times = 19)
+        assertEquals("the cooldown from notifyCaptured holds", 1, recorder.captures.size)
+        detect(doc, times = 9)
         assertEquals(2, recorder.captures.size)
+    }
+
+    @Test
+    fun `nothing is published after a listener disposes the pipeline from a callback`() {
+        // The first steady quad is the one that makes auto-capture imminent; disposing in its callback must suppress that event and the rest.
+        recorder.onQuad = { pipeline.dispose() }
+        detect(doc, times = 10)
+        assertEquals(listOf("quad"), recorder.events)
+        assertEquals(0, recorder.captures.size)
+        assertTrue(detector.disposed)
     }
 
     @Test
