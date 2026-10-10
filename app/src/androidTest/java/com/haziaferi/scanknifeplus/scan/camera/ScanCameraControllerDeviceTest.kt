@@ -59,15 +59,15 @@ class ScanCameraControllerDeviceTest {
     private lateinit var owner: TestOwner
     private val readers = ArrayList<ImageReader>()
 
-    /** Stands in for a scan session's own staging folder; created by takePicture. */
-    private val shotDir by lazy { File(ScanFiles.stagingDir(context), "session-test") }
+    /** Stands in for a scan session's own staging folder. */
+    private lateinit var shotDir: File
 
     private class TestOwner : LifecycleOwner {
         val registry = LifecycleRegistry(this)
         override val lifecycle: Lifecycle get() = registry
     }
 
-    private data class Frame(val width: Int, val height: Int, val rowStride: Int, val remaining: Int)
+    private data class Frame(val width: Int, val height: Int, val rowStride: Int, val remaining: Int, val rotation: Int, val lens: CameraLens)
 
     private val frames = AtomicInteger()
     private val lastFrame = AtomicReference<Frame>()
@@ -132,12 +132,12 @@ class ScanCameraControllerDeviceTest {
 
     @Before
     fun setUp() {
-        ScanFiles.clearStaging(context)
+        shotDir = ScanFiles.newFolder(ScanFiles.stagingDir(context), "test-")!!
         main {
             owner = TestOwner().apply { registry.currentState = Lifecycle.State.RESUMED }
             controller = ScanCameraController(context)
-            controller.frameListener = { buffer, rowStride, width, height ->
-                lastFrame.set(Frame(width, height, rowStride, buffer.remaining()))
+            controller.frameListener = { buffer, rowStride, width, height, rotation, lens ->
+                lastFrame.set(Frame(width, height, rowStride, buffer.remaining(), rotation, lens))
                 frames.incrementAndGet()
             }
         }
@@ -149,7 +149,7 @@ class ScanCameraControllerDeviceTest {
             controller.release()
             owner.registry.currentState = Lifecycle.State.DESTROYED
         }
-        ScanFiles.clearStaging(context)
+        shotDir.deleteRecursively()
     }
 
     @Test
@@ -170,6 +170,9 @@ class ScanCameraControllerDeviceTest {
         assertEquals(analysis.height, frame.height)
         assertTrue(frame.rowStride >= frame.width)
         assertTrue("Y plane holds every row", frame.remaining >= frame.rowStride * (frame.height - 1) + frame.width)
+        // The frame's rotation is the sensor's mount, and it comes with the lens the frame is from.
+        assertEquals(s.sensorRotationDegrees, frame.rotation)
+        assertEquals(CameraLens.BACK, frame.lens)
 
         val file = takePicture()
         assertNotNull(file)

@@ -23,9 +23,9 @@ interface PageImages {
 }
 
 /**
- * Page edits with the platform codecs. Pages are decoded whole (they are already at most 3200 px) and resized with OpenScan's average
- * [StoredImage.fitToMaxEdge]. Unlike OpenScan's crop screen, a crop is not written as a quality-100 JPEG and decoded again before being
- * normalized: it stays in memory, which saves a generation of JPEG loss. Blocking: call off the main thread.
+ * Page edits with the platform codecs: pages are decoded whole (at most 3200 px) and resized with OpenScan's average [StoredImage.fitToMaxEdge].
+ * Unlike OpenScan's crop screen, a crop stays in memory instead of a quality-100 JPEG round trip, which saves a generation of JPEG loss.
+ * Blocking.
  */
 object AndroidPageImages : PageImages {
     override fun filter(source: File, filter: Filter, dest: File): Boolean = attempt {

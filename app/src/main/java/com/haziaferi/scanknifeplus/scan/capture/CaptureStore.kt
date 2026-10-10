@@ -9,15 +9,11 @@ import java.io.File
 data class StoredCapture(val page: File, val original: File?, val cropped: Boolean, val pageWidth: Int, val pageHeight: Int)
 
 /**
- * Turns a camera capture or a picked image into stored files, following OpenScan's native capture path (file_operations.dart _writeCaptureNatively
- * and capture_pipeline.dart encodeStoredPageIsolateEntry):
- *  - the page is decoded at the smallest size that still fills a stored page ([StoredImage.pageDecodeMaxEdge]), flattened onto white, warped to
- *    the quad capped at [StoredImage.PAGE_MAX_EDGE] (falling back to the unwarped decode if the warp fails), and written at quality 85;
- *  - the original, when asked for, is a separate decode fitted to [StoredImage.ORIGINAL_MAX_EDGE] and written at quality 80, after the page's
- *    buffers are released. One that fails is simply not recorded; it never costs the page.
- * Never throws. Differences from OpenScan: files are written atomically, and there is no second decoder to fall back on. OpenScan retries with
- * the pure-Dart `image` package, which also reads a few rare formats Android cannot (TIFF, TGA, PSD); here those, like bytes nothing can decode,
- * store nothing. Blocking: call off the main thread.
+ * Turns a camera capture or a picked image into stored files, following OpenScan's native capture path (file_operations.dart
+ * _writeCaptureNatively, capture_pipeline.dart encodeStoredPageIsolateEntry): the page decoded just large enough, flattened onto white, warped
+ * to the quad (the unwarped decode if the warp fails) and written at quality 85, then the original, if asked for, as a separate decode at
+ * quality 80 that never costs the page. Never throws, blocking; unlike OpenScan, files are written atomically and there is no pure-Dart
+ * fallback decoder, so the rare formats only it reads (TIFF, TGA, PSD) store nothing.
  */
 object CaptureStore {
     /** Stores [source]; [quad] is in fractional portrait coordinates, or null to keep the whole image. Returns null if no page could be written. */

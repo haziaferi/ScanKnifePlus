@@ -91,7 +91,7 @@ class LibrarySweepTest {
 
     private fun newPage(keepOriginal: Boolean = true): Pair<String, ScanPage> {
         val doc = library.create()
-        return doc.id to library.addCapture(doc.id, anySource, null, keepOriginal)!!.pages.single()
+        return doc.id to library.addCapture(doc.id, anySource, null, keepOriginal)!!.document.pages.single()
     }
 
     @Test
@@ -175,7 +175,7 @@ class LibrarySweepTest {
             ageAll(doc.id)
             assertEquals(0, library.sweep())
         }
-        val page = library.addCapture(doc.id, anySource, null, keepOriginal = true)!!.pages.single()
+        val page = library.addCapture(doc.id, anySource, null, keepOriginal = true)!!.document.pages.single()
         assertEquals("page", library.file(doc.id, page.image).readText())
         assertEquals("original", library.file(doc.id, page.original!!).readText())
     }

@@ -1,9 +1,9 @@
 package com.haziaferi.scanknifeplus.scan.live
 
+import com.haziaferi.scanknifeplus.scan.camera.CameraLens
 import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.live.FrameAdapter
-import com.haziaferi.scanknifeplus.scanner.live.LiveScanController
 import com.haziaferi.scanknifeplus.scanner.live.MicrosClock
 import java.nio.ByteBuffer
 import java.util.concurrent.AbstractExecutorService
@@ -25,15 +25,15 @@ class LiveScanPipelineTest {
         override fun nowMicros(): Long = now
     }
 
-    private class Submitted(val gray: ByteArray, val width: Int, val height: Int)
+    private class Submitted(val gray: ByteArray, val width: Int, val height: Int, val mapping: QuadMapping)
 
-    private class FakeDetector(val onQuad: (Quad?) -> Unit) : QuadDetector {
+    private class FakeDetector(val onQuad: (Quad?, QuadMapping) -> Unit) : QuadDetector {
         var busy = false
         var disposed = false
         val submitted = mutableListOf<Submitted>()
         override val isBusy: Boolean get() = busy
-        override fun submitFrame(gray: ByteArray, width: Int, height: Int): Boolean {
-            submitted += Submitted(gray.copyOf(), width, height)
+        override fun submitFrame(gray: ByteArray, width: Int, height: Int, mapping: QuadMapping): Boolean {
+            submitted += Submitted(gray.copyOf(), width, height, mapping)
             return true
         }
         override fun dispose() {
@@ -72,6 +72,10 @@ class LiveScanPipelineTest {
 
     private val doc = Quad(Pt(0.2, 0.15), Pt(0.8, 0.15), Pt(0.8, 0.85), Pt(0.2, 0.85))
 
+    /** A lopsided quad and the same quad turned half way round, worked out by hand. */
+    private val skewed = Quad(Pt(0.1, 0.2), Pt(0.7, 0.15), Pt(0.75, 0.9), Pt(0.05, 0.8))
+    private val skewedHalfTurn = Quad(Pt(0.25, 0.1), Pt(0.95, 0.2), Pt(0.9, 0.8), Pt(0.3, 0.85))
+
     /** A uniform landscape frame with row padding, as CameraX hands it over (direct buffer, unpadded last row). */
     private fun frame(value: Int, width: Int = 640, height: Int = 480, rowStride: Int = width + 32): ByteBuffer {
         val buf = ByteBuffer.allocateDirect(rowStride * (height - 1) + width)
@@ -79,16 +83,28 @@ class LiveScanPipelineTest {
         return buf
     }
 
-    private fun feed(count: Int, value: Int = 128) {
-        repeat(count) { pipeline.onFrame(frame(value), 672, 640, 480) }
+    private fun feed(count: Int, value: Int = 128, rotation: Int = 90, lens: CameraLens = CameraLens.BACK) {
+        repeat(count) { pipeline.onFrame(frame(value), 672, 640, 480, rotation, lens) }
     }
 
-    /** Delivers [quad] as the detector's result [times] times, [stepMicros] apart. */
-    private fun detect(quad: Quad?, times: Int = 1, stepMicros: Long = 100_000) {
+    /** Delivers [quad] as the detector's result [times] times, [stepMicros] apart, for a frame with [mapping] (by default the last one fed). */
+    private fun detect(
+        quad: Quad?,
+        times: Int = 1,
+        stepMicros: Long = 100_000,
+        mapping: QuadMapping = detector.submitted.lastOrNull()?.mapping ?: QuadMapping.AS_IS,
+    ) {
         repeat(times) {
             clock.now += stepMicros
-            detector.onQuad(quad)
+            detector.onQuad(quad, mapping)
         }
+    }
+
+    /** A sensor-native 640x480 Y plane with a bright page from x 160..480, y 80..400 on a dark desk, rows [STRIDE] bytes apart. */
+    private fun pagePlane(): ByteArray = ByteArray(STRIDE * 479 + 640) { i ->
+        val x = i % STRIDE
+        val y = i / STRIDE
+        (if (x in 160 until 480 && y in 80 until 400) 220 else 40).toByte()
     }
 
     @Test
@@ -135,7 +151,7 @@ class LiveScanPipelineTest {
             buf.put(ByteArray(5) { 0x7F })
             buf.put(plane)
             buf.position(5)
-            repeat(3) { p.onFrame(buf, stride, width, height) }
+            repeat(3) { p.onFrame(buf, stride, width, height, 90, CameraLens.BACK) }
             assertEquals("position is left alone", 5, buf.position())
 
             val sub = det.single().submitted.single()
@@ -149,9 +165,9 @@ class LiveScanPipelineTest {
     @Test
     fun `a buffer shorter than its geometry, or a stride below the width, is dropped`() {
         val short = ByteBuffer.allocate(672 * 479 + 639)
-        repeat(3) { pipeline.onFrame(short, 672, 640, 480) }
-        repeat(3) { pipeline.onFrame(frame(128, rowStride = 640), 600, 640, 480) }
-        repeat(3) { pipeline.onFrame(frame(128), 672, 0, 480) }
+        repeat(3) { pipeline.onFrame(short, 672, 640, 480, 90, CameraLens.BACK) }
+        repeat(3) { pipeline.onFrame(frame(128, rowStride = 640), 600, 640, 480, 90, CameraLens.BACK) }
+        repeat(3) { pipeline.onFrame(frame(128), 672, 0, 480, 90, CameraLens.BACK) }
         assertEquals(0, detector.submitted.size)
     }
 
@@ -279,15 +295,62 @@ class LiveScanPipelineTest {
     }
 
     @Test
-    fun `the front camera captures without a quad`() {
-        pipeline.setLensFacingBack(false)
+    fun `a back camera at 90 degrees keeps the quad as detected`() {
+        feed(3)
+        assertEquals(QuadMapping.AS_IS, detector.submitted.single().mapping)
+        detect(skewed, times = 8)
+        assertQuadNear(skewed, pipeline.smoothedQuad!!)
+        assertQuadNear(skewed, recorder.captures.single().quad!!)
+    }
+
+    @Test
+    fun `a back camera at 270 degrees turns the quad half way round`() {
+        feed(3, rotation = 270)
+        assertEquals(QuadMapping.HALF_TURN, detector.submitted.single().mapping)
+        detect(skewed, times = 8)
+        assertQuadNear(skewedHalfTurn, recorder.quads.first()!!)
+        assertQuadNear(skewedHalfTurn, pipeline.smoothedQuad!!)
+        assertQuadNear(skewedHalfTurn, recorder.captures.single().quad!!)
+    }
+
+    @Test
+    fun `the front camera shows the overlay and auto-captures, but without a quad`() {
+        feed(3, rotation = 270, lens = CameraLens.FRONT)
+        assertEquals(QuadMapping.FRONT, detector.submitted.single().mapping)
         detect(doc, times = 8)
+        assertSame(doc, recorder.quads.first())
         assertNull(recorder.captures.single().quad)
         pipeline.endCapture()
         assertNull(pipeline.beginCapture()!!.quad)
-        pipeline.endCapture()
-        pipeline.setLensFacingBack(true)
+    }
+
+    @Test
+    fun `a back camera at 0 or 180 degrees gives no overlay and no capture quad`() {
+        for (rotation in listOf(0, 180)) {
+            feed(3, rotation = rotation)
+            assertEquals(QuadMapping.NONE, detector.submitted.last().mapping)
+            detect(doc, times = 8)
+            assertNull(pipeline.smoothedQuad)
+            assertEquals(0, recorder.captures.size)
+            assertNull(pipeline.beginCapture()!!.quad)
+            pipeline.endCapture()
+        }
+        feed(3)
+        detect(doc)
         assertNotNull(pipeline.beginCapture()!!.quad)
+    }
+
+    @Test
+    fun `another camera drops the track and late results from the old one`() {
+        feed(3)
+        detect(doc)
+        assertNotNull(pipeline.smoothedQuad)
+        feed(1, rotation = 270)
+        assertNull(pipeline.smoothedQuad)
+        assertNull(recorder.quads.last())
+        detect(doc, mapping = QuadMapping.AS_IS)
+        assertNull("a result from the old camera is dropped", pipeline.smoothedQuad)
+        assertNull(pipeline.beginCapture()!!.quad)
     }
 
     @Test
@@ -317,23 +380,45 @@ class LiveScanPipelineTest {
             override fun awaitTermination(timeout: Long, unit: TimeUnit) = true
         }
         val rec = Recorder()
-        val p = LiveScanPipeline(rec, clock) { onQuad -> LiveScanController(onQuad, executor = direct).asQuadDetector() }
-        // Sensor-native 640x480 frame: a page from x 160..480, y 80..400 on a dark background.
-        val stride = 704
-        val buf = ByteBuffer.allocateDirect(stride * 479 + 640)
-        for (y in 0 until 480) for (x in 0 until 640) {
-            buf.put(y * stride + x, (if (x in 160 until 480 && y in 80 until 400) 220 else 40).toByte())
-        }
-        repeat(3) { p.onFrame(buf, stride, 640, 480) }
+        val p = LiveScanPipeline(rec, clock) { onQuad -> liveQuadDetector(onQuad, direct) }
+        val buf = ByteBuffer.wrap(pagePlane())
+        repeat(3) { p.onFrame(buf, STRIDE, 640, 480, 90, CameraLens.BACK) }
         val quad = rec.quads.single()!!
         // Rotated into portrait [0,1]: x from the frame's y, y from the frame's x.
         assertQuadNear(Quad(Pt(1 / 6.0, 0.25), Pt(5 / 6.0, 0.25), Pt(5 / 6.0, 0.75), Pt(1 / 6.0, 0.75)), quad, tolerance = 0.03)
         p.dispose()
     }
 
+    @Test
+    fun `a detection result carries the mapping of its own frame, whatever was submitted since`() {
+        val queued = ArrayDeque<Runnable>()
+        val manual = object : AbstractExecutorService() {
+            override fun execute(command: Runnable) {
+                queued += command
+            }
+            override fun shutdown() {}
+            override fun shutdownNow(): List<Runnable> = emptyList()
+            override fun isShutdown() = false
+            override fun isTerminated() = false
+            override fun awaitTermination(timeout: Long, unit: TimeUnit) = true
+        }
+        val results = mutableListOf<QuadMapping>()
+        val d = liveQuadDetector({ _, mapping -> results += mapping }, manual)
+        val gray = FrameAdapter.grayscaleFromYPlane(pagePlane(), STRIDE, 640, 480)!!
+        val (w, h) = FrameAdapter.downsampledSize(640, 480)!!
+        assertTrue(d.submitFrame(gray, w, h, QuadMapping.AS_IS))
+        assertFalse("busy", d.submitFrame(gray, w, h, QuadMapping.HALF_TURN))
+        queued.removeFirst().run()
+        assertEquals(listOf(QuadMapping.AS_IS), results)
+    }
+
     private fun assertQuadNear(expected: Quad, actual: Quad, tolerance: Double = 1e-9) {
         for ((e, a) in expected.points.zip(actual.points)) {
             assertTrue("$expected vs $actual", abs(e.x - a.x) <= tolerance && abs(e.y - a.y) <= tolerance)
         }
+    }
+
+    private companion object {
+        const val STRIDE = 704
     }
 }

@@ -2,6 +2,9 @@
 // Copyright (c) 2021, Vijay T S and Vikram H, BSD-3-Clause. See NOTICE.md.
 package com.haziaferi.scanknifeplus.scan.live
 
+import com.haziaferi.scanknifeplus.scan.camera.CameraLens
+import com.haziaferi.scanknifeplus.scanner.cv.Contours
+import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.live.AutoCaptureDetector
 import com.haziaferi.scanknifeplus.scanner.live.FrameAdapter
@@ -11,43 +14,33 @@ import com.haziaferi.scanknifeplus.scanner.live.MicrosClock
 import com.haziaferi.scanknifeplus.scanner.live.QuadSmoother
 import java.nio.Buffer
 import java.nio.ByteBuffer
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /** A capture the pipeline has started: [quad] is the boundary on screen as the shutter fires (portrait, [0,1]), or null to keep the whole photo. */
 class CaptureRequest(val quad: Quad?)
 
 /**
- * The non-visual part of OpenScan's live-scan screen: takes every camera analysis frame, runs live document detection on every third one, smooths
- * the detections, and decides when to auto-capture. It knows nothing about the camera library; the camera side calls [onFrame] for each frame and
- * the capture methods around each still.
- *
- * Flow, as in OpenScan: frame -> [FrameAdapter] grayscale (320 px) -> [LowLightDetector] and [LiveScanController] -> raw quad -> [QuadSmoother]
- * -> smoothed quad -> [AutoCaptureDetector] -> [Listener.onAutoCapture]. The smoother and the auto-capture detector are event driven and only read
- * [clock] (no animation ticker), so they advance whenever a detection result arrives.
- *
- * Capture protocol: call [beginCapture] for a manual shutter (auto-capture calls it itself and hands the request to [Listener.onAutoCapture]), then
- * [notifyCaptured] once the still has been taken, then [endCapture] when the page is done or the capture failed. Frames are ignored from
- * [beginCapture] until [notifyCaptured] or [endCapture], as OpenScan stops its image stream for the shutter.
- *
- * Threading: [onFrame] is called on the camera's analysis thread; the other methods may be called from any thread. Every [Listener] callback runs
- * while the pipeline holds its internal lock, so callbacks arrive in order and never after [dispose] has returned. A callback must not block or
- * wait on another thread that calls into this pipeline; post to the main thread instead. Calling back into the pipeline from the same thread is
- * allowed but [Listener.onAutoCapture] should hand the capture off rather than take it synchronously.
+ * The non-visual part of OpenScan's live-scan screen: every third analysis frame -> [FrameAdapter] grayscale -> [LowLightDetector] and
+ * [LiveScanController] -> [QuadSmoother] -> [AutoCaptureDetector] -> [Listener.onAutoCapture], with the smoother and auto-capture advancing on
+ * [clock] whenever a result arrives. [onFrame] runs on the analysis thread and every other method on any thread.
  */
 class LiveScanPipeline internal constructor(
     private val listener: Listener,
     clock: MicrosClock,
-    detectorFactory: (onQuad: (Quad?) -> Unit) -> QuadDetector,
+    detectorFactory: (onQuad: (Quad?, QuadMapping) -> Unit) -> QuadDetector,
 ) {
     /** Creates a pipeline that detects on its own background thread (owned by the pipeline and stopped in [dispose]). */
-    constructor(listener: Listener, clock: MicrosClock = MicrosClock.SYSTEM) : this(listener, clock, { onQuad ->
-        LiveScanController(onQuad).asQuadDetector()
-    })
+    constructor(listener: Listener, clock: MicrosClock = MicrosClock.SYSTEM) : this(listener, clock, { onQuad -> liveQuadDetector(onQuad) })
 
-    /** Receives the pipeline's state for the UI. All methods have empty defaults except [onAutoCapture]. See the class doc for threading. */
+    /**
+     * Receives the pipeline's state for the UI; all methods but [onAutoCapture] have empty defaults. Callbacks run under the pipeline's lock, so
+     * they arrive in order and never after [dispose]; one must not block on another thread that calls into the pipeline.
+     */
     interface Listener {
         /**
-         * The smoothed document boundary changed (portrait, normalized to [0,1]; null when nothing is tracked). Runs on the detection thread, or on
-         * the thread that called [notifyCaptured] (which publishes null).
+         * The smoothed document boundary changed (portrait, normalized to [0,1]; null when nothing is tracked). Runs on the detection thread, or
+         * with null on the thread that called [notifyCaptured] or the analysis thread when the frames come from another camera.
          */
         fun onSmoothedQuadChanged(quad: Quad?) {}
 
@@ -55,8 +48,8 @@ class LiveScanPipeline internal constructor(
         fun onLowLightChanged(lowLight: Boolean) {}
 
         /**
-         * An auto-capture is about to happen (for a visual cue), or no longer is. Runs on the detection thread, or on the thread that called
-         * [setAutoCaptureEnabled] or [notifyCaptured].
+         * An auto-capture is about to happen (for a visual cue), or no longer is. Runs on the detection thread, on the thread that called
+         * [setAutoCaptureEnabled] or [notifyCaptured], or on the analysis thread when the frames come from another camera.
          */
         fun onAutoCaptureImminentChanged(imminent: Boolean) {}
 
@@ -73,17 +66,18 @@ class LiveScanPipeline internal constructor(
     private val lowLightDetector = LowLightDetector()
     private val detector: QuadDetector
 
-    // Analysis thread only. Only kept frames (at most one in three) are copied: about 1 MB at the 1280x720 analysis size, well under a millisecond,
-    // and it lets FrameAdapter stay the parity-tested ByteArray port.
+    // Analysis thread only. Only kept frames are copied (about 1 MB at 1280x720), so FrameAdapter can stay the parity-tested ByteArray port.
     private var frameCounter = 0
     private var frameCopy = ByteArray(0)
 
     // Written under lock; volatile so onFrame can read them without taking it.
     @Volatile private var disposed = false
     @Volatile private var zooming = false
-    @Volatile private var lensFacingBack = true
     @Volatile private var capturing = false
     @Volatile private var shutterOpen = false
+
+    /** How the latest frames' quads map onto the still; results detected under another mapping are dropped. */
+    @Volatile private var frameMapping = QuadMapping.AS_IS
 
     /** The current smoothed quad (portrait, [0,1]), or null; the value last passed to [Listener.onSmoothedQuadChanged]. */
     @Volatile
@@ -109,12 +103,21 @@ class LiveScanPipeline internal constructor(
     }
 
     /**
-     * Handles one camera frame: the Y plane of a YUV_420_888 image in sensor-native orientation, pixel stride 1, rows [rowStride] bytes apart (the
-     * last row may be unpadded). Read from the buffer's position, which is left unchanged; [yPlane] is only used during the call. Only every third
-     * frame is analysed, and none while detection is busy, while zooming, or while the shutter is open. Call on the analysis thread.
+     * Handles one frame from [lens]: the Y plane of a YUV_420_888 image in sensor orientation (pixel stride 1, rows [rowStride] bytes apart, read
+     * from the buffer's position, which is left unchanged) and the [rotationDegrees] that turn it upright. A back camera at 90 or 270 degrees and
+     * the front camera (as in OpenScan) yield quads; every third frame is analysed, none while detection is busy, zooming or the shutter is open.
      */
-    fun onFrame(yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int) {
+    fun onFrame(yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int, rotationDegrees: Int, lens: CameraLens) {
         if (disposed || shutterOpen) return
+        val mapping = QuadMapping.of(rotationDegrees, lens)
+        if (mapping != frameMapping) {
+            synchronized(lock) {
+                if (disposed) return
+                // Another camera: the old track is in another space and must not reach a capture.
+                frameMapping = mapping
+                smoother.reset()
+            }
+        }
         if (++frameCounter % 3 != 0) return
         if (detector.isBusy) return
         // Detection is meaningless mid-pinch (the framing is changing under it), and skipping it frees the CPU for the zoom.
@@ -138,7 +141,7 @@ class LiveScanPipeline internal constructor(
             }
         }
         val (w, h) = FrameAdapter.downsampledSize(width, height) ?: return
-        detector.submitFrame(gray, w, h)
+        detector.submitFrame(gray, w, h, mapping)
     }
 
     /** Pauses detection and auto-capture while the user is zooming, as OpenScan does during a zoom drag. */
@@ -146,30 +149,26 @@ class LiveScanPipeline internal constructor(
         this.zooming = zooming
     }
 
-    /** Which camera the frames come from. Only a back camera's quad maps onto its still, so a front-camera capture keeps the whole photo. */
-    fun setLensFacingBack(back: Boolean) {
-        lensFacingBack = back
-    }
-
     /** Turns auto-capture on or off (on by default). Persisting the choice is the caller's job. */
-    fun setAutoCaptureEnabled(enabled: Boolean) = synchronized(lock) {
+    fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
         if (disposed) return
         autoCapture.enabled = enabled
     }
 
     /**
-     * Starts a capture and snapshots the boundary on screen: the smoothed quad for the back camera, null for the front one. Returns null, and does
-     * nothing, if a capture is already in progress or the pipeline is disposed.
+     * Starts a capture (auto-capture calls this itself) and snapshots the smoothed quad, null when the frames do not map onto the still (the
+     * front camera); follow with [notifyCaptured] once the still is taken and [endCapture] when done, and frames pause until then, as OpenScan
+     * stops its stream. Returns null, doing nothing, if a capture is in progress or the pipeline is disposed.
      */
     fun beginCapture(): CaptureRequest? = synchronized(lock) {
         if (disposed || capturing) return null
         capturing = true
         shutterOpen = true
-        CaptureRequest(if (lensFacingBack) smoother.smoothedQuad else null)
+        CaptureRequest(if (frameMapping.mapsOntoStill) smoother.smoothedQuad else null)
     }
 
     /** The still has been taken: starts the auto-capture cooldown, drops the smoothed track so the next document starts fresh, resumes frames. */
-    fun notifyCaptured() = synchronized(lock) {
+    fun notifyCaptured(): Unit = synchronized(lock) {
         if (disposed) return
         autoCapture.notifyCaptured()
         smoother.reset()
@@ -196,9 +195,9 @@ class LiveScanPipeline internal constructor(
         detector.dispose()
     }
 
-    private fun onRawQuad(quad: Quad?) = synchronized(lock) {
-        if (disposed) return
-        smoother.onRawQuad(quad)
+    private fun onRawQuad(quad: Quad?, mapping: QuadMapping): Unit = synchronized(lock) {
+        if (disposed || mapping != frameMapping) return
+        smoother.onRawQuad(quad?.let(mapping::map))
     }
 
     // Called by the smoother, under lock.
@@ -225,19 +224,69 @@ class LiveScanPipeline internal constructor(
     }
 }
 
-/** The detection stage the pipeline drives; [LiveScanController] in production, a fake in tests. */
+/**
+ * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
+ * 270 degrees sees the page turned half way round. The front camera keeps OpenScan's mapping for the overlay and auto-capture, but its frames
+ * do not match its unmirrored still; other rotations yield no quad.
+ */
+internal enum class QuadMapping(val mapsOntoStill: Boolean) {
+    AS_IS(true),
+    HALF_TURN(true),
+    FRONT(false),
+    NONE(false);
+
+    fun map(quad: Quad): Quad? = when (this) {
+        AS_IS, FRONT -> quad
+        HALF_TURN -> Contours.sortCorners(quad.points.map { Pt(1 - it.x, 1 - it.y) })
+        NONE -> null
+    }
+
+    companion object {
+        fun of(rotationDegrees: Int, lens: CameraLens): QuadMapping = when {
+            lens != CameraLens.BACK -> FRONT
+            rotationDegrees == 90 -> AS_IS
+            rotationDegrees == 270 -> HALF_TURN
+            else -> NONE
+        }
+    }
+}
+
+/** The detection stage the pipeline drives; [liveQuadDetector] in production, a fake in tests. */
 internal interface QuadDetector {
     val isBusy: Boolean
 
-    fun submitFrame(gray: ByteArray, width: Int, height: Int): Boolean
+    /** Submits a frame; its result, if published, reaches the pipeline together with this frame's [mapping]. */
+    fun submitFrame(gray: ByteArray, width: Int, height: Int, mapping: QuadMapping): Boolean
 
     fun dispose()
 }
 
-internal fun LiveScanController.asQuadDetector(): QuadDetector = object : QuadDetector {
-    override val isBusy: Boolean get() = this@asQuadDetector.isBusy
+/** [LiveScanController] on [thread], handing each result to [onQuad] with the mapping of the frame it was detected on. */
+internal fun liveQuadDetector(
+    onQuad: (Quad?, QuadMapping) -> Unit,
+    thread: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "live-scan-detection").apply { isDaemon = true } },
+): QuadDetector {
+    var submitting = QuadMapping.NONE // the submitting thread only
+    var current = QuadMapping.NONE // the detection thread only
+    // The mapping rides on the detection task, since the controller frees itself before publishing and the next frame may already be submitted.
+    val tagging = object : ExecutorService by thread {
+        override fun execute(command: Runnable) {
+            val mapping = submitting
+            thread.execute {
+                current = mapping
+                command.run()
+            }
+        }
+    }
+    val controller = LiveScanController({ onQuad(it, current) }, executor = tagging)
+    return object : QuadDetector {
+        override val isBusy: Boolean get() = controller.isBusy
 
-    override fun submitFrame(gray: ByteArray, width: Int, height: Int) = this@asQuadDetector.submitFrame(gray, width, height)
+        override fun submitFrame(gray: ByteArray, width: Int, height: Int, mapping: QuadMapping): Boolean {
+            submitting = mapping
+            return controller.submitFrame(gray, width, height)
+        }
 
-    override fun dispose() = this@asQuadDetector.dispose()
+        override fun dispose() = controller.dispose()
+    }
 }

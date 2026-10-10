@@ -15,17 +15,10 @@ data class Dim(val width: Int, val height: Int) {
 }
 
 /**
- * Which output sizes the scan camera asks CameraX for. OpenScan opened every stream with ResolutionPreset.high, which camera_android_camerax maps
- * to a 1280x720 bound at 16:9 for the preview, the analysis stream and the still alike, so its photos were 720p crops of the sensor.
- *
- * Here every stream takes the shape of the sensor's active array (4:3 on most phones), so the still covers the sensor's whole field of view and
- * the frame live detection sees covers the same view as the photo the quad is applied to. The still is the largest size of that shape CameraX
- * offers. That is not always the largest size the camera lists: CameraX leaves out sizes known to fail on a device (on the OnePlus 6T back
- * camera its ExcludedSupportedSizesQuirk drops the 4000x3000 and 4160x3120 JPEGs, leaving 3264x2448), and a larger size of another shape would
- * be a crop. The sensor's shape is snapped to the nearest standard ratio first ([standardShape]), because active arrays are often a little off
- * the ratio of the sizes they output (4208x3120 is 1.349 but outputs 4:3).
- * Analysis keeps OpenScan's 720 px short edge as a bound: 960x720 (or the next smaller 4:3 size) instead of 1280x720, and detection, which
- * downsamples to a 320 px long edge anyway, runs at 320x240 instead of 320x180.
+ * Which output sizes the scan camera asks CameraX for. OpenScan used ResolutionPreset.high, a 16:9 1280x720 bound for every stream, so its
+ * photos were 720p crops of the sensor; here every stream takes the shape of the sensor's active array, snapped to a standard ratio
+ * ([standardShape]), so the still is the largest size of the sensor's whole field of view that CameraX offers and live detection sees the same
+ * view. Analysis keeps OpenScan's 720 px short-edge bound (960x720 at 4:3).
  */
 object CameraSizes {
     /** Analysis bound: OpenScan's ResolutionPreset.high (1280x720), long edge by short edge. */
