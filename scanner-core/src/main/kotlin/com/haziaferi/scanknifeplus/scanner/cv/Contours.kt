@@ -269,10 +269,34 @@ object Contours {
         return components
     }
 
-    /** Andrew's monotone-chain convex hull. */
-    private fun convexHull(points: List<Pt>): List<Pt> {
-        val pts = points.toMutableList()
-        pts.dartSort { a, b -> if (a.x != b.x) a.x.compareTo(b.x) else a.y.compareTo(b.y) }
+    /**
+     * Andrew's monotone-chain convex hull of distinct integer pixels. Only each column's top and bottom pixel can be a hull vertex, so the chain
+     * runs on those alone, already in (x, y) order; the result is identical to OpenScan's chain over every sorted pixel.
+     */
+    internal fun convexHull(points: List<Pt>): List<Pt> {
+        var minX = Int.MAX_VALUE
+        var maxX = Int.MIN_VALUE
+        for (p in points) {
+            val x = p.x.toInt()
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+        }
+        val columns = maxX - minX + 1
+        val yMin = IntArray(columns) { Int.MAX_VALUE }
+        val yMax = IntArray(columns) { Int.MIN_VALUE }
+        for (p in points) {
+            val c = p.x.toInt() - minX
+            val y = p.y.toInt()
+            if (y < yMin[c]) yMin[c] = y
+            if (y > yMax[c]) yMax[c] = y
+        }
+        val pts = ArrayList<Pt>(2 * columns)
+        for (c in 0 until columns) {
+            if (yMin[c] == Int.MAX_VALUE) continue
+            val x = (minX + c).toDouble()
+            pts += Pt(x, yMin[c].toDouble())
+            if (yMax[c] != yMin[c]) pts += Pt(x, yMax[c].toDouble())
+        }
         if (pts.size < 3) return pts
 
         fun cross(o: Pt, a: Pt, b: Pt): Double = (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
