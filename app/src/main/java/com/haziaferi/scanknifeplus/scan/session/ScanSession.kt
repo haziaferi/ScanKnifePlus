@@ -171,6 +171,7 @@ class ScanSession(
             library.delete(doc.id)
             doc = null
         }
+        docId = doc?.id
         val kept = synchronized(lock) { entries.count { it.pageId != null && !it.undone } }
         val result = ScanSessionResult(doc?.id, if (doc == null) 0 else kept)
         synchronized(lock) { publish(finished = true) }

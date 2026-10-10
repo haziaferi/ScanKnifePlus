@@ -358,10 +358,23 @@ class ScanSessionTest {
         val s = session()
         s.capture(shot("page 1"), quad)
         s.idle()
-        s.capture(shot("page 2"), quad)
-        val result = s.cancel()
+        s.capture(shot("slow 2"), quad)
+        assertTrue(entered.await(10, TimeUnit.SECONDS))
+        s.capture(shot("page 3"), quad)
+        var result: ScanSessionResult? = null
+        val cancelling = thread { result = s.cancel() }
+        val until = System.currentTimeMillis() + 10_000
+        while (s.capture(shot("late"), quad)) {
+            s.undoLast()
+            check(System.currentTimeMillis() < until)
+            Thread.sleep(1)
+        }
+        gate.countDown()
+        cancelling.join(10_000)
         assertEquals(ScanSessionResult(null, 0), result)
         assertTrue(documents().isEmpty())
+        assertEquals(2, quads.size) // page 3 was still waiting, and was never stored
+        assertNull(s.state.value.documentId)
         assertEquals(1, clears.get())
     }
 
