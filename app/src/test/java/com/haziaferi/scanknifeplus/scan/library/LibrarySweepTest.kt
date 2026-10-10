@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +32,7 @@ class LibrarySweepTest {
     /** Runs [meanwhile] (once) in the middle of the next image operation, after its reserved files exist. */
     private inner class FakeImages : PageImages {
         var failNext = false
+        var throwNext = false
         var meanwhile: (() -> Unit)? = null
 
         override fun filter(source: File, filter: Filter, dest: File) = op(dest, "${filter.name}(${source.readText()})")
@@ -43,6 +45,10 @@ class LibrarySweepTest {
             val hook = meanwhile
             meanwhile = null
             hook?.invoke()
+            if (throwNext) {
+                throwNext = false
+                throw IllegalStateException("image work crashed")
+            }
             if (failNext) {
                 failNext = false
                 return false
@@ -190,6 +196,21 @@ class LibrarySweepTest {
     }
 
     @Test
+    fun `holds end with the edit, also when the image work throws`() {
+        val (id, page) = newPage(keepOriginal = false)
+        var reserved = emptySet<String>()
+        images.meanwhile = { reserved = names(id) - named(id) }
+        images.throwNext = true
+        assertThrows(IllegalStateException::class.java) { library.recropPage(id, page.id, quad) }
+        assertEquals(2, reserved.size) // the reserved crop and original, left behind by the throw
+        assertTrue(names(id).containsAll(reserved))
+        ageAll(id)
+        assertEquals(2, library.sweep())
+        assertEquals(named(id), names(id))
+        assertEquals(page, library.document(id)!!.pages.single())
+    }
+
+    @Test
     fun `folders without a record go only when a crash during create plainly left them`() {
         fun folder(name: String, vararg files: Pair<String, String>) = File(root, name).apply {
             mkdirs()
@@ -197,8 +218,10 @@ class LibrarySweepTest {
             stale()
         }
         folder("empty")
-        folder("half-temp", "document.json.tmp" to "{\"id\":\"half")
         folder("zero-record", "document.json" to "")
+        folder("blank-temp", "document.json.tmp" to " \n")
+        folder("zero-filled", "document.json" to "\u0000\u0000\u0000\u0000") // what a crash can leave in a block never written
+        folder("half-temp", "document.json.tmp" to "  {\"id\":\"half") // starts like JSON: may be damage worth keeping
         folder("lost-record", "1000.jpg" to "a page")
         folder("broken-with-page", "document.json" to "{not json", "1000.jpg" to "a page")
         folder("other-files", "document.json" to "", "readme.txt" to "mine")
@@ -212,9 +235,11 @@ class LibrarySweepTest {
         File(root, "stray.txt").writeText("mine")
         val emptyDoc = library.create().also { ageAll(it.id) }
 
-        assertEquals(6, library.sweep()) // empty, half-temp (file and folder), zero-record (file and folder), the tombstone
+        // empty; zero-record, blank-temp and zero-filled (file and folder each); the tombstone
+        assertEquals(8, library.sweep())
         val kept = setOf(
-            "lost-record", "broken-with-page", "other-files", "tampered", "huge", "record-dir", ".hidden", "fresh", "stray.txt", emptyDoc.id,
+            "half-temp", "lost-record", "broken-with-page", "other-files", "tampered", "huge", "record-dir", ".hidden", "fresh", "stray.txt",
+            emptyDoc.id,
         )
         assertEquals(kept, root.list()!!.toSet())
         assertEquals("a page", File(root, "lost-record/1000.jpg").readText())
@@ -223,13 +248,15 @@ class LibrarySweepTest {
 
     @Test
     fun `a record left only as its temp file is recovered, not swept`() {
-        val doc = library.rename(library.create().id, "kept")!!
-        val folder = File(root, doc.id)
-        File(folder, "document.json").renameTo(File(folder, "document.json.tmp"))
-        ageAll(doc.id)
+        val (id, page) = newPage()
+        val folder = File(root, id)
+        File(folder, "document.json").copyTo(File(folder, "document.json.tmp"))
+        assertTrue(File(folder, "document.json").delete())
+        ageAll(id)
         assertEquals(0, library.sweep())
-        assertEquals("kept", library.document(doc.id)!!.name)
-        assertEquals(setOf("document.json"), names(doc.id))
+        // On disk, before anything else reads the document: the record is back and the page files it names are all there.
+        assertEquals(page.files.toSet() + "document.json", names(id))
+        assertEquals(page, library.document(id)!!.pages.single())
     }
 
     @Test
@@ -242,5 +269,18 @@ class LibrarySweepTest {
         ScanLibrary(root, clock = { now }).documents()
         assertTrue(second.exists())
         assertEquals(1, library.sweep())
+    }
+
+    @Test
+    fun `a first sweep that fails does not fail the listing and is tried again`() {
+        val (id, _) = newPage()
+        var broken = true
+        val flaky = ScanLibrary(root, clock = { if (broken) throw IllegalStateException("no clock") else now })
+        val orphan = File(root, "$id/1000.jpg").apply { createNewFile() }.stale()
+        assertEquals(listOf(id), flaky.documents().map { it.id })
+        assertTrue(orphan.exists())
+        broken = false
+        assertEquals(listOf(id), flaky.documents().map { it.id })
+        assertFalse(orphan.exists())
     }
 }

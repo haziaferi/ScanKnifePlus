@@ -1,5 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.library
 
+import android.util.Log
+import androidx.annotation.WorkerThread
 import com.haziaferi.scanknifeplus.scan.capture.AndroidPageImages
 import com.haziaferi.scanknifeplus.scan.capture.CaptureStore
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
@@ -43,13 +45,26 @@ class ScanLibrary(
 ) {
     /**
      * All readable documents, newest first. Folders without a readable record are skipped; leftover tombstones are swept away. The first call
-     * for a library folder in each process also runs [sweep], so files left by a crash are cleaned up without the app having to ask.
+     * for a library folder in each process runs [sweep] first, under the same global lock (so it holds up every other library call while it
+     * walks the library), and lists the records the sweep read; a sweep that fails is logged and tried again on the next call.
      */
+    @WorkerThread
     fun documents(): List<ScanDocument> = synchronized(LOCK) {
-        if (SWEPT.add(root.absolutePath)) sweep()
-        val folders = root.listFiles().orEmpty().filter { it.isDirectory }
-        folders.filter { it.name.startsWith(TOMBSTONE) }.forEach { it.deleteRecursively() }
-        folders.filter { !it.name.startsWith(".") }.mapNotNull { read(it) }.sortedByDescending { it.created }
+        val swept = if (root.absolutePath in SWEPT) null else firstSweep()
+        val docs = swept ?: run {
+            val folders = root.listFiles().orEmpty().filter { it.isDirectory }
+            folders.filter { it.name.startsWith(TOMBSTONE) }.forEach { it.deleteRecursively() }
+            folders.filter { !it.name.startsWith(".") }.mapNotNull { read(it) }
+        }
+        docs.sortedByDescending { it.created }
+    }
+
+    /** The sweep [documents] runs once per process; returns the documents it read, or null (and logs) if it failed. */
+    private fun firstSweep(): List<ScanDocument>? = try {
+        sweepAndRead().second.also { SWEPT += root.absolutePath }
+    } catch (e: Exception) {
+        Log.w(TAG, "Sweeping the library at $root failed", e)
+        null
     }
 
     fun document(id: String): ScanDocument? = synchronized(LOCK) { folderOf(id)?.let { read(it) } }
@@ -301,21 +316,27 @@ class ScanLibrary(
      * - In a document with a readable record, a file goes only if it has a name the library makes (`<stamp>.jpg`, `orig_<stamp>.jpg`,
      *   `unfilt_<stamp>.jpg`, any of those with `.tmp`, or the record's temp file), the record does not name it, no edit in progress in this
      *   process holds it, and it was last modified more than a day ago. Other files and folders are never touched.
-     * - A folder with no readable record goes only if it holds nothing but a record or record temp file that is empty or was read in full and
-     *   is not a record (what a crash during [create] leaves), and everything in it (for an empty folder, the folder) is more than a day old.
-     *   A folder with any page image, a record that could not be read (an I/O error may be transient), or anything else in it is kept, as are
-     *   folders starting with a dot.
+     * - A folder with no readable record goes only if it holds nothing but a record or record temp file that is empty, or was read in full and
+     *   does not even start like JSON (what a crash during [create] can leave), and everything in it (for an empty folder, the folder) is more
+     *   than a day old. A record that starts like JSON but does not parse is kept, with its folder: it may be damaged or from a newer app
+     *   version. A folder with any page image, a record that could not be read (an I/O error may be transient), or anything else in it is
+     *   kept, as are folders starting with a dot.
      *
-     * Why edits in progress are safe: page files are only created under the lock ([reserve], and the reservation in [addCapture]), and are held
-     * from that moment until the record names them or they are deleted again; the sweep runs entirely under the same lock, so it never sees a
-     * file that is reserved but not yet held, or a record half-way through being written ([create] makes its folder and writes its record in one
-     * locked step). Holds live in memory, so they cannot protect an edit running in another process; there the age limit does (an edit takes
-     * seconds), and it also keeps the sweep away from files whose modification time is in the future or unknown. A crash in this process ends
-     * every hold with it, and leaves only files that no record will ever name.
+     * Why edits in progress are safe: page files are only created under the lock (by [reserve], and by the reservation for a new page in
+     * [addPage]), and are held from that moment until the record names them or they are deleted again; the sweep runs entirely under the same
+     * lock, so it never sees a file that is reserved but not yet held, or a record half-way through being written ([create] makes its folder and
+     * writes its record in one locked step). Holds live in memory, so they cannot protect an edit running in another process; there the age
+     * limit does (an edit takes seconds), and it also keeps the sweep away from files whose modification time is in the future or unknown. A
+     * crash in this process ends every hold with it, and leaves only files that no record will ever name.
      */
-    fun sweep(): Int = synchronized(LOCK) {
+    @WorkerThread
+    fun sweep(): Int = sweepAndRead().first
+
+    /** [sweep], also returning the documents it read. */
+    private fun sweepAndRead(): Pair<Int, List<ScanDocument>> = synchronized(LOCK) {
         val cutoff = clock() - STALE_MILLIS
         var removed = 0
+        val docs = mutableListOf<ScanDocument>()
         for (folder in root.listFiles().orEmpty()) {
             if (!folder.isDirectory) continue
             if (folder.name.startsWith(TOMBSTONE)) {
@@ -324,9 +345,14 @@ class ScanLibrary(
             }
             if (folder.name.startsWith(".")) continue
             val doc = read(folder)
-            removed += if (doc != null) sweepDocument(folder, doc, cutoff) else sweepUnrecorded(folder, cutoff)
+            if (doc != null) {
+                docs += doc
+                removed += sweepDocument(folder, doc, cutoff)
+            } else {
+                removed += sweepUnrecorded(folder, cutoff)
+            }
         }
-        removed
+        removed to docs
     }
 
     /** The file [name] in document [id]; throws IllegalArgumentException for an id or name that could point outside the document's folder. */
@@ -340,11 +366,14 @@ class ScanLibrary(
     /** Removes the stale files of a readable document that its record does not name and no edit holds; see [sweep]. */
     private fun sweepDocument(folder: File, doc: ScanDocument, cutoff: Long): Int {
         val named = doc.pages.flatMapTo(HashSet()) { it.files }
-        return folder.listFiles().orEmpty().count { f ->
+        var removed = 0
+        for (f in folder.listFiles().orEmpty()) {
             val name = f.name
-            (name == RECORD_TMP || LIBRARY_FILE.matches(name)) && name !in named && heldKey(folder.name, name) !in HELD &&
-                f.isFile && isStale(f, cutoff) && f.delete()
+            if (name != RECORD_TMP && !LIBRARY_FILE.matches(name)) continue // not a file the library makes
+            if (name in named || heldKey(folder.name, name) in HELD) continue
+            if (f.isFile && isStale(f, cutoff) && f.delete()) removed++
         }
+        return removed
     }
 
     /** Removes a folder with no readable record if it is plainly what a crash during [create] leaves; see [sweep]. */
@@ -359,20 +388,20 @@ class ScanLibrary(
             } catch (e: IOException) {
                 return 0
             }
-            if (bytes.isNotEmpty() && parses(bytes)) return 0
+            if (!blankOrNotJson(bytes)) return 0
         }
         // One by one, then the folder only if it is empty by then, so nothing that appeared meanwhile goes with it.
         val deleted = entries.count { it.delete() }
         return deleted + if (folder.delete()) 1 else 0
     }
 
-    private fun parses(bytes: ByteArray): Boolean = try {
-        ScanDocument.fromJson(JSONObject(String(bytes, Charsets.UTF_8)))
-        true
-    } catch (e: Exception) {
-        false
-    } catch (e: StackOverflowError) {
-        false
+    /**
+     * True if [bytes] are empty, only whitespace, or start with anything but `{`: never a record. A record that starts like JSON but does not
+     * parse (damaged, or written by a newer app version before a downgrade) is not this, and its folder is kept.
+     */
+    private fun blankOrNotJson(bytes: ByteArray): Boolean {
+        val first = bytes.firstOrNull { it.toInt().toChar() !in " \t\n\r" }
+        return first?.toInt()?.toChar() != '{'
     }
 
     /** Last modified before [cutoff]; an unknown time (0, which is also what an I/O error gives) or one in the future is never stale. */
@@ -383,7 +412,8 @@ class ScanLibrary(
     private fun read(folder: File): ScanDocument? {
         val record = File(folder, RECORD)
         val tmp = File(folder, RECORD_TMP)
-        // A crash between removing an old record and renaming the new one into place leaves only the temp file, which is complete (it was synced).
+        // Only the temp file is left by a crash between removing an old record and renaming the new one into place, when it is complete (it was
+        // synced first), or by a crash while create() writes the first record, when it may be partial and then fails to parse like any damage.
         if (!record.exists() && tmp.exists()) tmp.renameTo(record)
         if (!record.isFile || record.length() > MAX_RECORD_BYTES) return null
         return try {
@@ -438,6 +468,7 @@ class ScanLibrary(
         /** Names of the page files the library makes, and of the temp files written beside them while they are encoded. */
         private val LIBRARY_FILE = Regex("(orig_|unfilt_)?[0-9]+[.]jpg([.]tmp)?")
         const val NAME_PREFIX = "ScanKnife"
+        private const val TAG = "ScanLibrary"
 
         /** One lock for every instance, since instances over the same folder would otherwise race on records and stamps. */
         private val LOCK = Any()
