@@ -13,14 +13,15 @@ import java.io.File
 
 /** Writes JPEG pages into a PDF, one page each. */
 fun interface PdfAssembler {
-    /** Writes [pages] to [dest] on [size] pages, using [workDir] for scratch space; false if it could not. Never throws. Blocking. */
+    /** Writes [pages] to [dest] on [size] pages, using [workDir] for scratch space; false if it could not. Blocking. */
     fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File): Boolean
 }
 
 /**
  * OpenScan's createPdf with pdfbox: each JPEG is embedded as it is (no decode or re-encode) and drawn where [PdfLayout] puts it. The document is
- * buffered in temporary files under the work folder rather than in memory, so a long scan cannot run the app out of heap. Pages are expected
- * upright with no EXIF orientation, as the scan library stores them.
+ * buffered in temporary files under the work folder rather than in memory, so a long scan cannot run the app out of heap. Failures, including
+ * running out of memory, return false. Pages are expected as the scan library stores them: upright with no EXIF orientation, and 3-component
+ * (colour) JPEGs, since pdfbox labels every JPEG DeviceRGB whatever its component count.
  */
 object PdfBoxAssembler : PdfAssembler {
     override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File): Boolean = try {

@@ -18,6 +18,18 @@ class PdfExportParityTest {
     }
 
     @Test
+    fun `presets match OpenScan's export sheet`() {
+        // export_bottomsheet.dart encodeQuality and maxEdge; the sheet starts on medium and A4.
+        assertEquals(
+            listOf(30 to 900, 45 to 1200, 65 to 1800, 85 to 2400),
+            ExportQuality.entries.map { it.jpegQuality to it.maxEdge },
+        )
+        assertEquals(listOf(false, false, false, true), ExportQuality.entries.map { it.usesStoredPages })
+        assertEquals(ExportQuality.MEDIUM, ExportQuality.DEFAULT)
+        assertEquals(PdfPageSize.A4, PdfPageSize.DEFAULT)
+    }
+
+    @Test
     fun `page sizes match the pdf package exactly`() {
         for (c in layouts) {
             val page = PdfPageSize.valueOf(c.raw("format").uppercase())

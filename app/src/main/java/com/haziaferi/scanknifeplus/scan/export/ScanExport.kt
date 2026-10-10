@@ -20,7 +20,6 @@ import com.paperknifeplus.app.ui.components.SessionManager
 import com.paperknifeplus.app.ui.components.getUriDetails
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
 
 /** A PDF saved where the user chose: [uri] as the system file picker returned it, holding [pages] pages. */
 data class SavedPdf(val uri: Uri, val pages: Int)
@@ -54,7 +53,14 @@ class ScanExport(
     ): SavedPdf? {
         val resolver = context.contentResolver
         val pages = exporter.writePdf(id, pageIds, quality, size, onProgress) { pdf ->
-            val out = resolver.openOutputStream(dest, "w") ?: throw IOException("Cannot write to $dest")
+            // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
+            val out = (try {
+                resolver.openOutputStream(dest, "wt")
+            } catch (e: IllegalArgumentException) {
+                null
+            } catch (e: UnsupportedOperationException) {
+                null
+            } ?: resolver.openOutputStream(dest, "w")) ?: throw IOException("Cannot write to $dest")
             out.use { o -> pdf.inputStream().use { it.copyTo(o) } }
             true
         }
@@ -85,10 +91,8 @@ class ScanExport(
         val cutoff = clock() - SHARE_LIFETIME_MILLIS
         shareDir.listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
         // A folder per share keeps the file name readable in the receiving app without two shares overwriting each other.
-        val folder = try {
-            Files.createTempDirectory(shareDir.toPath(), "pdf-").toFile()
-        } catch (e: IOException) {
-            Log.w(TAG, "No folder for the share copy", e)
+        val folder = ScanFiles.newFolder(shareDir, "pdf-") ?: run {
+            Log.w(TAG, "No folder for the share copy in $shareDir")
             return null
         }
         val target = File(folder, fileName(document))

@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.scan.export
 
 import android.net.Uri
 import android.os.Looper
+import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
@@ -50,6 +51,7 @@ class ScanPdfExporterTest {
         override fun crop(source: File, quad: Quad, quarterTurns: Int, dest: File) = error("not used")
 
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int): Boolean {
+            if (!source.exists()) return false // as the real decoder fails on a missing file
             val content = source.readText()
             if (content == failOn) return false
             dest.writeText("$quality@$maxEdge($content)")
@@ -164,6 +166,31 @@ class ScanPdfExporterTest {
         val (pages, _) = export(id, ExportQuality.HIGH) { done, _ -> if (done == 1) library.deletePage(id, second) }
         assertEquals(2, pages)
         assertEquals(listOf("page 1", "page 3"), assembler.pages)
+    }
+
+    @Test
+    fun `a page deleted while pages are re-encoded is left out on a second, still re-encoded, attempt`() {
+        val id = document(3)
+        val second = library.document(id)!!.pages[1].id
+        val (pages, _) = export(id, ExportQuality.LOW) { done, _ -> if (done == 1) library.deletePage(id, second) }
+        assertEquals(2, pages)
+        assertEquals(listOf("45@1200(page 1)", "45@1200(page 3)"), assembler.pages)
+    }
+
+    @Test
+    fun `the suggested file name falls back to the document's own name`() {
+        val export = ScanExport(RuntimeEnvironment.getApplication(), library, exporter, onSaved = {})
+        val named = library.create("Receipts: May/June")
+        assertEquals("Receipts_MayJune.pdf", export.fileName(named))
+        val punctuation = library.create("???")
+        assertEquals("${punctuation.id}.pdf", export.fileName(punctuation))
+    }
+
+    @Test
+    fun `new folders are distinct and empty`() {
+        val folders = List(20) { ScanFiles.newFolder(File(root, "fresh"), "pdf-")!! }
+        assertEquals(20, folders.toSet().size)
+        assertTrue(folders.all { it.isDirectory && it.name.startsWith("pdf-") && it.list()!!.isEmpty() })
     }
 
     @Test

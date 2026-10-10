@@ -1,6 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.export
 
 import android.util.Log
+import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.AndroidPageImages
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
@@ -9,7 +10,6 @@ import com.haziaferi.scanknifeplus.scanner.export.ExportQuality
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
 
 /**
  * Turns a scan library document into a PDF (OpenScan file_operations.dart saveToDevice, saveForSharing and _compressedForPdf). Every page is
@@ -37,11 +37,8 @@ class ScanPdfExporter(
         deliver: (File) -> Boolean,
     ): Int? {
         pruneStale()
-        val work = try {
-            workRoot.mkdirs()
-            Files.createTempDirectory(workRoot.toPath(), "pdf-").toFile()
-        } catch (e: IOException) {
-            Log.w(TAG, "No work folder for the export", e)
+        val work = ScanFiles.newFolder(workRoot, "pdf-") ?: run {
+            Log.w(TAG, "No work folder for the export in $workRoot")
             return null
         }
         try {
@@ -86,6 +83,7 @@ class ScanPdfExporter(
             Log.w(TAG, "Re-encoding failed; exporting the pages as stored")
             encoded.forEach { it.delete() }
         }
+        val fallback = !quality.usesStoredPages
         return pages.mapIndexed { i, page ->
             val dest = File(work, "$i.jpg")
             try {
@@ -94,7 +92,8 @@ class ScanPdfExporter(
                 Log.w(TAG, "Page ${page.id} could not be read", e)
                 return null
             }
-            onProgress(i + 1, pages.size)
+            // After a failed re-encode the count already moved on; copying is quick, so it is not walked back to 1.
+            if (!fallback) onProgress(i + 1, pages.size)
             dest
         }
     }

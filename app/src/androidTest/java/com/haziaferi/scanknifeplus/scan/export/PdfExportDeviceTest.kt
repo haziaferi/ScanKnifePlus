@@ -131,6 +131,16 @@ class PdfExportDeviceTest {
     }
 
     @Test
+    fun shareCopiesAreRemovedOnceADayOld() {
+        val now = System.currentTimeMillis()
+        val old = File(shareDir, "pdf-test-old").apply { mkdirs(); File(this, "a.pdf").writeText("x"); setLastModified(now - 25L * 60 * 60 * 1000) }
+        val recent = File(shareDir, "pdf-test-recent").apply { mkdirs(); File(this, "b.pdf").writeText("x"); setLastModified(now - 60L * 60 * 1000) }
+        assertNotNull(export.share(document()))
+        assertTrue("an old copy is removed", !old.exists())
+        assertTrue("a recent copy stays", File(recent, "b.pdf").exists())
+    }
+
+    @Test
     fun saveWritesTheChosenDestinationAndReportsIt() {
         val id = document()
         val dest = Uri.fromFile(File(root, "picked.pdf"))
