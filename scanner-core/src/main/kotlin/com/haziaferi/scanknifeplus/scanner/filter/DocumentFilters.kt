@@ -45,12 +45,25 @@ object DocumentFilters {
      * the light the page was shot under, so the paper goes white and the ink saturates without picking a white balance.
      */
     object Auto : Filter("Auto") {
+        // OpenScan stretches each channel in turn, then applies contrast. Each histogram reads only its own channel, which the earlier stretches
+        // leave alone, so one fused stretch-then-contrast table per channel in a single pass gives the same bytes.
         override fun apply(pixels: ByteArray, width: Int, height: Int) {
-            for (channel in 0 until 3) {
+            val contrast = ImageFilterUtils.contrastLut(0.08)
+            val luts = Array(3) { channel ->
                 val bounds = DocumentFilterUtils.percentileBounds(DocumentFilterUtils.channelHistogram(pixels, channel), CLIP_FRACTION, CLIP_FRACTION)
-                DocumentFilterUtils.applyLutToChannel(pixels, channel, DocumentFilterUtils.stretchLut(bounds[0], bounds[1]))
+                val stretch = DocumentFilterUtils.stretchLut(bounds[0], bounds[1])
+                ByteArray(256) { contrast[stretch.u8(it)] }
             }
-            ImageFilterUtils.contrast(pixels, 0.08)
+            val r = luts[0]
+            val g = luts[1]
+            val b = luts[2]
+            var i = 0
+            while (i < pixels.size) {
+                pixels[i] = r[pixels.u8(i)]
+                pixels[i + 1] = g[pixels.u8(i + 1)]
+                pixels[i + 2] = b[pixels.u8(i + 2)]
+                i += 4
+            }
         }
     }
 

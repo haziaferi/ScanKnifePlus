@@ -126,15 +126,6 @@ object DocumentFilterUtils {
         return lut
     }
 
-    /** Applies [lut] to one channel of an RGBA buffer, in place. */
-    fun applyLutToChannel(rgba: ByteArray, channel: Int, lut: ByteArray) {
-        var i = channel
-        while (i < rgba.size) {
-            rgba[i] = lut[rgba.u8(i)]
-            i += 4
-        }
-    }
-
     /** Applies [lut] to all three colour channels of an RGBA buffer, in place, leaving alpha untouched. */
     fun applyLutToRgb(rgba: ByteArray, lut: ByteArray) {
         var i = 0
