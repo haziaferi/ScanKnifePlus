@@ -5,6 +5,7 @@ package com.haziaferi.scanknifeplus.scanner.store
 import com.haziaferi.scanknifeplus.scanner.cv.PageSize
 import com.haziaferi.scanknifeplus.scanner.cv.PerspectiveCrop
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
+import com.haziaferi.scanknifeplus.scanner.cv.RgbaImage
 import com.haziaferi.scanknifeplus.scanner.dartRound
 
 /** How captured pages and kept originals are sized on their way into storage. Pure arithmetic; decoding and encoding happen in the app. */
@@ -23,6 +24,20 @@ object StoredImage {
         if (maxEdge <= 0 || longest <= maxEdge) return PageSize(width, height)
         val scale = maxEdge.toDouble() / longest
         return PageSize(maxOf(1, dartRound(width * scale)), maxOf(1, dartRound(height * scale)))
+    }
+
+    /**
+     * OpenScan's fitToMaxEdge (compress.dart): [image] box-averaged down so its long edge is [maxEdge], or [image] itself if it already fits or
+     * [maxEdge] is null. Used where OpenScan normalizes an already-decoded page, such as a re-crop. As in the `image` package's copyResize, the
+     * long side is set to [maxEdge] (width when the image is square) and the other is `round(maxEdge * (other / long))`.
+     */
+    fun fitToMaxEdge(image: RgbaImage, maxEdge: Int?): RgbaImage {
+        if (maxEdge == null || maxOf(image.width, image.height) <= maxEdge) return image
+        return if (image.width >= image.height) {
+            PerspectiveCrop.averageResize(image, maxEdge, dartRound(maxEdge * (image.height.toDouble() / image.width)))
+        } else {
+            PerspectiveCrop.averageResize(image, dartRound(maxEdge * (image.width.toDouble() / image.height)), maxEdge)
+        }
     }
 
     /**
