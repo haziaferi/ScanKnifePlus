@@ -3,8 +3,9 @@
 package com.haziaferi.scanknifeplus.scanner.live
 
 import com.haziaferi.scanknifeplus.scanner.cv.Contours
-import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
+import com.haziaferi.scanknifeplus.scanner.cv.quadOf
+import com.haziaferi.scanknifeplus.scanner.cv.toScalars
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -137,7 +138,7 @@ class QuadSmoother(
 
     private fun seedTrack(raw: Quad, now: Long) {
         val newFilters = List(8) { OneEuroFilter(MIN_CUTOFF_HZ, BETA, DERIVATIVE_CUTOFF_HZ) }
-        val scalars = scalarsOf(raw)
+        val scalars = raw.toScalars()
         for (i in 0 until 8) {
             newFilters[i].seed(scalars[i])
         }
@@ -162,10 +163,10 @@ class QuadSmoother(
         val dtSeconds = max((now - lastSampleAt!!) / 1e6, 0.001)
         lastSampleAt = now
 
-        val rawScalars = scalarsOf(corresponded)
+        val rawScalars = corresponded.toScalars()
         val f = filters!!
         val smoothed = DoubleArray(8) { f[it].filter(rawScalars[it], dtSeconds) }
-        publish(quadFromScalars(smoothed))
+        publish(quadOf(smoothed))
     }
 
     private fun resetState() {
@@ -184,15 +185,6 @@ class QuadSmoother(
         smoothedQuad = value
         onChanged?.invoke(value)
     }
-
-    private fun scalarsOf(q: Quad): DoubleArray = doubleArrayOf(
-        q.topLeft.x, q.topLeft.y,
-        q.topRight.x, q.topRight.y,
-        q.bottomRight.x, q.bottomRight.y,
-        q.bottomLeft.x, q.bottomLeft.y,
-    )
-
-    private fun quadFromScalars(s: DoubleArray): Quad = Quad(Pt(s[0], s[1]), Pt(s[2], s[3]), Pt(s[4], s[5]), Pt(s[6], s[7]))
 }
 
 /**

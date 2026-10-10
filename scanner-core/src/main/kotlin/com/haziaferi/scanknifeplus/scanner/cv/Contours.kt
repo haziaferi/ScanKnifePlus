@@ -146,36 +146,22 @@ object Contours {
 
             if (matched == null) {
                 means += candidate
-                sums += scalars(candidate)
+                sums += candidate.toScalars()
                 counts += 1
                 continue
             }
 
             val sum = sums[matched]
-            val s = scalars(aligned)
+            val s = aligned.toScalars()
             for (i in 0 until 8) {
                 sum[i] += s[i]
             }
             counts[matched] = counts[matched] + 1
-            means[matched] = quadOfScalars(sum, counts[matched])
+            means[matched] = quadOf(sum, counts[matched])
         }
 
         return means.indices.map { QuadCluster(means[it], counts[it]) }
     }
-
-    private fun scalars(q: Quad): DoubleArray = doubleArrayOf(
-        q.topLeft.x, q.topLeft.y,
-        q.topRight.x, q.topRight.y,
-        q.bottomRight.x, q.bottomRight.y,
-        q.bottomLeft.x, q.bottomLeft.y,
-    )
-
-    private fun quadOfScalars(sums: DoubleArray, count: Int): Quad = Quad(
-        topLeft = Pt(sums[0] / count, sums[1] / count),
-        topRight = Pt(sums[2] / count, sums[3] / count),
-        bottomRight = Pt(sums[4] / count, sums[5] / count),
-        bottomLeft = Pt(sums[6] / count, sums[7] / count),
-    )
 
     /** Area (as a fraction of the frame) weighted by squareness: larger, more rectangular quads score higher. */
     private fun qualityScore(quad: Quad, width: Int, height: Int): Double {
@@ -409,13 +395,6 @@ object Contours {
         val projX = a.x + t * dx
         val projY = a.y + t * dy
         return dist(p, Pt(projX, projY))
-    }
-
-    // The original uses pow(d, 2); squaring by multiplication gives the same correctly rounded result.
-    private fun dist(a: Pt, b: Pt): Double {
-        val dx = a.x - b.x
-        val dy = a.y - b.y
-        return sqrt(dx * dx + dy * dy)
     }
 
     private fun isConvex(pts: List<Pt>): Boolean {

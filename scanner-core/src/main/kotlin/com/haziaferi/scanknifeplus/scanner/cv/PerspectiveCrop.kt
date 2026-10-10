@@ -10,7 +10,6 @@ import com.haziaferi.scanknifeplus.scanner.dartToInt
 import com.haziaferi.scanknifeplus.scanner.u8
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.sqrt
 
 /** The pixel size of a warped page. */
 data class PageSize(val width: Int, val height: Int)
@@ -39,8 +38,8 @@ object PerspectiveCrop {
         val tr = quad.topRight
         val br = quad.bottomRight
         val bl = quad.bottomLeft
-        val width = max(dist(tl.x, tl.y, tr.x, tr.y), dist(bl.x, bl.y, br.x, br.y))
-        val height = max(dist(tl.x, tl.y, bl.x, bl.y), dist(tr.x, tr.y, br.x, br.y))
+        val width = max(dist(tl, tr), dist(bl, br))
+        val height = max(dist(tl, bl), dist(tr, br))
         return PageSize(dartRound(width).coerceIn(1, 1 shl 16), dartRound(height).coerceIn(1, 1 shl 16))
     }
 
@@ -204,13 +203,6 @@ object PerspectiveCrop {
             }
         }
         return RgbaImage(width, height, out)
-    }
-
-    // The original uses pow(d, 2); squaring by multiplication gives the same correctly rounded result.
-    private fun dist(x1: Double, y1: Double, x2: Double, y2: Double): Double {
-        val dx = x2 - x1
-        val dy = y2 - y1
-        return sqrt(dx * dx + dy * dy)
     }
 
     /**

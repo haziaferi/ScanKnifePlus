@@ -66,9 +66,7 @@ private fun dartDoubleString(d: Double): String {
     return java.math.BigDecimal(d).stripTrailingZeros().let { if (it.scale() <= 0) it.toPlainString() + ".0" else it.toPlainString() }
 }
 
-internal fun ParityCase.quad(key: String): Quad? {
-    val v = raw(key)
-    if (v == "null") return null
-    val n = v.split(',').map { it.toDouble() }
-    return Quad(Pt(n[0], n[1]), Pt(n[2], n[3]), Pt(n[4], n[5]), Pt(n[6], n[7]))
-}
+/** Parses the generator's `quadToString` output, the inverse of [format]. */
+internal fun parseQuad(v: String): Quad? = if (v == "null") null else quadOf(v.split(',').map { it.toDouble() }.toDoubleArray())
+
+internal fun ParityCase.quad(key: String): Quad? = parseQuad(raw(key))
