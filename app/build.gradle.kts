@@ -67,15 +67,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
     buildFeatures { compose = true }
     lint { abortOnError = false }
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
     testOptions { unitTests.isIncludeAndroidResources = true }
+}
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
 }
 
 tasks.withType<AbstractArchiveTask>().configureEach {
