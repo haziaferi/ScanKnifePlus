@@ -49,10 +49,11 @@ These libraries ship inside the ScanKnife+ APK.
 
 ### pdfbox-android
 
-[PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) 2.0.27.0 by Tom Roush, licensed under the Apache License, Version 2.0, is a port of [Apache PDFBox](https://pdfbox.apache.org/) 2.0.27 (also Apache License 2.0), whose NOTICE is reproduced below. Its library carries these third-party resources:
+[PdfBox-Android](https://github.com/TomRoush/PdfBox-Android) 2.0.27.0 by Tom Roush, licensed under the Apache License, Version 2.0, is a port of [Apache PDFBox](https://pdfbox.apache.org/) 2.0.27 (also Apache License 2.0), whose NOTICE is reproduced below. PDFBox's own licence lists external components; the parts that cover code and resources in pdfbox-android (the original pdfbox.org BSD licence, the Adobe Core 14 AFM permission notice and the Adobe CMaps BSD licence) are reproduced verbatim in [NOTICES/PDFBox-2.0.27-external-components.txt](NOTICES/PDFBox-2.0.27-external-components.txt). Its library carries these third-party resources:
 
-- **Liberation Sans** 2.1.5 (`LiberationSans-Regular.ttf`): "Digitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc." Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent and Trademark Office and certain other jurisdictions. Licensed under the SIL Open Font License, Version 1.1; the full license text is at https://openfontlicense.org/open-font-license-official-text/ (and in OFL.txt of https://github.com/liberationfonts/liberation-fonts).
-- **Adobe Core 14 font metrics** (the 14 standard `.afm` files), carrying these notices:
+- **Liberation Sans** 2.1.5 (`LiberationSans-Regular.ttf`): "Digitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc." Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent and Trademark Office and certain other jurisdictions. Licensed under the SIL Open Font License, Version 1.1, reproduced verbatim in [NOTICES/LiberationSans-OFL-1.1.txt](NOTICES/LiberationSans-OFL-1.1.txt) (source: https://github.com/liberationfonts/liberation-fonts/blob/2.1.5/LICENSE).
+- **CMaps for PDF fonts** (92 Adobe CMap files): Copyright 1990-2009 Adobe Systems Incorporated, under the BSD licence in the PDFBox external-components file linked above.
+- **Adobe Core 14 font metrics** (the 14 standard `.afm` files), under the AFM permission notice in the PDFBox external-components file linked above, carrying these notices:
   - Copyright (c) 1985, 1987, 1988, 1989, 1997 Adobe Systems Incorporated. All Rights Reserved. ITC Zapf Dingbats is a registered trademark of International Typeface Corporation.
   - Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems Incorporated. All Rights Reserved. Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
   - Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated. All Rights Reserved. Helvetica is a trademark of Linotype-Hell AG and/or its subsidiaries.

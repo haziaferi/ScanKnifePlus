@@ -60,6 +60,6 @@ sealed class DetectionResult {
     /** Detection ran without error, but no suitable quad was found. */
     data class NotFound(val imageWidth: Int, val imageHeight: Int) : DetectionResult()
 
-    /** Detection threw (corrupt image, decode failure, etc). */
+    /** Detection threw an exception, for example on an RGBA buffer shorter than its stated size. */
     data class Failure(val message: String) : DetectionResult()
 }

@@ -42,7 +42,8 @@ object ImageFilterUtils {
 
     /** Contrast around mid-grey; [adj] runs -1 (flat) to 1 (harsh). */
     fun contrast(bytes: ByteArray, adj: Double) {
-        // OpenScan only evaluates the factor per pixel, so an empty buffer must not throw on a non-finite factor.
+        // OpenScan computes the factor once (a non-finite one does not throw) and throws only at the first pixel's round(), so an empty buffer
+        // must pass untouched.
         if (bytes.isEmpty()) return
         DocumentFilterUtils.applyLutToRgb(bytes, contrastLut(adj))
     }
