@@ -4,7 +4,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** OpenScan multiplies frame sizes in Dart's 64-bit ints; at 50000 px a 32-bit `width * height` wraps negative and flips the area checks. */
+/**
+ * OpenScan multiplies frame sizes in Dart's 64-bit ints; at 50000 px a 32-bit `width * height` wraps negative and flips the area checks.
+ * Expected values come from running OpenScan's contours.dart (Dart 3.13.5) on the same quads.
+ */
 class ContoursOverflowTest {
     private fun square(from: Double, to: Double) = Quad(Pt(from, from), Pt(to, from), Pt(to, to), Pt(from, to))
 

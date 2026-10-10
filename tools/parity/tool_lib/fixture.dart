@@ -47,49 +47,35 @@ Uint8List noiseRgba(int w, int h, int seed) {
 /// A bright, slightly rotated sheet on a dark, textured background. Noise is drawn per 4x4 block so large inputs gzip well.
 Uint8List documentRgba(int w, int h, int seed) {
   final r = Random(seed);
-  final bw = (w + 3) ~/ 4, bh = (h + 3) ~/ 4;
-  final blockNoise = List.generate(bw * bh, (_) => r.nextInt(13) - 6);
+  final blockNoise = _blockNoise(r, w, h);
   final corners = [
     [0.18 * w, 0.12 * h],
     [0.84 * w, 0.20 * h],
     [0.78 * w, 0.90 * h],
     [0.12 * w, 0.82 * h],
   ];
-  bool inside(double x, double y) {
-    for (int i = 0; i < 4; i++) {
-      final a = corners[i], b = corners[(i + 1) % 4];
-      if ((b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]) < 0) return false;
-    }
-    return true;
-  }
-
-  final out = Uint8List(w * h * 4);
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      final n = blockNoise[(y ~/ 4) * bw + (x ~/ 4)];
-      final paper = inside(x + 0.5, y + 0.5);
-      final i = (y * w + x) * 4;
-      out[i] = ((paper ? 212 : 46) + n).clamp(0, 255);
-      out[i + 1] = ((paper ? 208 : 52) + n).clamp(0, 255);
-      out[i + 2] = ((paper ? 198 : 61) + n).clamp(0, 255);
-      out[i + 3] = 255;
-    }
-  }
-  return out;
+  return _sheetRgba(w, h, corners, blockNoise);
 }
 
 /// Like [documentRgba] but with each sheet corner moved by up to [jitter] (fraction of the frame), so cases cover rotated and skewed sheets.
 Uint8List jitteredDocumentRgba(int w, int h, int seed, double jitter) {
   final r = Random(seed);
   double j() => (r.nextDouble() * 2 - 1) * jitter;
+  // The corners are drawn before the noise here, the other way round from documentRgba; both orders are kept so the fixtures stay the same.
   final corners = [
     [(0.18 + j()) * w, (0.12 + j()) * h],
     [(0.84 + j()) * w, (0.20 + j()) * h],
     [(0.78 + j()) * w, (0.90 + j()) * h],
     [(0.12 + j()) * w, (0.82 + j()) * h],
   ];
-  final bw = (w + 3) ~/ 4, bh = (h + 3) ~/ 4;
-  final blockNoise = List.generate(bw * bh, (_) => r.nextInt(13) - 6);
+  return _sheetRgba(w, h, corners, _blockNoise(r, w, h));
+}
+
+List<int> _blockNoise(Random r, int w, int h) => List.generate(((w + 3) ~/ 4) * ((h + 3) ~/ 4), (_) => r.nextInt(13) - 6);
+
+/// Rasterises the sheet inside [corners] (clockwise) over the background, adding one [blockNoise] value per 4x4 block.
+Uint8List _sheetRgba(int w, int h, List<List<double>> corners, List<int> blockNoise) {
+  final bw = (w + 3) ~/ 4;
   bool inside(double x, double y) {
     for (int i = 0; i < 4; i++) {
       final a = corners[i], b = corners[(i + 1) % 4];
