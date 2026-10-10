@@ -14,7 +14,7 @@ robolectric = "4.16.1"
 exifinterface = "1.4.2"
 # Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
 androidxTestCore = "1.7.0"
-# 1.5 and later need compileSdk 35.
+# Held at 1.4.2 until the CameraX bump is approved and device-verified.
 camerax = "1.4.2"
 # Matches the androidx.test runner 1.5.x that androidx.test.ext:junit 1.1.5 brings.
 androidxTestRules = "1.5.0"
