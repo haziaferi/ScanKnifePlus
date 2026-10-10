@@ -30,9 +30,9 @@ object FrameAdapter {
     }
 
     /**
-     * Downsamples the Y (luma) plane of a YUV420 frame, which is already grayscale. Each output pixel is the rounded mean of the 3x3 neighbourhood
-     * around its nearest source pixel, which keeps per-pixel sensor noise from aliasing into detection. [bytesPerRow] may exceed [width] because of
-     * row padding, so rows are always indexed by stride. The Y plane's pixel stride is always 1 in YUV_420_888. Returns null for an empty frame.
+     * Downsamples the Y (luma) plane of a YUV420 frame; each output pixel is the rounded mean of the 3x3 neighbourhood around its nearest source
+     * pixel, which keeps sensor noise from aliasing into detection. Rows are indexed by [bytesPerRow], which may include padding (the Y plane's
+     * pixel stride is always 1 in YUV_420_888). Returns null for an empty frame.
      */
     fun grayscaleFromYPlane(
         yPlane: ByteArray,

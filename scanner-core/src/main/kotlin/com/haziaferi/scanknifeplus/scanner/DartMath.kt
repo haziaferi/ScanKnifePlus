@@ -1,9 +1,6 @@
 // Part of ScanKnife+'s port of OpenScan (Copyright (c) 2021, Vijay T S and Vikram H, BSD-3-Clause). See NOTICE.md.
+// Dart semantics that OpenScan's code relies on, reproduced so ported arithmetic gives bit-identical results.
 package com.haziaferi.scanknifeplus.scanner
-
-/**
- * Helpers that reproduce Dart semantics the original OpenScan code relies on, so ported arithmetic gives bit-identical results.
- */
 
 /**
  * Dart's `double.round()`: nearest integer, ties away from zero ([Math.round] sends negative ties towards positive infinity), and like Dart it

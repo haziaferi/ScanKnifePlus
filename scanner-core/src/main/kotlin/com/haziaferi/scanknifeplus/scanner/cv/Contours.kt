@@ -15,23 +15,20 @@ data class CornerAssignment(val quad: Quad, val totalDistance: Double)
 /** One cluster of candidates describing the same shape: their corner-wise mean and how many candidates it was built from. */
 internal data class QuadCluster(val quad: Quad, val support: Int)
 
-/**
- * Finds document-shaped quadrilaterals in a binary edge mask (1 = edge), analogous to OpenCV's `findContours` + `approxPolyDP` + `sortPoints` pipeline.
- */
+/** Finds document-shaped quadrilaterals in a binary edge mask (1 = edge), like OpenCV's `findContours` + `approxPolyDP` + `sortPoints`. */
 object Contours {
     /**
-     * Weight given to proximity to the previous quad (in [pickBestQuad]) versus intrinsic candidate quality (area + squareness). Deliberately small:
-     * a strong pull toward the previous frame's position made the overlay chase poor candidates that merely sat close to last frame; this is a
-     * tie-breaker for temporal consistency between otherwise similarly-good candidates, not the primary signal.
+     * Weight of proximity to the previous quad in [pickBestQuad], against area and squareness. Deliberately small: a strong pull made the overlay
+     * chase poor candidates that merely sat close to last frame, so it only breaks ties between similarly good candidates.
      */
     const val PREVIOUS_QUAD_PROXIMITY_WEIGHT = 0.15
 
-    /** How far apart (average per-corner distance, as a fraction of the frame diagonal) two candidates may sit and still be treated as the same detection. */
+    /** How far apart two candidates may sit (average per-corner distance, as a fraction of the frame diagonal) and still be the same detection. */
     const val CANDIDATE_CLUSTER_FRACTION = 0.03
 
     /**
-     * Weight given to how many candidates back a cluster. A shape that several thresholds and several RDP epsilons all independently agree on is far
-     * more likely to be the real document edge than one that only a single parameter combination produced, and it is the one that will still be there next frame.
+     * Weight of how many candidates back a cluster. A shape that several thresholds and RDP epsilons agree on is far more likely to be the real
+     * document edge, and to still be there next frame, than one a single parameter combination produced.
      */
     const val CANDIDATE_SUPPORT_WEIGHT = 0.12
 
@@ -39,8 +36,8 @@ object Contours {
     const val MIN_QUAD_AREA_RATIO = 0.05
 
     /**
-     * Minimum interior angle, in degrees, considered legal for a document corner. A quad with an angle below this (or above `180 - MIN_QUAD_ANGLE_DEGREES`)
-     * has a corner that has effectively collapsed onto its neighbours: a sliver or near-triangle, not a usable crop target.
+     * Minimum interior angle, in degrees, of a document corner. A quad with an angle below this (or above `180 - MIN_QUAD_ANGLE_DEGREES`) has a
+     * corner collapsed onto its neighbours: a sliver or near-triangle, not a usable crop target.
      */
     const val MIN_QUAD_ANGLE_DEGREES = 15.0
 
@@ -86,12 +83,9 @@ object Contours {
     }
 
     /**
-     * Picks the best detection from [candidates] (as gathered by [findDocumentQuadCandidates], possibly pooled from multiple masks).
-     *
-     * The pool is first clustered: candidates whose corners all sit within [CANDIDATE_CLUSTER_FRACTION] of each other are the same shape found several
-     * times over and are averaged into one consensus quad, so two near-identical shapes can't trade places from frame to frame. Clusters are then scored
-     * by area weighted by squareness, plus a bonus for how many candidates back the cluster ([CANDIDATE_SUPPORT_WEIGHT]), plus, if [previousQuad] is
-     * supplied, a small proximity bonus ([PREVIOUS_QUAD_PROXIMITY_WEIGHT]) toward whatever was detected last frame.
+     * Picks the best detection from [candidates] (from [findDocumentQuadCandidates], possibly pooled from several masks). Candidates within
+     * [CANDIDATE_CLUSTER_FRACTION] of each other are averaged into one consensus quad, so near-identical shapes can't trade places between frames.
+     * Clusters score by area times squareness, plus [CANDIDATE_SUPPORT_WEIGHT] for support and [PREVIOUS_QUAD_PROXIMITY_WEIGHT] near [previousQuad].
      */
     fun pickBestQuad(candidates: List<Quad>, width: Int, height: Int, previousQuad: Quad? = null): Quad? {
         if (candidates.isEmpty()) return null
@@ -169,7 +163,7 @@ object Contours {
         return areaRatio * (1 - maxAngleDeviationFraction(quad))
     }
 
-    /** Largest per-corner deviation from 90 degrees, normalized to [0,1] (0 = every corner is exactly 90 degrees; 1 = a corner is 0 or 180 degrees). */
+    /** Largest per-corner deviation from 90 degrees, normalized to [0,1]: 0 when every corner is square, 1 when a corner is 0 or 180 degrees. */
     private fun maxAngleDeviationFraction(quad: Quad): Double {
         val pts = quad.points
         var maxDeviation = 0.0
@@ -184,8 +178,8 @@ object Contours {
     }
 
     /**
-     * Assigns [points] (exactly 4, unordered) to the corner slots of [reference], choosing whichever of the 24 permutations minimizes the total
-     * corner-to-corner distance. Keeps a physical corner mapped to the same slot across frames even when [sortCorners] would flip it near a 45-degree rotation.
+     * Assigns [points] (exactly 4, unordered) to the corner slots of [reference], choosing the permutation with the least total corner-to-corner
+     * distance. Keeps a physical corner in the same slot across frames even where [sortCorners] would flip it near a 45-degree rotation.
      */
     fun bestCornerAssignment(points: List<Pt>, reference: Quad): CornerAssignment {
         require(points.size == 4)
@@ -463,11 +457,9 @@ object Contours {
     }
 
     /**
-     * Canonical corner order: top-left / top-right / bottom-right / bottom-left, clockwise as seen on screen (y grows downward).
-     *
-     * 1. The four points are put in convex cyclic order by angle around their centroid, so the polygon is a simple quadrilateral wound clockwise.
-     * 2. Of the four rotations of that cycle, the one whose labels best fit their names wins: top corners above bottom ones, right corners to the right
-     *    of left ones. Rotating a cycle can never duplicate or drop a point (unlike a per-slot sum/difference sort), so the result is always a permutation of the input.
+     * Canonical corner order: top-left, top-right, bottom-right, bottom-left, clockwise on screen. The points are cycled by angle around their
+     * centroid, then the rotation of that cycle whose labels best fit their names wins; unlike a per-slot sum/difference sort, this can never
+     * duplicate or drop a point.
      */
     fun sortCorners(pts: List<Pt>): Quad {
         require(pts.size == 4)

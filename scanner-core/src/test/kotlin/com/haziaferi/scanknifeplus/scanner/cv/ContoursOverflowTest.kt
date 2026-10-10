@@ -25,6 +25,7 @@ class ContoursOverflowTest {
     fun `pickBestQuad on a 50000 px frame clusters by the true diagonal`() {
         val a = square(5000.0, 45000.0)
         val b = Quad(Pt(6500.0, 5000.0), Pt(46500.0, 5000.0), Pt(46500.0, 45000.0), Pt(6500.0, 45000.0))
-        assertEquals(Quad(Pt(5750.0, 5000.0), Pt(45750.0, 5000.0), Pt(45750.0, 45000.0), Pt(5750.0, 45000.0)), Contours.pickBestQuad(listOf(a, b), 50000, 50000))
+        val mean = Quad(Pt(5750.0, 5000.0), Pt(45750.0, 5000.0), Pt(45750.0, 45000.0), Pt(5750.0, 45000.0))
+        assertEquals(mean, Contours.pickBestQuad(listOf(a, b), 50000, 50000))
     }
 }

@@ -10,16 +10,10 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Smooths the noisy per-frame stream of detected quads into a stable signal for painting the overlay and driving [AutoCaptureDetector], without
- * meaningfully lagging behind a document that's actually being moved.
- *
- * The live detector re-derives its result independently every frame, which produces two kinds of instability:
- * 1. Small positional noise around the true edge, even when held still. Handled by a per-corner One Euro Filter.
- * 2. Occasional outright different detections (another component or threshold candidate winning for one frame). Handled by a lock/confirmation
- *    gate: consecutive raw samples are compared to each other (not to the lagged output), and a sample far from the last accepted one is held as
- *    pending, invisible to the output, until it has been seen [JUMP_CONFIRM_FRAME_COUNT] times in a row.
- *
- * [onChanged] is called whenever [smoothedQuad] is replaced (by a new instance or null), mirroring the original's `ValueNotifier`.
+ * Smooths the noisy per-frame quads into a stable signal for the overlay and [AutoCaptureDetector] without lagging a document that is moving.
+ * Positional noise goes through a per-corner One Euro Filter; an outright different detection is held back, compared raw-to-raw rather than
+ * against the lagged output, until it has been seen [JUMP_CONFIRM_FRAME_COUNT] times in a row. [onChanged] is called whenever [smoothedQuad] is
+ * replaced (by a new instance or null), like the original's `ValueNotifier`.
  */
 class QuadSmoother(
     private val clock: MicrosClock = MicrosClock.SYSTEM,
@@ -73,10 +67,7 @@ class QuadSmoother(
 
         if (raw == null) {
             val seen = lastSeenAt
-            if (seen != null && now - seen <= NULL_GRACE_PERIOD_MICROS) {
-                // Within the grace period: leave the smoothed value exactly as it was, without notifying.
-                return
-            }
+            if (seen != null && now - seen <= NULL_GRACE_PERIOD_MICROS) return
             resetState()
             return
         }
@@ -85,7 +76,6 @@ class QuadSmoother(
 
         val lastRaw = lastRawQuad
         if (lastRaw == null) {
-            // No active track: this sample immediately becomes the track (first sample, or first after a reset).
             pendingQuad = null
             pendingStreak = 0
             lastRawQuad = raw
@@ -96,7 +86,6 @@ class QuadSmoother(
         val matchToTrack = Contours.bestCornerAssignment(raw.points, lastRaw)
         val trackDist = asFraction(matchToTrack.totalDistance)
         if (trackDist < JUMP_DISTANCE_FRACTION) {
-            // Same document as what's tracked: continued tracking.
             pendingQuad = null
             pendingStreak = 0
             lastRawQuad = matchToTrack.quad
@@ -104,7 +93,6 @@ class QuadSmoother(
             return
         }
 
-        // Conflicts with the current track: only accept it once it has recurred JUMP_CONFIRM_FRAME_COUNT times in a row against itself.
         val pending = pendingQuad
         if (pending != null) {
             val matchToPending = Contours.bestCornerAssignment(raw.points, pending)
@@ -121,14 +109,13 @@ class QuadSmoother(
         }
 
         if (pendingStreak >= JUMP_CONFIRM_FRAME_COUNT) {
-            // Confirmed: a genuinely different shape. Ease the track there through the existing filters rather than snapping.
+            // A genuinely different shape: ease the track there through the existing filters rather than snapping.
             val confirmed = pendingQuad!!
             pendingQuad = null
             pendingStreak = 0
             lastRawQuad = confirmed
             retargetTrack(confirmed, now)
         }
-        // Otherwise leave the displayed quad untouched while the candidate is unconfirmed.
     }
 
     /** Clears all filter/track state and publishes null; called after a capture so a new document doesn't inherit the old one's track. */
