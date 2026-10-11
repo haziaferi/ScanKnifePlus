@@ -1,7 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -47,7 +46,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import androidx.compose.foundation.Image as ComposeImage
 import kotlin.math.ceil
 
@@ -159,12 +157,9 @@ fun WatermarkView(
     val imgLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             scope.launch {
-                try {
-                    val bitmap = withContext(Dispatchers.IO) { context.contentResolver.requireInputStream(it).use { stream -> BitmapFactory.decodeStream(stream) } }
+                readPickedImage(context, it).onSuccess { bitmap ->
                     startPlacing(bitmap, opacity = 1f)
                     showWatermarkOptions = false
-                } catch (e: IOException) {
-                    Log.w("WatermarkView", "Could not read the watermark image", e)
                 }
             }
         }

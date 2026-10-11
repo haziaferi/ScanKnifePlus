@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
@@ -17,7 +18,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.contentstream.operator.Operator
+import com.tom_roush.pdfbox.cos.COSNumber
+import com.tom_roush.pdfbox.pdfparser.PDFStreamParser
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import com.tom_roush.pdfbox.util.Matrix
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -162,6 +168,64 @@ class PdfPlacementTest {
         assertEquals(listOf(0f, 1f, -1f, 0f, 1f, 2f), values(90))
         assertEquals(listOf(-1f, 0f, 0f, -1f, 1f, 2f), values(180))
         assertEquals(listOf(0f, -1f, 1f, 0f, 1f, 2f), values(270))
+    }
+}
+
+/** What drawStamp writes: the image's unit square is placed by the two cm operators it emits, rotation first. */
+@RunWith(RobolectricTestRunner::class)
+class DrawStampTest {
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(ApplicationProvider.getApplicationContext())
+
+    /** The image's centre, its drawn width and height, and the angle (degrees counter-clockwise) of its x axis in user space. */
+    private data class Drawn(val centreX: Float, val centreY: Float, val width: Float, val height: Float, val angle: Double)
+
+    private fun stamp(page: PDPage, nx: Float, ny: Float, nw: Float, angle: Float): Drawn = PDDocument().use { doc ->
+        doc.addPage(page)
+        val image = LosslessFactory.createFromImage(doc, Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888))
+        doc.appendTo(page).use { it.drawStamp(image, PageBox.of(page), nx, ny, nw, angle) }
+        val tokens = PDFStreamParser(page).apply { parse() }.tokens
+        val matrices = tokens.indices.filter { (tokens[it] as? Operator)?.name == "cm" }.map { i ->
+            val v = (i - 6 until i).map { (tokens[it] as COSNumber).floatValue() }
+            Matrix(v[0], v[1], v[2], v[3], v[4], v[5])
+        }
+        assertEquals("rotation, then image placement", 2, matrices.size)
+        val m = matrices[1].multiply(matrices[0])
+        fun apply(x: Float, y: Float) = (m.scaleX * x + m.shearX * y + m.translateX) to (m.shearY * x + m.scaleY * y + m.translateY)
+        val centre = apply(0.5f, 0.5f)
+        val origin = apply(0f, 0f)
+        val xEnd = apply(1f, 0f)
+        val yEnd = apply(0f, 1f)
+        fun dist(a: Pair<Float, Float>, b: Pair<Float, Float>) = Math.hypot((b.first - a.first).toDouble(), (b.second - a.second).toDouble()).toFloat()
+        Drawn(
+            centre.first, centre.second, dist(origin, xEnd), dist(origin, yEnd),
+            Math.toDegrees(Math.atan2((xEnd.second - origin.second).toDouble(), (xEnd.first - origin.first).toDouble()))
+        )
+    }
+
+    @Test
+    fun `on an unrotated page the stamp is centred where placed, sized by page width and turned clockwise`() {
+        val drawn = stamp(PDPage(PDRectangle.LETTER), nx = 0.25f, ny = 0.3f, nw = 0.4f, angle = 15f)
+        assertEquals(0.25f * 612f, drawn.centreX, 0.01f)
+        assertEquals(792f - 0.3f * 792f, drawn.centreY, 0.01f)
+        assertEquals(0.4f * 612f, drawn.width, 0.01f)
+        assertEquals(0.4f * 612f / 2, drawn.height, 0.01f)
+        assertEquals(-15.0, drawn.angle, 0.01)
+    }
+
+    @Test
+    fun `on a rotated, cropped page the stamp uses the displayed width and turns with the page`() {
+        val page = PDPage(PDRectangle.A4).apply {
+            cropBox = PDRectangle(20f, 30f, 500f, 700f)
+            rotation = 90
+        }
+        val drawn = stamp(page, nx = 0.25f, ny = 0.3f, nw = 0.4f, angle = 15f)
+        val centre = PageBox.of(page).toPdfPoint(0.25f, 0.3f)
+        assertEquals(centre.x, drawn.centreX, 0.01f)
+        assertEquals(centre.y, drawn.centreY, 0.01f)
+        assertEquals("displayed width is the cropBox height", 0.4f * 700f, drawn.width, 0.01f)
+        assertEquals(0.4f * 700f / 2, drawn.height, 0.01f)
+        assertEquals(90.0 - 15.0, drawn.angle, 0.01)
     }
 }
 

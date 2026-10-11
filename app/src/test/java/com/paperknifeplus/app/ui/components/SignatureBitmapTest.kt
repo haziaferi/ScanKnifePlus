@@ -1,6 +1,11 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
+import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.graphics.Color as AndroidColor
 import android.graphics.Path
 import androidx.compose.ui.graphics.Color
@@ -17,6 +22,9 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import kotlinx.coroutines.runBlocking
+import java.io.File
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
 
@@ -93,5 +101,42 @@ class SignViewUnlockTest {
 
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Password Required")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Password Required").assertExists()
+    }
+}
+
+/** Picking or exporting a signature through a provider that refuses with a non-IO exception reports the failure instead of crashing. */
+@RunWith(RobolectricTestRunner::class)
+class SignatureFilesTest {
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    private val refusing: Uri by lazy {
+        Robolectric.setupContentProvider(RefusingProvider::class.java, AUTHORITY)
+        Uri.parse("content://$AUTHORITY/signature.png")
+    }
+
+    @Test
+    fun `a picked image the provider refuses is a failure, not a crash`() {
+        val result = runBlocking { readPickedImage(context, refusing) }
+        assertTrue(result.exceptionOrNull() is SecurityException)
+    }
+
+    @Test
+    fun `an export the provider refuses is reported`() {
+        val file = File(context.cacheDir, "sig_export.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        assertTrue(runBlocking { exportSignature(context, file, refusing) }.startsWith("Export failed"))
+    }
+
+    class RefusingProvider : ContentProvider() {
+        override fun onCreate() = true
+        override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? = throw SecurityException("no access to $uri")
+        override fun getType(uri: Uri) = "image/png"
+        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? = null
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
+        override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+
+    private companion object {
+        const val AUTHORITY = "com.paperknifeplus.app.test.refusing"
     }
 }

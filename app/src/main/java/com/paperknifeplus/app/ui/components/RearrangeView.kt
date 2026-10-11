@@ -43,7 +43,7 @@ fun RearrangeView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var unlockPassword by remember { mutableStateOf(initialPassword ?: "") }
+    var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var pageOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
     var isFileLoading by remember { mutableStateOf(false) }
@@ -64,6 +64,7 @@ fun RearrangeView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        unlockPassword = password.orEmpty()
         fileName = getUriDetails(context, uri).name
         unlockError = false
         isFileLoading = true

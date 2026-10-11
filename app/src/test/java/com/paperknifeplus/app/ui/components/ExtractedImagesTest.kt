@@ -152,7 +152,7 @@ class ExtractedImagesTest {
             doc.addPage(page)
             ZipOutputStream(ByteArrayOutputStream()).use { writeImages(doc, it) }
         }
-        assertEquals(0, counts.written)
+        assertEquals(ExtractCounts(written = 0, skipped = 1), counts)
     }
 
     private fun readZip(bytes: ByteArray): Map<String, ByteArray> {

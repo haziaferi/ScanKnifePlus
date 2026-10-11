@@ -29,7 +29,10 @@ data class PageBox(val left: Float, val bottom: Float, val width: Float, val hei
     }
 }
 
-/** [degrees] as one of 0, 90, 180 or 270, rounding toward zero to a quarter turn as pdfium does. */
+/**
+ * [degrees] as one of 0, 90, 180 or 270. PDFBox already reports /Rotate this way (0 for values that are no quarter turn); this also folds
+ * negative and full-turn values, as pdfium does.
+ */
 fun normalizeRotation(degrees: Int): Int = ((degrees / 90) % 4 + 4) % 4 * 90
 
 data class PdfPoint(val x: Float, val y: Float)

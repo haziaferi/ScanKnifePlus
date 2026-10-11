@@ -44,7 +44,7 @@ fun CompressView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var unlockPassword by remember { mutableStateOf(initialPassword ?: "") }
+    var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var isFileLoading by remember { mutableStateOf(false) }
@@ -66,6 +66,7 @@ fun CompressView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        unlockPassword = password.orEmpty()
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
@@ -244,7 +245,7 @@ fun CompressView(
                     ToolState.SUCCESS -> {
                         SuccessView(
                             message = "Compression Complete",
-                            subMessage = "",
+                            subMessage = "", // No saved-size line: providers often still report 0 B right after the write.
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {

@@ -35,13 +35,10 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 
@@ -115,9 +112,20 @@ fun MergeView(
                             unreadable++
                             null
                         }
-                        PdfAccess.Encrypted -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true, password = password)
-                        PdfAccess.Open ->
-                            MergeFile(nextFileId++, uri, details.name, details.size, isLocked = false, password = password, pageCount = getPageCount(context, uri, null))
+                        PdfAccess.Encrypted -> {
+                            // A password handed over by the preview unlocks the file right away, as the unlock prompt would.
+                            val copy = password?.let { decryptToCache(context, uri, it) }
+                            if (copy == null) {
+                                MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
+                            } else {
+                                val count = getPageCount(context, copy, null)
+                                MergeFile(
+                                    nextFileId++, uri, details.name, details.size,
+                                    isLocked = true, password = password, isUnlocked = true, decryptedUri = copy, pageCount = count
+                                )
+                            }
+                        }
+                        PdfAccess.Open -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = false, pageCount = getPageCount(context, uri, null))
                     }
                 }
                 if (unreadable > 0) Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
@@ -153,23 +161,10 @@ fun MergeView(
                     merger.destinationStream = outputStream
                     files.forEachIndexed { index, file ->
                         withContext(Dispatchers.Main) { progressCount = index + 1 }
-                        val uriToLoad = file.decryptedUri ?: file.uri
-                        if (file.password != null && file.decryptedUri == null) {
-                            context.contentResolver.requireInputStream(uriToLoad).use { pSourceStream ->
-                                PDDocument.load(pSourceStream, file.password).use { doc ->
-                                    doc.isAllSecurityToBeRemoved = true
-                                    val baos = ByteArrayOutputStream()
-                                    doc.save(baos)
-                                    val bais = ByteArrayInputStream(baos.toByteArray())
-                                    sourcesToClose.add(bais)
-                                    merger.addSource(bais)
-                                }
-                            }
-                        } else {
-                            val inputStream = context.contentResolver.requireInputStream(uriToLoad)
-                            sourcesToClose.add(inputStream)
-                            merger.addSource(inputStream)
-                        }
+                        // Encrypted files are merged from their decrypted copies; MERGE stays disabled until every one has one.
+                        val inputStream = context.contentResolver.requireInputStream(file.decryptedUri ?: file.uri)
+                        sourcesToClose.add(inputStream)
+                        merger.addSource(inputStream)
                     }
                     merger.mergeDocuments(MemoryUsageSetting.setupMainMemoryOnly())
                     outputStream.flush()

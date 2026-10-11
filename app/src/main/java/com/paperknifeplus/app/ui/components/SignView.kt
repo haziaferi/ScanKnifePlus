@@ -57,7 +57,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.IOException
 import kotlin.math.ceil
 
 /** The aspect ratio Sign and Watermark assume for a page whose box could not be read: A4 portrait. */
@@ -126,7 +125,7 @@ fun SignView(
                     File(signatureDir(context), "sig_${System.currentTimeMillis()}.png").outputStream().use { out ->
                         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
-                } catch (e: IOException) {
+                } catch (e: Exception) {
                     Log.w("SignView", "Could not save the signature", e)
                 }
             }
@@ -181,12 +180,9 @@ fun SignView(
     val pngLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             scope.launch {
-                try {
-                    val bitmap = withContext(Dispatchers.IO) { context.contentResolver.requireInputStream(it).use { stream -> BitmapFactory.decodeStream(stream) } }
+                readPickedImage(context, it).onSuccess { bitmap ->
                     startPlacing(bitmap)
                     showSignOptions = false
-                } catch (e: IOException) {
-                    Log.w("SignView", "Could not read the signature image", e)
                 }
             }
         }
@@ -228,19 +224,7 @@ fun SignView(
     val exportSignatureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
         val fileToExport = selectedSignatureFile
         if (uri == null || fileToExport == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val message = withContext(Dispatchers.IO) {
-                try {
-                    context.contentResolver.requireOutputStream(uri).use { it.write(fileToExport.readBytes()) }
-                    "Signature exported"
-                } catch (e: IOException) {
-                    Log.w("SignView", "Signature export failed", e)
-                    deleteCreatedDocument(context, uri)
-                    "Export failed: ${e.message}"
-                }
-            }
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-        }
+        scope.launch { Toast.makeText(context, exportSignature(context, fileToExport, uri), Toast.LENGTH_SHORT).show() }
     }
 
     // Placed signatures and the one being placed, positioned over the page as the page image is fitted into this overlay's box.
@@ -580,6 +564,38 @@ fun SignView(
             accentColor = accentColor,
             initialColor = Color.Black
         )
+    }
+}
+
+/**
+ * Decodes the image the user picked: success with the bitmap (null if the file is no image, as BitmapFactory says), or failure, already
+ * logged, when it cannot be read at all, e.g. a provider's SecurityException or running out of memory.
+ */
+internal suspend fun readPickedImage(context: Context, uri: Uri): Result<Bitmap?> = withContext(Dispatchers.IO) {
+    try {
+        Result.success(context.contentResolver.requireInputStream(uri).use { BitmapFactory.decodeStream(it) })
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("SignView", "Cannot read the picked image $uri", e)
+        Result.failure(e)
+    } catch (e: OutOfMemoryError) {
+        Log.w("SignView", "Out of memory decoding the picked image $uri", e)
+        Result.failure(e)
+    }
+}
+
+/** Copies a saved signature [file] to [uri], removing [uri] on failure; returns the message to show. */
+internal suspend fun exportSignature(context: Context, file: File, uri: Uri): String = withContext(Dispatchers.IO) {
+    try {
+        context.contentResolver.requireOutputStream(uri).use { it.write(file.readBytes()) }
+        "Signature exported"
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("SignView", "Signature export failed", e)
+        deleteCreatedDocument(context, uri)
+        "Export failed: ${e.message}"
     }
 }
 

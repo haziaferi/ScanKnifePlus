@@ -195,7 +195,7 @@ fun PageNumbersView(
                                     password = unlockPassword.ifEmpty { null },
                                     accentColor = accentColor,
                                     showIndexNumbers = false,
-                                    disableLightbox = true,
+                                    disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
                                     itemOverlay = numberOverlay
                                 )
                             }

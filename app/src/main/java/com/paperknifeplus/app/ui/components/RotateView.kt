@@ -210,7 +210,7 @@ fun RotateView(
                                     password = null,
                                     accentColor = accentColor,
                                     pageRotations = pageRotations,
-                                    disableLightbox = true,
+                                    disableLightbox = true, // By product request: tapping a page rotates it instead.
                                     onRotatePage = { index ->
                                         val current = pageRotations[index] ?: 0
                                         pageRotations = pageRotations + (index to (current + 90) % 360)

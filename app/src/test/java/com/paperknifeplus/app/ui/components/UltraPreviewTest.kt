@@ -1,6 +1,25 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.core.app.ActivityOptionsCompat
+import coil.request.Options
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.data.image.PdfPageKeyer
+import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
@@ -11,12 +30,15 @@ import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,7 +60,7 @@ class UltraPreviewTest {
             assertTrue("$w x $h: ${bitmapBytes(w, h)} bytes", bitmapBytes(w, h) < limit)
             assertTrue("$w x $h", highResScale(w, h) >= 1.8f)
         }
-        // A4 gets a real high-resolution layer, about 5x, instead of the old 12x (288 MB).
+        // A4 gets about 5x, a 48 MiB bitmap; small pages are capped at 12x.
         assertEquals(5.01f, highResScale(595f, 842f), 0.01f)
         assertEquals(12f, highResScale(100f, 100f))
         assertEquals(1.8f, highResScale(2384f, 3370f))
@@ -120,5 +142,79 @@ class UltraPreviewTest {
     fun `the loader fails cleanly on garbage and missing streams`() {
         assertNull(runBlocking { loadReaderDocument(context, TestPdfs.write(context.cacheDir, TestPdfs.garbage, "reader-garbage.pdf")) })
         assertNull(runBlocking { loadReaderDocument(context, TestPdfs.nullStreamUri()) })
+    }
+}
+
+/** Tools opened from the preview with the password the file was unlocked with: they use it, and forget it for the next file. */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class ToolHandOffTest {
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
+    val rule = createAndroidComposeRule<ComponentActivity>()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(context)
+
+    private fun pickerReturning(result: Uri) = object : ActivityResultRegistryOwner {
+        override val activityResultRegistry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
+                dispatchResult(requestCode, result)
+            }
+        }
+    }
+
+    private fun show(picked: Uri, content: @Composable () -> Unit) = rule.setContent {
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked), content = content)
+    }
+
+    private fun waitFor(text: String) = rule.waitUntil(30_000) { rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
+
+    /** Whether a first-page thumbnail of [uri] at [scale] rendered with [password] is cached; Coil only loads what is drawn. */
+    private fun thumbnailCached(uri: Uri, password: String?, scale: Float): Boolean {
+        rule.runOnUiThread {
+            val root = rule.activity.window.decorView
+            root.draw(Canvas(Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)))
+        }
+        val key = PdfPageKeyer().key(PdfPageRequest(uri, 0, password, scale), Options(context))
+        return PdfImageLoader.get(context).memoryCache!!.keys.any { it.key == key }
+    }
+
+    @Test
+    fun `Merge unlocks a file handed over with its password`() {
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-merge.pdf")
+        show(locked) { MergeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        waitFor("ADD MORE FILES")
+        rule.onNodeWithText("LOCKED").assertDoesNotExist()
+    }
+
+    @Test
+    fun `Compress forgets the handed-over password after CHANGE`() {
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-compress.pdf")
+        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-compress.pdf")
+        show(plain) { CompressView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        waitFor("2 PAGES")
+        rule.onNodeWithText("CHANGE").performClick()
+        rule.onNodeWithText("Tap to enter file").performClick()
+        waitFor("1 PAGES")
+        rule.waitUntil(30_000) { thumbnailCached(plain, null, 1.2f) }
+        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 1.2f))
+    }
+
+    @Test
+    fun `Rearrange forgets the handed-over password after CHANGE`() {
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
+        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-rearrange.pdf")
+        show(plain) { RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        waitFor("2 PAGES")
+        rule.onNodeWithText("CHANGE").performClick()
+        rule.onNodeWithText("Tap to enter file").performClick()
+        waitFor("1 PAGES")
+        rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
+        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
     }
 }
