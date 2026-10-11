@@ -1,14 +1,11 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -21,24 +18,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
-import coil.compose.LocalImageLoader
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.data.image.PdfPageFetcher
+import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import kotlinx.coroutines.delay
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 
 enum class PreviewMode {
     GRID,   // Scrollable grid (Split, etc.)
@@ -68,9 +59,8 @@ fun UnifiedPdfPreview(
     onRotatePage: ((Int) -> Unit)? = null,
     itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null
 ) {
-    val context = LocalContext.current
     var lightboxPage by remember { mutableStateOf<Int?>(null) }
-    val imageLoader = coil.compose.LocalImageLoader.current
+    val imageLoader = PdfImageLoader.get(LocalContext.current)
 
     if (mode == PreviewMode.COVER) {
         Box(contentAlignment = Alignment.BottomCenter) {
@@ -81,7 +71,7 @@ fun UnifiedPdfPreview(
                     .clickable(enabled = !disableLightbox) { lightboxPage = 0 },
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, Color.Gray.copy(0.1f)),
-                colors = CardDefaults.cardColors(containerColor = if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF18181B) else Color(0xFFF5F5F5))
+                colors = CardDefaults.cardColors(containerColor = if (LocalIsDarkTheme.current) Color(0xFF18181B) else Color(0xFFF5F5F5))
             ) {
                 val request = remember(uri, password) { PdfPageRequest(uri, 0, password, 1.2f) }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -91,7 +81,7 @@ fun UnifiedPdfPreview(
                         contentDescription = "Document Cover",
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
-                        colorFilter = if (isGrayscale) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
+                        colorFilter = if (isGrayscale) GrayscaleColorFilter else null
                     )
                     if (painter.state is AsyncImagePainter.State.Loading) {
                         CircularProgressIndicator(color = accentColor, modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
@@ -151,7 +141,6 @@ fun UnifiedPdfPreview(
                 }
             }
             
-            // Drag & Drop Soon Badge
             Surface(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
                 color = Color.Black.copy(alpha = 0.6f),
@@ -244,15 +233,15 @@ fun PdfPageItem(
     val request = remember(uri, index, password, scale, rotation) { PdfPageRequest(uri, index, password, scale, rotation) }
     Box(
         modifier = modifier.aspectRatio(if (rotation % 180 != 0) 1.414f else 0.707f).clip(RoundedCornerShape(12.dp))
-            .background(if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF18181B) else Color(0xFFF4F4F5))
+            .background(if (LocalIsDarkTheme.current) Color(0xFF18181B) else Color(0xFFF4F4F5))
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         val painter = rememberAsyncImagePainter(model = request, imageLoader = imageLoader)
-        androidx.compose.foundation.Image(
+        Image(
             painter = painter, contentDescription = "Page ${index + 1}",
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
-            colorFilter = if (isGrayscale) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
+            colorFilter = if (isGrayscale) GrayscaleColorFilter else null
         )
         if (painter.state is AsyncImagePainter.State.Loading) {
             CircularProgressIndicator(color = accentColor, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -262,7 +251,7 @@ fun PdfPageItem(
         
         if (showIndexNumbers) {
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp).graphicsLayer { rotationZ = 0f },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                 color = Color.Black.copy(0.6f), shape = RoundedCornerShape(8.dp)
             ) {
                 Text("${index + 1}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))

@@ -1,20 +1,13 @@
 package com.paperknifeplus.app.ui.components
 
-import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -26,13 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -44,10 +33,10 @@ fun ProtectView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFF6366F1)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -57,30 +46,31 @@ fun ProtectView(
     var pageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
+        unlockError = false
         isFileLoading = true
-        scope.launch(Dispatchers.IO) {
-            val isEncrypted = checkIsEncryptedLocal(context, uri)
-            if (isEncrypted) {
-                withContext(Dispatchers.Main) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
                 }
-            } else {
-                val count = getPageCount(context, uri, null)
-                withContext(Dispatchers.Main) {
-                    pageCount = count
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
                     currentState = ToolState.CONFIGURING
-                    isFileLoading = false
                 }
             }
+            isFileLoading = false
         }
     }
 
@@ -88,87 +78,50 @@ fun ProtectView(
         initialUri?.let { handleFileSelection(it) }
     }
 
-    LaunchedEffect(isFileLoading, currentState) {
-        if (isFileLoading || currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
-        }
-    }
-
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) {
-                            PDDocument.load(inputStream, unlockPassword)
-                        } else {
-                            PDDocument.load(inputStream)
-                        }
-                        
-                        val ap = AccessPermission()
-                        val spp = StandardProtectionPolicy(protectPassword, protectPassword, ap)
-                        spp.encryptionKeyLength = 128
-                        document.protect(spp)
-                        
-                        saveAndFlush(context, document, saveUri)
-                    }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        outputUri = saveUri
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "Protect", "Encrypted", Icons.Outlined.Lock, saveUri, pageCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
-                }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        scope.launch {
+            try {
+                protectPdf(context, source, uri, unlockPassword.ifEmpty { null }, protectPassword)
+                processingTime = formatElapsed(startTime)
+                outputUri = uri
+                fileName = withContext(Dispatchers.IO) { getUriDetails(context, uri).name }
+                SessionManager.addEntry(fileName, "Protect", "Encrypted", Icons.Outlined.Lock, uri, pageCount)
+                currentState = ToolState.SUCCESS
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                // Includes IllegalArgumentException from SASLprep for passwords with prohibited characters.
+                Log.w("ProtectView", "Protect failed", e)
+                deleteCreatedDocument(context, uri)
+                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                currentState = ToolState.CONFIGURING
             }
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Protect", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("ENCRYPT YOUR DOCUMENT", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
+                ToolTopBar(
+                    title = "Protect",
+                    subtitle = "ENCRYPT YOUR DOCUMENT",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = {
+                        selectedUri = null
+                        currentState = ToolState.SELECTING
                     }
-                }
+                )
             }
         }
     ) { padding ->
@@ -239,7 +192,7 @@ fun ProtectView(
                             Spacer(Modifier.height(24.dp))
                             Button(
                                 onClick = { 
-                                    val defaultName = fileName.replace(".pdf", "", true) + "-protected.pdf"
+                                    val defaultName = pdfBaseName(fileName) + "-protected.pdf"
                                     saveLauncher.launch(defaultName) 
                                 }, 
                                 modifier = Modifier.fillMaxWidth().height(60.dp), 
@@ -279,31 +232,37 @@ fun ProtectView(
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = {
+                        fileToUnlock = null
+                        unlockError = false
+                        selectedUri = null
+                        currentState = ToolState.SELECTING
+                    },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                val count = getPageCount(context, source, pass)
                                 if (count > 0) {
                                     unlockPassword = pass
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
+                                    unlockError = true
                                 }
                                 isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )

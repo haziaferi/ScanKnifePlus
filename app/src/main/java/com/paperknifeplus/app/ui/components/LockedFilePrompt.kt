@@ -3,29 +3,48 @@ package com.paperknifeplus.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
+/**
+ * Asks for the password of [fileName]. The field is masked (with a show toggle) and kept out of the keyboard's learning. [isError] shows
+ * "Incorrect password" until the user edits the field or submits again, so callers only need to set it after a failed attempt.
+ */
 @Composable
 fun LockedFilePrompt(
     fileName: String,
     onDismiss: () -> Unit,
     onUnlocked: (String) -> Unit,
     accentColor: Color = Color(0xFF6366F1),
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    isError: Boolean = false
 ) {
     var password by remember { mutableStateOf("") }
-    var isError by remember { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(false) }
+    var edited by remember { mutableStateOf(false) }
+    val showError = isError && !edited && !isLoading
+    val submit = {
+        edited = false
+        onUnlocked(password)
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -43,7 +62,6 @@ fun LockedFilePrompt(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Header Icon
                 Box(
                     modifier = Modifier
                         .size(56.dp)
@@ -52,16 +70,16 @@ fun LockedFilePrompt(
                 ) {
                     Icon(Icons.Outlined.Lock, null, tint = accentColor, modifier = Modifier.size(28.dp))
                 }
-                
+
                 Spacer(Modifier.height(20.dp))
-                
+
                 Text(
                     "Password Required",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                
+
                 Text(
                     fileName,
                     fontSize = 12.sp,
@@ -69,29 +87,40 @@ fun LockedFilePrompt(
                     maxLines = 1,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-                
+
                 Spacer(Modifier.height(24.dp))
-                
+
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { 
+                    onValueChange = {
                         password = it
-                        isError = false
+                        edited = true
                     },
                     label = { Text("PDF Password") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     singleLine = true,
-                    isError = isError,
+                    isError = showError,
                     enabled = !isLoading,
+                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { visible = !visible }) {
+                            Icon(
+                                if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                contentDescription = if (visible) "Hide password" else "Show password"
+                            )
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (!isLoading) submit() }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = accentColor,
                         focusedLabelColor = accentColor,
                         cursorColor = accentColor
                     )
                 )
-                
-                if (isError) {
+
+                if (showError) {
                     Text(
                         "Incorrect password, try again.",
                         color = MaterialTheme.colorScheme.error,
@@ -99,11 +128,11 @@ fun LockedFilePrompt(
                         modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, top = 4.dp)
                     )
                 }
-                
+
                 Spacer(Modifier.height(32.dp))
-                
+
                 Button(
-                    onClick = { onUnlocked(password) },
+                    onClick = submit,
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     enabled = !isLoading,
                     shape = RoundedCornerShape(16.dp),
@@ -115,7 +144,7 @@ fun LockedFilePrompt(
                         Text("UNLOCK FILE", fontWeight = FontWeight.Black, color = Color.White)
                     }
                 }
-                
+
                 TextButton(
                     onClick = onDismiss,
                     enabled = !isLoading,

@@ -1,17 +1,15 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -24,183 +22,151 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 fun DeleteView(
     initialUri: Uri? = null,
+    initialPassword: String? = null,
     onBack: () -> Unit,
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
-    val accentColor = Color(0xFFF43F5E) // Consistent Rose accent
+    val isDark = LocalIsDarkTheme.current
+    val accentColor = Color(0xFFF43F5E)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
-    var selectedUri by remember { mutableStateOf(initialUri) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var rangeText by remember { mutableStateOf("") }
     var pagesToDeleteSet by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    
+
     var fileName by remember { mutableStateOf("") }
-    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
 
-    LaunchedEffect(isFileLoading, currentState) {
-        if (isFileLoading || currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
+    fun dropDecryptedCopy() {
+        deleteDecryptedCopy(context, decryptedUri)
+        decryptedUri = null
+    }
+    DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
+
+    fun showPages(uri: Uri, count: Int) {
+        selectedUri = uri
+        pageCount = count
+        pagesToDeleteSet = emptySet()
+        rangeText = ""
+        currentState = ToolState.CONFIGURING
+    }
+
+    // An encrypted file is decrypted to a cache copy once, so page previews can use the fast native renderer.
+    fun unlock(source: Uri, password: String) {
+        isFileLoading = true
+        scope.launch {
+            val copy = decryptToCache(context, source, password)
+            if (copy != null) {
+                decryptedUri = copy
+                unlockPassword = password
+                showPages(copy, getPageCount(context, copy, null))
+                fileToUnlock = null
+            } else {
+                unlockError = true
+                fileToUnlock = fileName
+            }
+            isFileLoading = false
         }
     }
 
-    // Range Parser
-    fun parseRange(input: String, max: Int): Set<Int> {
-        val pages = mutableSetOf<Int>()
-        try {
-            input.split(",").forEach { part ->
-                if (part.contains("-")) {
-                    val split = part.split("-")
-                    val start = split[0].trim().toInt().coerceIn(1, max)
-                    val end = split[1].trim().toInt().coerceIn(1, max)
-                    for (i in start..end) pages.add(i - 1)
+    fun handleFileSelection(uri: Uri, password: String? = null) {
+        dropDecryptedCopy()
+        selectedUri = uri
+        fileName = getUriDetails(context, uri).name
+        unlockError = false
+        isFileLoading = true
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                    isFileLoading = false
+                }
+                PdfAccess.Encrypted -> if (password == null) {
+                    fileToUnlock = fileName
+                    isFileLoading = false
                 } else {
-                    val p = part.trim().toIntOrNull()
-                    if (p != null && p in 1..max) pages.add(p - 1)
+                    unlock(uri, password)
+                }
+                PdfAccess.Open -> {
+                    showPages(uri, getPageCount(context, uri, null))
+                    isFileLoading = false
                 }
             }
-        } catch (e: Exception) {}
-        return pages
+        }
     }
 
-    // Set to Range String
-    fun generateRangeString(pages: Set<Int>): String {
-        if (pages.isEmpty()) return ""
-        val sorted = pages.toList().sorted()
-        val result = mutableListOf<String>()
-        var start = sorted[0]
-        var prev = start
-        
-        for (i in 1 until sorted.size) {
-            if (sorted[i] == prev + 1) {
-                prev = sorted[i]
-            } else {
-                if (start == prev) result.add("${start + 1}")
-                else result.add("${start + 1}-${prev + 1}")
-                start = sorted[i]
-                prev = start
-            }
-        }
-        if (start == prev) result.add("${start + 1}")
-        else result.add("${start + 1}-${prev + 1}")
-        
-        return result.joinToString(", ")
+    LaunchedEffect(initialUri) {
+        initialUri?.let { handleFileSelection(it, initialPassword) }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, it)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) {
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, it, null)
-                    withContext(Dispatchers.Main) {
-                        pageCount = count
-                        pagesToDeleteSet = emptySet()
-                        rangeText = ""
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-                        scope.launch(Dispatchers.IO) {
-                            try {
-                                withContext(Dispatchers.Main) { progressCount = 0 }
-                                context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                                    val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                                    val newDocument = PDDocument()
-                                    for (i in 0 until document.numberOfPages) {
-                                        if (!pagesToDeleteSet.contains(i)) {
-                                            newDocument.addPage(document.getPage(i))
-                                        }
-                                        if (pagesToDeleteSet.contains(i)) {
-                                            withContext(Dispatchers.Main) { progressCount++ }
-                                        }
-                                    }
-                                    saveAndFlush(context, newDocument, saveUri)
-                                    document.close()
-                                }
-            
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    val finalCount = getPageCount(context, saveUri, null)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        outputUri = saveUri
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "Delete", "${pagesToDeleteSet.size} pages removed", Icons.Filled.Delete, saveUri, finalCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        val toDelete = pagesToDeleteSet
+        scope.launch(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.Main) { progressCount = 0 }
+                context.contentResolver.requireInputStream(source).use { input ->
+                    PDDocument.load(input, unlockPassword).use { document ->
+                        PDDocument().use { target ->
+                            val kept = mutableListOf<Int>()
+                            for (i in 0 until document.numberOfPages) {
+                                if (i in toDelete) withContext(Dispatchers.Main) { progressCount++ } else kept += i
+                            }
+                            target.appendPagesFrom(kept.map { document.getPage(it) })
+                            saveAndFlush(context, target, uri)
+                        }
                     }
                 }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
-    LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            val isEncrypted = checkIsEncryptedLocal(context, initialUri)
-            if (isEncrypted) {
-                fileToUnlock = fileName
-                isFileLoading = false
-            } else {
-                val count = getPageCount(context, initialUri, null)
-                pageCount = count
-                pagesToDeleteSet = emptySet()
-                rangeText = ""
-                isFileLoading = false
+                val timeStr = formatElapsed(startTime)
+                val finalCount = getPageCount(context, uri, null)
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    fileName = getUriDetails(context, uri).name
+                    SessionManager.addEntry(fileName, "Delete", "${toDelete.size} pages removed", Icons.Filled.Delete, uri, finalCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("DeleteView", "Delete failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
+                }
             }
         }
     }
@@ -242,7 +208,6 @@ fun DeleteView(
                     }
                     ToolState.CONFIGURING -> {
                         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                            // Header Info
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -260,7 +225,7 @@ fun DeleteView(
                                 }
                             }
 
-                            // Batch Selection Row (Hides when manual range input is open to save space)
+                            // Hidden while the range field is open, to save space.
                             AnimatedVisibility(visible = !showRangeInput) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -270,7 +235,7 @@ fun DeleteView(
                                         onClick = { 
                                             val all = (0 until pageCount).toSet()
                                             pagesToDeleteSet = all
-                                            rangeText = generateRangeString(all)
+                                            rangeText = PageRanges.format(all)
                                         },
                                         modifier = Modifier.weight(1f).height(36.dp),
                                         shape = RoundedCornerShape(10.dp),
@@ -305,7 +270,7 @@ fun DeleteView(
                                             value = rangeText,
                                             onValueChange = { 
                                                 rangeText = it
-                                                pagesToDeleteSet = parseRange(it, pageCount)
+                                                pagesToDeleteSet = PageRanges.parse(it, pageCount)
                                             },
                                             label = { Text("Example: 2, 4-6, 9") },
                                             modifier = Modifier.fillMaxWidth(),
@@ -333,14 +298,14 @@ fun DeleteView(
                                     onToggleSelection = { index ->
                                         val newSet = if (pagesToDeleteSet.contains(index)) pagesToDeleteSet - index else pagesToDeleteSet + index
                                         pagesToDeleteSet = newSet
-                                        rangeText = generateRangeString(newSet)
+                                        rangeText = PageRanges.format(newSet)
                                     }
                                 )
                             }
                             
                             Button(
                                 onClick = { 
-                                    val defaultName = fileName.replace(".pdf", "", true) + "-cleaned.pdf"
+                                    val defaultName = pdfBaseName(fileName) + "-cleaned.pdf"
                                     saveLauncher.launch(defaultName) 
                                 }, 
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 
@@ -370,6 +335,7 @@ fun DeleteView(
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { 
+                                dropDecryptedCopy()
                                 selectedUri = null
                                 outputUri = null
                                 unlockPassword = ""
@@ -386,36 +352,21 @@ fun DeleteView(
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
-                    onUnlocked = { pass ->
-                        unlockPassword = pass
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val decryptedUri = decryptToCache(context, selectedUri!!, pass)
-                            if (decryptedUri != null) {
-                                val count = getPageCount(context, decryptedUri, null)
-                                withContext(Dispatchers.Main) { 
-                                    selectedUri = decryptedUri
-                                    pageCount = count
-                                    currentState = ToolState.CONFIGURING
-                                    isFileLoading = false 
-                                    fileToUnlock = null
-                                }
-                            } else {
-                                withContext(Dispatchers.Main) { 
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false 
-                                }
-                            }
-                        }
+                    onDismiss = {
+                        fileToUnlock = null
+                        unlockError = false
+                        dropDecryptedCopy()
+                        selectedUri = null
+                        currentState = ToolState.SELECTING
                     },
+                    onUnlocked = { pass -> selectedUri?.let { unlock(it, pass) } },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )

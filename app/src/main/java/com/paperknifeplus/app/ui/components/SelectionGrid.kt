@@ -17,17 +17,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
 
 @Composable
 fun SelectionGrid(
-    onSelect: () -> Unit, 
-    isDark: Boolean, 
-    icon: ImageVector, 
-    title: String, 
+    onSelect: () -> Unit,
+    isDark: Boolean,
+    icon: ImageVector,
+    title: String,
     subtitle: String,
-    accentColor: Color = Color.Gray,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accentColor: Color = Color.Gray
 ) {
     Box(
         modifier = modifier

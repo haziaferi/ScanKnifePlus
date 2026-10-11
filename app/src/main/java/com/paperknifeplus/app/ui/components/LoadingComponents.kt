@@ -25,10 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import android.graphics.Bitmap
 import android.net.Uri
-import coil.ImageLoader
-import coil.compose.LocalImageLoader
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.data.image.PdfPageFetcher
+import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 
 @Composable
@@ -66,9 +64,7 @@ fun ProcessingStateView(
     total: Int,
     showWarning: Boolean
 ) {
-    val context = LocalContext.current
-    // NITRO ENGINE: Use Shared Global Loader (MainActivity)
-    val imageLoader = coil.compose.LocalImageLoader.current
+    val imageLoader = PdfImageLoader.get(LocalContext.current)
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
@@ -77,7 +73,7 @@ fun ProcessingStateView(
             modifier = Modifier.padding(32.dp).fillMaxHeight()
         ) {
             Card(
-                modifier = Modifier.size(160.dp, 226.dp), // A4 Aspect Ratio
+                modifier = Modifier.size(160.dp, 226.dp), // A4 aspect ratio
                 shape = RoundedCornerShape(20.dp),
                 border = BorderStroke(1.dp, Color.Gray.copy(0.1f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
