@@ -1,17 +1,17 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.background
@@ -24,53 +24,52 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.toSize
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.util.Matrix
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import kotlin.math.roundToInt
+import java.io.IOException
+import kotlin.math.ceil
+
+/** The aspect ratio Sign and Watermark assume for a page whose box could not be read: A4 portrait. */
+internal const val FALLBACK_PAGE_ASPECT = 0.707f
 
 data class PlacedSignature(
     val id: String = java.util.UUID.randomUUID().toString(),
     val pageIndex: Int,
     val bitmap: Bitmap,
-    val normalizedX: Float, // 0.0 to 1.0 relative to content fit rect
+    val normalizedX: Float, // Centre, as fractions of the displayed page
     val normalizedY: Float,
-    val normalizedWidth: Float, // width as % of content fit rect width
+    val normalizedWidth: Float, // Width as a fraction of the displayed page width
     val rotation: Float
 )
 
@@ -83,176 +82,142 @@ fun SignView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = PaperPink
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
-    var pageCount by remember { mutableIntStateOf(0) }
+    var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
-    
-    // NITRO: Unified State
+    var unlockError by remember { mutableStateOf(false) }
+    val pageCount = pageBoxes.size
+
     var placedSignatures by remember { mutableStateOf<List<PlacedSignature>>(emptyList()) }
     var activeSignatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var activeOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var activeOffset by remember { mutableStateOf(Offset.Zero) }
     var activeScale by remember { mutableFloatStateOf(1f) }
     var activeRotation by remember { mutableFloatStateOf(0f) }
     var isFocusMode by remember { mutableStateOf(false) }
     var lightboxPage by remember { mutableStateOf<Int?>(null) }
-    
+    // The lightbox page area as its overlay measured it, which APPLY normalises against.
+    var lightboxSize by remember { mutableStateOf(Size.Zero) }
+
     var showSignOptions by remember { mutableStateOf(false) }
     var showSignaturePad by remember { mutableStateOf(false) }
     var savedSignatures by remember { mutableStateOf<List<File>>(emptyList()) }
 
-    val imageLoader = coil.compose.LocalImageLoader.current
+    val imageLoader = PdfImageLoader.get(context)
 
-    fun loadSavedSignatures() {
-        val dir = File(context.filesDir, "signatures")
-        if (!dir.exists()) dir.mkdirs()
-        savedSignatures = dir.listFiles()?.filter { it.extension == "png" }?.sortedByDescending { it.lastModified() } ?: emptyList()
+    suspend fun loadSavedSignatures() {
+        savedSignatures = withContext(Dispatchers.IO) {
+            signatureDir(context).listFiles()?.filter { it.extension == "png" }?.sortedByDescending { it.lastModified() }.orEmpty()
+        }
     }
 
     fun saveSignature(bitmap: Bitmap) {
-        val dir = File(context.filesDir, "signatures")
-        if (!dir.exists()) dir.mkdirs()
-        val file = File(dir, "sig_${System.currentTimeMillis()}.png")
-        FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    File(signatureDir(context), "sig_${System.currentTimeMillis()}.png").outputStream().use { out ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                } catch (e: IOException) {
+                    Log.w("SignView", "Could not save the signature", e)
+                }
+            }
+            loadSavedSignatures()
         }
-        loadSavedSignatures()
     }
 
-    LaunchedEffect(Unit) { 
-        PDFBoxResourceLoader.init(context)
-        loadSavedSignatures()
+    fun startPlacing(bitmap: Bitmap?) {
+        activeSignatureBitmap = bitmap
+        activeOffset = Offset.Zero
+        activeScale = 1f
+        activeRotation = 0f
+        isFocusMode = true
+    }
+
+    fun fitRectOf(pageIndex: Int, containerWidth: Float, containerHeight: Float) =
+        LayoutMath.getFitRect(containerWidth, containerHeight, pageBoxes.getOrNull(pageIndex)?.displayAspect ?: FALLBACK_PAGE_ASPECT)
+
+    LaunchedEffect(Unit) { loadSavedSignatures() }
+
+    fun handleFileSelection(uri: Uri) {
+        selectedUri = uri
+        fileName = getUriDetails(context, uri).name
+        unlockError = false
+        isFileLoading = true
+        scope.launch {
+            val access = inspectPdf(context, uri)
+            when {
+                access == PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                needsUnlockPrompt(access, password = null) -> fileToUnlock = fileName
+                else -> {
+                    pageBoxes = readPageBoxes(context, uri, null)
+                    currentState = ToolState.CONFIGURING
+                }
+            }
+            isFileLoading = false
+        }
     }
 
     LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, initialUri)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) {
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, initialUri, null)
-                    withContext(Dispatchers.Main) {
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        initialUri?.let { handleFileSelection(it) }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, it)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) {
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, it, null)
-                    withContext(Dispatchers.Main) {
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        uri?.let { handleFileSelection(it) }
     }
 
     val pngLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
-            scope.launch(Dispatchers.IO) {
+            scope.launch {
                 try {
-                    context.contentResolver.openInputStream(it)?.use { stream ->
-                        val bitmap = BitmapFactory.decodeStream(stream)
-                        withContext(Dispatchers.Main) {
-                            activeSignatureBitmap = bitmap
-                            activeOffset = androidx.compose.ui.geometry.Offset.Zero
-                            activeScale = 1f
-                            activeRotation = 0f
-                            isFocusMode = true
-                            showSignOptions = false
-                        }
-                    }
-                } catch (e: Exception) {}
+                    val bitmap = withContext(Dispatchers.IO) { context.contentResolver.requireInputStream(it).use { stream -> BitmapFactory.decodeStream(stream) } }
+                    startPlacing(bitmap)
+                    showSignOptions = false
+                } catch (e: IOException) {
+                    Log.w("SignView", "Could not read the signature image", e)
+                }
             }
         }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        
-                        placedSignatures.groupBy { it.pageIndex }.forEach { (pageIdx, sigs) ->
-                            if (pageIdx < document.numberOfPages) {
-                                val page = document.getPage(pageIdx)
-                                PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                                    sigs.forEach { sig ->
-                                        val pdImage = LosslessFactory.createFromImage(document, sig.bitmap)
-                                        val pdfWidth = page.mediaBox.width
-                                        val pdfHeight = page.mediaBox.height
-                                        
-                                        // 1:1 NATIVE MAPPING
-                                        val drawWidth = pdfWidth * sig.normalizedWidth
-                                        val drawHeight = drawWidth * (sig.bitmap.height.toFloat() / sig.bitmap.width.toFloat())
-                                        
-                                        val xPos = (sig.normalizedX * pdfWidth) - (drawWidth / 2)
-                                        val yPos = (pdfHeight - (sig.normalizedY * pdfHeight)) - (drawHeight / 2)
-                                        
-                                        cs.saveGraphicsState()
-                                        val matrix = Matrix()
-                                        matrix.translate(xPos + drawWidth/2, yPos + drawHeight/2)
-                                        matrix.rotate(Math.toRadians((-sig.rotation).toDouble()))
-                                        matrix.translate(-(xPos + drawWidth/2), -(yPos + drawHeight/2))
-                                        cs.transform(matrix)
-                                        cs.drawImage(pdImage, xPos, yPos, drawWidth, drawHeight)
-                                        cs.restoreGraphicsState()
-                                    }
-                                }
-                            }
-                        }
-                        saveAndFlush(context, document, saveUri)
-                    }
-                    val endTime = System.currentTimeMillis()
-                    withContext(Dispatchers.Main) {
-                        processingTime = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                        outputUri = saveUri
-                        SessionManager.addEntry(getUriDetails(context, saveUri).name, "Sign", "Document signed locally", Icons.Filled.Draw, saveUri, pageCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        val signatures = placedSignatures
+        scope.launch(Dispatchers.IO) {
+            try {
+                rewritePdf(context, source, unlockPassword, uri) { applySignatures(it, signatures) }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, uri).name
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    SessionManager.addEntry(outputName, "Sign", "Document signed locally", Icons.Filled.Draw, uri, pageCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("SignView", "Signing failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
@@ -261,37 +226,34 @@ fun SignView(
     var selectedSignatureFile by remember { mutableStateOf<File?>(null) }
 
     val exportSignatureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
-        uri?.let { exportUri ->
-            val fileToExport = selectedSignatureFile
-            scope.launch(Dispatchers.IO) {
+        val fileToExport = selectedSignatureFile
+        if (uri == null || fileToExport == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val message = withContext(Dispatchers.IO) {
                 try {
-                    val bytes = fileToExport?.readBytes() ?: return@launch
-                    context.contentResolver.openOutputStream(exportUri)?.use { outputStream ->
-                        outputStream.write(bytes, 0, bytes.size)
-                    }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Signature exported", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+                    context.contentResolver.requireOutputStream(uri).use { it.write(fileToExport.readBytes()) }
+                    "Signature exported"
+                } catch (e: IOException) {
+                    Log.w("SignView", "Signature export failed", e)
+                    deleteCreatedDocument(context, uri)
+                    "Export failed: ${e.message}"
                 }
             }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 
-    val signatureOverlay: @Composable (BoxScope.(Int) -> Unit) = { pageIndex ->
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+    // Placed signatures and the one being placed, positioned over the page as the page image is fitted into this overlay's box.
+    @Composable
+    fun SignatureOverlay(pageIndex: Int, onMeasured: ((Size) -> Unit)?) {
+        val measured = if (onMeasured == null) Modifier else Modifier.onSizeChanged { onMeasured(it.toSize()) }
+        BoxWithConstraints(Modifier.fillMaxSize().then(measured)) {
             val containerWidth = constraints.maxWidth.toFloat()
             val containerHeight = constraints.maxHeight.toFloat()
-            // GOLDEN BOUND: Map relative to Aspect-Fit content
-            val fitRect = LayoutMath.getFitRect(containerWidth, containerHeight, 0.707f)
-            
+            val fitRect = fitRectOf(pageIndex, containerWidth, containerHeight)
             val pageWidth = fitRect.width()
             val pageHeight = fitRect.height()
 
-            // Render confirmed signatures
             placedSignatures.filter { it.pageIndex == pageIndex }.forEach { sig ->
                 ComposeImage(
                     bitmap = sig.bitmap.asImageBitmap(),
@@ -309,12 +271,11 @@ fun SignView(
                         .align(Alignment.Center)
                 )
             }
-            
-            // Render active signature in Focus Mode
+
             if (isFocusMode && activeSignatureBitmap != null && (lightboxPage == pageIndex || lightboxPage == null)) {
                 val bitmap = activeSignatureBitmap!!
                 val baseWidth = pageWidth * 0.4f
-                
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -350,30 +311,14 @@ fun SignView(
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Sign PDF", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("SECURE SIGNATURE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "Sign PDF",
+                    subtitle = "SECURE SIGNATURE",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() }
+                )
             }
         }
     ) { padding ->
@@ -384,7 +329,7 @@ fun SignView(
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                            onSelect = { pickLauncher.launch("application/pdf") },
                             isDark = isDark,
                             icon = Icons.Filled.Draw,
                             title = "Tap to enter file",
@@ -404,18 +349,18 @@ fun SignView(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
                                     mode = PreviewMode.GRID,
-                                    password = unlockPassword.ifEmpty { null }, 
+                                    password = unlockPassword.ifEmpty { null },
                                     accentColor = accentColor,
-                                    showSelectionIcon = false, 
-                                    showZoomIcon = false, 
-                                    itemOverlay = signatureOverlay,
+                                    showSelectionIcon = false,
+                                    showZoomIcon = false,
+                                    itemOverlay = { SignatureOverlay(it, onMeasured = null) },
                                     onToggleSelection = { index -> lightboxPage = index }
                                 )
                             }
-                            
+
                             val hasSigned = placedSignatures.isNotEmpty()
                             Button(
-                                onClick = { if (hasSigned) saveLauncher.launch(fileName.replace(".pdf", "-signed.pdf")) },
+                                onClick = { if (hasSigned) saveLauncher.launch(pdfBaseName(fileName) + "-signed.pdf") },
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp),
                                 enabled = hasSigned,
                                 shape = RoundedCornerShape(20.dp),
@@ -445,40 +390,41 @@ fun SignView(
                             subMessage = "Signature placed successfully",
                             processingTime = processingTime,
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 selectedUri = null
                                 placedSignatures = emptyList()
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
-                                if (count > 0) {
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                val boxes = readPageBoxes(context, source, pass)
+                                if (boxes.isNotEmpty()) {
                                     unlockPassword = pass
-                                    pageCount = count
+                                    pageBoxes = boxes
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
+                                    unlockError = true
                                 }
                                 isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
@@ -487,99 +433,89 @@ fun SignView(
     }
 
     if (lightboxPage != null) {
-        val pageIdx = lightboxPage!!
-        BoxWithConstraints {
-            val containerWidth = constraints.maxWidth.toFloat()
-            val containerHeight = constraints.maxHeight.toFloat()
-            val fitRect = LayoutMath.getFitRect(containerWidth, containerHeight, 0.707f)
-            
-            PageLightbox(
-                uri = selectedUri!!,
-                initialPage = pageIdx,
-                totalCount = pageCount,
-                password = unlockPassword.ifEmpty { null },
-                onDismiss = { lightboxPage = null; isFocusMode = false; activeSignatureBitmap = null },
-                itemOverlay = signatureOverlay,
-                bottomBar = { currentPage ->
-                    Surface(
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        color = Color.Black.copy(0.85f),
-                        border = BorderStroke(1.dp, Color.White.copy(0.1f))
-                    ) {
-                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (isFocusMode) {
-                                TextButton(onClick = { isFocusMode = false; activeSignatureBitmap = null }, modifier = Modifier.weight(1f)) {
-                                    Text("CANCEL", color = Color.LightGray, fontWeight = FontWeight.Bold)
-                                }
+        PageLightbox(
+            uri = selectedUri!!,
+            initialPage = lightboxPage!!,
+            totalCount = pageCount,
+            password = unlockPassword.ifEmpty { null },
+            onDismiss = { lightboxPage = null; isFocusMode = false; activeSignatureBitmap = null },
+            itemOverlay = { SignatureOverlay(it) { size -> lightboxSize = size } },
+            bottomBar = { currentPage ->
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.Black.copy(0.85f),
+                    border = BorderStroke(1.dp, Color.White.copy(0.1f))
+                ) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (isFocusMode) {
+                            TextButton(onClick = { isFocusMode = false; activeSignatureBitmap = null }, modifier = Modifier.weight(1f)) {
+                                Text("CANCEL", color = Color.LightGray, fontWeight = FontWeight.Bold)
+                            }
+                            Button(
+                                onClick = {
+                                    activeSignatureBitmap?.let {
+                                        val fitRect = fitRectOf(currentPage, lightboxSize.width, lightboxSize.height)
+                                        placedSignatures = placedSignatures + PlacedSignature(
+                                            pageIndex = currentPage,
+                                            bitmap = it,
+                                            normalizedX = (activeOffset.x + (lightboxSize.width / 2) - fitRect.left) / fitRect.width(),
+                                            normalizedY = (activeOffset.y + (lightboxSize.height / 2) - fitRect.top) / fitRect.height(),
+                                            normalizedWidth = 0.4f * activeScale,
+                                            rotation = activeRotation
+                                        )
+                                    }
+                                    isFocusMode = false
+                                    activeSignatureBitmap = null
+                                },
+                                modifier = Modifier.weight(1.5f).height(50.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                            ) {
+                                Text("APPLY", fontWeight = FontWeight.Black)
+                            }
+                        } else {
+                            val hasAppliedOnThisPage = placedSignatures.any { it.pageIndex == currentPage }
+
+                            if (!hasAppliedOnThisPage) {
                                 Button(
-                                    onClick = { 
-                                        activeSignatureBitmap?.let {
-                                            // Normalizing relative to the fit-box
-                                            val nx = (activeOffset.x + (containerWidth / 2) - fitRect.left) / fitRect.width()
-                                            val ny = (activeOffset.y + (containerHeight / 2) - fitRect.top) / fitRect.height()
-                                            
-                                            placedSignatures = placedSignatures + PlacedSignature(
-                                                pageIndex = currentPage,
-                                                bitmap = it,
-                                                normalizedX = nx,
-                                                normalizedY = ny,
-                                                normalizedWidth = (fitRect.width() * 0.4f * activeScale) / fitRect.width(),
-                                                rotation = activeRotation
-                                            )
-                                        }
-                                        isFocusMode = false
-                                        activeSignatureBitmap = null
-                                    },
-                                    modifier = Modifier.weight(1.5f).height(50.dp),
+                                    onClick = { showSignOptions = true },
+                                    modifier = Modifier.fillMaxWidth().height(50.dp),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                                 ) {
-                                    Text("APPLY", fontWeight = FontWeight.Black)
+                                    Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("ADD SIGN", fontWeight = FontWeight.Black)
                                 }
                             } else {
-                                val hasAppliedOnThisPage = placedSignatures.any { it.pageIndex == currentPage }
-                                
-                                if (!hasAppliedOnThisPage) {
-                                    Button(
-                                        onClick = { showSignOptions = true },
-                                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    OutlinedButton(
+                                        onClick = { lightboxPage = null },
+                                        modifier = Modifier.weight(1f).height(50.dp),
                                         shape = RoundedCornerShape(16.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                                        border = BorderStroke(1.dp, Color.White.copy(0.3f))
                                     ) {
-                                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("ADD SIGN", fontWeight = FontWeight.Black)
+                                        Text("SIGN MORE", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Black)
                                     }
-                                } else {
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        OutlinedButton(
-                                            onClick = { lightboxPage = null },
-                                            modifier = Modifier.weight(1f).height(50.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            border = BorderStroke(1.dp, Color.White.copy(0.3f))
-                                        ) {
-                                            Text("SIGN MORE", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Black)
-                                        }
-                                        Button(
-                                            onClick = { 
-                                                lightboxPage = null 
-                                                saveLauncher.launch(fileName.replace(".pdf", "-signed.pdf")) 
-                                            },
-                                            modifier = Modifier.weight(1f).height(50.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
-                                        ) {
-                                            Text("SAVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
-                                        }
+                                    Button(
+                                        onClick = {
+                                            lightboxPage = null
+                                            saveLauncher.launch(pdfBaseName(fileName) + "-signed.pdf")
+                                        },
+                                        modifier = Modifier.weight(1f).height(50.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
+                                    ) {
+                                        Text("SAVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
                             }
                         }
                     }
                 }
-            )
-        }
+            }
+        )
     }
 
     if (showSignOptions) {
@@ -592,7 +528,7 @@ fun SignView(
                         SignOptionCard("Draw", Icons.Filled.Gesture, accentColor, Modifier.weight(1f)) { showSignaturePad = true; showSignOptions = false }
                         SignOptionCard("Upload", Icons.Filled.CloudUpload, Color.Gray, Modifier.weight(1f)) { pngLauncher.launch("image/png"); showSignOptions = false }
                     }
-                    
+
                     if (savedSignatures.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
                         Text("SAVED SIGNATURES", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.sp)
@@ -602,16 +538,12 @@ fun SignView(
                                 Box {
                                     Surface(
                                         modifier = Modifier.size(100.dp, 60.dp).clickable {
-                                            activeSignatureBitmap = BitmapFactory.decodeFile(file.absolutePath)
-                                            activeOffset = androidx.compose.ui.geometry.Offset.Zero
-                                            activeScale = 1f
-                                            activeRotation = 0f
-                                            isFocusMode = true
                                             showSignOptions = false
+                                            scope.launch { startPlacing(withContext(Dispatchers.IO) { BitmapFactory.decodeFile(file.absolutePath) }) }
                                         },
                                         shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color.Gray.copy(0.2f))
-                                    ) { ComposeImage(painter = rememberAsyncImagePainter(file), contentDescription = null, modifier = Modifier.padding(8.dp)) }
-                                    
+                                    ) { ComposeImage(painter = rememberAsyncImagePainter(file, imageLoader), contentDescription = null, modifier = Modifier.padding(8.dp)) }
+
                                     IconButton(
                                         onClick = {
                                             selectedSignatureFile = file
@@ -641,17 +573,88 @@ fun SignView(
             onDismiss = { showSignaturePad = false },
             onSave = { bitmap, shouldSave ->
                 if (shouldSave) saveSignature(bitmap)
-                activeSignatureBitmap = bitmap
-                activeOffset = androidx.compose.ui.geometry.Offset.Zero
-                activeScale = 1f
-                activeRotation = 0f
-                isFocusMode = true
+                startPlacing(bitmap)
                 showSignaturePad = false
                 showSignOptions = false
             },
             accentColor = accentColor,
             initialColor = Color.Black
         )
+    }
+}
+
+private fun signatureDir(context: Context): File = File(context.filesDir, "signatures").apply { mkdirs() }
+
+/** Stamps [signatures] onto their pages of [document]; each keeps its own image, as each has its own bitmap. */
+private fun applySignatures(document: PDDocument, signatures: List<PlacedSignature>) {
+    signatures.groupBy { it.pageIndex }.forEach { (pageIdx, sigs) ->
+        if (pageIdx < document.numberOfPages) {
+            val page = document.getPage(pageIdx)
+            val box = PageBox.of(page)
+            document.appendTo(page).use { cs ->
+                sigs.forEach { sig ->
+                    val image = LosslessFactory.createFromImage(document, sig.bitmap)
+                    cs.drawStamp(image, box, sig.normalizedX, sig.normalizedY, sig.normalizedWidth, sig.rotation)
+                }
+            }
+        }
+    }
+}
+
+/** Size of a signature bitmap and the translation that moves the strokes into it. */
+internal data class SignatureFrame(val width: Int, val height: Int, val dx: Float, val dy: Float)
+
+/**
+ * The frame for strokes whose paths span [left]..[right] x [top]..[bottom] in pad pixels, drawn [strokePx] wide: half a stroke plus
+ * [padding] around them, at least 1x1, so no part of the signature is cut off wherever on the pad it was drawn.
+ */
+internal fun signatureFrame(left: Float, top: Float, right: Float, bottom: Float, strokePx: Float, padding: Float = 16f): SignatureFrame {
+    val inset = strokePx / 2 + padding
+    val frameLeft = left - inset
+    val frameTop = top - inset
+    val width = ceil(right + inset - frameLeft).toInt().coerceAtLeast(1)
+    val height = ceil(bottom + inset - frameTop).toInt().coerceAtLeast(1)
+    return SignatureFrame(width, height, -frameLeft, -frameTop)
+}
+
+/** Renders the pad's strokes, in their colours and [strokePx] wide, into a transparent bitmap cropped to them by [signatureFrame]. */
+internal fun renderSignatureBitmap(paths: List<Pair<Path, Color>>, strokePx: Float = 16f): Bitmap {
+    val bounds = RectF()
+    var left = Float.POSITIVE_INFINITY
+    var top = Float.POSITIVE_INFINITY
+    var right = Float.NEGATIVE_INFINITY
+    var bottom = Float.NEGATIVE_INFINITY
+    paths.forEach { (path, _) ->
+        path.computeBounds(bounds, true)
+        left = minOf(left, bounds.left)
+        top = minOf(top, bounds.top)
+        right = maxOf(right, bounds.right)
+        bottom = maxOf(bottom, bounds.bottom)
+    }
+    val frame = if (paths.isEmpty()) signatureFrame(0f, 0f, 0f, 0f, strokePx) else signatureFrame(left, top, right, bottom, strokePx)
+    val bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val paint = Paint().apply {
+        style = Paint.Style.STROKE
+        strokeWidth = strokePx
+        isAntiAlias = true
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    canvas.translate(frame.dx, frame.dy)
+    paths.forEach { (path, color) ->
+        paint.color = color.toArgb()
+        canvas.drawPath(path, paint)
+    }
+    return bitmap
+}
+
+/** One pen stroke on the signature pad. Its points are snapshot state, so the pad redraws as a drag adds them. */
+private class PadStroke(val color: Color) {
+    val points = mutableStateListOf<Offset>()
+
+    fun toPath(): Path = Path().apply {
+        points.forEachIndexed { i, p -> if (i == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y) }
     }
 }
 
@@ -663,8 +666,7 @@ fun SignaturePadDialog(
     initialColor: Color
 ) {
     val density = LocalDensity.current
-    var paths by remember { mutableStateOf(mutableStateListOf<Pair<Path, Color>>()) }
-    var currentPath by remember { mutableStateOf<Path?>(null) }
+    val strokes = remember { mutableStateListOf<PadStroke>() }
     var shouldSaveSignature by remember { mutableStateOf(true) }
     var strokeColor by remember { mutableStateOf(initialColor) }
 
@@ -694,23 +696,20 @@ fun SignaturePadDialog(
                         .pointerInput(Unit) {
                             detectDragGestures(
                                 onDragStart = { offset ->
-                                    currentPath = Path().apply { moveTo(offset.x, offset.y) }
-                                    currentPath?.let { paths.add(it to strokeColor) }
+                                    strokes.add(PadStroke(strokeColor).apply { points.add(offset) })
                                 },
                                 onDrag = { change, _ ->
                                     change.consume()
-                                    currentPath?.lineTo(change.position.x, change.position.y)
-                                    val last = paths.removeAt(paths.size - 1)
-                                    paths.add(last)
+                                    strokes.lastOrNull()?.points?.add(change.position)
                                 }
                             )
                         }
                 ) {
                     androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                        paths.forEach { (path, color) ->
+                        strokes.forEach { stroke ->
                             drawPath(
-                                path = path.asComposePath(),
-                                color = color,
+                                path = stroke.toPath().asComposePath(),
+                                color = stroke.color,
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
                                     width = with(density) { 4.dp.toPx() },
                                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
@@ -720,43 +719,23 @@ fun SignaturePadDialog(
                         }
                     }
                 }
-                
+
                 Spacer(Modifier.height(16.dp))
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = shouldSaveSignature, onCheckedChange = { shouldSaveSignature = it }, colors = CheckboxDefaults.colors(checkedColor = accentColor))
                     Text("Save signature", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { paths.clear() }) { Text("CLEAR", color = Color.Gray, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = { strokes.clear() }) { Text("CLEAR", color = Color.Gray, fontWeight = FontWeight.Bold) }
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = {
-                    if (paths.isEmpty()) return@Button
-                    val bitmap = Bitmap.createBitmap(1200, 1000, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bitmap)
-                    val paint = Paint().apply {
-                        style = Paint.Style.STROKE
-                        strokeWidth = 16f
-                        isAntiAlias = true
-                        strokeCap = Paint.Cap.ROUND
-                        strokeJoin = Paint.Join.ROUND
-                    }
-                    
-                    canvas.save()
-                    canvas.translate(200f, 200f) 
-                    paths.forEach { (path, color) -> 
-                        paint.color = color.toArgb()
-                        canvas.drawPath(path, paint) 
-                    }
-                    canvas.restore()
-                    onSave(bitmap, shouldSaveSignature)
-                },
+                onClick = { if (strokes.isNotEmpty()) onSave(renderSignatureBitmap(strokes.map { it.toPath() to it.color }), shouldSaveSignature) },
                 colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                 shape = RoundedCornerShape(12.dp),
-                enabled = paths.isNotEmpty()
+                enabled = strokes.isNotEmpty()
             ) { Text("ADOPT", fontWeight = FontWeight.Black) }
         }
     )
