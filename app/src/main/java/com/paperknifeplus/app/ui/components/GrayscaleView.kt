@@ -1,16 +1,13 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,64 +18,66 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.shape.RoundedCornerShape
-import com.paperknifeplus.app.ui.theme.PaperPink
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GrayscaleView(
     initialUri: Uri? = null,
-    onBack: () -> Unit, 
+    onBack: () -> Unit,
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFFF59E0B)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
-    var fileSize by remember { mutableStateOf("") }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
-    
+
     var pageCount by remember { mutableIntStateOf(0) }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var progressPage by remember { mutableIntStateOf(0) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
-    
+    var unlockError by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+
     var isLivePreview by remember { mutableStateOf(true) }
 
+    fun dropDecryptedCopy() {
+        deleteDecryptedCopy(context, decryptedUri)
+        decryptedUri = null
+    }
+    DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
+
     fun handleFileSelection(uri: Uri) {
+        dropDecryptedCopy()
         selectedUri = uri
-        val details = getUriDetails(context, uri)
-        fileName = details.name
-        fileSize = details.size
+        fileName = getUriDetails(context, uri).name
+        unlockError = false
         isFileLoading = true
-        scope.launch(Dispatchers.IO) {
-            val isEncrypted = checkIsEncryptedLocal(context, uri)
-            if (isEncrypted) {
-                withContext(Dispatchers.Main) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
                 }
-            } else {
-                val count = getPageCount(context, uri, null)
-                withContext(Dispatchers.Main) {
-                    pageCount = count
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
                     currentState = ToolState.CONFIGURING
-                    isFileLoading = false
                 }
             }
+            isFileLoading = false
         }
     }
 
@@ -86,76 +85,54 @@ fun GrayscaleView(
         initialUri?.let { handleFileSelection(it) }
     }
 
-    LaunchedEffect(isFileLoading, currentState) {
-        if (isFileLoading || currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
-        }
-    }
-
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    performGrayscaleRewrite(context, selectedUri!!, saveUri, if (unlockPassword.isEmpty()) null else unlockPassword) { current, total ->
-                        progressPage = current
-                    }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        outputUri = saveUri
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "Grayscale", "Converted to B&W", Icons.Outlined.Palette, saveUri, pageCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            try {
+                performGrayscaleRewrite(context, source, uri, unlockPassword.ifEmpty { null }) { current, _ ->
+                    progressPage = current
+                }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, uri).name
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    fileName = outputName
+                    SessionManager.addEntry(fileName, "Grayscale", "Converted to B&W", Icons.Outlined.Palette, uri, pageCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("GrayscaleView", "Grayscale conversion failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Grayscale", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("CONVERT PDF TO B&W", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "Grayscale",
+                    subtitle = "CONVERT PDF TO B&W",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
+                )
             }
         }
     ) { padding ->
@@ -166,7 +143,7 @@ fun GrayscaleView(
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                            onSelect = { pickLauncher.launch("application/pdf") },
                             isDark = isDark,
                             icon = Icons.Outlined.Palette,
                             title = "Tap to enter file",
@@ -181,20 +158,20 @@ fun GrayscaleView(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(Modifier.height(16.dp))
-                            
+
                             Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 UnifiedPdfPreview(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
                                     mode = PreviewMode.GRID,
                                     isGrayscale = isLivePreview,
-                                    password = null, 
+                                    password = null,
                                     accentColor = accentColor
                                 )
                             }
-                            
+
                             Spacer(Modifier.height(16.dp))
-                            
+
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                                 shape = RoundedCornerShape(24.dp),
@@ -210,7 +187,7 @@ fun GrayscaleView(
                                         Text("Instant black and white preview", fontSize = 11.sp, color = Color.Gray)
                                     }
                                     Switch(
-                                        checked = isLivePreview, 
+                                        checked = isLivePreview,
                                         onCheckedChange = { isLivePreview = it },
                                         colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
                                     )
@@ -218,11 +195,11 @@ fun GrayscaleView(
                             }
 
                             Spacer(Modifier.height(24.dp))
-                            
+
                             Button(
-                                onClick = { 
-                                    val defaultName = fileName.replace(".pdf", "", true) + "-grayscale.pdf"
-                                    saveLauncher.launch(defaultName) 
+                                onClick = {
+                                    val defaultName = pdfBaseName(fileName) + "-grayscale.pdf"
+                                    saveLauncher.launch(defaultName)
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(60.dp),
                                 shape = RoundedCornerShape(20.dp),
@@ -237,7 +214,7 @@ fun GrayscaleView(
                         ProcessingStateView(
                             accentColor = accentColor,
                             uri = selectedUri,
-                            password = if (unlockPassword.isEmpty()) null else unlockPassword,
+                            password = unlockPassword.ifEmpty { null },
                             text = "Applying grayscale filter...",
                             current = progressPage,
                             total = pageCount,
@@ -250,41 +227,41 @@ fun GrayscaleView(
                             subMessage = "Colors removed from all elements",
                             processingTime = processingTime,
                             onDone = onBack,
-                            onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
+                            onProcessMore = { dropDecryptedCopy(); selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        unlockPassword = pass
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val decryptedUri = decryptToCache(context, selectedUri!!, pass)
-                            if (decryptedUri != null) {
-                                val count = getPageCount(context, decryptedUri, null)
-                                withContext(Dispatchers.Main) { 
-                                    selectedUri = decryptedUri
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
+                                val copy = decryptToCache(context, source, pass)
+                                if (copy != null) {
+                                    val count = getPageCount(context, copy, null)
+                                    decryptedUri = copy
+                                    unlockPassword = pass
+                                    selectedUri = copy
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
-                                    isFileLoading = false 
                                     fileToUnlock = null
+                                } else {
+                                    unlockError = true
                                 }
-                            } else {
-                                withContext(Dispatchers.Main) { 
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false 
-                                }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )

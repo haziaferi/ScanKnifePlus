@@ -1,10 +1,10 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,11 +23,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,10 +41,10 @@ fun PageNumbersView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = PaperPink
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -54,44 +53,42 @@ fun PageNumbersView(
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
-    
-    // Settings
+    var unlockError by remember { mutableStateOf(false) }
+
     var position by remember { mutableStateOf("Bottom Right") }
     var fontSize by remember { mutableFloatStateOf(14f) }
     var format by remember { mutableStateOf("Page {n}") }
     var numberColor by remember { mutableStateOf(Color.Black) }
     var showPreviewOverlay by remember { mutableStateOf(true) }
-    
-    // UI State
+
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showPositionSheet by remember { mutableStateOf(false) }
     var showColorSheet by remember { mutableStateOf(false) }
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
-        val details = getUriDetails(context, uri)
-        fileName = details.name
+        fileName = getUriDetails(context, uri).name
+        unlockError = false
         isFileLoading = true
-        scope.launch(Dispatchers.IO) {
-            val isEnc = checkIsEncryptedLocal(context, uri)
-            withContext(Dispatchers.Main) {
-                if (isEnc) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
-                } else {
-                    val count = getPageCount(context, uri, null)
-                    pageCount = count
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
                     currentState = ToolState.CONFIGURING
-                    isFileLoading = false
                 }
             }
+            isFileLoading = false
         }
     }
 
     LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            handleFileSelection(initialUri)
-        }
+        initialUri?.let { handleFileSelection(it) }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -99,55 +96,32 @@ fun PageNumbersView(
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        
-                        (0 until document.numberOfPages).forEach { pageIdx ->
-                            val page = document.getPage(pageIdx)
-                            PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                                val rect = page.mediaBox
-                                val text = format.replace("{n}", (pageIdx + 1).toString())
-                                val font = PDType1Font.HELVETICA_BOLD
-                                val textWidth = font.getStringWidth(text) / 1000 * fontSize
-                                
-                                val margin = 30f
-                                val x = when {
-                                    position.contains("Left") -> margin
-                                    position.contains("Center") -> (rect.width - textWidth) / 2
-                                    else -> rect.width - textWidth - margin
-                                }
-                                val y = when {
-                                    position.contains("Top") -> rect.height - margin - fontSize
-                                    else -> margin
-                                }
-                                
-                                cs.beginText()
-                                cs.setFont(font, fontSize)
-                                cs.setNonStrokingColor(numberColor.red, numberColor.green, numberColor.blue)
-                                cs.newLineAtOffset(x, y)
-                                cs.showText(text)
-                                cs.endText()
-                            }
-                        }
-                        saveAndFlush(context, document, saveUri)
-                    }
-                    val endTime = System.currentTimeMillis()
-                    withContext(Dispatchers.Main) {
-                        processingTime = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                        outputUri = saveUri
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        val numbering = PageNumbering(format, position, fontSize, numberColor)
+        scope.launch(Dispatchers.IO) {
+            try {
+                rewritePdf(context, source, unlockPassword, uri) { applyPageNumbers(it, numbering) }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, uri).name
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    fileName = outputName
+                    SessionManager.addEntry(fileName, "Page Numbers", "Numbering applied", Icons.Filled.FormatListNumbered, uri, pageCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("PageNumbersView", "Numbering failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
@@ -156,30 +130,14 @@ fun PageNumbersView(
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Page Numbers", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("CUSTOM PAGINATION", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "Page Numbers",
+                    subtitle = "CUSTOM PAGINATION",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { selectedUri = null; currentState = ToolState.SELECTING }
+                )
             }
         }
     ) { padding ->
@@ -190,7 +148,7 @@ fun PageNumbersView(
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                            onSelect = { pickLauncher.launch("application/pdf") },
                             isDark = isDark,
                             icon = Icons.Filled.FormatListNumbered,
                             title = "Tap to enter file",
@@ -205,7 +163,7 @@ fun PageNumbersView(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(Modifier.height(12.dp))
-                            
+
                             Box(modifier = Modifier.weight(1f)) {
                                 val numberOverlay: @Composable (BoxScope.(Int) -> Unit) = { index ->
                                     if (showPreviewOverlay) {
@@ -220,10 +178,10 @@ fun PageNumbersView(
                                             else -> Alignment.BottomEnd
                                         }) {
                                             Text(
-                                                text = text, 
-                                                color = numberColor, 
-                                                fontSize = (fontSize / 2).sp, 
-                                                fontWeight = FontWeight.Black, 
+                                                text = text,
+                                                color = numberColor,
+                                                fontSize = (fontSize / 2).sp,
+                                                fontWeight = FontWeight.Black,
                                                 modifier = Modifier.padding(6.dp)
                                             )
                                         }
@@ -234,17 +192,16 @@ fun PageNumbersView(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
                                     mode = PreviewMode.GRID,
-                                    password = unlockPassword.ifEmpty { null }, 
+                                    password = unlockPassword.ifEmpty { null },
                                     accentColor = accentColor,
-                                    showIndexNumbers = false, 
-                                    disableLightbox = true, // DISABLE LIGHTBOX AS REQUESTED
+                                    showIndexNumbers = false,
+                                    disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
                                     itemOverlay = numberOverlay
                                 )
                             }
-                            
+
                             Spacer(Modifier.height(8.dp))
 
-                            // SLIM WIDE SETTINGS HANDLE (PULL-UP STYLE)
                             Surface(
                                 onClick = { showSettingsSheet = true },
                                 color = accentColor.copy(alpha = 0.15f),
@@ -259,7 +216,7 @@ fun PageNumbersView(
                             Spacer(Modifier.height(8.dp))
 
                             Button(
-                                onClick = { saveLauncher.launch(fileName.replace(".pdf", "") + "-numbered.pdf") },
+                                onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-numbered.pdf") },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
@@ -285,9 +242,9 @@ fun PageNumbersView(
                             subMessage = "Page numbers added successfully",
                             processingTime = processingTime,
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 selectedUri = null
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
                             onPreview = {
                                 outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
@@ -295,37 +252,37 @@ fun PageNumbersView(
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                val count = getPageCount(context, source, pass)
                                 if (count > 0) {
                                     unlockPassword = pass
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
+                                    unlockError = true
                                 }
                                 isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
             }
-            
-            // CONSOLIDATED SETTINGS SHEET (Rise-Up)
+
             if (showSettingsSheet) {
                 ModalBottomSheet(
                     onDismissRequest = { showSettingsSheet = false },
@@ -341,14 +298,14 @@ fun PageNumbersView(
                     ) {
                         Text("PAGE NUMBER SETTINGS", fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
                         Spacer(Modifier.height(24.dp))
-                        
+
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("LIVE PREVIEW", fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                             Switch(checked = showPreviewOverlay, onCheckedChange = { showPreviewOverlay = it }, colors = SwitchDefaults.colors(checkedTrackColor = accentColor))
                         }
-                        
+
                         Spacer(Modifier.height(16.dp))
-                        
+
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = format,
@@ -359,7 +316,7 @@ fun PageNumbersView(
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor, focusedLabelColor = accentColor)
                             )
-                            
+
                             Surface(
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(12.dp),
@@ -373,7 +330,7 @@ fun PageNumbersView(
                                 }
                             }
                         }
-                        
+
                         Spacer(Modifier.height(24.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("FONT SIZE: ${fontSize.toInt()} PT", fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
@@ -385,9 +342,9 @@ fun PageNumbersView(
                                 colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
                             )
                         }
-                        
+
                         Spacer(Modifier.height(16.dp))
-                        
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -408,8 +365,7 @@ fun PageNumbersView(
                     }
                 }
             }
-            
-            // NESTED SELECTORS
+
             if (showPositionSheet) {
                 ModalBottomSheet(onDismissRequest = { showPositionSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding()) {
@@ -424,7 +380,7 @@ fun PageNumbersView(
                     }
                 }
             }
-            
+
             if (showColorSheet) {
                 ModalBottomSheet(onDismissRequest = { showColorSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding()) {
@@ -441,6 +397,26 @@ fun PageNumbersView(
                     }
                 }
             }
+        }
+    }
+}
+
+/** What the Page Numbers tool stamps: [format] with {n} for the page number, in a corner [position], [fontSize] points, in [color]. */
+private data class PageNumbering(val format: String, val position: String, val fontSize: Float, val color: Color)
+
+private fun applyPageNumbers(document: PDDocument, numbering: PageNumbering) {
+    val font = PDType1Font.HELVETICA_BOLD
+    document.pages.forEachIndexed { pageIdx, page ->
+        document.appendTo(page).use { cs ->
+            val text = numbering.format.replace("{n}", (pageIdx + 1).toString())
+            val textWidth = font.getStringWidth(text) / 1000 * numbering.fontSize
+            val placement = pageNumberPlacement(numbering.position, textWidth, numbering.fontSize, PageBox.of(page))
+            cs.beginText()
+            cs.setFont(font, numbering.fontSize)
+            cs.setNonStrokingColor(numbering.color.red, numbering.color.green, numbering.color.blue)
+            cs.setTextMatrix(placement.matrix())
+            cs.showText(text)
+            cs.endText()
         }
     }
 }

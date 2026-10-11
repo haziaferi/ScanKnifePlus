@@ -1,18 +1,17 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material3.*
@@ -25,11 +24,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,130 +39,120 @@ fun MetadataView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFF6366F1)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
-    
+
     var title by remember { mutableStateOf("") }
     var author by remember { mutableStateOf("") }
     var subject by remember { mutableStateOf("") }
     var keywords by remember { mutableStateOf("") }
     var creator by remember { mutableStateOf("") }
     var producer by remember { mutableStateOf("") }
-    
+
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
 
-    LaunchedEffect(isFileLoading, currentState) {
-        if (isFileLoading || currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
+    fun backToSelection() {
+        selectedUri = null
+        fileToUnlock = null
+        currentState = ToolState.SELECTING
+    }
+
+    /** Reads [uri]'s properties with [password] and shows them, or goes back to file selection when they cannot be read. */
+    suspend fun showProperties(uri: Uri, password: String?) {
+        val count = getPageCount(context, uri, password)
+        val properties = loadMetadata(context, uri, password)
+        if (properties == null) {
+            Toast.makeText(context, "Could not read file properties", Toast.LENGTH_LONG).show()
+            backToSelection()
+            return
         }
+        title = properties.title
+        author = properties.author
+        subject = properties.subject
+        keywords = properties.keywords
+        creator = properties.creator
+        producer = properties.producer
+        pageCount = count
+        currentState = ToolState.CONFIGURING
+        fileToUnlock = null
+    }
+
+    fun handleFileSelection(uri: Uri) {
+        selectedUri = uri
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
+        unlockError = false
+        isFileLoading = true
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    backToSelection()
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> showProperties(uri, null)
+            }
+            isFileLoading = false
+        }
+    }
+
+    LaunchedEffect(initialUri) {
+        initialUri?.let { handleFileSelection(it) }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, it)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) {
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, it, null)
-                    loadMetadata(context, it, null) { t, a, s, k, c, p ->
-                        title = t; author = a; subject = s; keywords = k; creator = c; producer = p
-                        withContext(Dispatchers.Main) {
-                            pageCount = count
-                            currentState = ToolState.CONFIGURING
-                            isFileLoading = false
-                        }
-                    }
-                }
-            }
-        }
+        uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        
-                        val info = document.documentInformation
-                        info.title = title
-                        info.author = author
-                        info.subject = subject
-                        info.keywords = keywords
-                        info.creator = creator
-                        info.producer = producer
-                        
-                        saveAndFlush(context, document, saveUri)
-                    }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        outputUri = saveUri
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "Metadata", "Edited properties", Icons.Filled.Fingerprint, saveUri, pageCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        val edited = PdfProperties(title, author, subject, keywords, creator, producer)
+        scope.launch(Dispatchers.IO) {
+            try {
+                rewritePdf(context, source, unlockPassword, uri) { document ->
+                    document.documentInformation.apply {
+                        this.title = edited.title
+                        this.author = edited.author
+                        this.subject = edited.subject
+                        this.keywords = edited.keywords
+                        this.creator = edited.creator
+                        this.producer = edited.producer
                     }
                 }
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
-    LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, initialUri)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) {
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, initialUri, null)
-                    loadMetadata(context, initialUri, null) { t, a, s, k, c, p ->
-                        title = t; author = a; subject = s; keywords = k; creator = c; producer = p
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, uri).name
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    fileName = outputName
+                    SessionManager.addEntry(fileName, "Metadata", "Edited properties", Icons.Filled.Fingerprint, uri, pageCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("MetadataView", "Saving properties failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
@@ -173,30 +161,14 @@ fun MetadataView(
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Metadata", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("EDIT DOCUMENT PROPERTIES", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "Metadata",
+                    subtitle = "EDIT DOCUMENT PROPERTIES",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { selectedUri = null; currentState = ToolState.SELECTING }
+                )
             }
         }
     ) { padding ->
@@ -207,7 +179,7 @@ fun MetadataView(
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                            onSelect = { pickLauncher.launch("application/pdf") },
                             isDark = isDark,
                             icon = Icons.Outlined.Fingerprint,
                             title = "Tap to enter file",
@@ -217,13 +189,12 @@ fun MetadataView(
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        // NITRO: Fully scrollable single-column overhaul
                         Column(
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(Modifier.height(16.dp))
-                            
+
                             Box(modifier = Modifier.fillMaxWidth(0.6f).aspectRatio(0.707f)) {
                                 UnifiedPdfPreview(
                                     uri = selectedUri!!,
@@ -233,20 +204,20 @@ fun MetadataView(
                                     accentColor = accentColor
                                 )
                             }
-                            
+
                             Spacer(Modifier.height(16.dp))
                             Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                             Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
-                            
+
                             Spacer(Modifier.height(24.dp))
-                            
+
                             MetadataGroup("CORE METADATA") {
                                 MetadataEditField("Title", title, accentColor) { title = it }
                                 MetadataEditField("Author", author, accentColor) { author = it }
                             }
-                            
+
                             Spacer(Modifier.height(16.dp))
-                            
+
                             MetadataGroup("ADDITIONAL TAGS") {
                                 MetadataEditField("Subject", subject, accentColor) { subject = it }
                                 MetadataEditField("Keywords", keywords, accentColor) { keywords = it }
@@ -258,16 +229,16 @@ fun MetadataView(
                                 MetadataEditField("Creator", creator, accentColor) { creator = it }
                                 MetadataEditField("Producer", producer, accentColor) { producer = it }
                             }
-                            
+
                             Spacer(Modifier.height(32.dp))
-                            
+
                             Button(
-                                onClick = { 
-                                    val defaultName = fileName.replace(".pdf", "", true) + "-meta.pdf"
-                                    saveLauncher.launch(defaultName) 
-                                }, 
-                                modifier = Modifier.fillMaxWidth().height(60.dp), 
-                                shape = RoundedCornerShape(20.dp), 
+                                onClick = {
+                                    val defaultName = pdfBaseName(fileName) + "-meta.pdf"
+                                    saveLauncher.launch(defaultName)
+                                },
+                                modifier = Modifier.fillMaxWidth().height(60.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
                             ) {
                                 Text("SAVE PROPERTIES", fontWeight = FontWeight.Black, color = Color.White)
@@ -279,7 +250,7 @@ fun MetadataView(
                         ProcessingStateView(
                             accentColor = accentColor,
                             uri = selectedUri,
-                            password = if (unlockPassword.isEmpty()) null else unlockPassword,
+                            password = unlockPassword.ifEmpty { null },
                             text = "Updating document metadata...",
                             current = 0,
                             total = 0,
@@ -292,46 +263,38 @@ fun MetadataView(
                             subMessage = "Document metadata saved",
                             processingTime = processingTime,
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 selectedUri = null
                                 unlockPassword = ""
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
-                                if (count > 0) {
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                if (getPageCount(context, source, pass) > 0) {
                                     unlockPassword = pass
-                                    loadMetadata(context, selectedUri!!, pass) { t, a, s, k, c, p ->
-                                        title = t; author = a; subject = s; keywords = k; creator = c; producer = p
-                                        withContext(Dispatchers.Main) {
-                                            pageCount = count
-                                            currentState = ToolState.CONFIGURING
-                                            isFileLoading = false
-                                            fileToUnlock = null
-                                        }
-                                    }
+                                    showProperties(source, pass)
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false
+                                    unlockError = true
                                 }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
@@ -381,24 +344,36 @@ fun MetadataEditField(label: String, value: String, accentColor: Color, onValueC
     }
 }
 
-private suspend fun loadMetadata(
-    context: android.content.Context, 
-    uri: Uri, 
-    password: String?, 
-    onSuccess: suspend (String, String, String, String, String, String) -> Unit
-) = withContext(Dispatchers.IO) {
+/** A PDF's document information fields, blank where the file has none. */
+internal data class PdfProperties(
+    val title: String,
+    val author: String,
+    val subject: String,
+    val keywords: String,
+    val creator: String,
+    val producer: String
+)
+
+/** [uri]'s document information, opened with [password]; null when the file cannot be read, so the screen can say so. */
+internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?): PdfProperties? = withContext(Dispatchers.IO) {
     try {
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val document = if (password != null) PDDocument.load(inputStream, password) else PDDocument.load(inputStream)
-            val info = document.documentInformation
-            val t = info.title ?: ""
-            val a = info.author ?: ""
-            val s = info.subject ?: ""
-            val k = info.keywords ?: ""
-            val c = info.creator ?: ""
-            val p = info.producer ?: ""
-            document.close()
-            onSuccess(t, a, s, k, c, p)
+        context.contentResolver.requireInputStream(uri).use { input ->
+            PDDocument.load(input, password.orEmpty()).use { document ->
+                val info = document.documentInformation
+                PdfProperties(
+                    info.title.orEmpty(),
+                    info.author.orEmpty(),
+                    info.subject.orEmpty(),
+                    info.keywords.orEmpty(),
+                    info.creator.orEmpty(),
+                    info.producer.orEmpty()
+                )
+            }
         }
-    } catch (e: Exception) { }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w("MetadataView", "Cannot read the properties of $uri", e)
+        null
+    }
 }
