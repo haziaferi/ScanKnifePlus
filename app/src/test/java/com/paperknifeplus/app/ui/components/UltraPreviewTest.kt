@@ -11,7 +11,6 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
@@ -19,6 +18,7 @@ import coil.request.Options
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageKeyer
 import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -153,7 +153,7 @@ class ToolHandOffTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = createAndroidComposeRule<ComponentActivity>()
+    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
