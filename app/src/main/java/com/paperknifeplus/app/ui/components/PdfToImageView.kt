@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,178 +14,137 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.BurstMode
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.ImageLoader
-import coil.compose.LocalImageLoader
-import com.paperknifeplus.app.data.image.PdfPageFetcher
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** The image formats offered, as the chips show them; the first is the default. */
+internal val IMAGE_FORMATS = listOf("JPG", "PNG", "WebP")
+
+/** Pages selected when a document is opened: all of them. */
+internal fun initialSelection(pageCount: Int): Set<Int> = (0 until pageCount).toSet()
 
 @Composable
 fun PdfToImageView(
     initialUri: Uri? = null,
-    onBack: () -> Unit,
-    onOpenPreview: (Uri, String, Int) -> Unit
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFF14B8A6)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
-    var fileSize by remember { mutableStateOf("") }
-    
+
     var pageCount by remember { mutableIntStateOf(0) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var format by remember { mutableStateOf("JPEG") }
+    var format by remember { mutableStateOf(IMAGE_FORMATS.first()) }
     var quality by remember { mutableStateOf("Standard") }
-    
+
     var progressCount by remember { mutableIntStateOf(0) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var lightboxPage by remember { mutableStateOf<Int?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
     var isFileLoading by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(currentState == ToolState.PROCESSING)
 
-    // Use Shared Global Loader (MainActivity)
-    val imageLoader = coil.compose.LocalImageLoader.current
+    val imageLoader = PdfImageLoader.get(context)
 
-    LaunchedEffect(currentState) {
-        if (currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
+    fun showPages(count: Int) {
+        pageCount = count
+        selectedPages = initialSelection(count)
+        currentState = ToolState.CONFIGURING
+    }
+
+    fun handleFileSelection(uri: Uri) {
+        selectedUri = uri
+        unlockPassword = ""
+        unlockError = false
+        fileName = getUriDetails(context, uri).name
+        isFileLoading = true
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> showPages(getPageCount(context, uri, null))
+            }
+            isFileLoading = false
         }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, it)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) { 
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, it, null)
-                    withContext(Dispatchers.Main) {
-                        pageCount = count
-                        selectedPages = (0 until count).toSet()
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    convertPdfToImages(context, selectedUri!!, saveUri, if (unlockPassword.isEmpty()) null else unlockPassword, selectedPages.toList().sorted(), format, quality) { current, total ->
-                        progressCount = current
-                    }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "PDF to Image", "${selectedPages.size} images", Icons.Outlined.BurstMode, saveUri)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            try {
+                convertPdfToImages(context, source, uri, unlockPassword.ifEmpty { null }, selectedPages.toList().sorted(), format, quality) { current, _ ->
+                    progressCount = current
+                }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, uri).name
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    fileName = outputName
+                    SessionManager.addEntry(fileName, "PDF to Image", "${selectedPages.size} images", Icons.Outlined.BurstMode, uri)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("PdfToImageView", "Export failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            fileSize = details.size
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, initialUri)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) { 
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, initialUri, null)
-                    withContext(Dispatchers.Main) {
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        initialUri?.let { handleFileSelection(it) }
     }
 
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("PDF to Image", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("NATIVE EXPORT ENGINE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "PDF to Image",
+                    subtitle = "NATIVE EXPORT ENGINE",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
+                )
             }
         }
     ) { padding ->
@@ -192,7 +152,7 @@ fun PdfToImageView(
             when (currentState) {
                 ToolState.SELECTING -> {
                     SelectionGrid(
-                        onSelect = { pickLauncher.launch("application/pdf") }, 
+                        onSelect = { pickLauncher.launch("application/pdf") },
                         isDark = isDark,
                         icon = Icons.Outlined.BurstMode,
                         title = "Tap to select PDF",
@@ -204,8 +164,7 @@ fun PdfToImageView(
                 ToolState.CONFIGURING -> {
                     Column(Modifier.fillMaxSize()) {
                         Spacer(Modifier.height(16.dp))
-                        
-                        // Settings Panel
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -214,13 +173,13 @@ fun PdfToImageView(
                             Column(Modifier.padding(16.dp)) {
                                 Text("EXPORT CONFIGURATION", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.2.sp)
                                 Spacer(Modifier.height(12.dp))
-                                
+
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Column(Modifier.weight(1f)) {
                                         Text("FORMAT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                         Spacer(Modifier.height(8.dp))
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("JPG", "PNG", "WebP").forEach { f ->
+                                            IMAGE_FORMATS.forEach { f ->
                                                 val isSel = format == f
                                                 Surface(
                                                     onClick = { format = f },
@@ -235,7 +194,7 @@ fun PdfToImageView(
                                             }
                                         }
                                     }
-                                    
+
                                     Column(Modifier.weight(1f)) {
                                         Text("QUALITY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                         Spacer(Modifier.height(8.dp))
@@ -281,11 +240,10 @@ fun PdfToImageView(
                                         accentColor = accentColor,
                                         onClick = { lightboxPage = index },
                                         modifier = Modifier.border(
-                                            BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent), 
+                                            BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent),
                                             RoundedCornerShape(12.dp)
                                         )
                                     ) {
-                                        // Selection Checkbox
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
@@ -302,9 +260,9 @@ fun PdfToImageView(
                                             shape = CircleShape
                                         ) {
                                             Icon(
-                                                Icons.Filled.Check, 
-                                                null, 
-                                                tint = Color.White, 
+                                                Icons.Filled.Check,
+                                                null,
+                                                tint = Color.White,
                                                 modifier = Modifier.padding(4.dp)
                                             )
                                         }
@@ -314,7 +272,7 @@ fun PdfToImageView(
                         }
 
                         Button(
-                            onClick = { saveLauncher.launch(fileName.replace(".pdf", ".zip")) },
+                            onClick = { saveLauncher.launch(pdfBaseName(fileName) + ".zip") },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(56.dp),
                             enabled = selectedPages.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
@@ -341,39 +299,35 @@ fun PdfToImageView(
                         subMessage = "${selectedPages.size} pages saved to ZIP",
                         processingTime = processingTime,
                         onDone = onBack,
-                        onProcessMore = { selectedUri = null; currentState = ToolState.SELECTING },
+                        onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
                         showPreviewButton = false,
                         accentColor = accentColor
                     )
                 }
-                else -> {}
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        unlockPassword = pass
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            if (count > 0) {
-                                withContext(Dispatchers.Main) { 
-                                    pageCount = count
-                                    selectedPages = (0 until count).toSet()
-                                    currentState = ToolState.CONFIGURING
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                val count = getPageCount(context, source, pass)
+                                if (count > 0) {
+                                    unlockPassword = pass
+                                    showPages(count)
                                     fileToUnlock = null
-                                    isFileLoading = false
+                                } else {
+                                    unlockError = true
                                 }
-                            } else {
-                                withContext(Dispatchers.Main) { 
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false
-                                }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )

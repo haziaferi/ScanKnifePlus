@@ -1,18 +1,16 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,22 +21,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
 import com.paperknifeplus.app.data.image.PdDocumentPool
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
-import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class Bookmark(
-    val title: String,
-    val pageIndex: Int
-)
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookmarksView(
     initialUri: Uri? = null,
@@ -47,198 +37,137 @@ fun BookmarksView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFFF43F5E)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
-    var selectedUri by remember { mutableStateOf(initialUri) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
+    var outputPageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
     var unlockPassword by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
-    
+    var unlockError by remember { mutableStateOf(false) }
+
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
 
-    fun extractBookmarks(uri: Uri, pass: String?) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val document = PdDocumentPool.acquire(context, uri, pass)
-                if (document != null) {
-                    val outline = document.documentCatalog.documentOutline
-                    val list = mutableListOf<Bookmark>()
-                    
-                    fun resolvePage(item: PDOutlineItem): Int {
-                        try {
-                            val dest = item.destination
-                            if (dest is com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination) {
-                                return document.pages.indexOf(dest.page)
-                            }
-                        } catch (e: Exception) {}
-                        return 0
-                    }
+    /** Reads the outline with [pass]; false if the document does not open with it. */
+    suspend fun extractBookmarks(uri: Uri, pass: String?): Boolean {
+        val outline = PdDocumentPool.withDocument(context, uri, pass) { document -> readOutline(document) to document.numberOfPages }
+            ?: return false
+        bookmarks = outline.first
+        pageCount = outline.second
+        unlockPassword = pass.orEmpty()
+        currentState = ToolState.CONFIGURING
+        return true
+    }
 
-                    fun traverse(item: PDOutlineItem?) {
-                        var current = item
-                        while (current != null) {
-                            list.add(Bookmark(current.title, resolvePage(current)))
-                            traverse(current.firstChild)
-                            current = current.nextSibling
-                        }
-                    }
-                    
-                    if (outline != null) traverse(outline.firstChild)
-                    
-                    withContext(Dispatchers.Main) {
-                        bookmarks = list
-                        pageCount = document.numberOfPages
-                        currentState = ToolState.CONFIGURING
-                        isFileLoading = false
-                        fileToUnlock = null
-                    }
-                } else {
-                    withContext(Dispatchers.Main) { 
-                        fileToUnlock = getUriDetails(context, uri).name
-                        isFileLoading = false 
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { isFileLoading = false }
+    fun handleFileSelection(uri: Uri) {
+        selectedUri = uri
+        fileName = getUriDetails(context, uri).name
+        unlockPassword = ""
+        unlockError = false
+        isFileLoading = true
+        scope.launch {
+            val access = inspectPdf(context, uri)
+            // Files that open without a password (owner-password-only ones too) are read directly; the others ask for one.
+            if (access == PdfAccess.Unreadable) {
+                Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                selectedUri = null
+                currentState = ToolState.SELECTING
+            } else if (!extractBookmarks(uri, null)) {
+                fileToUnlock = fileName
             }
+            isFileLoading = false
         }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            isFileLoading = true
-            extractBookmarks(it, null)
+        uri?.let { handleFileSelection(it) }
+    }
+
+    /** Runs [write] on the freshly loaded source into [saveUri], then records the result as [summary]. */
+    fun save(saveUri: Uri, failurePrefix: String, summary: (Int) -> String, write: (source: PDDocument, saveUri: Uri) -> Unit) {
+        val source = selectedUri ?: return
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            try {
+                context.contentResolver.requireInputStream(source).use { input ->
+                    PDDocument.load(input, unlockPassword).use { document ->
+                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
+                        write(document, saveUri)
+                    }
+                }
+                val timeStr = formatElapsed(startTime)
+                val outputName = getUriDetails(context, saveUri).name
+                val finalCount = getPageCount(context, saveUri, null)
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = saveUri
+                    fileName = outputName
+                    outputPageCount = finalCount
+                    SessionManager.addEntry(outputName, "Bookmarks", summary(finalCount), Icons.Filled.BookmarkBorder, saveUri, finalCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, saveUri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("BookmarksView", "Saving failed", e)
+                deleteCreatedDocument(context, saveUri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "$failurePrefix${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
+                }
+            }
         }
     }
 
     val extractLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        
-                        val target = PDDocument()
-                        if (target.isEncrypted) target.isAllSecurityToBeRemoved = true
-                        
-                        // Extract only pages that have bookmarks
-                        val bookmarkedIndices = bookmarks.map { it.pageIndex }.toSet().sorted()
-                        bookmarkedIndices.forEach { idx ->
-                            if (idx in 0 until document.numberOfPages) {
-                                target.addPage(document.getPage(idx))
-                            }
-                        }
-                        
-                        saveAndFlush(context, target, saveUri)
-                        document.close()
-                    }
-                    withContext(Dispatchers.Main) {
-                        processingTime = String.format("%.1fs", (System.currentTimeMillis() - startTime) / 1000.0)
-                        outputUri = saveUri
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Extraction failed: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
-                }
+        val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted()
+        if (uri != null) save(uri, "Extraction failed: ", { "$it pages extracted" }) { document, saveUri ->
+            PDDocument().use { target ->
+                target.appendPagesFrom(pages.filter { it < document.numberOfPages }.map { document.getPage(it) })
+                saveAndFlush(context, target, saveUri)
             }
         }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        
-                        val outline = PDDocumentOutline()
-                        document.documentCatalog.documentOutline = outline
-                        
-                        bookmarks.forEach { bm ->
-                            val item = PDOutlineItem()
-                            item.title = bm.title
-                            val dest = com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitWidthDestination()
-                            dest.page = document.getPage(bm.pageIndex)
-                            item.destination = dest
-                            outline.addLast(item)
-                        }
-                        
-                        saveAndFlush(context, document, saveUri)
-                    }
-                    val endTime = System.currentTimeMillis()
-                    withContext(Dispatchers.Main) {
-                        processingTime = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                        outputUri = saveUri
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
-                }
-            }
+        val edited = bookmarks
+        if (uri != null) save(uri, "Error: ", { "${edited.size} bookmarks" }) { document, saveUri ->
+            applyOutline(document, edited)
+            saveAndFlush(context, document, saveUri)
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            isFileLoading = true
-            extractBookmarks(initialUri, null)
-        }
+        initialUri?.let { handleFileSelection(it) }
+    }
+
+    fun reset() {
+        selectedUri = null
+        unlockPassword = ""
+        bookmarks = emptyList()
+        currentState = ToolState.SELECTING
     }
 
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Bookmarks", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("EDIT DOCUMENT NAVIGATION", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "Bookmarks",
+                    subtitle = "EDIT DOCUMENT NAVIGATION",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = ::reset
+                )
             }
         }
     ) { padding ->
@@ -275,7 +204,7 @@ fun BookmarksView(
                                 }
                             } else {
                                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(bookmarks) { bm ->
+                                    itemsIndexed(bookmarks) { index, bm ->
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(16.dp),
@@ -286,9 +215,9 @@ fun BookmarksView(
                                                 Spacer(Modifier.width(16.dp))
                                                 Column(Modifier.weight(1f)) {
                                                     Text(bm.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                    Text("Page ${bm.pageIndex + 1}", fontSize = 10.sp, color = Color.Gray)
+                                                    Text("Page ${bm.pageIndex?.let { it + 1 } ?: "-"}", fontSize = 10.sp, color = Color.Gray)
                                                 }
-                                                IconButton(onClick = { bookmarks = bookmarks - bm }) {
+                                                IconButton(onClick = { bookmarks = bookmarks.withoutBranch(index) }) {
                                                     Icon(Icons.Filled.Delete, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
                                                 }
                                             }
@@ -299,7 +228,7 @@ fun BookmarksView(
                             
                             Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Button(
-                                    onClick = { saveLauncher.launch(fileName.replace(".pdf", "") + "-nav.pdf") },
+                                    onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-nav.pdf") },
                                     modifier = Modifier.weight(1f).height(60.dp),
                                     shape = RoundedCornerShape(20.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
@@ -307,7 +236,7 @@ fun BookmarksView(
                                     Text("SAVE PDF", fontWeight = FontWeight.Black)
                                 }
                                 OutlinedButton(
-                                    onClick = { extractLauncher.launch(fileName.replace(".pdf", "") + "-extract.pdf") },
+                                    onClick = { extractLauncher.launch(pdfBaseName(fileName) + "-extract.pdf") },
                                     modifier = Modifier.weight(1f).height(60.dp),
                                     enabled = bookmarks.isNotEmpty(),
                                     shape = RoundedCornerShape(20.dp),
@@ -335,38 +264,33 @@ fun BookmarksView(
                             subMessage = "Document updated successfully",
                             processingTime = processingTime,
                             onDone = onBack,
-                            onProcessMore = { 
-                                selectedUri = null
-                                bookmarks = emptyList()
-                                currentState = ToolState.SELECTING 
-                            },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onProcessMore = ::reset,
+                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, outputPageCount) } },
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
-                                if (count > 0) {
-                                    unlockPassword = pass
-                                    extractBookmarks(selectedUri!!, pass)
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                if (extractBookmarks(source, pass)) {
+                                    fileToUnlock = null
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false
+                                    unlockError = true
                                 }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )

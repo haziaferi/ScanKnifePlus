@@ -1,20 +1,20 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,150 +28,116 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.InputStream
 
 @Composable
 fun PdfToTextView(
     initialUri: Uri? = null,
-    onBack: () -> Unit,
-    onOpenPreview: (Uri, String, Int) -> Unit
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFF14B8A6)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var extractedText by remember { mutableStateOf("") }
+    var textChunks by remember { mutableStateOf<List<String>>(emptyList()) }
     var fileName by remember { mutableStateOf("") }
-    var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
     var isFileLoading by remember { mutableStateOf(false) }
     var pageCount by remember { mutableIntStateOf(0) }
+    val showLoadingWarning = rememberLoadingWarning(currentState == ToolState.PROCESSING)
 
-    LaunchedEffect(currentState) {
-        if (currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
+    fun handleFileSelection(uri: Uri) {
+        selectedUri = uri
+        unlockPassword = ""
+        unlockError = false
+        fileName = getUriDetails(context, uri).name
+        isFileLoading = true
+        scope.launch {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
+                    currentState = ToolState.CONFIGURING
+                }
+            }
+            isFileLoading = false
         }
     }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let {
-            selectedUri = it
-            val details = getUriDetails(context, it)
-            fileName = details.name
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, it)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) { 
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, it, null)
-                    withContext(Dispatchers.Main) { 
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING 
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        uri?.let { handleFileSelection(it) }
     }
 
     val saveTxtLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         uri?.let { saveUri ->
+            val text = extractedText
             scope.launch(Dispatchers.IO) {
                 try {
-                    context.contentResolver.openOutputStream(saveUri)?.use { it.write(extractedText.toByteArray()) }
+                    context.contentResolver.requireOutputStream(saveUri).use { it.write(text.toByteArray()) }
                     withContext(Dispatchers.Main) { Toast.makeText(context, "Saved as TXT", Toast.LENGTH_SHORT).show() }
-                } catch (e: Exception) { }
+                } catch (e: CancellationException) {
+                    deleteCreatedDocument(context, saveUri)
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("PdfToTextView", "Saving the text failed", e)
+                    deleteCreatedDocument(context, saveUri)
+                    withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
+                }
             }
         }
     }
 
     fun startExtraction() {
+        val source = selectedUri ?: return
         currentState = ToolState.PROCESSING
-        scope.launch(Dispatchers.IO) {
-            processText(context, selectedUri!!, unlockPassword.ifEmpty { null }) { text, time ->
-                extractedText = text
-                processingTime = time
-                withContext(Dispatchers.Main) {
+        scope.launch {
+            processText(context, source, unlockPassword.ifEmpty { null })
+                .onSuccess { (text, chunks) ->
+                    extractedText = text
+                    textChunks = chunks
                     SessionManager.addEntry(fileName, "To Text", "${text.length} chars", Icons.Outlined.Description)
                     currentState = ToolState.SUCCESS
                 }
-            }
+                .onFailure { e ->
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
+                }
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     LaunchedEffect(initialUri) {
-        if (initialUri != null) {
-            selectedUri = initialUri
-            val details = getUriDetails(context, initialUri)
-            fileName = details.name
-            isFileLoading = true
-            scope.launch(Dispatchers.IO) {
-                val isEncrypted = checkIsEncryptedLocal(context, initialUri)
-                if (isEncrypted) {
-                    withContext(Dispatchers.Main) { 
-                        fileToUnlock = fileName
-                        isFileLoading = false
-                    }
-                } else {
-                    val count = getPageCount(context, initialUri, null)
-                    withContext(Dispatchers.Main) { 
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING 
-                        isFileLoading = false
-                    }
-                }
-            }
-        }
+        initialUri?.let { handleFileSelection(it) }
     }
 
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("PDF to Text", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("EXTRACT RAW CONTENT", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
-                    }
-                }
+                ToolTopBar(
+                    title = "PDF to Text",
+                    subtitle = "EXTRACT RAW CONTENT",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
+                )
             }
         }
     ) { padding ->
@@ -182,7 +148,7 @@ fun PdfToTextView(
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                            onSelect = { pickLauncher.launch("application/pdf") },
                             isDark = isDark,
                             icon = Icons.Outlined.Description,
                             title = "Tap to select PDF",
@@ -208,11 +174,11 @@ fun PdfToTextView(
                             }
                             Spacer(Modifier.height(12.dp))
                             Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            
+
                             Spacer(Modifier.height(24.dp))
                             Text("READY TO EXTRACT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
                             Text("Scan PDF text layers and output a plain .txt file.", fontSize = 12.sp, color = Color.Gray)
-                            
+
                             Spacer(Modifier.height(24.dp))
                             Button(
                                 onClick = { startExtraction() },
@@ -243,7 +209,7 @@ fun PdfToTextView(
                                     .fillMaxWidth()
                                     .statusBarsPadding()
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween, 
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
@@ -251,7 +217,7 @@ fun PdfToTextView(
                                     Text("${extractedText.length} CHARACTERS FOUND", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                                 }
                                 Row {
-                                    IconButton(onClick = { 
+                                    IconButton(onClick = {
                                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         val clip = android.content.ClipData.newPlainText("PDF Text", extractedText)
                                         clipboard.setPrimaryClip(clip)
@@ -260,12 +226,12 @@ fun PdfToTextView(
                                         Icon(Icons.Filled.ContentCopy, null, tint = accentColor, modifier = Modifier.size(18.dp))
                                     }
                                     Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { saveTxtLauncher.launch(fileName.replace(".pdf", ".txt")) }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
+                                    IconButton(onClick = { saveTxtLauncher.launch(pdfBaseName(fileName) + ".txt") }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
                                         Icon(Icons.Filled.Save, null, tint = accentColor, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
-                            
+
                             Surface(
                                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
                                 color = if (isDark) Color(0xFF09090B) else Color.White,
@@ -273,25 +239,28 @@ fun PdfToTextView(
                                 border = BorderStroke(1.dp, Color.Gray.copy(0.1f))
                             ) {
                                 Box(Modifier.padding(20.dp)) {
-                                    if (extractedText.trim().isEmpty()) {
+                                    if (extractedText.isBlank()) {
                                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Filled.FindInPage, null, modifier = Modifier.size(48.dp).alpha(0.2f), tint = accentColor)
                                             Text("No text detected. The document might be a high-res scan.", fontSize = 11.sp, color = Color.Gray, textAlign = TextAlign.Center)
                                         }
                                     } else {
-                                        Column(Modifier.verticalScroll(rememberScrollState())) {
-                                            Text(
-                                                text = extractedText, 
-                                                fontSize = 13.sp, 
-                                                fontFamily = FontFamily.Monospace, 
-                                                lineHeight = 20.sp,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
+                                        // One item per block of lines, so a long text is laid out only where it is on screen.
+                                        LazyColumn {
+                                            items(textChunks) { chunk ->
+                                                Text(
+                                                    text = chunk.removeSuffix("\n"),
+                                                    fontSize = 13.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    lineHeight = 20.sp,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
-                            
+
                             Button(
                                 onClick = onBack,
                                 modifier = Modifier
@@ -305,32 +274,32 @@ fun PdfToTextView(
                             }
                         }
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
-                        unlockPassword = pass
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val count = getPageCount(context, selectedUri!!, pass)
-                            withContext(Dispatchers.Main) { 
-                                fileToUnlock = null
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                val count = getPageCount(context, source, pass)
                                 if (count > 0) {
+                                    unlockPassword = pass
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
-                                    isFileLoading = false
+                                    fileToUnlock = null
                                 } else {
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false
+                                    unlockError = true
                                 }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
@@ -339,29 +308,47 @@ fun PdfToTextView(
     }
 }
 
-private suspend fun processText(context: android.content.Context, uri: Uri, password: String?, onResult: suspend (String, String) -> Unit) = withContext(Dispatchers.IO) {
-    val startTime = System.currentTimeMillis()
-    try {
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val document = if (password != null) PDDocument.load(inputStream, password) else PDDocument.load(inputStream)
-            val stripper = PDFTextStripper()
-            val totalPages = document.numberOfPages
-            val builder = StringBuilder()
-            
-            for (i in 1..totalPages) {
-                stripper.startPage = i
-                stripper.endPage = i
-                val pageText = stripper.getText(document)
-                builder.append("--- PAGE $i ---\n")
-                builder.append(pageText)
-                builder.append("\n\n")
-            }
-            
-            document.close()
-            val time = String.format("%.1fs", (System.currentTimeMillis() - startTime) / 1000.0)
-            onResult(builder.toString(), time)
+/** The text of every page of the PDF in [input], each under a "--- PAGE n ---" header. Throws if it cannot be read. Blocking. */
+internal fun extractPdfText(input: InputStream, password: String?): String =
+    (if (password != null) PDDocument.load(input, password) else PDDocument.load(input)).use { document ->
+        val stripper = PDFTextStripper()
+        val builder = StringBuilder()
+        for (i in 1..document.numberOfPages) {
+            stripper.startPage = i
+            stripper.endPage = i
+            builder.append("--- PAGE $i ---\n")
+            builder.append(stripper.getText(document))
+            builder.append("\n\n")
         }
-    } catch (e: Exception) {
-        onResult("Error: ${e.message}", "0s")
+        builder.toString()
     }
+
+/** [text] cut after every [linesPerChunk]-th line break; each chunk keeps its own line breaks, so the chunks joined are [text] again. */
+internal fun textChunks(text: String, linesPerChunk: Int = 40): List<String> {
+    val chunks = mutableListOf<String>()
+    var start = 0
+    var lines = 0
+    text.forEachIndexed { i, c ->
+        if (c == '\n' && ++lines == linesPerChunk) {
+            chunks += text.substring(start, i + 1)
+            start = i + 1
+            lines = 0
+        }
+    }
+    if (start < text.length) chunks += text.substring(start)
+    return chunks
 }
+
+/** Extracts the text of [uri] off the main thread, with the chunks to show it in; a failure is returned, cancellation rethrown. */
+internal suspend fun processText(context: Context, uri: Uri, password: String?): Result<Pair<String, List<String>>> =
+    withContext(Dispatchers.IO) {
+        try {
+            val text = context.contentResolver.requireInputStream(uri).use { extractPdfText(it, password) }
+            Result.success(text to textChunks(text))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("PdfToTextView", "Text extraction failed", e)
+            Result.failure(e)
+        }
+    }

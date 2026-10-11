@@ -1,7 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
-import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,20 +22,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.ui.theme.PaperPink
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,27 +44,19 @@ fun ImageToPdfView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFF14B8A6)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.CONFIGURING) }
+    var currentState by remember { mutableStateOf(ToolState.CONFIGURING) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pageSize by remember { mutableStateOf("Fit") }
     
     var progressCount by remember { mutableIntStateOf(0) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(currentState == ToolState.PROCESSING)
 
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-
-    LaunchedEffect(currentState) {
-        if (currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
-        }
-    }
+    var outputPages by remember { mutableIntStateOf(0) }
 
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris -> 
         selectedUris = selectedUris + uris 
@@ -76,20 +66,27 @@ fun ImageToPdfView(
         uri?.let { saveUri ->
             currentState = ToolState.PROCESSING
             val startTime = System.currentTimeMillis()
+            val images = selectedUris
             scope.launch(Dispatchers.IO) {
                 try {
-                    convertImagesToPdf(context, selectedUris, saveUri, pageSize) { current, total ->
+                    val pages = convertImagesToPdf(context, images, saveUri, pageSize) { current, _ ->
                         progressCount = current
                     }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
+                    val timeStr = formatElapsed(startTime)
+                    val outputName = getUriDetails(context, saveUri).name
                     withContext(Dispatchers.Main) {
                         processingTime = timeStr
                         outputUri = saveUri
-                        SessionManager.addEntry(getUriDetails(context, saveUri).name, "Image to PDF", "${selectedUris.size} images", Icons.Filled.Description, saveUri, selectedUris.size)
+                        outputPages = pages
+                        SessionManager.addEntry(outputName, "Image to PDF", "$pages images", Icons.Filled.Description, saveUri, pages)
                         currentState = ToolState.SUCCESS
                     }
+                } catch (e: CancellationException) {
+                    deleteCreatedDocument(context, saveUri)
+                    throw e
                 } catch (e: Exception) {
+                    Log.w("ImageToPdfView", "Conversion failed", e)
+                    deleteCreatedDocument(context, saveUri)
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                         currentState = ToolState.CONFIGURING
@@ -98,8 +95,6 @@ fun ImageToPdfView(
             }
         }
     }
-
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
 
     Scaffold(
         topBar = {
@@ -188,7 +183,12 @@ fun ImageToPdfView(
                                         .border(BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent), RoundedCornerShape(16.dp))
                                         .clickable { selectedIndex = if (isSelected) null else index }
                                 ) {
-                                    Image(painter = rememberAsyncImagePainter(model = uri), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    Image(
+                                        painter = rememberAsyncImagePainter(model = uri, imageLoader = PdfImageLoader.get(context)),
+                                        contentDescription = null,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
                                     
                                     if (isSelected) {
                                         Box(modifier = Modifier.fillMaxSize().background(accentColor.copy(alpha = 0.1f)))
@@ -219,7 +219,6 @@ fun ImageToPdfView(
                             }
                         }
 
-                        // REORDER CONTROLS (Floating style)
                         if (selectedIndex != null) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
@@ -281,7 +280,6 @@ fun ImageToPdfView(
                 ToolState.PROCESSING -> {
                     ProcessingStateView(
                         accentColor = accentColor,
-                        preview = null,
                         text = "Packaging high-res document...",
                         current = progressCount,
                         total = selectedUris.size,
@@ -295,11 +293,11 @@ fun ImageToPdfView(
                         processingTime = processingTime,
                         onDone = onBack,
                         onProcessMore = { selectedUris = emptyList(); currentState = ToolState.CONFIGURING },
-                        onPreview = { outputUri?.let { uri -> onOpenPreview(uri, "Created PDF", selectedUris.size) } },
+                        onPreview = { outputUri?.let { uri -> onOpenPreview(uri, "Created PDF", outputPages) } },
                         accentColor = accentColor
                     )
                 }
-                else -> {}
+                ToolState.SELECTING -> {}
             }
         }
     }
