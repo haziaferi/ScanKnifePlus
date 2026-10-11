@@ -1,14 +1,16 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -17,15 +19,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,22 +36,120 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.data.image.PdfPageFetcher
+import coil.memory.MemoryCache
+import coil.request.ImageRequest
+import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.PaperPink
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.Image
-import java.io.File
+import java.io.InputStream
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
+
+private const val TAG = "UltraPreview"
+
+/** Scale of the page renders shown first; the sharper layer replaces them once it is ready. */
+private const val LOW_RES_SCALE = 1.8f
+
+/** Pixel budget of one sharp page layer, well under the 100 MiB a canvas may draw. */
+private const val HIGH_RES_BUDGET_BYTES = 48f * 1024 * 1024
+
+/**
+ * Render scale of the sharp page layer for a page of [widthPt] x [heightPt] points: as sharp as [HIGH_RES_BUDGET_BYTES] of ARGB allows, at
+ * most 12x and never below the first render's scale.
+ */
+fun highResScale(widthPt: Float, heightPt: Float): Float = max(LOW_RES_SCALE, min(12f, sqrt(HIGH_RES_BUDGET_BYTES / (4f * widthPt * heightPt))))
+
+/** Where a link sits on its displayed page, as fractions of the page's width and height from the top-left corner. */
+data class LinkArea(val left: Float, val top: Float, val width: Float, val height: Float)
+
+/**
+ * Maps the link rectangle [llx], [lly], [urx], [ury] (user space) onto the displayed [page]: the cropBox origin is subtracted and the
+ * page rotated as pdfium shows it, so links line up on rotated, offset and cropped pages.
+ */
+fun mapLinkRect(llx: Float, lly: Float, urx: Float, ury: Float, page: PageBox): LinkArea {
+    val a = page.pdfToDisplay(llx, lly)
+    val b = page.pdfToDisplay(urx, ury)
+    return LinkArea(
+        left = min(a.x, b.x) / page.displayWidth,
+        top = min(a.y, b.y) / page.displayHeight,
+        width = abs(a.x - b.x) / page.displayWidth,
+        height = abs(a.y - b.y) / page.displayHeight
+    )
+}
+
+private val SAFE_LINK_SCHEMES = setOf("http", "https", "mailto", "tel")
+private val URI_SCHEME = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
+
+/**
+ * [url] with its scheme in lower case if it is a web, mail or phone link, else null: a PDF is untrusted, and its links must not open files,
+ * content providers, intents or other apps' deep links.
+ */
+fun safeLinkUri(url: String): String? {
+    val trimmed = url.trim()
+    val scheme = URI_SCHEME.find(trimmed)?.groupValues?.get(1)?.lowercase() ?: return null
+    return if (scheme in SAFE_LINK_SCHEMES) scheme + trimmed.substring(scheme.length) else null
+}
+
+/**
+ * The file the reader was opened with ([uri]) and the copy it shows ([displayUri], a decrypted cache copy once unlocked). Tools are handed
+ * the original with the password the user unlocked it with, never the cache copy.
+ */
+internal data class ReaderSource(val uri: Uri, val displayUri: Uri = uri, val unlockedPassword: String? = null) {
+    fun unlocked(copy: Uri, password: String) = copy(displayUri = copy, unlockedPassword = password)
+
+    /** The uri and password [UltraPreview]'s onOpenInTool passes on. */
+    fun toolHandOff(): Pair<Uri, String?> = uri to unlockedPassword
+}
+
+/** What the reader needs of a document: each page's displayed box and its web links. */
+internal data class ReaderDocument(val pages: List<PageBox>, val links: List<PdfLink>)
+
+/** Reads [input]'s page boxes and URI links. Parsing spills to temp files, so a large PDF does not fill the heap. Blocking; throws on failure. */
+internal fun readReaderDocument(input: InputStream): ReaderDocument =
+    PDDocument.load(input, MemoryUsageSetting.setupTempFileOnly()).use { document ->
+        val pages = document.pages.map(PageBox::of)
+        val links = document.pages.flatMapIndexed { index, page ->
+            page.annotations.filterIsInstance<PDAnnotationLink>().mapNotNull { link ->
+                val url = (link.action as? PDActionURI)?.uri
+                val rect = link.rectangle
+                if (url != null && rect != null) PdfLink(index, rect, url) else null
+            }
+        }
+        ReaderDocument(pages, links)
+    }
+
+/** [uri]'s [ReaderDocument], or null when it cannot be read, also for lack of memory. */
+internal suspend fun loadReaderDocument(context: Context, uri: Uri): ReaderDocument? = withContext(Dispatchers.IO) {
+    try {
+        context.contentResolver.requireInputStream(uri).use(::readReaderDocument)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Cannot load $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Out of memory loading $uri", e)
+        null
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +157,6 @@ fun UltraPreview(
     uri: Uri,
     fileName: String,
     pageCount: Int,
-    password: String? = null,
     onDismiss: () -> Unit,
     onOpenInTool: (String, Uri, String?) -> Unit
 ) {
@@ -65,131 +164,95 @@ fun UltraPreview(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    
+
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpPageInput by remember { mutableStateOf("") }
     var showToolPicker by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
 
     var targetScale by remember { mutableFloatStateOf(1f) }
-    var targetOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
-    
+    var targetOffset by remember { mutableStateOf(Offset.Zero) }
+
     val scale by animateFloatAsState(
-        targetValue = targetScale, 
+        targetValue = targetScale,
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
         label = "scale"
     )
     val offset by animateOffsetAsState(
-        targetValue = targetOffset, 
+        targetValue = targetOffset,
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
         label = "offset"
     )
-    
+
     var links by remember { mutableStateOf<List<PdfLink>>(emptyList()) }
-    var pageSizes by remember { mutableStateOf<Map<Int, Pair<Float, Float>>>(emptyMap()) }
+    val linksByPage = remember(links) { links.groupBy { it.pageIndex } }
+    var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
     var isInitializing by remember { mutableStateOf(true) }
-    var activeUri by remember { mutableStateOf(uri) }
-    var activePassword by remember { mutableStateOf(password) }
+    var source by remember(uri) { mutableStateOf(ReaderSource(uri)) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
     var isDecrypting by remember { mutableStateOf(false) }
     var activePageCount by remember { mutableIntStateOf(pageCount) }
+    var loadJob by remember { mutableStateOf<Job?>(null) }
 
-    // NATIVE ENGINE: High-Res Reader ImageLoader (45% RAM usage)
+    // The shared loader's fetcher and keyer with a larger cache of its own, for the sharp pages shown here.
     val imageLoader = remember {
-        ImageLoader.Builder(context)
-            .components { add(PdfPageFetcher.Factory(context)) }
-            .memoryCache {
-                coil.memory.MemoryCache.Builder(context)
-                    .maxSizePercent(0.45)
-                    .build()
-            }
+        PdfImageLoader.get(context).newBuilder()
+            .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.45).build() }
             .build()
     }
 
     DisposableEffect(uri) {
-        onDispose {
-            if (activeUri != uri) {
-                try {
-                    activeUri.path?.let { File(it).delete() }
-                } catch (e: Exception) {}
-            }
-        }
+        onDispose { deleteDecryptedCopy(context, source.displayUri) }
     }
 
-    fun initializeReader(targetUri: Uri, targetPass: String?) {
-        scope.launch(Dispatchers.IO) {
+    // Opens the file, or with [password] its decrypted copy; run again after unlocking, cancelling the previous load.
+    fun initializeReader(password: String?) {
+        loadJob?.cancel()
+        loadJob = scope.launch {
             isInitializing = true
-            try {
-                var workingUri = targetUri
-                var workingPass = targetPass
-
-                if (workingPass == null) {
-                    val isEncrypted = checkIsEncryptedLocal(context, workingUri)
-                    if (isEncrypted) {
-                        withContext(Dispatchers.Main) {
-                            fileToUnlock = fileName
-                            isInitializing = false
-                        }
+            if (password == null) {
+                when (inspectPdf(context, uri)) {
+                    PdfAccess.Unreadable -> {
+                        Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                        onDismiss()
                         return@launch
                     }
-                }
-
-                if (workingPass != null) {
-                    isDecrypting = true
-                    val cachedUri = decryptToCache(context, workingUri, workingPass)
-                    if (cachedUri != null) {
-                        workingUri = cachedUri
-                        workingPass = null
-                    } else {
-                        isDecrypting = false
-                        withContext(Dispatchers.Main) {
-                            fileToUnlock = fileName
-                            isInitializing = false
-                        }
-                        return@launch
-                    }
-                    isDecrypting = false
-                }
-
-                activeUri = workingUri
-                activePassword = workingPass
-
-                context.contentResolver.openInputStream(activeUri)?.use { inputStream ->
-                    val document = com.tom_roush.pdfbox.pdmodel.PDDocument.load(inputStream)
-                    val count = document.numberOfPages
-                    val sizes = document.pages.mapIndexed { index, page ->
-                        index to (page.mediaBox.width to page.mediaBox.height)
-                    }.toMap()
-                    
-                    val extractedLinks = mutableListOf<PdfLink>()
-                    document.pages.forEachIndexed { index, page ->
-                        page.annotations.filterIsInstance<com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink>().forEach { link ->
-                            val action = link.action
-                            if (action is com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI) {
-                                extractedLinks.add(PdfLink(index, link.rectangle, action.uri))
-                            }
-                        }
-                    }
-
-                    withContext(Dispatchers.Main) { 
-                        activePageCount = count
-                        pageSizes = sizes 
-                        links = extractedLinks
+                    PdfAccess.Encrypted -> {
+                        fileToUnlock = fileName
                         isInitializing = false
+                        return@launch
                     }
-                    document.close()
+                    PdfAccess.Open -> {}
                 }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) { 
-                    isInitializing = false 
-                    Toast.makeText(context, "Failed to load document", Toast.LENGTH_SHORT).show()
+            } else {
+                isDecrypting = true
+                val copy = decryptToCache(context, uri, password)
+                isDecrypting = false
+                if (copy == null) {
+                    unlockError = true
+                    fileToUnlock = fileName
+                    isInitializing = false
+                    return@launch
                 }
+                deleteDecryptedCopy(context, source.displayUri)
+                source = source.unlocked(copy, password)
             }
+
+            val document = loadReaderDocument(context, source.displayUri)
+            if (document == null) {
+                Toast.makeText(context, "Failed to load document", Toast.LENGTH_SHORT).show()
+            } else {
+                activePageCount = document.pages.size
+                pageBoxes = document.pages
+                links = document.links
+            }
+            isInitializing = false
         }
     }
 
     LaunchedEffect(uri) {
-        initializeReader(uri, password)
+        initializeReader(null)
     }
 
     Scaffold(
@@ -208,13 +271,13 @@ fun UltraPreview(
                         .fillMaxSize()
                         .pointerInput(Unit) {
                             detectTapGestures(
-                                onDoubleTap = { _ ->
+                                onDoubleTap = { tap ->
                                     if (targetScale > 1.01f) {
                                         targetScale = 1f
-                                        targetOffset = androidx.compose.ui.geometry.Offset.Zero
+                                        targetOffset = Offset.Zero
                                     } else {
                                         targetScale = 3f
-                                        targetOffset = androidx.compose.ui.geometry.Offset.Zero
+                                        targetOffset = doubleTapZoomOffset(tap, size.toSize(), 3f)
                                     }
                                 }
                             )
@@ -222,13 +285,13 @@ fun UltraPreview(
                         .pointerInput(Unit) {
                             detectTransformGestures { _, pan, zoom, _ ->
                                 val newScale = (targetScale * zoom).coerceIn(1f, 10f)
-                                
+
                                 if (newScale > 1f) {
                                     targetScale = newScale
-                                    targetOffset = targetOffset + pan
+                                    targetOffset = zoomPanClamp(targetOffset + pan, size.toSize(), newScale)
                                 } else {
                                     targetScale = 1f
-                                    targetOffset = androidx.compose.ui.geometry.Offset.Zero
+                                    targetOffset = Offset.Zero
                                 }
                             }
                         }
@@ -243,26 +306,28 @@ fun UltraPreview(
                                 translationX = offset.x
                                 translationY = offset.y
                             },
-                        contentPadding = PaddingValues(top = 80.dp, bottom = 100.dp), // Added top padding to avoid header overlap
-                        verticalArrangement = Arrangement.spacedBy(0.dp), 
+                        contentPadding = PaddingValues(top = 80.dp, bottom = 100.dp), // Top padding keeps the first page clear of the header.
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        userScrollEnabled = scale == 1f 
+                        userScrollEnabled = scale == 1f
                     ) {
                         items(activePageCount) { index ->
                             PdfPageReaderItem(
-                                uri = activeUri,
+                                uri = source.displayUri,
                                 index = index,
-                                password = activePassword,
                                 imageLoader = imageLoader,
-                                pageSize = pageSizes[index],
-                                links = links.filter { it.pageIndex == index },
+                                pageBox = pageBoxes.getOrNull(index),
+                                links = linksByPage[index].orEmpty(),
                                 onLinkClick = { url ->
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
-                                    }
+                                    val opened = safeLinkUri(url)?.let { safe ->
+                                        try {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe)))
+                                            true
+                                        } catch (e: ActivityNotFoundException) {
+                                            false
+                                        }
+                                    } ?: false
+                                    if (!opened) Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
@@ -295,11 +360,11 @@ fun UltraPreview(
                     }
                 }
 
-                val currentPage by remember { 
-                    derivedStateOf { 
+                val currentPage by remember {
+                    derivedStateOf {
                         if (!listState.canScrollForward && activePageCount > 0) activePageCount
                         else (listState.firstVisibleItemIndex + 1).coerceIn(1, activePageCount)
-                    } 
+                    }
                 }
 
                 Box(
@@ -322,14 +387,14 @@ fun UltraPreview(
                     Box(
                         modifier = Modifier.fillMaxHeight().width(6.dp).align(Alignment.Center).background(Color.Gray.copy(alpha = 0.15f), CircleShape)
                     )
-                    
+
                     if (trackHeight > 0 && activePageCount > 1) {
                         val minThumbHeight = 48.dp
                         val thumbHeightFactor = 1f / activePageCount.coerceAtLeast(1)
-                        val thumbHeightPx = with(density) { 
-                            (trackHeight * thumbHeightFactor.coerceIn(0.08f, 0.25f)).coerceAtLeast(minThumbHeight.toPx()) 
+                        val thumbHeightPx = with(density) {
+                            (trackHeight * thumbHeightFactor.coerceIn(0.08f, 0.25f)).coerceAtLeast(minThumbHeight.toPx())
                         }
-                        
+
                         Box(
                             modifier = Modifier
                                 .height(with(density) { thumbHeightPx.toDp() })
@@ -396,9 +461,9 @@ fun UltraPreview(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
-                    
+
                     Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                         Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
                         Text("PDF VIEWER", fontSize = 8.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.sp)
@@ -423,7 +488,7 @@ fun UltraPreview(
                         Icon(Icons.Filled.Add, null, tint = PaperPink, modifier = Modifier.size(22.dp))
                     }
                 }
-                Divider(color = Color.Gray.copy(alpha = 0.1f))
+                HorizontalDivider(color = Color.Gray.copy(alpha = 0.1f))
             }
         }
 
@@ -437,9 +502,10 @@ fun UltraPreview(
             ) {
                 ToolPickerContent(
                     onToolClick = { tool ->
-                        scope.launch { sheetState.hide() }.invokeOnCompletion { 
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
                             showToolPicker = false
-                            onOpenInTool(tool, uri, activePassword)
+                            val (toolUri, toolPassword) = source.toolHandOff()
+                            onOpenInTool(tool, toolUri, toolPassword)
                         }
                     }
                 )
@@ -453,52 +519,24 @@ fun UltraPreview(
                     onDismiss = onDismiss,
                     onUnlocked = { pass ->
                         fileToUnlock = null
-                        initializeReader(uri, pass)
+                        initializeReader(pass)
                     },
                     accentColor = PaperPink,
-                    isLoading = isDecrypting
+                    isLoading = isDecrypting,
+                    isError = unlockError
                 )
             }
         }
 
         if (showJumpDialog) {
-            AlertDialog(
-                onDismissRequest = { showJumpDialog = false },
-                title = { Text("Go to Page", fontWeight = FontWeight.Black) },
-                text = {
-                    OutlinedTextField(
-                        value = jumpPageInput,
-                        onValueChange = { if (it.all { char -> char.isDigit() }) jumpPageInput = it },
-                        label = { Text("Page Number (1-$activePageCount)") },
-                        singleLine = true,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
-                            imeAction = ImeAction.Go
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = {
-                            val pageNum = jumpPageInput.toIntOrNull()
-                            if (pageNum != null && pageNum in 1..activePageCount) {
-                                scope.launch { listState.scrollToItem(pageNum - 1) }
-                                showJumpDialog = false
-                            }
-                        })
-                    )
+            JumpToPageDialog(
+                initialInput = jumpPageInput,
+                pageCount = activePageCount,
+                onJump = { index ->
+                    scope.launch { listState.scrollToItem(index) }
+                    showJumpDialog = false
                 },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val pageNum = jumpPageInput.toIntOrNull()
-                        if (pageNum != null && pageNum in 1..activePageCount) {
-                            scope.launch { listState.scrollToItem(pageNum - 1) }
-                            showJumpDialog = false
-                        }
-                    }) { Text("GO", fontWeight = FontWeight.Black, color = PaperPink) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showJumpDialog = false }) { Text("CANCEL", color = Color.Gray) }
-                },
-                shape = RoundedCornerShape(28.dp),
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp
+                onDismiss = { showJumpDialog = false }
             )
         }
     }
@@ -508,27 +546,30 @@ fun UltraPreview(
 fun PdfPageReaderItem(
     uri: Uri,
     index: Int,
-    password: String?,
     imageLoader: ImageLoader,
-    pageSize: Pair<Float, Float>?,
+    pageBox: PageBox?,
     links: List<PdfLink>,
     onLinkClick: (String) -> Unit
 ) {
-    // NATIVE ENGINE: 12.0f Resolution (Crisp even at 1x)
-    val lowResRequest = remember(uri, index, password) { PdfPageRequest(uri, index, password, 1.8f, priority = 1) }
-    val highResRequest = remember(uri, index, password) { PdfPageRequest(uri, index, password, 12.0f, priority = 0) }
-    
+    val context = LocalContext.current
+    val lowResRequest = remember(uri, index) { PdfPageRequest(uri, index, null, LOW_RES_SCALE, priority = 1) }
+    // An explicit size: Coil would otherwise wait to measure the image, which stays hidden until this request succeeds.
+    val highResRequest = remember(uri, index, pageBox) {
+        val scale = pageBox?.let { highResScale(it.displayWidth, it.displayHeight) } ?: LOW_RES_SCALE
+        ImageRequest.Builder(context).data(PdfPageRequest(uri, index, null, scale, priority = 0)).size(coil.size.Size.ORIGINAL).build()
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(pageSize?.let { it.first / it.second } ?: 0.707f)
+            .aspectRatio(pageBox?.displayAspect ?: FALLBACK_PAGE_ASPECT)
             .padding(vertical = 4.dp)
             .shadow(4.dp)
             .background(Color.White)
     ) {
         val lowResPainter = rememberAsyncImagePainter(lowResRequest, imageLoader)
         val highResPainter = rememberAsyncImagePainter(highResRequest, imageLoader)
-        
+
         Image(
             painter = lowResPainter,
             contentDescription = null,
@@ -555,20 +596,13 @@ fun PdfPageReaderItem(
             }
         }
 
-        if (pageSize != null) {
-            val pageWidthDp = maxWidth
-            val pageHeightDp = maxHeight
+        if (pageBox != null) {
             links.forEach { link ->
-                val scaleX = pageWidthDp.value / pageSize.first
-                val scaleY = pageHeightDp.value / pageSize.second
-                val left = link.rect.lowerLeftX * scaleX
-                val top = (pageSize.second - link.rect.upperRightY) * scaleY
-                val width = (link.rect.upperRightX - link.rect.lowerLeftX) * scaleX
-                val height = (link.rect.upperRightY - link.rect.lowerLeftY) * scaleY
+                val area = mapLinkRect(link.rect.lowerLeftX, link.rect.lowerLeftY, link.rect.upperRightX, link.rect.upperRightY, pageBox)
                 Box(
                     modifier = Modifier
-                        .offset(x = left.dp, y = top.dp)
-                        .size(width = width.dp, height = height.dp)
+                        .offset(x = maxWidth * area.left, y = maxHeight * area.top)
+                        .size(width = maxWidth * area.width, height = maxHeight * area.height)
                         .clickable { onLinkClick(link.url) }
                 )
             }
