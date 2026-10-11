@@ -46,7 +46,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The scan camera on real hardware: streams, a full-resolution still, torch, zoom, lens switching, lifecycle and unbinding. */
+/** The scan camera on real hardware: streams, a full-resolution still, torch, zoom, the lens policy, lifecycle and unbinding. */
 @OptIn(DelicateCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class ScanCameraControllerDeviceTest {
@@ -106,8 +106,8 @@ class ScanCameraControllerDeviceTest {
         assertTrue("expected $count more frames, got ${frames.get() - target + count}", frames.get() >= target)
     }
 
-    private fun bind(lens: CameraLens = CameraLens.BACK): ScanCameraState {
-        main { controller.bind(owner, surfaceProvider, lens) }
+    private fun bind(): ScanCameraState {
+        main { controller.bind(owner, surfaceProvider) }
         return waitFor("the camera to open") { it.ready }
     }
 
@@ -156,6 +156,7 @@ class ScanCameraControllerDeviceTest {
     fun streamsFramesAndTakesAFullResolutionStill() {
         val s = bind()
         assertEquals(CameraLens.BACK, s.lens)
+        assertTrue(s.liveDetection)
         val still = s.stillSize!!
         val analysis = s.analysisSize!!
         val expected = expectedStill(s.cameraId!!)
@@ -218,7 +219,7 @@ class ScanCameraControllerDeviceTest {
                     GlobalScope.launch(Dispatchers.Main.immediate) { result.complete(controller.takePicture(shotDir)) }
                 }
             }
-            controller.bind(owner, surfaceProvider, CameraLens.BACK)
+            controller.bind(owner, surfaceProvider)
         }
         assertEquals(null, runBlocking { withTimeout(10_000) { result.await() } })
         assertFalse("a refused shot leaves nothing in flight", state().capturing)
@@ -234,7 +235,6 @@ class ScanCameraControllerDeviceTest {
         Thread.sleep(100) // past the folder check, into CameraX's capture (which takes far longer)
         runBlocking { job.cancelAndJoin() }
         assertTrue("still capturing after the caller was cancelled", state().capturing)
-        assertFalse("no lens switch mid-capture", main { controller.switchLens() })
         assertEquals("no second shot mid-capture", null, takePicture())
         waitFor("CameraX to finish the cancelled shot") { !it.capturing }
         assertEquals(s.lens, state().lens)
@@ -259,7 +259,7 @@ class ScanCameraControllerDeviceTest {
     }
 
     @Test
-    fun torchTurnsOnAndOffAndResetsOnLensSwitch() {
+    fun torchTurnsOnAndOffAndResetsOnRebind() {
         val s = bind()
         assumeTrue("back camera has a flash unit", s.torchAvailable)
         var ok: Boolean? = null
@@ -273,13 +273,7 @@ class ScanCameraControllerDeviceTest {
         main { controller.setTorch(true) }
         waitFor("torch on again") { it.torchOn }
 
-        assumeTrue("device has a front camera", s.canSwitchLens)
-        assertTrue(main { controller.switchLens() })
-        val front = waitFor("the front camera") { it.ready && it.lens == CameraLens.FRONT }
-        assertFalse(front.torchOn)
-        assertTrue(main { controller.switchLens() })
-        val back = waitFor("the back camera again") { it.ready && it.lens == CameraLens.BACK }
-        assertFalse("torch stays off after rebinding", back.torchOn)
+        assertFalse("torch is off after rebinding", bind().torchOn)
     }
 
     @Test
@@ -305,9 +299,14 @@ class ScanCameraControllerDeviceTest {
     }
 
     @Test
-    fun frontCameraStillIsNotMirrored() {
-        val s = bind(CameraLens.FRONT)
+    fun aDeviceWithOnlyAFrontCameraOpensItWithoutLiveDetection() {
+        // Poses as a front-only device: the policy sees only this phone's front cameras.
+        main { controller.lensPolicy = { lenses -> LensPolicy.choose(lenses.filter { it == CameraLens.FRONT }) } }
+        val s = bind()
         assumeTrue("device has a front camera", s.lens == CameraLens.FRONT)
+        assertFalse("manual shutter only", s.liveDetection)
+        waitForFrames(3)
+        assertEquals(CameraLens.FRONT, lastFrame.get().lens)
         val file = takePicture()!!
         val orientation = ExifInterface(file).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -319,6 +318,16 @@ class ScanCameraControllerDeviceTest {
                 ExifInterface.ORIENTATION_TRANSPOSE, ExifInterface.ORIENTATION_TRANSVERSE),
         )
         assertEquals(expectedStill(s.cameraId!!), Dim(bounds.outWidth, bounds.outHeight))
+    }
+
+    @Test
+    fun aDeviceWithNoUsableCameraReportsNoCamera() {
+        main {
+            controller.lensPolicy = { LensPolicy.choose(emptyList()) }
+            controller.bind(owner, surfaceProvider)
+        }
+        waitFor("the no-camera error") { it.error == CameraError.NO_CAMERA }
+        assertEquals(null, takePicture())
     }
 
     @Test
