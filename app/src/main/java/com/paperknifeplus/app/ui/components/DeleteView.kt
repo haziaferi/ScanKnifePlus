@@ -23,7 +23,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,6 +42,8 @@ fun DeleteView(
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    // The file as picked; selectedUri becomes its decrypted copy once unlocked, but the output is made from this so it stays protected.
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -94,6 +95,8 @@ fun DeleteView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        sourceUri = uri
+        unlockPassword = ""
         fileName = getUriDetails(context, uri).name
         unlockError = false
         isFileLoading = true
@@ -128,28 +131,18 @@ fun DeleteView(
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        val source = sourceUri
+        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val toDelete = pagesToDeleteSet
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                withContext(Dispatchers.Main) { progressCount = 0 }
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        PDDocument().use { target ->
-                            val kept = mutableListOf<Int>()
-                            for (i in 0 until document.numberOfPages) {
-                                if (i in toDelete) withContext(Dispatchers.Main) { progressCount++ } else kept += i
-                            }
-                            target.appendPagesFrom(kept.map { document.getPage(it) })
-                            saveAndFlush(context, target, uri)
-                        }
-                    }
-                }
+                withContext(Dispatchers.Main) { progressCount = toDelete.size }
+                deletePages(context, source, uri, password, toDelete)
                 val timeStr = formatElapsed(startTime)
-                val finalCount = getPageCount(context, uri, null)
+                val finalCount = getPageCount(context, uri, password.ifEmpty { null })
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri

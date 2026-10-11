@@ -46,4 +46,14 @@ class DeleteViewTest {
         rule.onNodeWithText("0 / 2 MARKED FOR DELETION").assertExists()
         rule.onNodeWithText("Password Required").assertDoesNotExist()
     }
+
+    @Test
+    fun `an owner-password-only file opens without the password prompt`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "owner-only.pdf")
+        rule.setContent { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("MARKED FOR DELETION", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("0 / 2 MARKED FOR DELETION").assertExists()
+        rule.onNodeWithText("Password Required").assertDoesNotExist()
+    }
 }

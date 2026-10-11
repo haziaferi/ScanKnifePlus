@@ -58,7 +58,7 @@ fun ProtectView(
         unlockError = false
         isFileLoading = true
         scope.launch {
-            when (inspectPdf(context, uri)) {
+            when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
                     selectedUri = null

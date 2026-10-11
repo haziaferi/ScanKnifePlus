@@ -393,18 +393,20 @@ suspend fun convertPdfToImages(
 }
 
 /**
- * Writes [document] to [outputUri], filling in the creator, producer and default author where they are blank. Throws if the output cannot
- * be opened or written. Closes [document] either way; closing again is harmless, so callers may also hold it in `use {}`.
+ * Writes [document] to [outputUri], with [applyDefaults] filling in the creator, producer and default author where they are blank (the
+ * Metadata tool turns that off, so fields the user cleared stay cleared). Throws if the output cannot be opened or written. Closes
+ * [document] either way; closing again is harmless, so callers may also hold it in `use {}`.
  */
-fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri) {
+fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri, applyDefaults: Boolean = true) {
     try {
-        val info = document.documentInformation
-        // Defaults only where blank, so values set in the Metadata tool are kept.
-        if (info.creator.isNullOrBlank()) info.creator = "PaperKnife+"
-        if (info.producer.isNullOrBlank()) info.producer = "PaperKnife+ Native Engine"
+        if (applyDefaults) {
+            val info = document.documentInformation
+            if (info.creator.isNullOrBlank()) info.creator = "PaperKnife+"
+            if (info.producer.isNullOrBlank()) info.producer = "PaperKnife+ Native Engine"
 
-        val autoAuthor = PreferencesManager.getDefaultAuthor(context)
-        if (autoAuthor.isNotEmpty() && info.author.isNullOrBlank()) info.author = autoAuthor
+            val autoAuthor = PreferencesManager.getDefaultAuthor(context)
+            if (autoAuthor.isNotEmpty() && info.author.isNullOrBlank()) info.author = autoAuthor
+        }
 
         // "wt" truncates a reused file and falls back to "w"; "rwt" left 0-byte files on some devices (commit 0461d05).
         context.contentResolver.requireOutputStream(outputUri).use { os ->
