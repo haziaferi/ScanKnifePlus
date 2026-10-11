@@ -139,9 +139,11 @@ fun DeleteView(
                 context.contentResolver.requireInputStream(source).use { input ->
                     PDDocument.load(input, unlockPassword).use { document ->
                         PDDocument().use { target ->
+                            val kept = mutableListOf<Int>()
                             for (i in 0 until document.numberOfPages) {
-                                if (i in toDelete) withContext(Dispatchers.Main) { progressCount++ } else target.appendPageFrom(document.getPage(i))
+                                if (i in toDelete) withContext(Dispatchers.Main) { progressCount++ } else kept += i
                             }
+                            target.appendPagesFrom(kept.map { document.getPage(it) })
                             saveAndFlush(context, target, uri)
                         }
                     }

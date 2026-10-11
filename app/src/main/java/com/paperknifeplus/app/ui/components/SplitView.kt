@@ -109,12 +109,9 @@ fun SplitView(
                 context.contentResolver.requireInputStream(source).use { input ->
                     PDDocument.load(input, unlockPassword).use { document ->
                         PDDocument().use { target ->
-                            pages.sorted().forEach { index ->
-                                if (index < document.numberOfPages) {
-                                    target.appendPageFrom(document.getPage(index))
-                                    withContext(Dispatchers.Main) { progressCount++ }
-                                }
-                            }
+                            val kept = pages.sorted().filter { it < document.numberOfPages }
+                            target.appendPagesFrom(kept.map { document.getPage(it) })
+                            withContext(Dispatchers.Main) { progressCount = kept.size }
                             saveAndFlush(context, target, uri)
                         }
                     }

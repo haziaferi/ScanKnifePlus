@@ -17,7 +17,9 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
@@ -78,16 +80,21 @@ object TestPdfs {
     /** Text in the uncompressed content stream of [linked]'s last page, to tell whether that page made it into a saved file. */
     const val LINKED_TARGET_MARKER = "LAST-PAGE-ONLY"
 
-    /** A PDF of [pages] pages whose first page holds a link annotation pointing to the last page. */
+    /**
+     * A PDF of [pages] (at least 3) pages whose first page holds three links: a /Dest link to page 2, a GoTo-action link to the last page,
+     * and a link to the named destination "chapter".
+     */
     fun linked(pages: Int = 3): ByteArray = build(pages) { doc ->
         val last = doc.getPage(pages - 1)
         last.setContents(PDStream(doc, "BT /F1 12 Tf 72 720 Td ($LINKED_TARGET_MARKER) Tj ET".byteInputStream()))
-        val link = PDAnnotationLink().apply {
-            rectangle = PDRectangle(72f, 72f, 100f, 20f)
-            destination = PDPageFitDestination().apply { setPage(last) }
+        val first = doc.getPage(0)
+        val toSecond = PDAnnotationLink().apply { destination = PDPageFitDestination().apply { setPage(doc.getPage(1)) } }
+        val toLast = PDAnnotationLink().apply { action = PDActionGoTo().apply { destination = PDPageFitDestination().apply { setPage(last) } } }
+        val named = PDAnnotationLink().apply { destination = PDNamedDestination("chapter") }
+        first.annotations = listOf(toSecond, toLast, named).onEach {
+            it.rectangle = PDRectangle(72f, 72f, 100f, 20f)
+            it.page = first
         }
-        doc.getPage(0).annotations = listOf(link)
-        link.page = doc.getPage(0)
     }
 
     /** Writes [bytes] to [dir]/[name] and returns its file:// URI. */

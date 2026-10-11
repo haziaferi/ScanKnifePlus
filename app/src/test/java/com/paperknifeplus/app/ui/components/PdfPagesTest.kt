@@ -9,10 +9,14 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -64,21 +68,36 @@ class PdfPagesTest {
     }
 
     @Test
-    fun `a page left out stays out even when a kept page links to it`() {
+    fun `links to kept pages follow them, links to left-out pages and names are dropped`() {
         val source = TestPdfs.linked(3)
         assertTrue(String(source, Charsets.ISO_8859_1).contains(TestPdfs.LINKED_TARGET_MARKER))
 
         val bytes = PDDocument.load(source).use { src ->
             PDDocument().use { target ->
-                listOf(0, 1).forEach { target.appendPageFrom(src.getPage(it)) }
+                target.appendPagesFrom(listOf(src.getPage(0), src.getPage(1)))
                 ByteArrayOutputStream().also { target.save(it) }.toByteArray()
             }
         }
         assertFalse(String(bytes, Charsets.ISO_8859_1).contains(TestPdfs.LINKED_TARGET_MARKER))
         PDDocument.load(bytes).use { doc ->
             assertEquals(2, doc.numberOfPages)
-            assertEquals(1, doc.getPage(0).annotations.size)
+            val (toSecond, toLast, named) = doc.getPage(0).annotations.map { it as PDAnnotationLink }
+            assertEquals(1, doc.pages.indexOf((toSecond.destination as PDPageDestination).page))
+            assertNull(((toLast.action as PDActionGoTo).destination as PDPageDestination).page)
+            assertNull(named.destination)
         }
+    }
+
+    @Test
+    fun `a single appended page keeps no link into the source`() {
+        val bytes = PDDocument.load(TestPdfs.linked(3)).use { src ->
+            PDDocument().use { target ->
+                target.appendPageFrom(src.getPage(0))
+                ByteArrayOutputStream().also { target.save(it) }.toByteArray()
+            }
+        }
+        assertFalse(String(bytes, Charsets.ISO_8859_1).contains(TestPdfs.LINKED_TARGET_MARKER))
+        PDDocument.load(bytes).use { doc -> assertEquals(1, doc.numberOfPages) }
     }
 
     private fun protect(password: String): File {
