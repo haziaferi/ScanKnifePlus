@@ -11,6 +11,7 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -59,6 +60,24 @@ class PdfPagesTest {
             assertEquals(1, doc.numberOfPages)
             assertEquals(PDRectangle.LETTER.toString(), doc.getPage(0).mediaBox.toString())
             assertTrue(doc.getPage(0).hasContents())
+        }
+    }
+
+    @Test
+    fun `a page left out stays out even when a kept page links to it`() {
+        val source = TestPdfs.linked(3)
+        assertTrue(String(source, Charsets.ISO_8859_1).contains(TestPdfs.LINKED_TARGET_MARKER))
+
+        val bytes = PDDocument.load(source).use { src ->
+            PDDocument().use { target ->
+                listOf(0, 1).forEach { target.appendPageFrom(src.getPage(it)) }
+                ByteArrayOutputStream().also { target.save(it) }.toByteArray()
+            }
+        }
+        assertFalse(String(bytes, Charsets.ISO_8859_1).contains(TestPdfs.LINKED_TARGET_MARKER))
+        PDDocument.load(bytes).use { doc ->
+            assertEquals(2, doc.numberOfPages)
+            assertEquals(1, doc.getPage(0).annotations.size)
         }
     }
 

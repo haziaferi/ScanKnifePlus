@@ -6,6 +6,7 @@ import android.util.Log
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -38,9 +39,11 @@ suspend fun inspectPdf(context: Context, uri: Uri): PdfAccess = withContext(Disp
     } catch (e: IOException) {
         Log.w(TAG, "Cannot read $uri", e)
         PdfAccess.Unreadable
-    } catch (e: SecurityException) {
-        // A provider that revoked or never granted read access; the screen reports it like any unreadable file.
-        Log.w(TAG, "No read access to $uri", e)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: RuntimeException) {
+        // PDFBox throws unchecked exceptions on some malformed files, and providers throw SecurityException without read access.
+        Log.w(TAG, "Cannot read $uri", e)
         PdfAccess.Unreadable
     } catch (e: OutOfMemoryError) {
         Log.w(TAG, "Out of memory reading $uri", e)

@@ -252,7 +252,6 @@ fun PageLightbox(
                 }
             }
 
-            // Custom Tool Bottom Bar (e.g. Sign controls)
             Box(Modifier.fillMaxSize()) {
                 bottomBar?.invoke(this, pagerState.currentPage)
             }

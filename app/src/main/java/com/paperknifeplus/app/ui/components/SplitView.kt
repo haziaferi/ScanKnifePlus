@@ -42,7 +42,7 @@ fun SplitView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var unlockPassword by remember { mutableStateOf(initialPassword ?: "") }
+    var unlockPassword by remember { mutableStateOf("") }
     var rangeText by remember { mutableStateOf("") }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
@@ -65,6 +65,7 @@ fun SplitView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        unlockPassword = password.orEmpty()
         fileName = getUriDetails(context, uri).name
         unlockError = false
         isFileLoading = true
@@ -152,6 +153,7 @@ fun SplitView(
                     onBack = onBack,
                     onChange = {
                         dropDecryptedCopy()
+                        unlockPassword = ""
                         selectedUri = null
                         currentState = ToolState.SELECTING
                     }

@@ -35,6 +35,13 @@ class ToolFilesTest {
     }
 
     @Test
+    fun `writing over an existing file truncates it`() {
+        val file = File(context.cacheDir, "existing.pdf").apply { writeText("a much longer old content") }
+        context.contentResolver.requireOutputStream(Uri.fromFile(file)).use { it.write("new".toByteArray()) }
+        assertEquals("new", file.readText())
+    }
+
+    @Test
     fun `deleteDecryptedCopy deletes only decrypted copies directly in the cache folder`() {
         val cache = context.cacheDir
         val copy = File(cache, "decrypted_123.pdf").apply { writeText("x") }

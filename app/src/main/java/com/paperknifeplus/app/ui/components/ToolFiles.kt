@@ -23,9 +23,20 @@ fun pdfBaseName(name: String): String = if (name.endsWith(".pdf", ignoreCase = t
 /** Opens [uri] for reading, throwing [IOException] where [ContentResolver.openInputStream] would return null. */
 fun ContentResolver.requireInputStream(uri: Uri): InputStream = openInputStream(uri) ?: throw IOException("Cannot read $uri")
 
-/** Opens [uri] for writing, throwing [IOException] where [ContentResolver.openOutputStream] would return null. */
-fun ContentResolver.requireOutputStream(uri: Uri, mode: String = "w"): OutputStream =
-    openOutputStream(uri, mode) ?: throw IOException("Cannot write $uri")
+/**
+ * Opens [uri] for writing, throwing [IOException] where [ContentResolver.openOutputStream] would return null. The default "wt" truncates, in
+ * case the picker handed back an existing file; providers that do not support it fall back to "w", as in ScanExport.save.
+ */
+fun ContentResolver.requireOutputStream(uri: Uri, mode: String = "wt"): OutputStream {
+    val stream = try {
+        openOutputStream(uri, mode)
+    } catch (e: IllegalArgumentException) {
+        null
+    } catch (e: UnsupportedOperationException) {
+        null
+    }
+    return stream ?: (if (mode == "wt") openOutputStream(uri, "w") else null) ?: throw IOException("Cannot write $uri")
+}
 
 /** Removes a document the system file picker created for an output that then failed or was cancelled. Never throws. */
 fun deleteCreatedDocument(context: Context, uri: Uri) {

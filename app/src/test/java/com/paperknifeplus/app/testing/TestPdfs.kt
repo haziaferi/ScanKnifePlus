@@ -17,6 +17,8 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
 import java.io.ByteArrayOutputStream
@@ -71,6 +73,21 @@ object TestPdfs {
             setInt(COSName.ROTATE, INHERITED_ROTATION)
         }
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    /** Text in the uncompressed content stream of [linked]'s last page, to tell whether that page made it into a saved file. */
+    const val LINKED_TARGET_MARKER = "LAST-PAGE-ONLY"
+
+    /** A PDF of [pages] pages whose first page holds a link annotation pointing to the last page. */
+    fun linked(pages: Int = 3): ByteArray = build(pages) { doc ->
+        val last = doc.getPage(pages - 1)
+        last.setContents(PDStream(doc, "BT /F1 12 Tf 72 720 Td ($LINKED_TARGET_MARKER) Tj ET".byteInputStream()))
+        val link = PDAnnotationLink().apply {
+            rectangle = PDRectangle(72f, 72f, 100f, 20f)
+            destination = PDPageFitDestination().apply { setPage(last) }
+        }
+        doc.getPage(0).annotations = listOf(link)
+        link.page = doc.getPage(0)
     }
 
     /** Writes [bytes] to [dir]/[name] and returns its file:// URI. */
