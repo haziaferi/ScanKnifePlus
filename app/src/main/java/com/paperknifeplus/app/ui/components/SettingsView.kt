@@ -1,5 +1,8 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,7 +15,6 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import android.widget.Toast
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -27,7 +29,28 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haziaferi.scanknifeplus.scan.ScanFiles
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
+
+/**
+ * Deletes the app's cached files (PDF previews, decrypted copies, anything else in the cache folders) and the thumbnail memory cache. The
+ * scanner's folders are skipped: it cleans them itself, and deleting them mid-session or mid-export breaks it. False if something failed.
+ */
+fun clearAppCache(context: Context): Boolean = try {
+    PdfImageLoader.get(context).memoryCache?.clear()
+    context.cacheDir.listFiles()?.forEach { file ->
+        if (file.name !in ScanFiles.CACHE_FOLDERS) {
+            if (file.isDirectory) file.deleteRecursively() else file.delete()
+        }
+    }
+    context.externalCacheDir?.let { if (it.exists()) it.deleteRecursively() }
+    true
+} catch (e: Exception) {
+    Log.w("SettingsView", "Clearing the cache failed", e)
+    false
+}
 
 @Composable
 fun SettingsView(
@@ -36,17 +59,16 @@ fun SettingsView(
     onNavigateToAbout: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val isDarkBg = MaterialTheme.colorScheme.background == Color.Black
-    
+    val isDarkBg = LocalIsDarkTheme.current
+
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
     var currentTheme by remember { mutableIntStateOf(PreferencesManager.getTheme(context)) }
     var historyRetention by remember { mutableIntStateOf(PreferencesManager.getHistoryRetention(context)) }
-    
+
     var showRetentionDialog by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        // Standardized Header
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -103,7 +125,7 @@ fun SettingsView(
                         Spacer(Modifier.height(12.dp))
                         TextField(
                             value = autoAuthor,
-                            onValueChange = { 
+                            onValueChange = {
                                 autoAuthor = it
                                 PreferencesManager.setDefaultAuthor(context, it)
                             },
@@ -136,35 +158,7 @@ fun SettingsView(
                         showClearConfirm = true
                     }
                     SettingsItem(Icons.Outlined.DeleteForever, "Clear Cache", "Purge all temporary documents and previews") {
-                        val cacheDir = context.cacheDir
-                        val previewsDir = cacheDir.resolve("pdf_previews")
-                        
-                        var success = true
-                        try {
-                            // Clear Coil disk cache
-                            coil.ImageLoader(context).diskCache?.clear()
-                            
-                            // Clear previews directory
-                            if (previewsDir.exists()) previewsDir.deleteRecursively()
-                            
-                            // Clear any decrypted PDFs in cache
-                            cacheDir.listFiles()?.forEach { file ->
-                                if (file.isDirectory) {
-                                    file.deleteRecursively()
-                                } else {
-                                    file.delete()
-                                }
-                            }
-                            
-                            // Clear external cache
-                            context.externalCacheDir?.let { extCache ->
-                                if (extCache.exists()) extCache.deleteRecursively()
-                            }
-                        } catch (e: Exception) { 
-                            success = false 
-                        }
-                        
-                        if (success) Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
+                        if (clearAppCache(context)) Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
                         else Toast.makeText(context, "Partial cache clear", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -180,13 +174,12 @@ fun SettingsView(
 
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PaperKnife+ V1.1", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text("PaperKnife+ V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                 }
             }
         }
     }
 
-    // DIALOGS
     if (showRetentionDialog) {
         AlertDialog(
             onDismissRequest = { showRetentionDialog = false },
@@ -265,9 +258,9 @@ fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         Surface(
-            color = if (MaterialTheme.colorScheme.background == Color.Black) Color(0xFF09090B) else Color.White,
+            color = if (LocalIsDarkTheme.current) Color(0xFF09090B) else Color.White,
             shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, if (MaterialTheme.colorScheme.background == Color.Black) Color.White.copy(alpha = 0.05f) else Color.Black.copy(0.03f))
+            border = BorderStroke(1.dp, if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.05f) else Color.Black.copy(0.03f))
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 content()
@@ -278,9 +271,9 @@ fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
 
 @Composable
 fun SettingsItem(
-    icon: ImageVector, 
-    title: String, 
-    subtitle: String, 
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
     enabled: Boolean = true,
     accentColor: Color? = null,
     onClick: () -> Unit = {}

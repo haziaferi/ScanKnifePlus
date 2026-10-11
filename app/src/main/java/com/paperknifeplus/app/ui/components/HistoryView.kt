@@ -1,5 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ContentResolver
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
@@ -14,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,19 +31,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haziaferi.scanknifeplus.scan.export.ScanExport
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
+
+/** Whether [entry]'s output opens in the PDF reader: it has a file and its provider reports a PDF (ZIP exports do not open). */
+internal fun canOpenInReader(resolver: ContentResolver, entry: ActivityEntry): Boolean =
+    entry.uri?.let { historyEntryMime(resolver, it) == "application/pdf" } ?: false
+
+/** The share intent for [entry]'s output, typed as its provider reports it; null when the entry has no file (e.g. PDF to Text). */
+internal fun historyShareIntent(resolver: ContentResolver, entry: ActivityEntry): Intent? =
+    entry.uri?.let { ScanExport.shareIntent(it, entry.name, historyEntryMime(resolver, it)) }
 
 @Composable
 fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
-    
-    val historyItems = SessionManager.history
 
-    val filteredItems = remember(searchQuery, historyItems.size) {
-        historyItems.filter { 
-            it.name.contains(searchQuery, ignoreCase = true) || 
-            it.tool.contains(searchQuery, ignoreCase = true) 
+    val filteredItems by remember {
+        derivedStateOf {
+            SessionManager.history.filter {
+                it.name.contains(searchQuery, ignoreCase = true) || it.tool.contains(searchQuery, ignoreCase = true)
+            }
         }
     }
 
@@ -51,7 +61,6 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
             .fillMaxSize()
             .statusBarsPadding()
     ) {
-        // Standardized Header
         Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -68,7 +77,7 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                     color = MaterialTheme.colorScheme.onBackground,
                     letterSpacing = (-1).sp
                 )
-                
+
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     shape = CircleShape,
@@ -77,9 +86,9 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                     Icon(Icons.Outlined.History, null, modifier = Modifier.padding(8.dp).size(20.dp), tint = PaperPink)
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             Surface(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(16.dp),
@@ -115,7 +124,7 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                 }
             }
         }
-        
+
         Text(
             text = "ALL LOCAL SESSIONS",
             fontSize = 8.sp,
@@ -131,8 +140,8 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                     Icon(Icons.Outlined.History, null, modifier = Modifier.size(64.dp).alpha(0.05f))
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        if (searchQuery.isEmpty()) "No recent activity" else "No results for \"$searchQuery\"", 
-                        color = Color.Gray, 
+                        if (searchQuery.isEmpty()) "No recent activity" else "No results for \"$searchQuery\"",
+                        color = Color.Gray,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -145,19 +154,20 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
-                    HistoryItem(item, 
+                    val canOpen = remember(item.uri) { canOpenInReader(context.contentResolver, item) }
+                    val shareIntent = remember(item.uri) { historyShareIntent(context.contentResolver, item) }
+                    HistoryItem(
+                        item,
+                        canOpen = canOpen,
                         onClick = { item.uri?.let { uri -> onItemClick(uri, item.name, item.pageCount) } },
-                        onDownload = {
-                            try {
-                                // Use sharing as a "Save to Files" mechanism which is most reliable on Android
-                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "application/pdf"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, item.uri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        // Sharing doubles as "Save to Files", the most reliable way to export on Android.
+                        onShare = shareIntent?.let { intent ->
+                            {
+                                try {
+                                    context.startActivity(Intent.createChooser(intent, "Save or Share PDF"))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Cannot export file", Toast.LENGTH_SHORT).show()
                                 }
-                                context.startActivity(android.content.Intent.createChooser(intent, "Save or Share PDF"))
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Cannot export file", Toast.LENGTH_SHORT).show()
                             }
                         }
                     )
@@ -168,10 +178,11 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
     }
 }
 
+/** One History card; the card and OPEN only react when [canOpen], and the share button shows only with an [onShare]. */
 @Composable
-fun HistoryItem(entry: ActivityEntry, onClick: () -> Unit, onDownload: () -> Unit) {
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
-    val entryColor = remember(entry.tool) { 
+fun HistoryItem(entry: ActivityEntry, canOpen: Boolean, onClick: () -> Unit, onShare: (() -> Unit)?) {
+    val isDark = LocalIsDarkTheme.current
+    val entryColor = remember(entry.tool) {
         when {
             entry.tool.contains("Merge", true) || entry.tool.contains("Split", true) || entry.tool.contains("Delete", true) || entry.tool.contains("Rearrange", true) -> Color(0xFFF43F5E)
             entry.tool.contains("Compress", true) || entry.tool.contains("ZIP", true) || entry.tool.contains("Grayscale", true) -> Color(0xFFF59E0B)
@@ -185,7 +196,7 @@ fun HistoryItem(entry: ActivityEntry, onClick: () -> Unit, onDownload: () -> Uni
         modifier = Modifier
             .fillMaxWidth()
             .height(72.dp)
-            .clickable(enabled = entry.uri != null) { onClick() },
+            .clickable(enabled = canOpen) { onClick() },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDark) Color(0xFF09090B) else Color.White
@@ -210,16 +221,18 @@ fun HistoryItem(entry: ActivityEntry, onClick: () -> Unit, onDownload: () -> Uni
                 Text(entry.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
                 Text("${entry.tool.uppercase()} • ${entry.size}", fontSize = 11.sp, color = Color.Gray)
             }
-            
-            IconButton(onClick = onDownload, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Filled.Share, null, tint = entryColor.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+
+            if (onShare != null) {
+                IconButton(onClick = onShare, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Share, "Share", tint = entryColor.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
+                }
             }
-            
+
             Spacer(Modifier.width(12.dp))
 
-            // REMADE OPEN BUTTON: Modern pill style
             Surface(
                 onClick = onClick,
+                enabled = canOpen,
                 modifier = Modifier.height(32.dp),
                 shape = CircleShape,
                 color = entryColor,
