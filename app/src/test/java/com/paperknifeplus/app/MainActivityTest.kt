@@ -9,9 +9,9 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
@@ -122,6 +122,18 @@ class MainActivityTest {
         assertEquals(second, controller!!.get().intent)
         waitFor("second.pdf")
         assertFalse(shows("first.pdf"))
+    }
+
+    @Test
+    fun `a new Open with file replaces the previous one's unlock prompt`() {
+        TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "locked.pdf")
+        launch(view(Uri.parse("content://$AUTHORITY/locked.pdf")))
+        rule.waitUntil(10_000) { shows("UNLOCK FILE") }
+
+        controller!!.newIntent(view(pdf("open.pdf")))
+        waitFor("open.pdf")
+        rule.waitForIdle()
+        assertFalse(shows("UNLOCK FILE"))
     }
 
     @Test

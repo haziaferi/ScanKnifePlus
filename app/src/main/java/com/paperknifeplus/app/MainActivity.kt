@@ -66,6 +66,9 @@ private val PreviewDataSaver = listSaver<Triple<Uri, String, Int>?, Any>(
     restore = { list -> if (list.size == 3) Triple(list[0] as Uri, list[1] as String, list[2] as Int) else null }
 )
 
+/** Decrypted copies older than this are left over from an earlier session and swept at start. */
+private const val STALE_COPY_AGE_MS = 24L * 60 * 60 * 1000
+
 class MainActivity : ComponentActivity() {
     /** A PDF handed over by another app, waiting to be opened in the reader. */
     private var incomingPdf by mutableStateOf<Uri?>(null)
@@ -85,10 +88,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
-        // Only on a fresh start: after recreation the intent was already handled, and the reader may have been closed since.
+        // Only on a fresh start: after recreation getIntent() still holds the last 'Open with' intent, and handling it again would reopen a
+        // reader the user may have closed; an open reader comes back from saved state instead.
         if (savedInstanceState == null) {
             acceptIncoming(intent)
-            lifecycleScope.launch(Dispatchers.IO) { sweepDecryptedCopies(cacheDir) }
+            // Only stale copies: another window of the app may still be working on a fresh one.
+            lifecycleScope.launch(Dispatchers.IO) { sweepDecryptedCopies(cacheDir, minAgeMs = STALE_COPY_AGE_MS) }
         }
 
         setContent {
@@ -283,15 +288,18 @@ class MainActivity : ComponentActivity() {
                                     "compare" -> CompareView(initialUri = toolInitialUri, onBack = closeTool, onOpenPreview = openPreview)
                                     "ultra_preview" -> {
                                         previewData?.let { (uri, name, count) ->
-                                            UltraPreview(
-                                                uri = uri, fileName = name, pageCount = count,
-                                                onDismiss = closeTool,
-                                                onOpenInTool = { tool, targetUri, targetPass ->
-                                                    toolInitialUri = targetUri
-                                                    toolInitialPassword = targetPass
-                                                    currentTool = tool
-                                                }
-                                            )
+                                            // Keyed by file, so a new 'Open with' file starts with a fresh reader (no old prompt, scroll or zoom).
+                                            key(uri) {
+                                                UltraPreview(
+                                                    uri = uri, fileName = name, pageCount = count,
+                                                    onDismiss = closeTool,
+                                                    onOpenInTool = { tool, targetUri, targetPass ->
+                                                        toolInitialUri = targetUri
+                                                        toolInitialPassword = targetPass
+                                                        currentTool = tool
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }

@@ -348,7 +348,14 @@ suspend fun convertPdfToImages(
         context.contentResolver.requireOutputStream(outputUri).use { outputStream ->
             ZipOutputStream(outputStream).use { zipOut ->
                 val pfd = context.contentResolver.openFileDescriptor(workingUri, "r") ?: throw IOException("Cannot read $workingUri")
-                PdfRenderer(pfd).use { renderer ->
+                // PdfRenderer closes the descriptor itself, but not when its constructor throws.
+                val opened = try {
+                    PdfRenderer(pfd)
+                } catch (e: Exception) {
+                    pfd.close()
+                    throw e
+                }
+                opened.use { renderer ->
                     val scale = when (quality) { "Ultra HD" -> 3.0f; "HD" -> 2.0f; "Standard" -> 1.5f; else -> 1.0f }
                     val cf = when (format) {
                         "PNG" -> Bitmap.CompressFormat.PNG
@@ -399,6 +406,7 @@ fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri) {
         val autoAuthor = PreferencesManager.getDefaultAuthor(context)
         if (autoAuthor.isNotEmpty() && info.author.isNullOrBlank()) info.author = autoAuthor
 
+        // "wt" truncates a reused file and falls back to "w"; "rwt" left 0-byte files on some devices (commit 0461d05).
         context.contentResolver.requireOutputStream(outputUri).use { os ->
             document.save(os)
             os.flush()

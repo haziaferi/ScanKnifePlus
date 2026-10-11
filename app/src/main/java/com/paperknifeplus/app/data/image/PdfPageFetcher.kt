@@ -68,9 +68,8 @@ fun effectiveRenderScale(pageWidthPt: Float, pageHeightPt: Float, scale: Float, 
 }
 
 /**
- * Up to [perKey] open renderers per key for the [maxKeys] keys used last. A renderer is lent to one caller at a time; a caller waits for one
- * when all of its key's are lent out. Evicting a key closes its idle renderers at once and lent ones when they come back, so a render in
- * progress never loses its renderer. Thread-safe.
+ * Thread-safe pool of up to [perKey] renderers per key, for the [maxKeys] keys used last; each renderer serves one caller at a time, and
+ * callers wait while all of a key's are busy. An evicted key's idle renderers close at once, busy ones when they are released.
  */
 class RendererPool<K : Any, R : Any>(
     private val maxKeys: Int,
@@ -199,9 +198,9 @@ object NativeRendererPool {
 }
 
 /**
- * Open documents for the [maxEntries] keys used last, so pages are not re-parsed per fetch. Each document is used by one holder at a time
- * (PDFBox documents are not thread-safe), and an evicted one is closed only once its last holder is done. Loads happen outside the pool
- * lock; when two callers load the same key at once, the first to finish is kept and the other's copy closed. Thread-safe.
+ * Thread-safe pool of open documents for the [maxEntries] keys used last, each used by one holder at a time (PDFBox documents are not
+ * thread-safe); an evicted document is closed once its last holder is done. Loads run outside the lock, and of two concurrent loads of one
+ * key the first published is kept and the other closed.
  */
 class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val close: (D) -> Unit) {
     private class Entry<D>(val document: D) {
@@ -286,7 +285,7 @@ object PdDocumentPool {
 
     private fun load(context: Context, uri: Uri, password: String?): PDDocument? = try {
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            // Temp-file backed, so large pages rendered at high scale do not exhaust the heap.
+            // The parsed file is buffered in temp files rather than the heap, so large PDFs fit.
             val memory = MemoryUsageSetting.setupTempFileOnly()
             if (password != null) PDDocument.load(stream, password, memory) else PDDocument.load(stream, memory)
         }
@@ -338,7 +337,7 @@ class PdfPageFetcher(
     private suspend fun renderNative(renderer: PdfRenderer): DrawableResult? {
         if (data.pageIndex >= renderer.pageCount) return null
         return renderSemaphore.withPermit {
-            if (!currentCoroutineContext().isActive) throw CancellationException()
+                if (!currentCoroutineContext().isActive) throw CancellationException()
             renderer.openPage(data.pageIndex).use { page ->
                 val scale = effectiveRenderScale(page.width.toFloat(), page.height.toFloat(), data.scale, data.maxWidthPx)
                 val width = (page.width * scale).toInt().coerceAtLeast(1)
@@ -358,7 +357,7 @@ class PdfPageFetcher(
         val rotated = page.rotation % 180 != 0
         val scale = effectiveRenderScale(if (rotated) box.height else box.width, if (rotated) box.width else box.height, data.scale, data.maxWidthPx)
         return renderSemaphore.withPermit {
-            if (!currentCoroutineContext().isActive) throw CancellationException()
+                if (!currentCoroutineContext().isActive) throw CancellationException()
             result(PDFRenderer(document).renderImage(data.pageIndex, scale, ImageType.RGB), scale)
         }
     }

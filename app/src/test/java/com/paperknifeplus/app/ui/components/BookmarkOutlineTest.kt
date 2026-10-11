@@ -1,6 +1,12 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
+import android.net.Uri
+import androidx.test.core.app.ApplicationProvider
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
+import kotlinx.coroutines.runBlocking
+import java.io.File
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
@@ -154,5 +160,16 @@ class BookmarkOutlineTest {
             assertEquals(listOf("Loop"), readOutline(doc).map { it.title })
             applyOutline(doc, readOutline(doc))
         }
+    }
+
+    @Test
+    fun `an outline that fails to read is reported unreadable, a wrong password is not`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val uri = Uri.fromFile(File(context.cacheDir, "outlined.pdf").apply { writeBytes(outlined()) })
+        assertEquals(OutlineLoad.Unreadable, loadOutline(context, uri, null) { throw IllegalStateException("malformed") })
+        assertEquals(5, (loadOutline(context, uri, null) as OutlineLoad.Loaded).bookmarks.size)
+        val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(com.paperknifeplus.app.testing.TestPdfs.userPassword()) })
+        assertEquals(OutlineLoad.WrongPassword, loadOutline(context, locked, "wrong"))
     }
 }

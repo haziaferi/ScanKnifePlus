@@ -33,10 +33,13 @@ import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Deletes the app's cached files (PDF previews, decrypted copies, anything else in the cache folders) and the thumbnail memory cache. The
- * scanner's folders are skipped: it cleans them itself, and deleting them mid-session or mid-export breaks it. False if something failed.
+ * Deletes the app's cached files (PDF previews, decrypted copies, anything else in the cache folders) and the thumbnail memory cache; blocking.
+ * The scanner's folders are skipped: it cleans them itself, and deleting them mid-session or mid-export breaks it. False if something failed.
  */
 fun clearAppCache(context: Context): Boolean = try {
     PdfImageLoader.get(context).memoryCache?.clear()
@@ -59,6 +62,7 @@ fun SettingsView(
     onNavigateToAbout: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val isDarkBg = LocalIsDarkTheme.current
 
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
@@ -158,8 +162,10 @@ fun SettingsView(
                         showClearConfirm = true
                     }
                     SettingsItem(Icons.Outlined.DeleteForever, "Clear Cache", "Purge all temporary documents and previews") {
-                        if (clearAppCache(context)) Toast.makeText(context, "Cache cleared successfully", Toast.LENGTH_SHORT).show()
-                        else Toast.makeText(context, "Partial cache clear", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            val cleared = withContext(Dispatchers.IO) { clearAppCache(context) }
+                            Toast.makeText(context, if (cleared) "Cache cleared successfully" else "Partial cache clear", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }

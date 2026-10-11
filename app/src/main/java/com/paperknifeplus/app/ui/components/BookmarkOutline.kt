@@ -1,12 +1,16 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
+import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitWidthDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
+import kotlinx.coroutines.CancellationException
 import java.util.Collections
 import java.util.IdentityHashMap
 
@@ -49,6 +53,35 @@ private fun pageIndexOf(item: PDOutlineItem, document: PDDocument): Int? = try {
 /** Reads [document]'s outline as a flat pre-order list. */
 fun readOutline(document: PDDocument): List<Bookmark> = outlineItems(document).mapIndexed { index, (item, depth) ->
     Bookmark(item.title ?: "", pageIndexOf(item, document), depth, index)
+}
+
+/** What reading a file's outline gave. */
+internal sealed interface OutlineLoad {
+    data class Loaded(val bookmarks: List<Bookmark>, val pageCount: Int) : OutlineLoad
+
+    /** The document does not open with the password given (or without one). */
+    data object WrongPassword : OutlineLoad
+
+    /** It opens, but its outline cannot be read; PDFBox throws unchecked exceptions on some malformed files. */
+    data object Unreadable : OutlineLoad
+}
+
+/** Reads the outline of [uri] through the shared document pool with [read]. Cancellation is rethrown, other failures are [OutlineLoad.Unreadable]. */
+internal suspend fun loadOutline(
+    context: Context,
+    uri: Uri,
+    password: String?,
+    read: (PDDocument) -> List<Bookmark> = ::readOutline
+): OutlineLoad = try {
+    PdDocumentPool.withDocument(context, uri, password) { OutlineLoad.Loaded(read(it), it.numberOfPages) } ?: OutlineLoad.WrongPassword
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.w("BookmarkOutline", "Cannot read the outline of $uri", e)
+    OutlineLoad.Unreadable
+} catch (e: OutOfMemoryError) {
+    Log.w("BookmarkOutline", "Out of memory reading the outline of $uri", e)
+    OutlineLoad.Unreadable
 }
 
 /** This list without the item at [index] and the items nested under it (the ones right after it that are deeper). */

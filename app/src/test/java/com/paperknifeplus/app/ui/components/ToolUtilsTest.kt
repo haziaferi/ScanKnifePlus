@@ -18,6 +18,7 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -191,5 +192,16 @@ class ToolUtilsTest {
             ByteArrayOutputStream().also { doc.save(it) }.size()
         }
         assertTrue(output.length() <= resaved)
+    }
+
+    @Test
+    fun `the start-up sweep leaves recent decrypted copies alone`() {
+        val now = System.currentTimeMillis()
+        val day = 24L * 60 * 60 * 1000
+        val fresh = File(context.cacheDir, "decrypted_fresh.pdf").apply { writeText("x"); setLastModified(now - day / 2) }
+        val stale = File(context.cacheDir, "decrypted_stale.pdf").apply { writeText("x"); setLastModified(now - 2 * day) }
+        assertEquals(1, sweepDecryptedCopies(context.cacheDir, minAgeMs = day, now = now))
+        assertTrue(fresh.exists())
+        assertFalse(stale.exists())
     }
 }

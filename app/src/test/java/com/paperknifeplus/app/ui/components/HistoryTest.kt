@@ -7,9 +7,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -52,21 +52,21 @@ class HistoryTest {
     @Test
     fun `sharing carries the output's own type and a read grant`() {
         for ((uri, type) in listOf(pdf to "application/pdf", zip to "application/zip")) {
-            val intent = historyShareIntent(context.contentResolver, entry(uri))!!
+            val intent = historyShareIntent(entry(uri), historyEntryMime(context.contentResolver, uri))!!
             assertEquals(Intent.ACTION_SEND, intent.action)
             assertEquals(type, intent.type)
             assertEquals(uri, intent.getParcelableExtra(Intent.EXTRA_STREAM))
             assertEquals(uri, intent.clipData!!.getItemAt(0).uri)
             assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }
-        assertNull(historyShareIntent(context.contentResolver, entry(null)))
+        assertNull(historyShareIntent(entry(null), "application/pdf"))
     }
 
     @Test
     fun `only PDF outputs open in the reader`() {
-        assertTrue(canOpenInReader(context.contentResolver, entry(pdf)))
-        assertFalse(canOpenInReader(context.contentResolver, entry(zip)))
-        assertFalse(canOpenInReader(context.contentResolver, entry(null)))
+        assertTrue(canOpenInReader(historyEntryMime(context.contentResolver, pdf)))
+        assertFalse(canOpenInReader(historyEntryMime(context.contentResolver, zip)))
+        assertFalse(canOpenInReader(null))
     }
 
     @Test
@@ -79,9 +79,10 @@ class HistoryTest {
         var opened: Uri? = null
         rule.setContent { HistoryView(onItemClick = { uri, _, _ -> opened = uri }) }
 
-        // Newest first: merged.pdf, pages.zip, text.txt.
-        val opens = rule.onAllNodes(hasText("OPEN")).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
-        assertEquals(listOf(true, false, false), opens.map { !it.config.contains(SemanticsProperties.Disabled) })
+        // Newest first: merged.pdf, pages.zip, text.txt. Types are resolved off the main thread, so OPEN turns on shortly after.
+        fun enabled() = rule.onAllNodes(hasText("OPEN")).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
+            .map { !it.config.contains(SemanticsProperties.Disabled) }
+        rule.waitUntil(10_000) { enabled() == listOf(true, false, false) }
         assertEquals(2, rule.onAllNodes(hasContentDescription("Share")).fetchSemanticsNodes().size)
 
         rule.onNodeWithText("pages.zip").performClick()

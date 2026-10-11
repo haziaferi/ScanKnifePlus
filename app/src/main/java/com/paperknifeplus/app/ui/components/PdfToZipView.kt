@@ -105,13 +105,14 @@ fun PdfToZipView(
         val sourceName = fileName
         scope.launch(Dispatchers.IO) {
             try {
-                // Read fully first: PDFBox may close the stream it loads from, which must not close the ZIP output.
+                // The source is read into memory once, as before, so no input stream stays open across the export.
                 val bytes = context.contentResolver.requireInputStream(source).use { it.readBytes() }
                 context.contentResolver.requireOutputStream(uri).use { os ->
                     ZipOutputStream(os).use { zipOut ->
                         PDDocument.load(bytes, unlockPassword).use { sourceDoc ->
                             for (i in 0 until sourceDoc.numberOfPages) {
                                 withContext(Dispatchers.Main) { progressCount = i + 1 }
+                                // Saved to a buffer: PDDocument.save closes the stream it writes to, which would close the ZIP.
                                 val pageBytes = PDDocument().use { single ->
                                     single.appendPageFrom(sourceDoc.getPage(i))
                                     ByteArrayOutputStream().also { single.save(it) }.toByteArray()

@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
@@ -55,15 +54,29 @@ fun BookmarksView(
     var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
     var showAddDialog by remember { mutableStateOf(false) }
 
-    /** Reads the outline with [pass]; false if the document does not open with it. */
-    suspend fun extractBookmarks(uri: Uri, pass: String?): Boolean {
-        val outline = PdDocumentPool.withDocument(context, uri, pass) { document -> readOutline(document) to document.numberOfPages }
-            ?: return false
-        bookmarks = outline.first
-        pageCount = outline.second
-        unlockPassword = pass.orEmpty()
-        currentState = ToolState.CONFIGURING
-        return true
+    fun reset() {
+        selectedUri = null
+        unlockPassword = ""
+        bookmarks = emptyList()
+        currentState = ToolState.SELECTING
+    }
+
+    /** Reads the outline with [pass]; false if the document does not open with it. An unreadable outline is reported and resets. */
+    suspend fun extractBookmarks(uri: Uri, pass: String?): Boolean = when (val result = loadOutline(context, uri, pass)) {
+        is OutlineLoad.Loaded -> {
+            bookmarks = result.bookmarks
+            pageCount = result.pageCount
+            unlockPassword = pass.orEmpty()
+            currentState = ToolState.CONFIGURING
+            true
+        }
+        OutlineLoad.WrongPassword -> false
+        OutlineLoad.Unreadable -> {
+            Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+            fileToUnlock = null
+            reset()
+            true
+        }
     }
 
     fun handleFileSelection(uri: Uri) {
@@ -148,13 +161,6 @@ fun BookmarksView(
 
     LaunchedEffect(initialUri) {
         initialUri?.let { handleFileSelection(it) }
-    }
-
-    fun reset() {
-        selectedUri = null
-        unlockPassword = ""
-        bookmarks = emptyList()
-        currentState = ToolState.SELECTING
     }
 
     Scaffold(

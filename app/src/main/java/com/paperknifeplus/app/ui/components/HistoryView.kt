@@ -1,6 +1,5 @@
 package com.paperknifeplus.app.ui.components
 
-import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -34,14 +33,14 @@ import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-/** Whether [entry]'s output opens in the PDF reader: it has a file and its provider reports a PDF (ZIP exports do not open). */
-internal fun canOpenInReader(resolver: ContentResolver, entry: ActivityEntry): Boolean =
-    entry.uri?.let { historyEntryMime(resolver, it) == "application/pdf" } ?: false
+/** Whether an entry whose output has type [mime] opens in the PDF reader (ZIP exports and file-less entries do not). */
+internal fun canOpenInReader(mime: String?): Boolean = mime == "application/pdf"
 
-/** The share intent for [entry]'s output, typed as its provider reports it; null when the entry has no file (e.g. PDF to Text). */
-internal fun historyShareIntent(resolver: ContentResolver, entry: ActivityEntry): Intent? =
-    entry.uri?.let { ScanExport.shareIntent(it, entry.name, historyEntryMime(resolver, it)) }
+/** The share intent for [entry]'s output of type [mime]; null when the entry has no file (e.g. PDF to Text). */
+internal fun historyShareIntent(entry: ActivityEntry, mime: String): Intent? = entry.uri?.let { ScanExport.shareIntent(it, entry.name, mime) }
 
 @Composable
 fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
@@ -154,17 +153,20 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
-                    val canOpen = remember(item.uri) { canOpenInReader(context.contentResolver, item) }
-                    val shareIntent = remember(item.uri) { historyShareIntent(context.contentResolver, item) }
+                    // The provider is asked for the type once per entry, off the main thread.
+                    val mime by produceState<String?>(null, item.uri) {
+                        value = item.uri?.let { withContext(Dispatchers.IO) { historyEntryMime(context.contentResolver, it) } }
+                    }
                     HistoryItem(
                         item,
-                        canOpen = canOpen,
+                        canOpen = canOpenInReader(mime),
                         onClick = { item.uri?.let { uri -> onItemClick(uri, item.name, item.pageCount) } },
                         // Sharing doubles as "Save to Files", the most reliable way to export on Android.
-                        onShare = shareIntent?.let { intent ->
+                        onShare = if (item.uri == null) null else {
                             {
+                                val intent = historyShareIntent(item, mime ?: historyEntryMime(context.contentResolver, item.uri))
                                 try {
-                                    context.startActivity(Intent.createChooser(intent, "Save or Share PDF"))
+                                    intent?.let { context.startActivity(Intent.createChooser(it, "Save or Share PDF")) }
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Cannot export file", Toast.LENGTH_SHORT).show()
                                 }
