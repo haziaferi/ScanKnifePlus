@@ -31,18 +31,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
-import com.paperknifeplus.app.data.image.PdfPageFetcher
+import coil.memory.MemoryCache
+import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import com.paperknifeplus.app.ui.theme.PaperPink
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.text.PDFTextStripper
-import kotlinx.coroutines.Dispatchers
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.toSize
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import androidx.compose.ui.text.input.ImeAction
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -63,21 +60,15 @@ fun PageLightbox(
     val scope = rememberCoroutineScope()
     
     var showJumpDialog by remember { mutableStateOf(false) }
-    var jumpPageInput by remember { mutableStateOf("") }
 
-    // Dedicated High-Res Loader for Lightbox
+    // The shared loader's fetcher and keyer with a larger cache of its own for the 2x pages shown here.
     val imageLoader = remember {
-        ImageLoader.Builder(context)
-            .components { add(PdfPageFetcher.Factory(context)) }
-            .memoryCache {
-                coil.memory.MemoryCache.Builder(context)
-                    .maxSizePercent(0.40)
-                    .build()
-            }
+        PdfImageLoader.get(context).newBuilder()
+            .memoryCache { MemoryCache.Builder(context).maxSizePercent(0.40).build() }
             .build()
     }
 
-    // NITRO: Track zoom per page
+    // Paging is disabled while the current page is zoomed, so horizontal drags pan it instead.
     val zoomLevels = remember { mutableStateMapOf<Int, Float>() }
     val isCurrentPageZoomed by remember {
         derivedStateOf { (zoomLevels[pagerState.currentPage] ?: 1f) > 1.01f }
@@ -104,20 +95,19 @@ fun PageLightbox(
                 }
                 
                 var scale by remember { mutableFloatStateOf(1f) }
-                var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+                var offset by remember { mutableStateOf(Offset.Zero) }
                 
                 LaunchedEffect(scale) {
                     zoomLevels[pageIndex] = scale
                 }
 
-                // Smooth Animation
                 val animatedScale by animateFloatAsState(targetValue = scale, label = "scale")
                 val animatedOffset by animateOffsetAsState(targetValue = offset, label = "offset")
 
                 LaunchedEffect(pagerState.currentPage) {
                     if (pagerState.currentPage != pageIndex) {
                         scale = 1f
-                        offset = androidx.compose.ui.geometry.Offset.Zero
+                        offset = Offset.Zero
                     }
                 }
 
@@ -127,17 +117,7 @@ fun PageLightbox(
                 ) {
                     val state = rememberTransformableState { zoomChange, offsetChange, _ ->
                         scale = (scale * zoomChange).coerceIn(1f, 4f)
-                        if (scale > 1f) {
-                            val maxX = (constraints.maxWidth * (scale - 1) / 2)
-                            val maxY = (constraints.maxHeight * (scale - 1) / 2)
-                            val newOffset = offset + offsetChange
-                            offset = androidx.compose.ui.geometry.Offset(
-                                newOffset.x.coerceIn(-maxX, maxX),
-                                newOffset.y.coerceIn(-maxY, maxY)
-                            )
-                        } else {
-                            offset = androidx.compose.ui.geometry.Offset.Zero
-                        }
+                        offset = zoomPanClamp(offset + offsetChange, Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()), scale)
                     }
 
                     Box(
@@ -148,12 +128,10 @@ fun PageLightbox(
                                     onDoubleTap = { tapOffset ->
                                         if (scale > 1.01f) {
                                             scale = 1f
-                                            offset = androidx.compose.ui.geometry.Offset.Zero
+                                            offset = Offset.Zero
                                         } else {
                                             scale = 2.5f
-                                            val x = (size.width / 2 - tapOffset.x) * (2.5f - 1f)
-                                            val y = (size.height / 2 - tapOffset.y) * (2.5f - 1f)
-                                            offset = androidx.compose.ui.geometry.Offset(x, y)
+                                            offset = doubleTapZoomOffset(tapOffset, size.toSize(), scale)
                                         }
                                     }
                                 )
@@ -179,10 +157,10 @@ fun PageLightbox(
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit,
-                                colorFilter = if (isGrayscale) androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(0f) }) else null
+                                colorFilter = if (isGrayscale) GrayscaleColorFilter else null
                             )
                             
-                            // PRO: Apply tool overlay (page numbers, etc) inside the zoomable layer
+                            // Inside the zoomed layer, so tool overlays (page numbers etc.) zoom with the page.
                             itemOverlay?.invoke(this, pageIndex)
                         }
 
@@ -193,7 +171,6 @@ fun PageLightbox(
                 }
             }
 
-            // Top Bar
             Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -226,10 +203,7 @@ fun PageLightbox(
                         }
                         Spacer(Modifier.width(8.dp))
                         Surface(
-                            onClick = { 
-                                jumpPageInput = (pagerState.currentPage + 1).toString()
-                                showJumpDialog = true 
-                            },
+                            onClick = { showJumpDialog = true },
                             color = Color.White.copy(0.1f), 
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -245,45 +219,15 @@ fun PageLightbox(
                 }
             }
             
-            // Jump to Page Dialog
             if (showJumpDialog) {
-                AlertDialog(
-                    onDismissRequest = { showJumpDialog = false },
-                    title = { Text("Go to Page", fontWeight = FontWeight.Black) },
-                    text = {
-                        OutlinedTextField(
-                            value = jumpPageInput,
-                            onValueChange = { if (it.all { char -> char.isDigit() }) jumpPageInput = it },
-                            label = { Text("Page Number (1-$totalCount)") },
-                            singleLine = true,
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
-                                imeAction = ImeAction.Go
-                            ),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = {
-                                val pageNum = jumpPageInput.toIntOrNull()
-                                if (pageNum != null && pageNum in 1..totalCount) {
-                                    scope.launch { pagerState.scrollToPage(pageNum - 1) }
-                                    showJumpDialog = false
-                                }
-                            })
-                        )
+                JumpToPageDialog(
+                    initialInput = (pagerState.currentPage + 1).toString(),
+                    pageCount = totalCount,
+                    onJump = { index ->
+                        scope.launch { pagerState.scrollToPage(index) }
+                        showJumpDialog = false
                     },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            val pageNum = jumpPageInput.toIntOrNull()
-                            if (pageNum != null && pageNum in 1..totalCount) {
-                                scope.launch { pagerState.scrollToPage(pageNum - 1) }
-                                showJumpDialog = false
-                            }
-                        }) { Text("GO", fontWeight = FontWeight.Black, color = PaperPink) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showJumpDialog = false }) { Text("CANCEL", color = Color.Gray) }
-                    },
-                    shape = RoundedCornerShape(28.dp),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 6.dp
+                    onDismiss = { showJumpDialog = false }
                 )
             }
             
@@ -313,7 +257,6 @@ fun PageLightbox(
                 bottomBar?.invoke(this, pagerState.currentPage)
             }
 
-            // Navigation
             if (bottomBar == null) {
                 Row(
                     modifier = Modifier
