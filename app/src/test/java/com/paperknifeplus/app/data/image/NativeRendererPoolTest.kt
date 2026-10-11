@@ -3,11 +3,13 @@ package com.paperknifeplus.app.data.image
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -99,6 +101,9 @@ class NativeRendererPoolTest {
         }
         holding.await()
         val waiter = launch(Dispatchers.Default) { assertSame(opened("a").single(), pool.use("a") { it }) }
+        delay(200) // The waiter is parked by now; it must not have opened a second renderer.
+        assertEquals(1, opened("a").size)
+        assertFalse(waiter.isCompleted)
         done.complete(Unit)
         withTimeout(10_000) { holder.join(); waiter.join() }
         assertEquals(1, opened("a").size)
