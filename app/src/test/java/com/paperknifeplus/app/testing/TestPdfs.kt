@@ -7,8 +7,12 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -21,6 +25,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
 import java.io.ByteArrayOutputStream
@@ -156,3 +161,16 @@ class ComposeSnapshotPump : ExternalResource() {
         handle?.dispose()
     }
 }
+
+/*
+ * Compose test rules whose effect coroutines (LaunchedEffect, rememberCoroutineScope) resume on the test's main thread, as they do on Main in
+ * the app. Compose 1.6's default unconfined test dispatcher resumes a screen's coroutine on the IO thread its withContext ran on, so it writes
+ * UI state there, racing main-thread recomposition; now and then a write was never recomposed and the screen stayed on old state. For tests
+ * that wait on a tool screen's file loading; not for screens with endless animations, which a standard test dispatcher never idles.
+ */
+
+@OptIn(ExperimentalTestApi::class)
+fun mainThreadComposeRule() = createComposeRule(StandardTestDispatcher())
+
+@OptIn(ExperimentalTestApi::class)
+inline fun <reified A : ComponentActivity> mainThreadAndroidComposeRule() = createAndroidComposeRule(A::class.java, StandardTestDispatcher())

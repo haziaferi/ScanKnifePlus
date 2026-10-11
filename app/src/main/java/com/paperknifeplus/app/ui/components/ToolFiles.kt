@@ -59,9 +59,14 @@ fun deleteDecryptedCopy(context: Context, uri: Uri?): Boolean {
     return file.delete()
 }
 
-/** Deletes decrypted copies and legacy preview files left directly in [cacheDir] by earlier sessions; subfolders are not touched. */
-fun sweepDecryptedCopies(cacheDir: File): Int =
-    cacheDir.listFiles().orEmpty().count { it.isFile && (DECRYPTED_COPY.matches(it.name) || LEGACY_PREVIEW.matches(it.name)) && it.delete() }
+/**
+ * Deletes decrypted copies and legacy preview files left directly in [cacheDir] by earlier sessions, those last modified at least [minAgeMs]
+ * before [now]; subfolders are not touched.
+ */
+fun sweepDecryptedCopies(cacheDir: File, minAgeMs: Long = 0, now: Long = System.currentTimeMillis()): Int =
+    cacheDir.listFiles().orEmpty().count {
+        it.isFile && (DECRYPTED_COPY.matches(it.name) || LEGACY_PREVIEW.matches(it.name)) && now - it.lastModified() >= minAgeMs && it.delete()
+    }
 
 /** Seconds between [startMs] and [endMs] as the tool screens show it, e.g. "1.5s", in the default locale as before. */
 fun formatElapsed(startMs: Long, endMs: Long = System.currentTimeMillis()): String =
