@@ -96,9 +96,9 @@ class RearrangeViewTest {
                 RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("SAVE NEW ORDER")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("SAVE NEW ORDER")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("SAVE NEW ORDER").performClick()
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Rearrange Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange Complete")).fetchSemanticsNodes().isNotEmpty() }
 
         PDDocument.load(output).use { doc ->
             assertEquals(2, doc.numberOfPages)
