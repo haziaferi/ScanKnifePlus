@@ -260,7 +260,7 @@ fun SplitView(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
                                     mode = PreviewMode.GRID,
-                                    password = null, 
+                                    password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
                                     accentColor = accentColor,
                                     selectedPages = selectedPages,
                                     onToggleSelection = { index ->
@@ -363,3 +363,10 @@ fun SplitView(
         }
     }
 }
+
+/**
+ * The password page previews need: none for the decrypted cache copy (so the fast native renderer is used), and the unlock password
+ * when Split works on the original encrypted file, as it does when the preview hands over a password.
+ */
+internal fun splitPreviewPassword(selectedUri: Uri?, decryptedUri: Uri?, unlockPassword: String): String? =
+    if (selectedUri != null && selectedUri == decryptedUri) null else unlockPassword.ifEmpty { null }
