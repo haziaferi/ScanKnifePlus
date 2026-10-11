@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,7 +16,10 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class AboutViewTest {
-    @get:Rule
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun pressBack() = rule.runOnUiThread { rule.activity.onBackPressedDispatcher.onBackPressed() }

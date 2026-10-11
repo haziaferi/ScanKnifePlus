@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
 import org.junit.Assert.assertEquals
+import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,7 +23,10 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class LockedFilePromptTest {
-    @get:Rule
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
     val rule = createComposeRule()
 
     private fun shows(text: String) = SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(text))

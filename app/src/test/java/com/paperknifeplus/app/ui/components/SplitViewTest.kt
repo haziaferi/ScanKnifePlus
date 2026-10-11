@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
@@ -18,7 +19,10 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SplitViewTest {
-    @get:Rule
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
     val rule = createComposeRule()
 
     private val context: Context = ApplicationProvider.getApplicationContext()

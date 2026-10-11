@@ -4,7 +4,11 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
+import androidx.compose.runtime.snapshots.ObserverHandle
+import androidx.compose.runtime.snapshots.Snapshot
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -13,6 +17,7 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -98,5 +103,32 @@ object TestPdfs {
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
         override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
         override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+}
+
+/**
+ * Applies global snapshot writes on this test's main looper. Compose starts its own applier once per JVM on the first test's looper; after
+ * Robolectric resets that looper, a snapshot write in a later non-Compose test (e.g. History entries) strands it, and every following
+ * Compose test then never goes idle. Put it before the Compose rule: `@get:Rule(order = 0)`.
+ */
+class ComposeSnapshotPump : ExternalResource() {
+    private var handle: ObserverHandle? = null
+
+    override fun before() {
+        val handler = Handler(Looper.getMainLooper())
+        var scheduled = false
+        handle = Snapshot.registerGlobalWriteObserver {
+            if (!scheduled) {
+                scheduled = true
+                handler.post {
+                    scheduled = false
+                    Snapshot.sendApplyNotifications()
+                }
+            }
+        }
+    }
+
+    override fun after() {
+        handle?.dispose()
     }
 }
