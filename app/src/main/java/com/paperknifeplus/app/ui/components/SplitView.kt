@@ -1,39 +1,28 @@
 package com.paperknifeplus.app.ui.components
 
-import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,49 +35,56 @@ fun SplitView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
+    val isDark = LocalIsDarkTheme.current
     val accentColor = Color(0xFFF43F5E)
 
-    var currentState by remember { mutableStateOf<ToolState>(ToolState.SELECTING) }
+    var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf(initialPassword ?: "") }
     var rangeText by remember { mutableStateOf("") }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    
+
     var fileName by remember { mutableStateOf("") }
-    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
-    var showLoadingWarning by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
+    var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
+    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+
+    fun dropDecryptedCopy() {
+        deleteDecryptedCopy(context, decryptedUri)
+        decryptedUri = null
+    }
+    DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
     fun handleFileSelection(uri: Uri, password: String? = null) {
+        dropDecryptedCopy()
         selectedUri = uri
-        val details = getUriDetails(context, uri)
-        fileName = details.name
-        fileSize = details.size
+        fileName = getUriDetails(context, uri).name
+        unlockError = false
         isFileLoading = true
-        scope.launch(Dispatchers.IO) {
-            val isEncrypted = checkIsEncryptedLocal(context, uri)
-            if (isEncrypted && password == null) {
-                withContext(Dispatchers.Main) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
+        scope.launch {
+            val access = inspectPdf(context, uri)
+            when {
+                access == PdfAccess.Unreadable -> {
+                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
                 }
-            } else {
-                val count = getPageCount(context, uri, password)
-                withContext(Dispatchers.Main) {
-                    pageCount = count
+                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
+                else -> {
+                    pageCount = getPageCount(context, uri, password)
                     selectedPages = emptySet()
                     rangeText = ""
                     currentState = ToolState.CONFIGURING
-                    isFileLoading = false
                 }
             }
+            isFileLoading = false
         }
     }
 
@@ -96,132 +92,70 @@ fun SplitView(
         initialUri?.let { handleFileSelection(it, initialPassword) }
     }
 
-    LaunchedEffect(isFileLoading, currentState) {
-        if (isFileLoading || currentState == ToolState.PROCESSING) {
-            delay(5000)
-            showLoadingWarning = true
-        } else {
-            showLoadingWarning = false
-        }
-    }
-
-    // Range Parser
-    fun parseRange(input: String, max: Int): Set<Int> {
-        val pages = mutableSetOf<Int>()
-        try {
-            input.split(",").forEach { part ->
-                if (part.contains("-")) {
-                    val split = part.split("-")
-                    val start = split[0].trim().toInt().coerceIn(1, max)
-                    val end = split[1].trim().toInt().coerceIn(1, max)
-                    for (i in start..end) pages.add(i - 1)
-                } else {
-                    val p = part.trim().toIntOrNull()
-                    if (p != null && p in 1..max) pages.add(p - 1)
-                }
-            }
-        } catch (e: Exception) {}
-        return pages
-    }
-
-    // Set to Range String
-    fun generateRangeString(pages: Set<Int>): String {
-        if (pages.isEmpty()) return ""
-        val sorted = pages.toList().sorted()
-        val result = mutableListOf<String>()
-        var start = sorted[0]
-        var prev = start
-        
-        for (i in 1 until sorted.size) {
-            if (sorted[i] == prev + 1) {
-                prev = sorted[i]
-            } else {
-                if (start == prev) result.add("${start + 1}")
-                else result.add("${start + 1}-${prev + 1}")
-                start = sorted[i]
-                prev = start
-            }
-        }
-        if (start == prev) result.add("${start + 1}")
-        else result.add("${start + 1}-${prev + 1}")
-        
-        return result.joinToString(", ")
-    }
-
     val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { handleFileSelection(it) }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        uri?.let { saveUri ->
-            currentState = ToolState.PROCESSING
-            val startTime = System.currentTimeMillis()
-            scope.launch(Dispatchers.IO) {
-                try {
-                    withContext(Dispatchers.Main) { progressCount = 0 }
-                    context.contentResolver.openInputStream(selectedUri!!)?.use { inputStream ->
-                        val document = if (unlockPassword.isNotEmpty()) PDDocument.load(inputStream, unlockPassword) else PDDocument.load(inputStream)
-                        val newDocument = PDDocument()
-                        
-                        selectedPages.toList().sorted().forEach { index ->
-                            if (index < document.numberOfPages) {
-                                newDocument.addPage(document.getPage(index))
-                                withContext(Dispatchers.Main) { progressCount++ }
+        val source = selectedUri
+        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        currentState = ToolState.PROCESSING
+        val startTime = System.currentTimeMillis()
+        val pages = selectedPages
+        scope.launch(Dispatchers.IO) {
+            try {
+                withContext(Dispatchers.Main) { progressCount = 0 }
+                context.contentResolver.requireInputStream(source).use { input ->
+                    PDDocument.load(input, unlockPassword).use { document ->
+                        PDDocument().use { target ->
+                            pages.sorted().forEach { index ->
+                                if (index < document.numberOfPages) {
+                                    target.appendPageFrom(document.getPage(index))
+                                    withContext(Dispatchers.Main) { progressCount++ }
+                                }
                             }
+                            saveAndFlush(context, target, uri)
                         }
-                        
-                        saveAndFlush(context, newDocument, saveUri)
-                        document.close()
                     }
-                    val endTime = System.currentTimeMillis()
-                    val timeStr = String.format("%.1fs", (endTime - startTime) / 1000.0)
-                    val finalCount = getPageCount(context, saveUri, null)
-                    withContext(Dispatchers.Main) {
-                        processingTime = timeStr
-                        outputUri = saveUri
-                        fileName = getUriDetails(context, saveUri).name
-                        SessionManager.addEntry(fileName, "Split", "${selectedPages.size} pages extracted", Icons.Filled.ContentCut, saveUri, finalCount)
-                        currentState = ToolState.SUCCESS
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                        currentState = ToolState.CONFIGURING
-                    }
+                }
+                val timeStr = formatElapsed(startTime)
+                val finalCount = getPageCount(context, uri, null)
+                withContext(Dispatchers.Main) {
+                    processingTime = timeStr
+                    outputUri = uri
+                    fileName = getUriDetails(context, uri).name
+                    SessionManager.addEntry(fileName, "Split", "${pages.size} pages extracted", Icons.Filled.ContentCut, uri, finalCount)
+                    currentState = ToolState.SUCCESS
+                }
+            } catch (e: CancellationException) {
+                deleteCreatedDocument(context, uri)
+                throw e
+            } catch (e: Exception) {
+                Log.w("SplitView", "Split failed", e)
+                deleteCreatedDocument(context, uri)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    currentState = ToolState.CONFIGURING
                 }
             }
         }
     }
 
-    LaunchedEffect(Unit) { PDFBoxResourceLoader.init(context) }
-
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    tonalElevation = 2.dp
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Split", fontSize = 16.sp, fontWeight = FontWeight.Black)
-                            Text("EXTRACT PAGES FROM PDF", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                        }
-                        if (selectedUri != null && currentState == ToolState.CONFIGURING) {
-                            TextButton(onClick = { selectedUri = null; currentState = ToolState.SELECTING }) {
-                                Text("CHANGE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Gray)
-                            }
-                        }
+                ToolTopBar(
+                    title = "Split",
+                    subtitle = "EXTRACT PAGES FROM PDF",
+                    accent = accentColor,
+                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
+                    onBack = onBack,
+                    onChange = {
+                        dropDecryptedCopy()
+                        selectedUri = null
+                        currentState = ToolState.SELECTING
                     }
-                }
+                )
             }
         }
     ) { padding ->
@@ -243,7 +177,6 @@ fun SplitView(
                     }
                     ToolState.CONFIGURING -> {
                         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                            // Header Info
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -261,7 +194,6 @@ fun SplitView(
                                 }
                             }
 
-                            // Batch Selection Row
                             AnimatedVisibility(visible = !showRangeInput) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
@@ -271,7 +203,7 @@ fun SplitView(
                                         onClick = { 
                                             val all = (0 until pageCount).toSet()
                                             selectedPages = all
-                                            rangeText = generateRangeString(all)
+                                            rangeText = PageRanges.format(all)
                                         },
                                         modifier = Modifier.weight(1f).height(36.dp),
                                         shape = RoundedCornerShape(10.dp),
@@ -306,7 +238,7 @@ fun SplitView(
                                             value = rangeText,
                                             onValueChange = { 
                                                 rangeText = it
-                                                selectedPages = parseRange(it, pageCount)
+                                                selectedPages = PageRanges.parse(it, pageCount)
                                             },
                                             label = { Text("Example: 1-5, 8, 11-13") },
                                             modifier = Modifier.fillMaxWidth(),
@@ -334,14 +266,13 @@ fun SplitView(
                                     onToggleSelection = { index ->
                                         val newSet = if (selectedPages.contains(index)) selectedPages - index else selectedPages + index
                                         selectedPages = newSet
-                                        rangeText = generateRangeString(newSet)
+                                        rangeText = PageRanges.format(newSet)
                                     }
                                 )
                             }
                             
-                            // PRIMARY BUTTON: Fixed background and white text
                             Button(
-                                onClick = { saveLauncher.launch(fileName.replace(".pdf", "", true) + "-split.pdf") }, 
+                                onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-split.pdf") }, 
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 
                                 enabled = selectedPages.isNotEmpty(),
                                 shape = RoundedCornerShape(20.dp), 
@@ -372,6 +303,7 @@ fun SplitView(
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { 
+                                dropDecryptedCopy()
                                 selectedUri = null
                                 outputUri = null
                                 unlockPassword = ""
@@ -388,40 +320,42 @@ fun SplitView(
                             accentColor = accentColor
                         )
                     }
-                    else -> {}
                 }
             }
 
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = {
+                        fileToUnlock = null
+                        unlockError = false
+                        selectedUri = null
+                        currentState = ToolState.SELECTING
+                    },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch(Dispatchers.IO) {
-                            val decryptedUri = decryptToCache(context, selectedUri!!, pass)
-                            if (decryptedUri != null) {
-                                val count = getPageCount(context, decryptedUri, null)
-                                withContext(Dispatchers.Main) { 
-                                    if (count > 0) {
-                                        unlockPassword = pass
-                                        selectedUri = decryptedUri
-                                        pageCount = count
-                                        currentState = ToolState.CONFIGURING
-                                        fileToUnlock = null
-                                    } else {
-                                        Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    }
-                                    isFileLoading = false 
+                        val source = selectedUri
+                        if (source != null) {
+                            isFileLoading = true
+                            scope.launch {
+                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
+                                val copy = decryptToCache(context, source, pass)
+                                val count = copy?.let { getPageCount(context, it, null) } ?: 0
+                                if (copy != null && count > 0) {
+                                    decryptedUri = copy
+                                    unlockPassword = pass
+                                    selectedUri = copy
+                                    pageCount = count
+                                    currentState = ToolState.CONFIGURING
+                                    fileToUnlock = null
+                                } else {
+                                    deleteDecryptedCopy(context, copy)
+                                    unlockError = true
                                 }
-                            } else {
-                                withContext(Dispatchers.Main) { 
-                                    Toast.makeText(context, "Invalid Password", Toast.LENGTH_SHORT).show()
-                                    isFileLoading = false 
-                                }
+                                isFileLoading = false
                             }
                         }
                     },
+                    isError = unlockError,
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
