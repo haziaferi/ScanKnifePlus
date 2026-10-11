@@ -154,8 +154,10 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
             ) {
                 items(filteredItems, key = { it.id }) { item ->
                     // The provider is asked for the type once per entry, off the main thread.
-                    val mime by produceState<String?>(null, item.uri) {
-                        value = item.uri?.let { withContext(Dispatchers.IO) { historyEntryMime(context.contentResolver, it) } }
+                    var mime by remember(item.uri) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(item.uri) {
+                        val uri = item.uri
+                        if (uri != null) mime = withContext(Dispatchers.IO) { historyEntryMime(context.contentResolver, uri) }
                     }
                     HistoryItem(
                         item,
