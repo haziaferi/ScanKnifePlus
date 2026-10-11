@@ -9,7 +9,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,9 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -33,14 +30,24 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.core.*
+import androidx.activity.compose.BackHandler
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onBack: () -> Unit) {
-    val context = LocalContext.current
     var currentSubPage by remember { mutableStateOf(initialPage) }
+    // The arrow and system Back agree: sub-pages return to the main page, except those opened straight from Settings.
+    val handleBack: () -> Unit = {
+        if (currentSubPage == "main" || (isFromSettings && (currentSubPage == "hall" || currentSubPage == "support"))) {
+            onBack()
+        } else {
+            currentSubPage = "main"
+        }
+    }
+    BackHandler(enabled = currentSubPage != "main", onBack = handleBack)
 
     Scaffold(
         topBar = {
@@ -52,17 +59,7 @@ fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onB
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { 
-                        if (currentSubPage == "main") {
-                            onBack()
-                        } else {
-                            if (isFromSettings && (currentSubPage == "hall" || currentSubPage == "support")) {
-                                onBack()
-                            } else {
-                                currentSubPage = "main"
-                            }
-                        }
-                    },
+                    onClick = handleBack,
                     modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), CircleShape)
                 ) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
@@ -101,8 +98,8 @@ fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onB
 @Composable
 fun AboutMain(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
-    val isDark = MaterialTheme.colorScheme.background == Color.Black
-    
+    val isDark = LocalIsDarkTheme.current
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
@@ -170,15 +167,14 @@ fun AboutMain(onNavigate: (String) -> Unit) {
 
         item {
             AboutSection("CONNECT") {
-                val isDarkTheme = MaterialTheme.colorScheme.background == Color.Black
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    SocialIcon(painterResource(R.drawable.ic_github), "GitHub", if (isDarkTheme) Color.White else Color(0xFF24292E)) {
+                    SocialIcon(painterResource(R.drawable.ic_github), "GitHub", if (isDark) Color.White else Color(0xFF24292E)) {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/potatameister")))
                     }
-                    SocialIcon(painterResource(R.drawable.ic_x), "X", if (isDarkTheme) Color.White else Color(0xFF000000)) {
+                    SocialIcon(painterResource(R.drawable.ic_x), "X", if (isDark) Color.White else Color(0xFF000000)) {
                         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/potatameister")))
                     }
                     SocialIcon(painterResource(R.drawable.ic_discord), "Discord", Color(0xFF5865F2)) {
@@ -197,7 +193,7 @@ fun AboutMain(onNavigate: (String) -> Unit) {
         
         item {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("PaperKnife+ V1.1", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("PaperKnife+ V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
         }
         
@@ -263,7 +259,7 @@ fun SupportPage() {
             Text("WAYS TO HELP", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.2.sp)
             Spacer(Modifier.height(8.dp))
             
-            val isDark = MaterialTheme.colorScheme.background == Color.Black
+            val isDark = LocalIsDarkTheme.current
             val coffeeBg = if (isDark) Color(0xFF3D3520) else Color(0xFFFFF9C4)
             val coffeeBorder = if (isDark) Color(0xFF5D5020) else Color(0xFFFFEB3B)
             val coffeeIconBg = if (isDark) Color(0xFF5D5020) else Color(0xFFFFEB3B)
@@ -326,173 +322,72 @@ fun SupportPage() {
 
 @Composable
 fun LibrariesPage() {
+    val violet = Color(0xFF8B5CF6)
+    val green = Color(0xFF10B981)
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        item { LibrarySectionHeader(Icons.Filled.Settings, "CORE ENGINE", PaperPink, first = true) }
+        item { LibraryRow(Icons.Filled.Description, "PDFBox-Android", "Apache 2.0", "The native heart of our engine", PaperPink) }
+        item { LibraryRow(Icons.Filled.Bolt, "Kotlin Coroutines", "Apache 2.0", "Powering our multi-threaded rendering engine", PaperPink) }
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Settings, null, tint = PaperPink, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("CORE ENGINE", fontSize = 10.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.2.sp)
-            }
+            LibraryRow(
+                Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
+                "Document scanner, ported from OpenScan. Copyright (c) 2021, Vijay T S and Vikram H", PaperPink
+            )
         }
-        
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(36.dp).background(PaperPink.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Description, null, tint = PaperPink, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("PDFBox-Android", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("[Apache 2.0]", fontSize = 9.sp, color = PaperPink, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("The native heart of our engine", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-        
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(36.dp).background(PaperPink.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Bolt, null, tint = PaperPink, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Kotlin Coroutines", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("[Apache 2.0]", fontSize = 9.sp, color = PaperPink, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("Powering our multi-threaded rendering engine", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-        
-        item {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Palette, null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("UI & DESIGN", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color(0xFF8B5CF6), letterSpacing = 1.2.sp)
-            }
-        }
-        
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(36.dp).background(Color(0xFF8B5CF6).copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.TouchApp, null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Jetpack Compose", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("[Apache 2.0]", fontSize = 9.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("Modern UI toolkit for native Android", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-        
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(36.dp).background(Color(0xFF8B5CF6).copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Style, null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Material 3", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("[Apache 2.0]", fontSize = 9.sp, color = Color(0xFF8B5CF6), fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("Modern design system implementation", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-        
-        item {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Image, null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("MEDIA", fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color(0xFF10B981), letterSpacing = 1.2.sp)
-            }
-        }
-        
-        item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(36.dp).background(Color(0xFF10B981).copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.PhotoLibrary, null, tint = Color(0xFF10B981), modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Coil", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                            Spacer(Modifier.width(8.dp))
-                            Text("[MIT]", fontSize = 9.sp, color = Color(0xFF10B981), fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text("High-performance image loading engine", fontSize = 11.sp, color = Color.Gray)
-                    }
-                }
-            }
-        }
-        
+
+        item { LibrarySectionHeader(Icons.Filled.Palette, "UI & DESIGN", violet) }
+        item { LibraryRow(Icons.Filled.TouchApp, "Jetpack Compose", "Apache 2.0", "Modern UI toolkit for native Android", violet) }
+        item { LibraryRow(Icons.Filled.Style, "Material 3", "Apache 2.0", "Modern design system implementation", violet) }
+
+        item { LibrarySectionHeader(Icons.Filled.Image, "MEDIA", green) }
+        item { LibraryRow(Icons.Filled.PhotoLibrary, "Coil", "Apache 2.0", "High-performance image loading engine", green) }
+        item { LibraryRow(Icons.Filled.PhotoCamera, "CameraX", "Apache 2.0", "Camera capture for the document scanner", green) }
+
         item { Spacer(Modifier.height(100.dp)) }
+    }
+}
+
+@Composable
+private fun LibrarySectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, color: Color, first: Boolean = false) {
+    Column {
+        if (!first) Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(title, fontSize = 10.sp, fontWeight = FontWeight.Black, color = color, letterSpacing = 1.2.sp)
+        }
+    }
+}
+
+@Composable
+private fun LibraryRow(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String, license: String, description: String, color: Color) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
+            Box(
+                modifier = Modifier.size(36.dp).background(color.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("[$license]", fontSize = 9.sp, color = color, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(description, fontSize = 11.sp, color = Color.Gray)
+            }
+        }
     }
 }
 
