@@ -40,8 +40,9 @@ class ScanExport(
     fun fileName(document: ScanDocument): String = ExportNames.exportFileName(document.displayName, document.id) + ".pdf"
 
     /**
-     * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History.
-     * Returns what was saved, or null on failure, in which case the empty document the picker created is deleted again.
+     * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History; a
+     * [password] encrypts it as in [ScanPdfExporter.writePdf]. Returns what was saved, or null on failure, in which case the empty document the
+     * picker created is deleted again.
      */
     fun save(
         id: String,
@@ -50,9 +51,10 @@ class ScanExport(
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        password: String? = null,
     ): SavedPdf? {
         val resolver = context.contentResolver
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress) { pdf ->
+        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress, password) { pdf ->
             // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
             val out = (try {
                 resolver.openOutputStream(dest, "wt")
@@ -76,8 +78,9 @@ class ScanExport(
     }
 
     /**
-     * Writes document [id] (only [pageIds] if given) to a copy for sharing and returns its content URI, readable by whichever app [shareIntent]
-     * grants it to; null on failure. Copies more than a day old are removed first; newer ones stay, as a receiving app may still be reading them.
+     * Writes document [id] (only [pageIds] if given, encrypted for [password] if given) to a copy for sharing and returns its content URI,
+     * readable by whichever app [shareIntent] grants it to; null on failure. Copies more than a day old are removed first; newer ones stay, as
+     * a receiving app may still be reading them.
      */
     fun share(
         id: String,
@@ -85,6 +88,7 @@ class ScanExport(
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        password: String? = null,
     ): Uri? {
         val document = library.document(id) ?: return null
         val shareDir = ScanFiles.shareDir(context)
@@ -96,7 +100,7 @@ class ScanExport(
             return null
         }
         val target = File(folder, fileName(document))
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
+        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress, password) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
         if (pages == null) {
             folder.deleteRecursively()
             return null

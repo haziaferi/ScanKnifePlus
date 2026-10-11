@@ -27,6 +27,7 @@ class ScanPdfExporter(
      * Writes the pages [pageIds] of document [id] (all of them when null, in document order) as a PDF and hands the finished file to [deliver],
      * which must copy or move it before returning. Returns the number of pages written, or null if the document or every selected page is gone,
      * the PDF could not be written, or [deliver] returned false or threw; never throws. [onProgress] is called with (pages ready, total) as pages are prepared.
+     * With a [password] (null or empty for none) the PDF is encrypted with AES-256 as the Protect tool does, and opens only with it.
      */
     fun writePdf(
         id: String,
@@ -34,6 +35,7 @@ class ScanPdfExporter(
         quality: ExportQuality,
         size: PdfPageSize,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        password: String? = null,
         deliver: (File) -> Boolean,
     ): Int? {
         pruneStale()
@@ -47,7 +49,7 @@ class ScanPdfExporter(
                 val pages = selectedPages(id, pageIds) ?: return null
                 val staged = stage(id, pages, quality, work, onProgress) ?: return@repeat
                 val pdf = File(work, "export.pdf")
-                if (!assembler.write(staged, size, work, pdf)) return null
+                if (!assembler.write(staged, size, work, pdf, password?.ifEmpty { null })) return null
                 return if (deliver(pdf)) pages.size else null
             }
             return null

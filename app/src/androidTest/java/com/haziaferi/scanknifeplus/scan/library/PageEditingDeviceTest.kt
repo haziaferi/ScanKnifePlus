@@ -20,7 +20,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Filters and re-crops with the real codecs and scanner-core filters, on a device. */
+/** Filters, re-crops and turns with the real codecs and scanner-core filters, on a device. */
 @RunWith(AndroidJUnit4::class)
 class PageEditingDeviceTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -91,6 +91,26 @@ class PageEditingDeviceTest {
         assertColor(Color.rgb(240, 120, 20), pixel(turned, 0.5, 0.25), "top after a clockwise turn")
         assertColor(Color.rgb(20, 200, 40), pixel(turned, 0.5, 0.75), "bottom after a clockwise turn")
         assertEquals(page.original, turnedPage.original)
+    }
+
+    @Test
+    fun aTurnMovesEveryQuadrantClockwiseAndKeepsTheOriginal() {
+        val doc = library.create()
+        val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal = true)!!.document.pages.single()
+        val originalBytes = library.file(doc.id, page.original!!).readBytes()
+        val turnedPage = library.rotatePage(doc.id, page.id, 1)!!.pages.single()
+        val turned = library.file(doc.id, turnedPage.image)
+        assertEquals(PageSize(1600, 1200), ImageCodec.orientedSize(ImageSource.of(turned)))
+        assertColor(Color.rgb(30, 60, 200), pixel(turned, 0.25, 0.25), "top left after a clockwise turn")
+        assertColor(Color.rgb(240, 120, 20), pixel(turned, 0.75, 0.25), "top right")
+        assertColor(Color.WHITE, pixel(turned, 0.25, 0.75), "bottom left")
+        assertColor(Color.rgb(20, 200, 40), pixel(turned, 0.75, 0.75), "bottom right")
+        assertArrayEquals(originalBytes, library.file(doc.id, turnedPage.original!!).readBytes())
+
+        // A quarter turn back brings the page upright again.
+        val back = library.file(doc.id, library.rotatePage(doc.id, page.id, -1)!!.pages.single().image)
+        assertEquals(PageSize(1200, 1600), ImageCodec.orientedSize(ImageSource.of(back)))
+        assertColor(Color.rgb(240, 120, 20), pixel(back, 0.25, 0.25), "top left once upright again")
     }
 
     @Test

@@ -204,6 +204,29 @@ class ScanLibrary(
         }
     }
 
+    /**
+     * Turns page [pageId] clockwise by [quarterTurns] (negative turns count anticlockwise; a whole turn changes nothing), at the cost of one JPEG
+     * generation. Its unfiltered copy is turned with it, so a later filter change keeps the turn; the kept original stays as captured, since a
+     * re-crop takes its own turn. Returns the updated (or, with nothing to do, unchanged) document, or null, leaving the page as it was, if the
+     * page does not exist, an image could not be turned, or the page changed meanwhile.
+     */
+    fun rotatePage(id: String, pageId: String, quarterTurns: Int): ScanDocument? {
+        val (doc, page) = snapshot(id, pageId) ?: return null
+        val turns = quarterTurns.mod(4)
+        if (turns == 0) return doc
+        val reserved = reserve(id, if (page.unfiltered == null) listOf("") else listOf("", "unfilt_")) ?: return null
+        try {
+            val turned = reserved[0]
+            val unfiltered = reserved.getOrNull(1)
+            if (!images.rotate(file(id, page.image), turns, turned)) return discard(reserved)
+            if (unfiltered != null && !images.rotate(file(id, page.unfiltered!!), turns, unfiltered)) return discard(reserved)
+            val edited = page.copy(image = turned.name, unfiltered = unfiltered?.name)
+            return commit(id, page, edited, reserved, listOfNotNull(page.image, page.unfiltered))
+        } finally {
+            release(reserved)
+        }
+    }
+
     /** The document and its page [pageId], read under the lock. */
     private fun snapshot(id: String, pageId: String): Pair<ScanDocument, ScanPage>? = synchronized(LOCK) {
         val doc = document(id) ?: return null

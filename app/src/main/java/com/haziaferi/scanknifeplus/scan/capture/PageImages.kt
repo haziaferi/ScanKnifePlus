@@ -1,5 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.capture
 
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.util.Log
 import com.haziaferi.scanknifeplus.scanner.cv.PerspectiveCrop
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
@@ -20,6 +22,9 @@ interface PageImages {
 
     /** Writes [source] fitted to [maxEdge] at [quality] (OpenScan compress.dart normalizeImageIsolateEntry). */
     fun normalize(source: File, dest: File, maxEdge: Int, quality: Int): Boolean
+
+    /** Writes [source] turned clockwise by [quarterTurns] (1 to 3), pixel for pixel, at page quality. */
+    fun rotate(source: File, quarterTurns: Int, dest: File): Boolean
 }
 
 /**
@@ -47,6 +52,20 @@ object AndroidPageImages : PageImages {
         val image = ImageCodec.decodeScaled(ImageSource.of(source), 0) ?: return@attempt false
         StoredImage.flattenOntoWhite(image.pixels)
         ImageCodec.writeJpeg(StoredImage.fitToMaxEdge(image, maxEdge), dest, quality)
+    }
+
+    override fun rotate(source: File, quarterTurns: Int, dest: File): Boolean = attempt {
+        val upright = ImageCodec.decodeUpright(ImageSource.of(source)) ?: return@attempt false
+        var turned: Bitmap? = null
+        try {
+            // Unfiltered: a turn by quarters moves pixels without resampling them.
+            val matrix = Matrix().apply { setRotate(90f * quarterTurns) }
+            turned = Bitmap.createBitmap(upright, 0, 0, upright.width, upright.height, matrix, false)
+            ImageCodec.writeJpeg(turned, dest, StoredImage.PAGE_QUALITY)
+        } finally {
+            if (turned !== upright) turned?.recycle()
+            upright.recycle()
+        }
     }
 
     private inline fun attempt(block: () -> Boolean): Boolean = try {

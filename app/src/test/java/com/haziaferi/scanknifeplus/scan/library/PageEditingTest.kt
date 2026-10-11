@@ -11,6 +11,7 @@ import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -37,6 +38,8 @@ class PageEditingTest {
         }
 
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int) = op(dest) { "norm$maxEdge@$quality(${source.readText()})" }
+
+        override fun rotate(source: File, quarterTurns: Int, dest: File) = op(dest) { "turn$quarterTurns(${source.readText()})" }
 
         private fun op(dest: File, content: () -> String): Boolean {
             // Cleared before it runs, so a hook can arm the next operation.
@@ -203,6 +206,67 @@ class PageEditingTest {
         val recropped = library.recropPage(id, page.id, quad)!!.pages.single()
         assertEquals("norm3200@80(page)", text(id, recropped.original))
         assertEquals("crop0(page)", text(id, recropped.image))
+        assertEquals(recropped.files.toSet(), folderFiles(id))
+    }
+
+    @Test
+    fun `a turn writes a new page image and keeps the original as captured`() {
+        val (id, page) = newPage()
+        val turned = library.rotatePage(id, page.id, 1)!!.pages.single()
+        assertEquals("turn1(page)", text(id, turned.image))
+        assertTrue(turned.image != page.image)
+        assertEquals(page.original, turned.original)
+        assertEquals("original", text(id, turned.original))
+        assertEquals(turned.files.toSet(), folderFiles(id))
+    }
+
+    @Test
+    fun `a filtered page turns with its unfiltered copy, so Original keeps the turn`() {
+        val (id, page) = newPage()
+        val filtered = library.applyFilter(id, page.id, "B&W")!!.pages.single()
+        val turned = library.rotatePage(id, page.id, 2)!!.pages.single()
+        assertEquals("turn2(B&W(page))", text(id, turned.image))
+        assertEquals("turn2(page)", text(id, turned.unfiltered))
+        assertEquals("B&W", turned.filter)
+        assertTrue(turned.unfiltered != filtered.unfiltered)
+        assertEquals(turned.files.toSet(), folderFiles(id))
+        val restored = library.applyFilter(id, page.id, "Original")!!.pages.single()
+        assertEquals("turn2(page)", text(id, restored.image))
+        assertEquals("Grayscale(turn2(page))", text(id, library.applyFilter(id, page.id, "Grayscale")!!.pages.single().image))
+    }
+
+    @Test
+    fun `turns count modulo a whole turn, anticlockwise when negative`() {
+        val (id, page) = newPage()
+        now += 1000
+        val before = library.document(id)!!
+        assertEquals(before, library.rotatePage(id, page.id, 0))
+        assertEquals(before, library.rotatePage(id, page.id, -4))
+        assertEquals("turn3(page)", text(id, library.rotatePage(id, page.id, -1)!!.pages.single().image))
+        assertEquals("turn1(turn3(page))", text(id, library.rotatePage(id, page.id, 5)!!.pages.single().image))
+        assertNull(library.rotatePage(id, "missing", 1))
+    }
+
+    @Test
+    fun `a turn that fails on either image leaves the page and the folder as they were`() {
+        val (id, page) = newPage()
+        library.applyFilter(id, page.id, "Auto")
+        val filtered = library.document(id)!!.pages.single()
+        val before = folderFiles(id)
+        images.failNext = true
+        assertNull(library.rotatePage(id, page.id, 1))
+        images.meanwhile = { images.meanwhile = { images.failNext = true } } // the page turns, then its unfiltered copy fails
+        assertNull(library.rotatePage(id, page.id, 1))
+        assertEquals(filtered, library.document(id)!!.pages.single())
+        assertEquals(before, folderFiles(id))
+    }
+
+    @Test
+    fun `a re-crop after a turn starts again from the original`() {
+        val (id, page) = newPage()
+        library.rotatePage(id, page.id, 1)
+        val recropped = library.recropPage(id, page.id, quad)!!.pages.single()
+        assertEquals("crop0(original)", text(id, recropped.image))
         assertEquals(recropped.files.toSet(), folderFiles(id))
     }
 }

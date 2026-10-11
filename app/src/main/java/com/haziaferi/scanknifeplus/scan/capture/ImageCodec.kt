@@ -126,13 +126,26 @@ object ImageCodec {
      * [dest] is either the complete new page or untouched; false, leaving no temp file, if anything fails.
      */
     fun writeJpeg(image: RgbaImage, dest: File, quality: Int): Boolean {
-        val tmp = File(dest.parentFile, "${dest.name}.tmp")
         var bitmap: Bitmap? = null
         return try {
             val b = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888).also { bitmap = it }
             b.copyPixelsFromBuffer(ByteBuffer.wrap(image.pixels))
+            writeJpeg(b, dest, quality)
+        } catch (e: Exception) {
+            false
+        } catch (e: OutOfMemoryError) {
+            false
+        } finally {
+            bitmap?.recycle()
+        }
+    }
+
+    /** [writeJpeg] for a bitmap the caller owns and recycles. */
+    fun writeJpeg(bitmap: Bitmap, dest: File, quality: Int): Boolean {
+        val tmp = File(dest.parentFile, "${dest.name}.tmp")
+        return try {
             val written = FileOutputStream(tmp).use { out ->
-                b.compress(Bitmap.CompressFormat.JPEG, quality, out).also { if (it) out.fd.sync() }
+                bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out).also { if (it) out.fd.sync() }
             }
             written && tmp.renameTo(dest)
         } catch (e: Exception) {
@@ -140,7 +153,6 @@ object ImageCodec {
         } catch (e: OutOfMemoryError) {
             false
         } finally {
-            bitmap?.recycle()
             tmp.delete()
         }
     }

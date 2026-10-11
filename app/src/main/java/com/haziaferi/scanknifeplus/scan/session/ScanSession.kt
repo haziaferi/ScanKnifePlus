@@ -23,12 +23,16 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Where a page of a session came from: the camera's shutter or a gallery pick. */
 enum class ShotOrigin { CAMERA, IMPORT }
 
-/** A shot or picked image that could not be stored (OpenScan's "couldn't capture"); [seq] grows by one per shot, so a UI can tell new ones. */
+/**
+ * A shot or picked image that could not be stored (OpenScan's "couldn't capture"), kept until it is retried, dismissed or the session ends;
+ * [seq] grows by one per shot and per retry, so a UI can tell new ones.
+ */
 data class ShotFailure(val seq: Long, val origin: ShotOrigin)
 
 /**
  * What a scan session shows: the document it fills ([documentId] is null until a new document gets its first page), the ids of the pages
- * this session stored and still keeps, in shutter order, the shots still waiting to be stored, and every shot that could not be stored.
+ * this session stored and still keeps, in shutter order, the shots still waiting to be stored, and the shots that could not be stored and were
+ * neither retried nor dismissed.
  */
 data class ScanSessionState(
     val documentId: String? = null,
@@ -66,10 +70,11 @@ class ScanSession(
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "scan-session").apply { isDaemon = true } },
 ) : AutoCloseable {
     /** One shot in the queue. Fields are guarded by [lock]; [pageId] is set by the worker once the page is stored. */
-    private class Entry(val seq: Long, val origin: ShotOrigin, val source: ImageSource, val quad: Quad?, val shot: File?) {
+    private class Entry(var seq: Long, val origin: ShotOrigin, val source: ImageSource, val quad: Quad?, val shot: File?) {
         var pageId: String? = null
         var done = false
         var undone = false
+        var failed = false
     }
 
     private val lock = Any()
@@ -85,7 +90,6 @@ class ScanSession(
     /** Whether this session created [docId], and so may delete it when it ends up empty. */
     @Volatile private var created = false
 
-    private val failures = mutableListOf<ShotFailure>()
     private val _state = MutableStateFlow(ScanSessionState(documentId = documentId))
 
     /** The session as it stands; updated from the worker thread. */
@@ -98,8 +102,8 @@ class ScanSession(
 
     /**
      * Queues camera shot [shot] (a JPEG the camera wrote into [shotDir]) to be stored cropped to [quad] (fractional portrait coordinates, null
-     * for the whole image). Returns at once; the shot file is deleted once stored, failed or undone, or at once (returning false) if the session
-     * has already ended. A shot that cannot be stored shows up in [ScanSessionState.failures].
+     * for the whole image). Returns at once; the shot file is deleted once stored or undone, or at once (returning false) if the session has
+     * already ended. A shot that cannot be stored shows up in [ScanSessionState.failures] and keeps its file until [dismiss] or the session ends.
      */
     fun capture(shot: File, quad: Quad?): Boolean = enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), quad, shot)
 
@@ -125,6 +129,39 @@ class ScanSession(
     }
 
     /**
+     * Stores failed shot [failure] again (OpenScan has no retry: its failed shots are lost), as the newest shot of the session: its page is
+     * added after the pages stored so far and it is the next one [undoLast] takes back. If it fails again it comes back with a new seq. False if
+     * [failure] is not a current failure or the session has ended.
+     */
+    fun retry(failure: ShotFailure): Boolean = synchronized(lock) {
+        if (ending != null) return false
+        val entry = failed(failure) ?: return false
+        entry.failed = false
+        entry.done = false
+        entry.seq = nextSeq++
+        entries -= entry
+        entries += entry
+        worker.execute { process(entry) }
+        publish()
+        true
+    }
+
+    /** Gives up on failed shot [failure]: deletes its camera shot and drops it from [state]. False if it is not a current failure. */
+    fun dismiss(failure: ShotFailure): Boolean {
+        val entry = synchronized(lock) {
+            val entry = failed(failure) ?: return false
+            entries -= entry
+            publish()
+            entry
+        }
+        entry.shot?.delete()
+        return true
+    }
+
+    /** The entry of current failure [failure]; callers hold [lock]. */
+    private fun failed(failure: ShotFailure): Entry? = entries.firstOrNull { it.failed && it.seq == failure.seq && it.origin == failure.origin }
+
+    /**
      * Takes back the most recent page of this session, as OpenScan's undo does: a shot still waiting is dropped, one being stored is removed as
      * soon as it is, and a stored page is deleted from the document in the background (if that delete fails, the page comes back into
      * [state]). Pages the document had before the session are never touched. Returns false if the session has no page to take back.
@@ -140,8 +177,9 @@ class ScanSession(
     }
 
     /**
-     * Ends the session (Done): waits for every queued shot, deletes [shotDir] and, if this session created it and it has no page, the document,
-     * and returns the document with the number of pages kept. Later shots are refused, and an earlier ending stands. Blocking.
+     * Ends the session (Done): waits for every queued shot, deletes [shotDir] and the shots of failures and, if this session created it and it
+     * has no page, the document, and returns the document with the number of pages kept. Later shots are refused, and an earlier ending stands.
+     * Blocking.
      */
     @WorkerThread
     fun finish(): ScanSessionResult = end(SessionEnd.FINISHED)
@@ -172,6 +210,8 @@ class ScanSession(
             }
         }
         worker.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)
+        // Failed shots are kept for a retry until now; one the camera wrote outside the session folder would outlive it.
+        synchronized(lock) { entries.mapNotNull { it.shot } }.forEach { it.delete() }
         shotDir.deleteRecursively()
         synchronized(ACTIVE) { ACTIVE -= shotDir.absoluteFile }
         val id = docId
@@ -188,7 +228,7 @@ class ScanSession(
         }
     }
 
-    /** Runs on the worker: stores [entry] unless it was undone first, then gets rid of the shot file. */
+    /** Runs on the worker: stores [entry] unless it was undone first, then gets rid of the shot file unless the store failed. */
     private fun process(entry: Entry) {
         val skip = synchronized(lock) { entry.undone }
         var pageId: String? = null
@@ -200,15 +240,15 @@ class ScanSession(
                 null
             }
         }
-        entry.shot?.delete()
-        val undone = synchronized(lock) {
+        val (failed, undone) = synchronized(lock) {
             entry.pageId = pageId
             entry.done = true
             // A shot undone while it was being stored is no failure, whatever became of it.
-            if (pageId == null && !entry.undone) failures += ShotFailure(entry.seq, entry.origin)
+            entry.failed = pageId == null && !entry.undone
             publish()
-            entry.undone
+            entry.failed to entry.undone
         }
+        if (!failed) entry.shot?.delete()
         // Undone while it was being stored: the page was added all the same, and goes again now.
         if (pageId != null && undone) removeUndone(entry)
     }
@@ -248,7 +288,7 @@ class ScanSession(
             documentId = docId,
             pages = entries.filter { !it.undone }.mapNotNull { it.pageId },
             pending = entries.count { !it.undone && !it.done },
-            failures = failures.toList(),
+            failures = entries.filter { it.failed }.map { ShotFailure(it.seq, it.origin) },
             finished = finished,
         )
     }

@@ -30,8 +30,8 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * The scan session (OpenScan live_scan_screen.dart and directory_cubit.dart createImage). The fake capture writer stores a shot's own text as
- * the page, so each test can read back which shot became which page; a shot whose text contains "bad" cannot be stored, one with "slow" waits
- * for [gate] first, and filtering one with "held" waits for [filterGate].
+ * the page, so each test can read back which shot became which page; a shot whose text contains "bad" cannot be stored, one with "flaky" cannot
+ * be stored the first time only, one with "slow" waits for [gate] first, and filtering one with "held" waits for [filterGate].
  */
 @RunWith(RobolectricTestRunner::class)
 class ScanSessionTest {
@@ -43,6 +43,7 @@ class ScanSessionTest {
     private val entered = CountDownLatch(1)
     private val quads = Collections.synchronizedList(mutableListOf<Quad?>())
     private val originals = Collections.synchronizedList(mutableListOf<Boolean>())
+    private val flaked = Collections.synchronizedSet(mutableSetOf<String>())
 
     private val writer = CaptureWriter { source, quad, page, original ->
         val text = source.open().use { it.readBytes().decodeToString() }
@@ -52,7 +53,7 @@ class ScanSessionTest {
             entered.countDown()
             gate.await(10, TimeUnit.SECONDS)
         }
-        if ("bad" in text) {
+        if ("bad" in text || ("flaky" in text && flaked.add(text))) {
             null
         } else {
             page.writeText(text)
@@ -74,6 +75,7 @@ class ScanSessionTest {
         }
         override fun crop(source: File, quad: Quad, quarterTurns: Int, dest: File) = false
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int) = false
+        override fun rotate(source: File, quarterTurns: Int, dest: File) = false
     }
     private val scans = ScanLibrary(library, clock = { now++ }, capture = writer, images = images)
     private val quad = Quad(Pt(0.1, 0.1), Pt(0.9, 0.1), Pt(0.9, 0.9), Pt(0.1, 0.9))
@@ -393,6 +395,98 @@ class ScanSessionTest {
         s.undoLast()
         s.finish()
         handled.forEach { assertFalse(it.name, it.exists()) }
+    }
+
+    @Test
+    fun `a failed shot keeps its file for a retry`() {
+        val s = session()
+        val failed = s.shot("bad 1")
+        s.capture(failed, quad)
+        s.idle()
+        assertEquals(listOf(ShotFailure(0, ShotOrigin.CAMERA)), s.state.value.failures)
+        assertTrue(failed.exists())
+        s.cancel()
+    }
+
+    @Test
+    fun `a retried shot is stored as the newest page`() {
+        val s = session()
+        val flaky = s.shot("flaky 1")
+        s.capture(flaky, quad)
+        s.shoot("page 2")
+        s.idle()
+        val failure = s.state.value.failures.single()
+        assertTrue(s.retry(failure))
+        s.idle()
+        assertEquals(emptyList<ShotFailure>(), s.state.value.failures)
+        assertFalse(flaky.exists())
+        assertFalse(s.retry(failure)) // no longer a failure
+        val id = s.state.value.documentId
+        assertEquals(listOf("page 2", "flaky 1"), pages(id))
+        assertEquals(listOf(quad, quad, quad), quads) // retried with its own quad
+        assertTrue(s.undoLast()) // the retried page is the newest
+        assertEquals(ScanSessionResult(id, 1, SessionEnd.FINISHED), s.finish())
+        assertEquals(listOf("page 2"), pages(id))
+    }
+
+    @Test
+    fun `a retried import reads its image again`() {
+        val s = session()
+        s.import { "flaky import".byteInputStream() }
+        s.idle()
+        assertTrue(s.retry(s.state.value.failures.single()))
+        assertEquals(listOf("flaky import"), pages(s.finish().documentId))
+        assertEquals(emptyList<ShotFailure>(), s.state.value.failures)
+    }
+
+    @Test
+    fun `a retry that fails again comes back as a new failure`() {
+        val s = session()
+        val failed = s.shot("bad 1")
+        s.capture(failed, quad)
+        s.idle()
+        val first = s.state.value.failures.single()
+        assertTrue(s.retry(first))
+        s.idle()
+        val second = s.state.value.failures.single()
+        assertTrue(second.seq > first.seq)
+        assertFalse(s.retry(first))
+        assertFalse(s.dismiss(first))
+        assertTrue(failed.exists())
+        s.finish()
+        assertFalse(failed.exists())
+    }
+
+    @Test
+    fun `dismiss deletes the failed shot and drops it`() {
+        val s = session()
+        // Outside the session's folder, which ending the session would clear anyway.
+        val failed = root.resolve("bad 1.jpg").apply { writeText("bad 1") }
+        s.capture(failed, quad)
+        s.shoot("page 2")
+        s.idle()
+        val failure = s.state.value.failures.single()
+        assertTrue(s.dismiss(failure))
+        assertFalse(failed.exists())
+        assertEquals(emptyList<ShotFailure>(), s.state.value.failures)
+        assertFalse(s.dismiss(failure))
+        assertFalse(s.retry(failure))
+        assertEquals(listOf("page 2"), pages(s.finish().documentId))
+    }
+
+    @Test
+    fun `finish and cancel delete the shots of failures left, and refuse retries after`() {
+        for (end in SessionEnd.values()) {
+            val s = session()
+            val failed = root.resolve("bad $end.jpg").apply { writeText("bad") }
+            s.capture(failed, quad)
+            s.idle()
+            val failure = s.state.value.failures.single()
+            if (end == SessionEnd.FINISHED) s.finish() else s.cancel()
+            assertFalse(end.name, failed.exists())
+            assertFalse(end.name, s.retry(failure))
+        }
+        assertTrue(documents().isEmpty())
     }
 
     @Test
