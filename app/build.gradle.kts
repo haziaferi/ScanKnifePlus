@@ -1,12 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+// The shared keystore stays out of git: keystore.properties (see keystore.properties.example) signs debug and release alike, so either
+// installs over the other. Without it, debug uses the default debug key and release is left unsigned.
+val keystoreProperties = rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
+    Properties().apply { file.inputStream().use(::load) }
 }
 
 android {
     namespace = "com.paperknifeplus.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.haziaferi.scanknifeplus"
@@ -15,16 +22,27 @@ android {
         versionCode = 2
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+    }
+
+    val shared = keystoreProperties?.let { props ->
+        fun prop(key: String): String = requireNotNull(props.getProperty(key)?.takeIf { it.isNotBlank() }) { "keystore.properties has no $key" }
+        signingConfigs.create("shared") {
+            storeFile = rootProject.file(prop("storeFile"))
+            storePassword = prop("storePassword")
+            keyAlias = prop("keyAlias")
+            keyPassword = prop("keyPassword")
         }
     }
 
     buildTypes {
+        debug {
+            if (shared != null) signingConfig = shared
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = shared
         }
     }
 
@@ -44,10 +62,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
-    lint {
-        // Compose 1.6.8's bundled check cannot read Kotlin 2.3 metadata and crashes lint; remove when the Compose BOM is bumped.
-        disable += "CoroutineCreationDuringComposition"
-    }
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
