@@ -16,6 +16,7 @@ import android.provider.OpenableColumns
 import android.util.Log
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSStream
@@ -393,16 +394,17 @@ suspend fun convertPdfToImages(
 }
 
 /**
- * Writes [document] to [outputUri], with [applyDefaults] filling in the creator, producer and default author where they are blank (the
- * Metadata tool turns that off, so fields the user cleared stay cleared). Throws if the output cannot be opened or written. Closes
- * [document] either way; closing again is harmless, so callers may also hold it in `use {}`.
+ * Writes [document] to [outputUri]; [applyDefaults] fills a blank creator and producer with the app name (no PDFBox version: the APK
+ * strips its version.properties) and a blank author with the default, and the Metadata tool turns it off so cleared fields stay cleared.
+ * Throws if the output cannot be opened or written, and closes [document] either way (closing again is harmless, so `use {}` is fine).
  */
 fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri, applyDefaults: Boolean = true) {
     try {
         if (applyDefaults) {
             val info = document.documentInformation
-            if (info.creator.isNullOrBlank()) info.creator = "PaperKnife+"
-            if (info.producer.isNullOrBlank()) info.producer = "PaperKnife+ Native Engine"
+            val appName = context.getString(R.string.app_name)
+            if (info.creator.isNullOrBlank()) info.creator = appName
+            if (info.producer.isNullOrBlank()) info.producer = appName
 
             val autoAuthor = PreferencesManager.getDefaultAuthor(context)
             if (autoAuthor.isNotEmpty() && info.author.isNullOrBlank()) info.author = autoAuthor

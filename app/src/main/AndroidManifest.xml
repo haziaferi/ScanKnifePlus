@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- PaperKnife+ is 100% Offline. Do NOT add INTERNET permission. -->
+    <!-- ScanKnife+ is fully offline. Do NOT add the INTERNET permission. -->
 
     <!-- The document scanner uses the camera. It is optional so the app still installs on devices without one (import works there). -->
     <uses-permission android:name="android.permission.CAMERA" />
