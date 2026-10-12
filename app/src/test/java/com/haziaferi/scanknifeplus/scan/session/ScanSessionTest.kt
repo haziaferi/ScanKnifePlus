@@ -124,11 +124,14 @@ class ScanSessionTest {
         }
     }
 
-    /** Waits until [s] refuses shots, i.e. until an ending has closed it; shots taken before that are taken back again. */
+    /**
+     * Waits until [s] refuses shots, i.e. until an ending has closed it; shots taken before that are taken back again. They cannot be stored,
+     * so one taken just before the ending, whose undo the ending then refuses, becomes a failure the ending drops, never a page.
+     */
     private fun awaitClosed(s: ScanSession) {
         val until = System.currentTimeMillis() + 10_000
         while (true) {
-            val late = s.shot("late")
+            val late = s.shot("bad late")
             if (!s.capture(late, quad)) {
                 assertFalse(late.exists()) // refused, and its file deleted
                 return
