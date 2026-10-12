@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import java.io.ByteArrayOutputStream
@@ -61,6 +62,8 @@ fun MetadataView(
     var keywords by remember { mutableStateOf("") }
     var creator by remember { mutableStateOf("") }
     var producer by remember { mutableStateOf("") }
+    // As read from the file, so saving changes only the fields the user edited.
+    var loaded by remember { mutableStateOf(PdfProperties("", "", "", "", "", "")) }
 
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
@@ -86,6 +89,7 @@ fun MetadataView(
             backToSelection()
             return
         }
+        loaded = properties
         title = properties.title
         author = properties.author
         subject = properties.subject
@@ -131,9 +135,10 @@ fun MetadataView(
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val edited = PdfProperties(title, author, subject, keywords, creator, producer)
+        val original = loaded
         scope.launch(Dispatchers.IO) {
             try {
-                rewritePdf(context, source, unlockPassword, uri, applyDefaults = false) { applyProperties(it, edited) }
+                saveProperties(context, source, unlockPassword, uri, original, edited)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -378,19 +383,25 @@ internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?)
 }
 
 /**
- * Sets [document]'s information to [properties], a blank field removing its entry, and makes its XMP metadata say the same: dc:title,
- * dc:creator, dc:description, pdf:Keywords, xmp:CreatorTool and pdf:Producer are rewritten, or removed for a blank field. A document
- * without XMP gets none; XMP that cannot be parsed is left as it is.
+ * Writes [source], opened with [password], to [output] with the fields the user changed from [original] to [edited], as the Metadata tool
+ * saves. No default creator, producer or author is added, so cleared fields stay cleared. Blocking; throws on failure.
  */
-internal fun applyProperties(document: PDDocument, properties: PdfProperties) {
-    document.documentInformation.apply {
-        title = properties.title.ifBlank { null }
-        author = properties.author.ifBlank { null }
-        subject = properties.subject.ifBlank { null }
-        keywords = properties.keywords.ifBlank { null }
-        creator = properties.creator.ifBlank { null }
-        producer = properties.producer.ifBlank { null }
-    }
+internal fun saveProperties(context: Context, source: Uri, password: String, output: Uri, original: PdfProperties, edited: PdfProperties) =
+    rewritePdf(context, source, password, output, applyDefaults = false) { applyProperties(it, original, edited) }
+
+/**
+ * Sets each field of [document]'s information that differs between [original] and [edited] to its [edited] value, a blank one removing the
+ * entry, and makes the XMP metadata say the same: dc:title, dc:creator, dc:description, pdf:Keywords, xmp:CreatorTool or pdf:Producer is
+ * rewritten, or removed for a blank field. Unchanged fields keep their Info and XMP as they are. A document without XMP gets none; XMP that
+ * cannot be parsed is left as it is.
+ */
+internal fun applyProperties(document: PDDocument, original: PdfProperties, edited: PdfProperties) {
+    val values = edited.asList()
+    val changed = values.indices.filter { values[it] != original.asList()[it] }
+    if (changed.isEmpty()) return
+    val info = document.documentInformation
+    changed.forEach { INFO_SETTERS[it](info, values[it].ifBlank { null }) }
+
     val metadata = document.documentCatalog.metadata ?: return
     val xmp = try {
         parseXml(metadata.exportXMPMetadata().use { it.readBytes() })
@@ -404,17 +415,28 @@ internal fun applyProperties(document: PDDocument, properties: PdfProperties) {
         it.setAttributeNS(RDF_NS, "${rdf.prefixFor(RDF_NS, "rdf")}:about", "")
         rdf.appendChild(it)
     }
-    for ((property, value) in XMP_PROPERTIES.zip(properties.asList())) {
+    for (index in changed) {
+        val property = XMP_PROPERTIES[index]
         for (description in descriptions) {
             description.removeAttributeNS(property.namespace, property.name)
             description.childElements()
                 .filter { it.namespaceURI == property.namespace && it.localName == property.name }
                 .forEach { description.removeChild(it) }
         }
-        if (value.isNotBlank()) target.appendChild(property.element(xmp, target, value))
+        if (values[index].isNotBlank()) target.appendChild(property.element(xmp, target, values[index]))
     }
     metadata.importXMPMetadata(serializeXml(xmp))
 }
+
+/** Setters of the document information entries for [PdfProperties]' fields, in the order of [PdfProperties.asList]. */
+private val INFO_SETTERS: List<(PDDocumentInformation, String?) -> Unit> = listOf(
+    { info, value -> info.title = value },
+    { info, value -> info.author = value },
+    { info, value -> info.subject = value },
+    { info, value -> info.keywords = value },
+    { info, value -> info.creator = value },
+    { info, value -> info.producer = value }
+)
 
 private const val RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 private const val XML_NS = "http://www.w3.org/XML/1998/namespace"
@@ -441,7 +463,7 @@ private class XmpProperty(val namespace: String, val prefix: String, val name: S
     }
 }
 
-/** The XMP counterparts of [PdfProperties]' fields, in the same order as [PdfProperties.asList]. */
+/** The XMP counterparts of [PdfProperties]' fields, in the order of [PdfProperties.asList]. */
 private val XMP_PROPERTIES = listOf(
     XmpProperty("http://purl.org/dc/elements/1.1/", "dc", "title", "Alt"),
     XmpProperty("http://purl.org/dc/elements/1.1/", "dc", "creator", "Seq"),

@@ -7,6 +7,7 @@ import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -28,13 +29,16 @@ class MetadataWriterTest {
 
     private val edited = PdfProperties(title = "New Title", author = "", subject = "About it", keywords = "", creator = "", producer = "New Producer")
 
-    /** A PDF whose Info and XMP both hold old values for all six fields, Producer and CreatorTool as XMP attributes. */
-    private fun withXmp(): ByteArray = PDDocument.load(TestPdfs.plain()).use { doc ->
+    /**
+     * A PDF whose Info and XMP both hold old values for all six fields, Producer and CreatorTool as XMP attributes; with [xmpOnlyKeywords],
+     * Info has no keywords, so only the XMP holds them.
+     */
+    private fun withXmp(xmpOnlyKeywords: Boolean = false): ByteArray = PDDocument.load(TestPdfs.plain()).use { doc ->
         doc.documentInformation.apply {
             title = "Old Title"
             author = "Old Author"
             subject = "Old Subject"
-            keywords = "old, words"
+            keywords = if (xmpOnlyKeywords) null else "old, words"
             creator = "Old Tool"
             producer = "Old Producer"
         }
@@ -42,12 +46,18 @@ class MetadataWriterTest {
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
-    /** Saves [source] with [edited] as the Metadata tool does and reloads it. */
-    private fun save(source: ByteArray): PDDocument {
+    /** Reads [source]'s properties and saves what [edit] makes of them, as the Metadata tool does, then reloads the result. */
+    private fun save(source: ByteArray, edit: (PdfProperties) -> PdfProperties = { edited }): PDDocument {
         val input = TestPdfs.write(context.cacheDir, source, "meta-in.pdf")
         val output = File(context.cacheDir, "meta-out.pdf").apply { delete() }
-        rewritePdf(context, input, "", Uri.fromFile(output), applyDefaults = false) { applyProperties(it, edited) }
+        val original = runBlocking { loadMetadata(context, input, null) }!!
+        saveProperties(context, input, "", Uri.fromFile(output), original, edit(original))
         return PDDocument.load(output)
+    }
+
+    private fun PDDocument.xmp(): org.w3c.dom.Document {
+        val bytes = documentCatalog.metadata.exportXMPMetadata().use { it.readBytes() }
+        return DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(bytes.inputStream())
     }
 
     /** Text of the XMP property [name] in [namespace], whether written as an attribute or as an element; null when absent. */
@@ -87,6 +97,26 @@ class MetadataWriterTest {
             assertNull(xmpValue(xmp, XMP, "CreatorTool"))
             assertEquals("New Producer", xmpValue(xmp, PDF, "Producer"))
             assertEquals("x-default", (xmp.getElementsByTagNameNS(RDF, "li").item(0) as Element).getAttribute("xml:lang"))
+        }
+    }
+
+    @Test
+    fun `a save without edits keeps XMP values that Info does not have`() {
+        save(withXmp(xmpOnlyKeywords = true)) { it }.use { doc ->
+            assertEquals("old, words", xmpValue(doc.xmp(), PDF, "Keywords"))
+            assertEquals("Old Title", xmpValue(doc.xmp(), DC, "title"))
+            assertNull(doc.documentInformation.keywords)
+        }
+    }
+
+    @Test
+    fun `only edited fields change, in Info and XMP`() {
+        save(withXmp(xmpOnlyKeywords = true)) { it.copy(title = "Only This") }.use { doc ->
+            assertEquals("Only This", doc.documentInformation.title)
+            assertEquals("Only This", xmpValue(doc.xmp(), DC, "title"))
+            assertEquals("old, words", xmpValue(doc.xmp(), PDF, "Keywords"))
+            assertEquals("Old Tool", xmpValue(doc.xmp(), XMP, "CreatorTool"))
+            assertEquals("Old Author", doc.documentInformation.author)
         }
     }
 

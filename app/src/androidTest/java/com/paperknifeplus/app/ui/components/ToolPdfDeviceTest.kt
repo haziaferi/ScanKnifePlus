@@ -38,7 +38,8 @@ class ToolPdfDeviceTest {
         PDDocument().use { doc ->
             doc.addPage(PDPage())
             doc.documentCatalog.metadata = PDMetadata(doc, xmp.byteInputStream())
-            applyProperties(doc, PdfProperties("Device Title", "Ada", "", "", "", "New Producer"))
+            val original = PdfProperties("", "", "", "old", "", "Old Producer")
+            applyProperties(doc, original, PdfProperties("Device Title", "Ada", "", "", "", "New Producer"))
             val result = doc.documentCatalog.metadata.exportXMPMetadata().use { String(it.readBytes(), Charsets.UTF_8) }
             assertTrue(result, result.contains("Device Title"))
             assertTrue(result, result.contains("Ada"))
