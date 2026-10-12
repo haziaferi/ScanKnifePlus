@@ -26,6 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
+import org.w3c.dom.Document
+import org.w3c.dom.Element
+import java.io.ByteArrayOutputStream
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,6 +62,8 @@ fun MetadataView(
     var keywords by remember { mutableStateOf("") }
     var creator by remember { mutableStateOf("") }
     var producer by remember { mutableStateOf("") }
+    // As read from the file, so saving changes only the fields the user edited.
+    var loaded by remember { mutableStateOf(PdfProperties("", "", "", "", "", "")) }
 
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
@@ -78,6 +89,7 @@ fun MetadataView(
             backToSelection()
             return
         }
+        loaded = properties
         title = properties.title
         author = properties.author
         subject = properties.subject
@@ -123,18 +135,10 @@ fun MetadataView(
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val edited = PdfProperties(title, author, subject, keywords, creator, producer)
+        val original = loaded
         scope.launch(Dispatchers.IO) {
             try {
-                rewritePdf(context, source, unlockPassword, uri) { document ->
-                    document.documentInformation.apply {
-                        this.title = edited.title
-                        this.author = edited.author
-                        this.subject = edited.subject
-                        this.keywords = edited.keywords
-                        this.creator = edited.creator
-                        this.producer = edited.producer
-                    }
-                }
+                saveProperties(context, source, unlockPassword, uri, original, edited)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -377,3 +381,119 @@ internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?)
         null
     }
 }
+
+/**
+ * Writes [source], opened with [password], to [output] with the fields the user changed from [original] to [edited], as the Metadata tool
+ * saves. No default creator, producer or author is added, so cleared fields stay cleared. Blocking; throws on failure.
+ */
+internal fun saveProperties(context: Context, source: Uri, password: String, output: Uri, original: PdfProperties, edited: PdfProperties) =
+    rewritePdf(context, source, password, output, applyDefaults = false) { applyProperties(it, original, edited) }
+
+/**
+ * Sets each field of [document]'s information that differs between [original] and [edited] to its [edited] value, a blank one removing the
+ * entry, and makes the XMP metadata say the same: dc:title, dc:creator, dc:description, pdf:Keywords, xmp:CreatorTool or pdf:Producer is
+ * rewritten, or removed for a blank field. Unchanged fields keep their Info and XMP as they are. A document without XMP gets none; XMP that
+ * cannot be parsed is left as it is.
+ */
+internal fun applyProperties(document: PDDocument, original: PdfProperties, edited: PdfProperties) {
+    val values = edited.asList()
+    val changed = values.indices.filter { values[it] != original.asList()[it] }
+    if (changed.isEmpty()) return
+    val info = document.documentInformation
+    changed.forEach { INFO_SETTERS[it](info, values[it].ifBlank { null }) }
+
+    val metadata = document.documentCatalog.metadata ?: return
+    val xmp = try {
+        parseXml(metadata.exportXMPMetadata().use { it.readBytes() })
+    } catch (e: Exception) {
+        Log.w("MetadataView", "Leaving XMP metadata that cannot be parsed as it is", e)
+        return
+    }
+    val rdf = xmp.getElementsByTagNameNS(RDF_NS, "RDF").item(0) as? Element ?: return
+    val descriptions = rdf.childElements().filter { it.namespaceURI == RDF_NS && it.localName == "Description" }
+    val target = descriptions.firstOrNull() ?: xmp.createElementNS(RDF_NS, "${rdf.prefixFor(RDF_NS, "rdf")}:Description").also {
+        it.setAttributeNS(RDF_NS, "${rdf.prefixFor(RDF_NS, "rdf")}:about", "")
+        rdf.appendChild(it)
+    }
+    for (index in changed) {
+        val property = XMP_PROPERTIES[index]
+        for (description in descriptions) {
+            description.removeAttributeNS(property.namespace, property.name)
+            description.childElements()
+                .filter { it.namespaceURI == property.namespace && it.localName == property.name }
+                .forEach { description.removeChild(it) }
+        }
+        if (values[index].isNotBlank()) target.appendChild(property.element(xmp, target, values[index]))
+    }
+    metadata.importXMPMetadata(serializeXml(xmp))
+}
+
+/** Setters of the document information entries for [PdfProperties]' fields, in the order of [PdfProperties.asList]. */
+private val INFO_SETTERS: List<(PDDocumentInformation, String?) -> Unit> = listOf(
+    { info, value -> info.title = value },
+    { info, value -> info.author = value },
+    { info, value -> info.subject = value },
+    { info, value -> info.keywords = value },
+    { info, value -> info.creator = value },
+    { info, value -> info.producer = value }
+)
+
+private const val RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+private const val XML_NS = "http://www.w3.org/XML/1998/namespace"
+private const val XMLNS_NS = "http://www.w3.org/2000/xmlns/"
+
+/** The prefix bound to [namespace] here, or [preferred] after declaring it on this element. */
+private fun Element.prefixFor(namespace: String, preferred: String): String =
+    lookupPrefix(namespace) ?: preferred.also { setAttributeNS(XMLNS_NS, "xmlns:$it", namespace) }
+
+/** An XMP property: a plain value, or one in an rdf:Alt language alternative or rdf:Seq list as [container] says. */
+private class XmpProperty(val namespace: String, val prefix: String, val name: String, val container: String?) {
+    /** The property element holding [value], for [description] of [xmp]. */
+    fun element(xmp: Document, description: Element, value: String): Element {
+        val element = xmp.createElementNS(namespace, "${description.prefixFor(namespace, prefix)}:$name")
+        if (container == null) {
+            element.textContent = value
+        } else {
+            val rdf = description.prefixFor(RDF_NS, "rdf")
+            val item = xmp.createElementNS(RDF_NS, "$rdf:li").apply { textContent = value }
+            if (container == "Alt") item.setAttributeNS(XML_NS, "xml:lang", "x-default")
+            element.appendChild(xmp.createElementNS(RDF_NS, "$rdf:$container").apply { appendChild(item) })
+        }
+        return element
+    }
+}
+
+/** The XMP counterparts of [PdfProperties]' fields, in the order of [PdfProperties.asList]. */
+private val XMP_PROPERTIES = listOf(
+    XmpProperty("http://purl.org/dc/elements/1.1/", "dc", "title", "Alt"),
+    XmpProperty("http://purl.org/dc/elements/1.1/", "dc", "creator", "Seq"),
+    XmpProperty("http://purl.org/dc/elements/1.1/", "dc", "description", "Alt"),
+    XmpProperty("http://ns.adobe.com/pdf/1.3/", "pdf", "Keywords", null),
+    XmpProperty("http://ns.adobe.com/xap/1.0/", "xmp", "CreatorTool", null),
+    XmpProperty("http://ns.adobe.com/pdf/1.3/", "pdf", "Producer", null)
+)
+
+private fun PdfProperties.asList() = listOf(title, author, subject, keywords, creator, producer)
+
+private fun Element.childElements(): List<Element> = (0 until childNodes.length).mapNotNull { childNodes.item(it) as? Element }
+
+private fun parseXml(bytes: ByteArray): Document {
+    val factory = DocumentBuilderFactory.newInstance().apply {
+        isNamespaceAware = true
+        isExpandEntityReferences = false
+    }
+    // XMP never needs a DTD; refuse one where the parser supports it (Android's ignores external entities anyway).
+    try {
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+    } catch (e: Exception) {
+        Log.d("MetadataView", "Parser cannot refuse DTDs", e)
+    }
+    return factory.newDocumentBuilder().parse(bytes.inputStream())
+}
+
+private fun serializeXml(xml: Document): ByteArray = ByteArrayOutputStream().also { out ->
+    TransformerFactory.newInstance().newTransformer().apply {
+        setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
+        setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+    }.transform(DOMSource(xml), StreamResult(out))
+}.toByteArray()

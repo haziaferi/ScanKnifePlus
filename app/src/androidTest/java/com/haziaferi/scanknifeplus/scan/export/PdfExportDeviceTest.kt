@@ -15,6 +15,7 @@ import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import java.io.File
 import java.io.InputStream
@@ -23,6 +24,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -150,5 +152,23 @@ class PdfExportDeviceTest {
         load(File(root, "picked.pdf").inputStream()).use { assertEquals(2, it.numberOfPages) }
         assertNull(export.save("missing", Uri.fromFile(File(root, "other.pdf"))))
         assertEquals(1, saved.size)
+    }
+
+    @Test
+    fun aPasswordProtectedShareOrSaveOpensOnlyWithThePassword() {
+        val id = document()
+        val shared = export.share(id, password = "secret")!!
+        assertThrows(InvalidPasswordException::class.java) { load(context.contentResolver.openInputStream(shared)!!).close() }
+        context.contentResolver.openInputStream(shared)!!.use { input ->
+            PDDocument.load(input, "secret").use { pdf ->
+                assertEquals(5, pdf.encryption.version)
+                assertEquals(256, pdf.encryption.length)
+                assertEquals(2, pdf.numberOfPages)
+            }
+        }
+        val dest = File(root, "locked.pdf")
+        assertEquals(2, export.save(id, Uri.fromFile(dest), password = "пароль")!!.pages)
+        assertThrows(InvalidPasswordException::class.java) { load(dest.inputStream()).close() }
+        dest.inputStream().use { input -> PDDocument.load(input, "пароль").use { assertEquals(2, it.numberOfPages) } }
     }
 }

@@ -15,16 +15,25 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.common.PDPageLabelRange
+import com.tom_roush.pdfbox.pdmodel.common.PDPageLabels
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
+import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
+import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
+import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
@@ -100,6 +109,73 @@ object TestPdfs {
             it.rectangle = PDRectangle(72f, 72f, 100f, 20f)
             it.page = first
         }
+    }
+
+    /** Text in the uncompressed content stream of page n (1-based) of [structured], to tell whether that page made it into a saved file. */
+    fun structuredMarker(page: Int) = "STRUCTURED-PAGE-$page"
+
+    /**
+     * A 4-page PDF with document-level data tied to its pages (indices 0 to 3):
+     * - outline A -> 0, B -> 1 (open, with child B1 -> 2), C -> named "third", D -> 3;
+     * - named destinations "first" -> 0 and "third" -> 2 in the /Names tree, and "last" -> 3 in the old-style /Dests;
+     * - form fields "f0" (widget on 0), "f2" (merged field and widget on 2) and "group" (widgets on 1 and 2);
+     * - page labels i, ii, 1, 2; an open action to page 2; on page 0, a link to page 2 and one to "third".
+     */
+    fun structured(): ByteArray = PDDocument().use { doc ->
+        val pages = (1..4).map { n ->
+            PDPage(PDRectangle.LETTER).also {
+                it.setContents(PDStream(doc, "BT /F1 12 Tf 72 720 Td (${structuredMarker(n)}) Tj ET".byteInputStream()))
+                doc.addPage(it)
+            }
+        }
+        fun fit(index: Int) = PDPageFitDestination().apply { setPage(pages[index]) }
+        fun item(title: String, index: Int) = PDOutlineItem().apply {
+            this.title = title
+            destination = fit(index)
+        }
+
+        val b = item("B", 1).apply { addLast(item("B1", 2)) }
+        val c = PDOutlineItem().apply {
+            title = "C"
+            destination = PDNamedDestination("third")
+        }
+        doc.documentCatalog.documentOutline = PDDocumentOutline().apply {
+            listOf(item("A", 0), b, c, item("D", 3)).forEach(::addLast)
+            b.openNode()
+            openNode()
+        }
+
+        val names = PDDestinationNameTreeNode().apply { this.names = mapOf("first" to fit(0), "third" to fit(2)) }
+        doc.documentCatalog.names = PDDocumentNameDictionary(doc.documentCatalog).apply { dests = names }
+        doc.documentCatalog.cosObject.setItem(COSName.DESTS, COSDictionary().apply { setItem("last", fit(3).cosObject) })
+
+        val form = PDAcroForm(doc)
+        doc.documentCatalog.acroForm = form
+        fun place(widget: PDAnnotationWidget, index: Int) = widget.apply {
+            rectangle = PDRectangle(72f, 100f, 100f, 20f)
+            page = pages[index]
+            pages[index].annotations = pages[index].annotations + this
+        }
+        val f0 = PDTextField(form).apply { partialName = "f0" }
+        f0.widgets = listOf(place(PDAnnotationWidget(), 0))
+        val f2 = PDTextField(form).apply { partialName = "f2" }
+        place(f2.widgets.single(), 2)
+        val group = PDTextField(form).apply { partialName = "group" }
+        group.widgets = listOf(place(PDAnnotationWidget(), 1), place(PDAnnotationWidget(), 2))
+        form.fields = listOf(f0, f2, group)
+
+        doc.documentCatalog.pageLabels = PDPageLabels(doc).apply {
+            setLabelItem(0, PDPageLabelRange().apply { style = PDPageLabelRange.STYLE_ROMAN_LOWER })
+            setLabelItem(2, PDPageLabelRange().apply { style = PDPageLabelRange.STYLE_DECIMAL })
+        }
+        doc.documentCatalog.openAction = fit(2)
+        val links = listOf(PDAnnotationLink().apply { destination = fit(2) }, PDAnnotationLink().apply { destination = PDNamedDestination("third") })
+        links.forEach {
+            it.rectangle = PDRectangle(72f, 72f, 100f, 20f)
+            it.page = pages[0]
+        }
+        pages[0].annotations = pages[0].annotations + links
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
     /** Writes [bytes] to [dir]/[name] and returns its file:// URI. */

@@ -110,14 +110,14 @@ internal fun PDDocument.appendTo(page: PDPage): PDPageContentStream = PDPageCont
 
 /**
  * Loads [source] with [password] (empty for none), removes its encryption, applies [edit] and saves the result to [output], as Sign,
- * Watermark, Page Numbers and Metadata do. Blocking; throws on failure.
+ * Watermark, Page Numbers and Metadata do; [applyDefaults] goes to [saveAndFlush]. Blocking; throws on failure.
  */
-internal fun rewritePdf(context: Context, source: Uri, password: String, output: Uri, edit: (PDDocument) -> Unit) {
+internal fun rewritePdf(context: Context, source: Uri, password: String, output: Uri, applyDefaults: Boolean = true, edit: (PDDocument) -> Unit) {
     context.contentResolver.requireInputStream(source).use { input ->
         PDDocument.load(input, password).use { document ->
             if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
             edit(document)
-            saveAndFlush(context, document, output)
+            saveAndFlush(context, document, output, applyDefaults)
         }
     }
 }

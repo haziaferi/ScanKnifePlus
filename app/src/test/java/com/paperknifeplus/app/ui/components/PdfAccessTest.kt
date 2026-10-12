@@ -26,7 +26,16 @@ class PdfAccessTest {
     fun `classifies plain, password and owner-only PDFs`() {
         assertEquals(PdfAccess.Open, inspect(TestPdfs.plain(3)))
         assertEquals(PdfAccess.Encrypted, inspect(TestPdfs.userPassword()))
-        assertEquals(PdfAccess.Encrypted, inspect(TestPdfs.ownerOnly()))
+        assertEquals(PdfAccess.Open, inspect(TestPdfs.ownerOnly()))
+    }
+
+    @Test
+    fun `counting owner passwords, as Unlock and Protect do, an owner-only PDF is encrypted`() {
+        fun inspectCounting(bytes: ByteArray) =
+            runBlocking { inspectPdf(context, TestPdfs.write(context.cacheDir, bytes), countOwnerPassword = true) }
+        assertEquals(PdfAccess.Encrypted, inspectCounting(TestPdfs.ownerOnly()))
+        assertEquals(PdfAccess.Encrypted, inspectCounting(TestPdfs.userPassword()))
+        assertEquals(PdfAccess.Open, inspectCounting(TestPdfs.plain()))
     }
 
     @Test
