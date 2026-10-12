@@ -72,6 +72,15 @@ class PdfBoxAssemblerTest {
     }
 
     @Test
+    fun `a password SASLprep rejects fails the PDF, and isUsablePassword tells beforehand`() {
+        val rejected = "pass\u0007word" // an ASCII control character, which SASLprep prohibits
+        assertFalse(PdfBoxAssembler.write(pages, PdfPageSize.A4, dir, File(dir, "rejected.pdf"), rejected))
+        assertFalse(ScanExport.isUsablePassword(rejected))
+        assertFalse(ScanExport.isUsablePassword("")) // private use
+        for (usable in listOf("secret", "пароль", "", null)) assertTrue("$usable", ScanExport.isUsablePassword(usable))
+    }
+
+    @Test
     fun `a non-Latin password round-trips`() {
         PDDocument.load(write("пароль"), "пароль").use { assertEquals(2, it.numberOfPages) }
     }

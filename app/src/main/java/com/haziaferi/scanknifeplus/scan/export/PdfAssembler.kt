@@ -11,6 +11,7 @@ import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 /** Writes JPEG pages into a PDF, one page each. */
@@ -37,8 +38,7 @@ object PdfBoxAssembler : PdfAssembler {
                 val r = PdfLayout.imageRect(size, image.width, image.height)
                 PDPageContentStream(doc, page).use { it.drawImage(image, r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat()) }
             }
-            // Protect's settings (protectPdf in PdfPages.kt): AES-256, the password as both user and owner password, all permissions.
-            if (password != null) doc.protect(StandardProtectionPolicy(password, password, AccessPermission()).apply { encryptionKeyLength = 256 })
+            if (password != null) protect(doc, password)
             doc.save(dest)
         }
         true
@@ -49,6 +49,22 @@ object PdfBoxAssembler : PdfAssembler {
         Log.w(TAG, "Ran out of memory writing the PDF", e)
         false
     }
+
+    /** Whether [password] can encrypt a PDF, which SASLprep decides only when the PDF is saved; tried on an empty one-page PDF in memory. */
+    fun accepts(password: String): Boolean = try {
+        PDDocument().use { doc ->
+            doc.addPage(PDPage())
+            protect(doc, password)
+            doc.save(ByteArrayOutputStream())
+        }
+        true
+    } catch (e: IllegalArgumentException) {
+        false
+    }
+
+    // Protect's settings (protectPdf in PdfPages.kt): AES-256, the password as both user and owner password, all permissions.
+    private fun protect(doc: PDDocument, password: String) =
+        doc.protect(StandardProtectionPolicy(password, password, AccessPermission()).apply { encryptionKeyLength = 256 })
 
     private const val TAG = "PdfAssembler"
 }

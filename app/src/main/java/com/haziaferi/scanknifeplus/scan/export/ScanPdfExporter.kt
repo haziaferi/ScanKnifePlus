@@ -24,18 +24,17 @@ class ScanPdfExporter(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     /**
-     * Writes the pages [pageIds] of document [id] (all of them when null, in document order) as a PDF and hands the finished file to [deliver],
-     * which must copy or move it before returning. Returns the number of pages written, or null if the document or every selected page is gone,
-     * the PDF could not be written, or [deliver] returned false or threw; never throws. [onProgress] is called with (pages ready, total) as pages are prepared.
-     * With a [password] (null or empty for none) the PDF is encrypted with AES-256 as the Protect tool does, and opens only with it.
+     * Writes the pages [pageIds] of document [id] (all when null, in document order) as a PDF, encrypted like the Protect tool's if [password] is
+     * neither null nor empty, reporting (pages ready, total) to [onProgress], and hands the file to [deliver], which must copy or move it before
+     * returning. Returns the number of pages written, or null if nothing was left to export, the PDF failed, or [deliver] returned false or threw.
      */
     fun writePdf(
         id: String,
         pageIds: Set<String>?,
         quality: ExportQuality,
         size: PdfPageSize,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
         password: String? = null,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
         deliver: (File) -> Boolean,
     ): Int? {
         pruneStale()

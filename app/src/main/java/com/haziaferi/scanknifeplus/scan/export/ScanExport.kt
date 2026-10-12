@@ -50,11 +50,11 @@ class ScanExport(
         quality: ExportQuality = ExportQuality.DEFAULT,
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
         password: String? = null,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): SavedPdf? {
         val resolver = context.contentResolver
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress, password) { pdf ->
+        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress) { pdf ->
             // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
             val out = (try {
                 resolver.openOutputStream(dest, "wt")
@@ -87,8 +87,8 @@ class ScanExport(
         quality: ExportQuality = ExportQuality.DEFAULT,
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
-        onProgress: (Int, Int) -> Unit = { _, _ -> },
         password: String? = null,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): Uri? {
         val document = library.document(id) ?: return null
         val shareDir = ScanFiles.shareDir(context)
@@ -100,7 +100,7 @@ class ScanExport(
             return null
         }
         val target = File(folder, fileName(document))
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress, password) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
+        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
         if (pages == null) {
             folder.deleteRecursively()
             return null
@@ -111,6 +111,12 @@ class ScanExport(
     companion object {
         private const val TAG = "ScanExport"
         private const val SHARE_LIFETIME_MILLIS = 24L * 60 * 60 * 1000
+
+        /**
+         * Whether [password] can protect an export: false for one the PDF standard's SASLprep rejects (such as one with control characters),
+         * which would fail the export. Null or empty, meaning no password, is usable. Blocking, briefly.
+         */
+        fun isUsablePassword(password: String?): Boolean = password.isNullOrEmpty() || PdfBoxAssembler.accepts(password)
 
         /** An ACTION_SEND intent for a file such as a PDF from [share], with read access granted to the receiving app; wrap it in a chooser. */
         fun shareIntent(uri: Uri, subject: String, mimeType: String = "application/pdf"): Intent = Intent(Intent.ACTION_SEND).apply {

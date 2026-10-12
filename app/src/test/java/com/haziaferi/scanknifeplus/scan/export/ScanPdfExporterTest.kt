@@ -98,7 +98,7 @@ class ScanPdfExporterTest {
 
     private fun export(id: String, quality: ExportQuality, pageIds: Set<String>? = null, onProgress: (Int, Int) -> Unit = { _, _ -> }): Pair<Int?, String?> {
         var delivered: String? = null
-        val pages = exporter.writePdf(id, pageIds, quality, PdfPageSize.LETTER, onProgress) { pdf ->
+        val pages = exporter.writePdf(id, pageIds, quality, PdfPageSize.LETTER, onProgress = onProgress) { pdf ->
             delivered = pdf.readText()
             true
         }
