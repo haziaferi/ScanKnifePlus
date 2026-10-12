@@ -16,9 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -185,7 +187,10 @@ fun ProtectView(
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Warning, null, tint = Color(0xFFF43F5E), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(10.dp))
-                                    Text("PaperKnife+ cannot recover lost passwords.", fontSize = 10.sp, color = Color(0xFF9F1239), fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "${stringResource(R.string.app_name)} cannot recover lost passwords.",
+                                        fontSize = 10.sp, color = Color(0xFF9F1239), fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                             
