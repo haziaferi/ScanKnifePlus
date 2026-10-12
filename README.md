@@ -24,7 +24,7 @@ All processing happens on your device. Your files never leave your phone.
 
 ## Download
 
-APKs are published on this fork's [GitHub releases](https://github.com/haziaferi/ScanKnifePlus/releases) page.
+There are no published releases yet. Every CI run of the [Build workflow](https://github.com/haziaferi/ScanKnifePlus/actions/workflows/build.yml) uploads the release APK (signed when the repository has a signing key, otherwise unsigned) and an unsigned AAB as run artifacts: open a run and download them from its Artifacts section (you need to be signed in to GitHub). Tagged releases will appear on the [releases page](https://github.com/haziaferi/ScanKnifePlus/releases) once they are published.
 
 ---
 
