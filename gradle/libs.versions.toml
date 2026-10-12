@@ -1,22 +1,25 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.3.21"
-coreKtx = "1.13.1"
-lifecycle = "2.8.1"
-activity = "1.9.0"
+agp = "9.3.3"
+kotlin = "2.4.21"
+coreKtx = "1.19.1"
+lifecycle = "2.11.0"
+# Newest activity that keeps Compose at the BOM's 1.6.8: activity-compose 1.10+ needs Compose runtime 1.7+, and 1.13 pulls ui 1.9.2.
+activity = "1.9.3"
+# AGP 9.3 lint silently skips the Compose 1.6.8 lint checks (runtime, ui, foundation, material3, animation); they return with the BOM bump.
 composeBom = "2024.06.00"
 pdfbox = "2.0.27.0"
-coil = "2.6.0"
+coil = "2.7.0"
 junit = "4.13.2"
-junitVersion = "1.1.5"
+junitVersion = "1.3.0"
 robolectric = "4.16.1"
 exifinterface = "1.4.2"
 # Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
 androidxTestCore = "1.7.0"
-# Held at 1.4.2 until the CameraX bump is approved and device-verified.
+# Held at 1.4.2: after a fast rebind, 1.5.3 leaves the public camera state at OPENING although the camera is open
+# (ScanCameraControllerDeviceTest.tapToFocusIsAccepted), so the bump waits for a ScanCameraController workaround.
 camerax = "1.4.2"
-# Matches the androidx.test runner 1.5.x that androidx.test.ext:junit 1.1.5 brings.
-androidxTestRules = "1.5.0"
+# Brings androidx.test:runner 1.7.0 (AndroidJUnitRunner); same androidx.test release as ext:junit 1.3.0.
+androidxTestRules = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -44,6 +47,5 @@ androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
