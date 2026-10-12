@@ -3,7 +3,10 @@ package com.haziaferi.scanknifeplus.scan
 import android.content.Context
 import androidx.core.content.edit
 
-/** The scanner's remembered settings, in the app's private "scan_prefs" SharedPreferences; a scan session reads them when it starts. */
+/**
+ * The scanner's remembered settings, in the app's private "scan_prefs" SharedPreferences. Nothing applies them automatically: the caller that
+ * starts a scan session reads them and applies them, e.g. [autoCapture] to the session's pipeline.
+ */
 class ScanPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 

@@ -47,6 +47,7 @@ class LiveScanPipelineTest {
         val captures = mutableListOf<CaptureRequest>()
         var onCapture: (CaptureRequest) -> Unit = {}
         var onQuad: () -> Unit = {}
+        var onSteady: (Boolean) -> Unit = {}
         override fun onSmoothedQuadChanged(quad: Quad?) {
             quads += quad
             events += "quad"
@@ -60,6 +61,7 @@ class LiveScanPipelineTest {
         }
         override fun onHoldingSteadyChanged(steady: Boolean) {
             events += "steady=$steady"
+            onSteady(steady)
         }
         override fun onAutoCapture(request: CaptureRequest) {
             captures += request
@@ -263,6 +265,22 @@ class LiveScanPipelineTest {
         assertEquals(listOf("quad"), recorder.events)
         assertEquals(0, recorder.captures.size)
         assertTrue(detector.disposed)
+    }
+
+    @Test
+    fun `nothing is published after a listener disposes the pipeline as the cue ends at auto-capture`() {
+        recorder.onSteady = { steady -> if (!steady) pipeline.dispose() }
+        detect(doc, times = 8)
+        assertEquals("steady=false", recorder.events.last())
+        assertEquals(0, recorder.captures.size)
+        assertTrue(detector.disposed)
+    }
+
+    @Test
+    fun `a manual capture is refused when the listener disposes the pipeline as the cue ends`() {
+        detect(doc, times = 2)
+        recorder.onSteady = { steady -> if (!steady) pipeline.dispose() }
+        assertNull(pipeline.beginCapture())
     }
 
     @Test

@@ -173,7 +173,10 @@ class LiveScanPipeline internal constructor(
         if (zooming) synchronized(lock) { resetHoldingSteady() }
     }
 
-    /** Turns auto-capture on or off (on by default; [com.haziaferi.scanknifeplus.scan.ScanPreferences] remembers the user's choice). */
+    /**
+     * Turns auto-capture on or off (on by default). The pipeline does not persist the choice: the caller stores it in
+     * [com.haziaferi.scanknifeplus.scan.ScanPreferences] and applies it here when a session starts.
+     */
     fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
         if (disposed) return
         autoCapture.enabled = enabled
@@ -183,13 +186,15 @@ class LiveScanPipeline internal constructor(
     /**
      * Starts a capture (auto-capture calls this itself) and snapshots the smoothed quad, null when nothing is tracked or the lens runs no live
      * detection; follow with [notifyCaptured] once the still is taken and [endCapture] when done, and frames pause until then, as OpenScan stops
-     * its stream. Returns null, doing nothing, if a capture is in progress or the pipeline is disposed.
+     * its stream. Returns null if a capture is in progress or the pipeline is disposed (including by the listener as the cue ends).
      */
     fun beginCapture(): CaptureRequest? = synchronized(lock) {
         if (disposed || capturing) return null
         capturing = true
         shutterOpen = true
         resetHoldingSteady()
+        // The cue's listener may have disposed the pipeline; then no capture starts and onAutoCapture never runs.
+        if (disposed) return null
         CaptureRequest(smoother.smoothedQuad)
     }
 
@@ -291,8 +296,8 @@ private fun isStill(a: Quad, b: Quad): Boolean = a.points.zip(b.points).all { (p
 
 /**
  * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
- * 270 degrees sees the page turned half way round. Other rotations, and lenses without [CameraLens.liveDetection] (whose frames do not match
- * their unmirrored still), yield no quad.
+ * 270 degrees sees the page turned half way round. Other rotations, and lenses without [CameraLens.liveDetection] (every lens but the back
+ * camera, see [CameraLens]), yield no quad.
  */
 internal enum class QuadMapping {
     AS_IS,

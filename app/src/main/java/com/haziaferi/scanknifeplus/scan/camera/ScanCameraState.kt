@@ -2,10 +2,14 @@ package com.haziaferi.scanknifeplus.scan.camera
 
 import androidx.camera.core.CameraState
 
-/** Which way the camera faces; [LensPolicy] picks one. [liveDetection] is on only for the back camera, whose frames map onto its still. */
+/** Which way the camera faces; [LensPolicy] picks one. [liveDetection] (outline, holding-steady cue, auto-capture) is on for the back camera only. */
 enum class CameraLens(val liveDetection: Boolean) {
     BACK(true),
+
+    /** Off because its frames are mirrored against its unmirrored still, so a quad found on them would not fit the photo. */
     FRONT(false),
+
+    /** Off because the policy enables detection for back cameras only; an external camera's mount and orientation are unknown. */
     EXTERNAL(false),
 }
 
