@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      # Signing is skipped (and the unsigned APK uploaded) when the repository has no signing key secret.
+      # Signing is skipped (and the unsigned APK and AAB uploaded) when the repository has no signing key secret.
       HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
     steps:
     - uses: actions/checkout@v4
@@ -38,7 +38,7 @@ jobs:
         ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
 
     # AGP's unsigned APK is already aligned (CameraX .so files at 16 KB); re-running zipalign -v 4 could break that.
-    - name: Sign APK
+    - name: Sign APK and AAB
       if: env.HAS_SIGNING_KEY == 'true'
       env:
         SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -56,6 +56,11 @@ jobs:
           --out app/build/outputs/apk/release/ScanKnife+.apk \
           app/build/outputs/apk/release/app-release-unsigned.apk
         $BUILD_TOOLS/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/ScanKnife+.apk
+        # App bundles are JAR-signed; apksigner does not sign them.
+        jarsigner -keystore keystore.jks -storepass:env KS_PASS -keypass:env KEY_PASS \
+          -signedjar app/build/outputs/bundle/release/ScanKnife+.aab \
+          app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
+        jarsigner -verify app/build/outputs/bundle/release/ScanKnife+.aab
 
     - name: Log APK Size
       run: |
@@ -71,5 +76,5 @@ jobs:
     - name: Upload Release AAB
       uses: actions/upload-artifact@v4
       with:
-        name: ScanKnifePlus-Release-AAB
-        path: app/build/outputs/bundle/release/app-release.aab
+        name: ScanKnifePlus-Release-AAB${{ env.HAS_SIGNING_KEY != 'true' && '-unsigned' || '' }}
+        path: app/build/outputs/bundle/release/${{ env.HAS_SIGNING_KEY == 'true' && 'ScanKnife+.aab' || 'app-release.aab' }}

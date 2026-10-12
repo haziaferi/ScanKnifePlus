@@ -1,6 +1,14 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// The shared keystore stays out of git: keystore.properties (see keystore.properties.example) signs debug and release alike, so either
+// installs over the other. Without it, debug uses the default debug key and release is left unsigned.
+val keystoreProperties = rootProject.file("keystore.properties").takeIf { it.isFile }?.let { file ->
+    Properties().apply { file.inputStream().use(::load) }
 }
 
 android {
@@ -16,11 +24,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    val shared = keystoreProperties?.let { props ->
+        fun prop(key: String): String = requireNotNull(props.getProperty(key)) { "keystore.properties has no $key" }
+        signingConfigs.create("shared") {
+            storeFile = rootProject.file(prop("storeFile"))
+            storePassword = prop("storePassword")
+            keyAlias = prop("keyAlias")
+            keyPassword = prop("keyPassword")
+        }
+    }
+
     buildTypes {
+        debug {
+            if (shared != null) signingConfig = shared
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = shared
         }
     }
 
