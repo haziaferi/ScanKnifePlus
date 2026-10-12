@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
-      # Signing is skipped (and the unsigned APK uploaded) when the repository has no signing key secret.
+      # Signing is skipped (and the unsigned APK and AAB uploaded) when the repository has no signing key secret.
       HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
     steps:
     - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        packages: "build-tools;36.0.0"
+        packages: "build-tools;36.0.0 platforms;android-37.0"
 
     # Validates the wrapper jar; caches are written only from the default branch.
     - name: Setup Gradle
@@ -38,7 +38,7 @@ jobs:
         ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
 
     # AGP's unsigned APK is already aligned (CameraX .so files at 16 KB); re-running zipalign -v 4 could break that.
-    - name: Sign APK
+    - name: Sign APK and AAB
       if: env.HAS_SIGNING_KEY == 'true'
       env:
         SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -56,6 +56,16 @@ jobs:
           --out app/build/outputs/apk/release/ScanKnife+.apk \
           app/build/outputs/apk/release/app-release-unsigned.apk
         $BUILD_TOOLS/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/ScanKnife+.apk
+        # App bundles are JAR-signed; apksigner does not sign them.
+        jarsigner -keystore keystore.jks -storepass:env KS_PASS -keypass:env KEY_PASS \
+          -signedjar app/build/outputs/bundle/release/ScanKnife+.aab \
+          app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
+        # Checked against the keystore (a self-signed key has no CA chain, which bare -strict rejects); jarsigner still exits 0 on an
+        # unsigned bundle, so the "jar verified." line is required too.
+        VERIFY=$(jarsigner -verify -strict -keystore keystore.jks -storepass:env KS_PASS \
+          app/build/outputs/bundle/release/ScanKnife+.aab "$KEY_ALIAS")
+        printf '%s\n' "$VERIFY"
+        printf '%s\n' "$VERIFY" | grep -qx 'jar verified\.'
 
     - name: Log APK Size
       run: |
@@ -71,5 +81,5 @@ jobs:
     - name: Upload Release AAB
       uses: actions/upload-artifact@v4
       with:
-        name: ScanKnifePlus-Release-AAB
-        path: app/build/outputs/bundle/release/app-release.aab
+        name: ScanKnifePlus-Release-AAB${{ env.HAS_SIGNING_KEY != 'true' && '-unsigned' || '' }}
+        path: app/build/outputs/bundle/release/${{ env.HAS_SIGNING_KEY == 'true' && 'ScanKnife+.aab' || 'app-release.aab' }}

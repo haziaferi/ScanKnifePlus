@@ -23,3 +23,8 @@ build/
 
 # Kotlin 2 compiler session data
 .kotlin/
+
+# Signing: the shared keystore and its passwords never enter git (see keystore.properties.example)
+keystore.properties
+*.jks
+*.keystore
