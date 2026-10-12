@@ -128,6 +128,9 @@ class ScanCameraController(context: Context) {
     private var released = false
     private var captureToken = 0
 
+    /** Stops waiting for the camera to leave OPEN before binding (see [bindUseCases]); null when not waiting. */
+    private var closeWait: (() -> Unit)? = null
+
     private val mainScheduler = DelayScheduler { delayMicros, action ->
         val runnable = Runnable(action)
         mainHandler.postDelayed(runnable, delayMicros / 1_000)
@@ -209,6 +212,7 @@ class ScanCameraController(context: Context) {
     @MainThread
     fun unbind() {
         generation++
+        cancelCloseWait()
         openWatchdog.pause()
         zoomThrottle.cancel()
         detachCamera()
@@ -394,8 +398,30 @@ class ScanCameraController(context: Context) {
             CameraLens.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
             CameraLens.EXTERNAL -> CameraSelector.Builder().addCameraFilter { infos -> infos.filter { lensOf(it) == lens } }.build()
         }
+        val info = try {
+            selector.filter(p.availableCameraInfos).first()
+        } catch (e: Exception) {
+            fail(CameraError.BIND_FAILED, e)
+            return
+        }
+        // CameraX posts its camera state with LiveData.postValue but drops a state equal to the value the main thread last received. A rebind
+        // closes and reopens the camera fast enough to post CLOSING, OPENING and OPEN before the main thread runs, so with the previous
+        // binding's OPEN still received, the new OPEN is dropped and the state stays OPENING; binding waits until the camera has left OPEN.
+        val states = info.cameraState
+        if (states.value?.type == CameraState.Type.OPEN) {
+            val token = generation
+            val waiter = object : Observer<CameraState> {
+                override fun onChanged(value: CameraState) {
+                    if (value.type == CameraState.Type.OPEN) return
+                    cancelCloseWait()
+                    if (token == generation && !released) bindUseCases(p)
+                }
+            }
+            closeWait = { states.removeObserver(waiter) }
+            states.observeForever(waiter)
+            return
+        }
         try {
-            val info = selector.filter(p.availableCameraInfos).first()
             val shape = sensorShape(info)?.let { CameraSizes.standardShape(it) }
             val preview = Preview.Builder()
                 .setResolutionSelector(streamSelector(shape, CameraSizes.PREVIEW_BOUND))
@@ -424,6 +450,11 @@ class ScanCameraController(context: Context) {
         } catch (e: Exception) {
             fail(CameraError.BIND_FAILED, e)
         }
+    }
+
+    private fun cancelCloseWait() {
+        closeWait?.invoke()
+        closeWait = null
     }
 
     private fun lensOf(info: CameraInfo): CameraLens? = when (info.lensFacing) {

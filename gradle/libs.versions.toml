@@ -15,9 +15,8 @@ robolectric = "4.16.1"
 exifinterface = "1.4.2"
 # Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
 androidxTestCore = "1.7.0"
-# Held at 1.4.2: after a fast rebind, 1.5.3 leaves the public camera state at OPENING although the camera is open
-# (ScanCameraControllerDeviceTest.tapToFocusIsAccepted), so the bump waits for a ScanCameraController workaround.
-camerax = "1.4.2"
+# Held on the 1.5 line; 1.5.3 is its last release.
+camerax = "1.5.3"
 # Brings androidx.test:runner 1.7.0 (AndroidJUnitRunner); same androidx.test release as ext:junit 1.3.0.
 androidxTestRules = "1.7.0"
 
