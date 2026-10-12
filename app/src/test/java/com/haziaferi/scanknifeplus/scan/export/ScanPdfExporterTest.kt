@@ -50,6 +50,8 @@ class ScanPdfExporterTest {
 
         override fun crop(source: File, quad: Quad, quarterTurns: Int, dest: File) = error("not used")
 
+        override fun rotate(source: File, quarterTurns: Int, dest: File) = error("not used")
+
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int): Boolean {
             if (!source.exists()) return false // as the real decoder fails on a missing file
             val content = source.readText()
@@ -63,11 +65,13 @@ class ScanPdfExporterTest {
         var pages: List<String>? = null
         var size: PdfPageSize? = null
         var workDirs = mutableListOf<File>()
+        val passwords = mutableListOf<String?>()
         var fail = false
 
-        override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File): Boolean {
+        override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?): Boolean {
             this.pages = pages.map { it.readText() }
             this.size = size
+            passwords += password
             workDirs += workDir
             if (fail) return false
             dest.writeText("PDF of ${this.pages}")
@@ -94,7 +98,7 @@ class ScanPdfExporterTest {
 
     private fun export(id: String, quality: ExportQuality, pageIds: Set<String>? = null, onProgress: (Int, Int) -> Unit = { _, _ -> }): Pair<Int?, String?> {
         var delivered: String? = null
-        val pages = exporter.writePdf(id, pageIds, quality, PdfPageSize.LETTER, onProgress) { pdf ->
+        val pages = exporter.writePdf(id, pageIds, quality, PdfPageSize.LETTER, onProgress = onProgress) { pdf ->
             delivered = pdf.readText()
             true
         }
@@ -175,6 +179,15 @@ class ScanPdfExporterTest {
         val (pages, _) = export(id, ExportQuality.LOW) { done, _ -> if (done == 1) library.deletePage(id, second) }
         assertEquals(2, pages)
         assertEquals(listOf("45@1200(page 1)", "45@1200(page 3)"), assembler.pages)
+    }
+
+    @Test
+    fun `a password reaches the PDF, and an empty one means none`() {
+        val id = document(1)
+        for (password in listOf("secret", "", null)) {
+            assertEquals(1, exporter.writePdf(id, null, ExportQuality.HIGH, PdfPageSize.A4, password = password) { true })
+        }
+        assertEquals(listOf("secret", null, null), assembler.passwords)
     }
 
     @Test

@@ -40,8 +40,9 @@ class ScanExport(
     fun fileName(document: ScanDocument): String = ExportNames.exportFileName(document.displayName, document.id) + ".pdf"
 
     /**
-     * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History.
-     * Returns what was saved, or null on failure, in which case the empty document the picker created is deleted again.
+     * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History; a
+     * [password] encrypts it as in [ScanPdfExporter.writePdf]. Returns what was saved, or null on failure, in which case the empty document the
+     * picker created is deleted again.
      */
     fun save(
         id: String,
@@ -49,10 +50,11 @@ class ScanExport(
         quality: ExportQuality = ExportQuality.DEFAULT,
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
+        password: String? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): SavedPdf? {
         val resolver = context.contentResolver
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress) { pdf ->
+        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress) { pdf ->
             // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
             val out = (try {
                 resolver.openOutputStream(dest, "wt")
@@ -76,14 +78,16 @@ class ScanExport(
     }
 
     /**
-     * Writes document [id] (only [pageIds] if given) to a copy for sharing and returns its content URI, readable by whichever app [shareIntent]
-     * grants it to; null on failure. Copies more than a day old are removed first; newer ones stay, as a receiving app may still be reading them.
+     * Writes document [id] (only [pageIds] if given, encrypted for [password] if given) to a copy for sharing and returns its content URI,
+     * readable by whichever app [shareIntent] grants it to; null on failure. Copies more than a day old are removed first; newer ones stay, as
+     * a receiving app may still be reading them.
      */
     fun share(
         id: String,
         quality: ExportQuality = ExportQuality.DEFAULT,
         size: PdfPageSize = PdfPageSize.DEFAULT,
         pageIds: Set<String>? = null,
+        password: String? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): Uri? {
         val document = library.document(id) ?: return null
@@ -96,7 +100,7 @@ class ScanExport(
             return null
         }
         val target = File(folder, fileName(document))
-        val pages = exporter.writePdf(id, pageIds, quality, size, onProgress) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
+        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress) { pdf -> pdf.renameTo(target) || pdf.copyTo(target).exists() }
         if (pages == null) {
             folder.deleteRecursively()
             return null
@@ -107,6 +111,12 @@ class ScanExport(
     companion object {
         private const val TAG = "ScanExport"
         private const val SHARE_LIFETIME_MILLIS = 24L * 60 * 60 * 1000
+
+        /**
+         * Whether [password] can protect an export: false for one the PDF standard's SASLprep rejects (such as one with control characters),
+         * which would fail the export. Null or empty, meaning no password, is usable. Blocking, briefly.
+         */
+        fun isUsablePassword(password: String?): Boolean = password.isNullOrEmpty() || PdfBoxAssembler.accepts(password)
 
         /** An ACTION_SEND intent for a file such as a PDF from [share], with read access granted to the receiving app; wrap it in a chooser. */
         fun shareIntent(uri: Uri, subject: String, mimeType: String = "application/pdf"): Intent = Intent(Intent.ACTION_SEND).apply {

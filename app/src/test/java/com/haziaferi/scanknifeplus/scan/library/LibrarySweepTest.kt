@@ -41,6 +41,8 @@ class LibrarySweepTest {
 
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int) = op(dest, "norm(${source.readText()})")
 
+        override fun rotate(source: File, quarterTurns: Int, dest: File) = op(dest, "turn$quarterTurns(${source.readText()})")
+
         private fun op(dest: File, content: String): Boolean {
             val hook = meanwhile
             meanwhile = null
