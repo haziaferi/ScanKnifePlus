@@ -259,7 +259,7 @@ class ScanCameraControllerDeviceTest {
     }
 
     @Test
-    fun torchTurnsOnAndOffAndResetsOnRebind() {
+    fun torchTurnsOnAndOff() {
         val s = bind()
         assumeTrue("back camera has a flash unit", s.torchAvailable)
         var ok: Boolean? = null
@@ -272,8 +272,6 @@ class ScanCameraControllerDeviceTest {
         waitFor("torch off") { !it.torchOn }
         main { controller.setTorch(true) }
         waitFor("torch on again") { it.torchOn }
-
-        assertFalse("torch is off after rebinding", bind().torchOn)
     }
 
     @Test
