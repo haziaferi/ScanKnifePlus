@@ -32,15 +32,11 @@ import java.io.IOException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onBack: () -> Unit) {
-    var currentSubPage by remember { mutableStateOf(initialPage) }
-    // The arrow and system Back agree: sub-pages return to the main page, except one opened straight from Settings.
+fun AboutView(onBack: () -> Unit, loadNotices: suspend () -> List<NoticeSection> = assetNoticeLoader()) {
+    var currentSubPage by remember { mutableStateOf("main") }
+    // The arrow and system Back agree: sub-pages return to the main page, which leaves About.
     val handleBack: () -> Unit = {
-        if (currentSubPage == "main" || (isFromSettings && currentSubPage == initialPage)) {
-            onBack()
-        } else {
-            currentSubPage = "main"
-        }
+        if (currentSubPage == "main") onBack() else currentSubPage = "main"
     }
     BackHandler(enabled = currentSubPage != "main", onBack = handleBack)
 
@@ -79,7 +75,7 @@ fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onB
         Box(Modifier.fillMaxSize().padding(padding)) {
             when(currentSubPage) {
                 "main" -> AboutMain(onNavigate = { currentSubPage = it })
-                "libraries" -> LibrariesPage()
+                "libraries" -> LibrariesPage(loadNotices)
                 "license" -> LicensePage()
             }
         }
@@ -182,13 +178,12 @@ fun AboutMain(onNavigate: (String) -> Unit) {
 }
 
 @Composable
-fun LibrariesPage() {
+fun LibrariesPage(loadNotices: suspend () -> List<NoticeSection> = assetNoticeLoader()) {
     val violet = Color(0xFF8B5CF6)
     val green = Color(0xFF10B981)
-    val assets = LocalContext.current.assets
-    var notices by remember(assets) { mutableStateOf(emptyList<NoticeSection>()) }
-    LaunchedEffect(assets) {
-        notices = withContext(Dispatchers.IO) { loadNotices(assets) }
+    var notices by remember(loadNotices) { mutableStateOf(emptyList<NoticeSection>()) }
+    LaunchedEffect(loadNotices) {
+        notices = loadNotices()
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -222,14 +217,21 @@ fun LibrariesPage() {
     }
 }
 
-/** One block of the bundled notices: a NOTICE.md heading with the text under it, or one whole file from NOTICES/. */
-internal data class NoticeSection(val title: String, val body: String)
+/** One block of the bundled notices, as plain text: a NOTICE.md heading with the text under it, or one whole file from NOTICES/. */
+data class NoticeSection(val title: String, val body: String)
 
 internal const val NOTICE_ASSET = "NOTICE.md"
 internal const val NOTICES_ASSET_DIR = "NOTICES"
 
+/** The default notice source for the Libraries page: [readNotices] from this app's assets, run on the IO dispatcher. */
+@Composable
+fun assetNoticeLoader(): suspend () -> List<NoticeSection> {
+    val assets = LocalContext.current.assets
+    return remember(assets) { { withContext(Dispatchers.IO) { readNotices(assets) } } }
+}
+
 /** Reads NOTICE.md and NOTICES/ from the APK assets (copies of the repo files, kept in sync by NoticeAssetTest). Blocking; empty if unreadable. */
-internal fun loadNotices(assets: AssetManager): List<NoticeSection> = try {
+internal fun readNotices(assets: AssetManager): List<NoticeSection> = try {
     val notice = assets.open(NOTICE_ASSET).bufferedReader().use { it.readText() }
     val files = assets.list(NOTICES_ASSET_DIR).orEmpty().sorted().map { name ->
         NoticeSection(name, assets.open("$NOTICES_ASSET_DIR/$name").bufferedReader().use { it.readText() }.trim())
@@ -239,7 +241,10 @@ internal fun loadNotices(assets: AssetManager): List<NoticeSection> = try {
     emptyList()
 }
 
-/** Splits Markdown at its headings, so each section becomes one row; heading-like lines inside ``` code blocks stay in the text. */
+/**
+ * Splits Markdown at its headings, so each section becomes one row, and turns each line into plain text with [plainMarkdownLine].
+ * Lines inside ``` code blocks (licence texts) stay verbatim, heading-like ones included.
+ */
 internal fun noticeSections(markdown: String): List<NoticeSection> {
     val sections = mutableListOf<NoticeSection>()
     var title = ""
@@ -252,12 +257,28 @@ internal fun noticeSections(markdown: String): List<NoticeSection> {
     for (line in markdown.lines()) {
         when {
             line.startsWith("```") -> inFence = !inFence
-            !inFence && line.startsWith("#") -> { flush(); title = line.trimStart('#').trim() }
-            else -> body.appendLine(line)
+            inFence -> body.appendLine(line)
+            line.startsWith("#") -> { flush(); title = plainMarkdownLine(line.trimStart('#').trim()) }
+            else -> body.appendLine(plainMarkdownLine(line))
         }
     }
     flush()
     return sections
+}
+
+private val markdownLink = Regex("""\[([^\]]+)]\(([^)\s]+)\)""")
+private val markdownStrong = Regex("""(\*\*|__)(.+?)\1""")
+private val markdownEmphasis = Regex("""(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])""")
+
+/**
+ * One Markdown line as plain text: [text](url) becomes "text (url)", ** / __ / * emphasis markers go, and inline code loses its backticks
+ * with its content kept as written. Single _ emphasis is left alone, since the notices use underscores in file and package names.
+ */
+internal fun plainMarkdownLine(line: String): String {
+    fun plain(text: String) = text.replace(markdownLink, "$1 ($2)").replace(markdownStrong, "$2").replace(markdownEmphasis, "$1")
+    val parts = line.split('`')
+    if (parts.size % 2 == 0) return plain(line)
+    return parts.mapIndexed { i, part -> if (i % 2 == 1) part else plain(part) }.joinToString("")
 }
 
 @Composable

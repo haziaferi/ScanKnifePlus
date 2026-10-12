@@ -32,12 +32,36 @@ class NoticeAssetTest {
 
     @Test
     fun `the APK assets load as NOTICE md sections followed by one section per NOTICES file`() {
-        val sections = loadNotices(ApplicationProvider.getApplicationContext<Context>().assets)
+        val sections = readNotices(ApplicationProvider.getApplicationContext<Context>().assets)
         val titles = sections.map { it.title }
         assertEquals("Notices and credits", titles.first())
         assertTrue("OpenScan license" in titles)
         assertEquals(File(repoRoot, NOTICES_ASSET_DIR).list().orEmpty().sorted(), titles.takeLast(2))
         assertTrue(sections.first { it.title == "OpenScan license" }.body.contains("Vijay T S"))
+        val paperKnife = sections.first { it.title == "PaperKnife+" }.body
+        assertTrue(paperKnife, paperKnife.contains("PaperKnife+ (https://github.com/potatameister/PaperKnifePlus) by potatameister"))
+        assertTrue(paperKnife, paperKnife.contains("(see LICENSE)"))
+    }
+
+    @Test
+    fun `Markdown lines become plain text with links spelled out`() {
+        assertEquals("a fork of PaperKnife+ (https://x.test/p) by me", plainMarkdownLine("a fork of [PaperKnife+](https://x.test/p) by me"))
+        assertEquals("- Liberation Sans 2.1.5 and Bold too", plainMarkdownLine("- **Liberation Sans** 2.1.5 and __Bold__ *too*"))
+        assertEquals("Dart's List.sort in sdk/lib/internal/sort.dart", plainMarkdownLine("Dart's `List.sort` in `sdk/lib/internal/sort.dart`"))
+    }
+
+    @Test
+    fun `inline code, lone markers and underscores in names stay as written`() {
+        assertEquals("keep **this** and [x](y) inside code", plainMarkdownLine("keep `**this** and [x](y)` inside code"))
+        assertEquals("bcprov_jdk15to18 and a_b_c", plainMarkdownLine("bcprov_jdk15to18 and a_b_c"))
+        assertEquals("2 * 3 * 4", plainMarkdownLine("2 * 3 * 4"))
+        assertEquals("an odd ` backtick with bold", plainMarkdownLine("an odd ` backtick with **bold**"))
+    }
+
+    @Test
+    fun `headings and body lines are plain text but code fences stay verbatim`() {
+        val sections = noticeSections("## The `image` package\nsee [site](https://s.test)\n```\n**kept** [as](is)\n```")
+        assertEquals(listOf(NoticeSection("The image package", "see site (https://s.test)\n**kept** [as](is)")), sections)
     }
 
     @Test

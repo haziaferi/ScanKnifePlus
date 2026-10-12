@@ -23,13 +23,13 @@ class SettingsViewTest {
 
     @Test
     fun `the About group opens About under the app name and the footer shows the app name`() {
-        val opened = mutableListOf<String>()
-        rule.setContent { SettingsView(isDarkMode = false, onThemeChange = {}, onNavigateToAbout = { opened += it }) }
+        var opened = 0
+        rule.setContent { SettingsView(isDarkMode = false, onThemeChange = {}, onOpenAbout = { opened++ }) }
         val list = rule.onNode(hasScrollAction())
 
         list.performScrollToNode(hasText("About ScanKnife+"))
         rule.onNodeWithText("About ScanKnife+").performClick()
-        assertEquals(listOf("main"), opened)
+        assertEquals(1, opened)
 
         list.performScrollToNode(hasText("ScanKnife+ V", substring = true))
         rule.onNodeWithText("Support Us").assertDoesNotExist()

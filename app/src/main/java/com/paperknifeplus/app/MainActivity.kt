@@ -129,8 +129,6 @@ class MainActivity : ComponentActivity() {
                     var toolInitialUri by rememberSaveable { mutableStateOf<Uri?>(null) }
                     // Not saveable: saved state may be written to disk, and a password must not be.
                     var toolInitialPassword by remember { mutableStateOf<String?>(null) }
-                    var aboutInitialPage by rememberSaveable { mutableStateOf("main") }
-                    var isAboutFromSettings by rememberSaveable { mutableStateOf(false) }
 
                     val mainScreens = listOf("home", "tools", "history", "settings")
                     val pagerState = androidx.compose.foundation.pager.rememberPagerState { mainScreens.size }
@@ -207,11 +205,7 @@ class MainActivity : ComponentActivity() {
                                             themePreference = theme
                                             PreferencesManager.setTheme(applicationContext, theme)
                                         },
-                                        onNavigateToAbout = {
-                                            aboutInitialPage = it
-                                            isAboutFromSettings = true
-                                            currentTool = "about"
-                                        }
+                                        onOpenAbout = { currentTool = "about" }
                                     )
                                 }
                             }
@@ -260,7 +254,7 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                                 when (currentTool) {
-                                    "about" -> AboutView(initialPage = aboutInitialPage, isFromSettings = isAboutFromSettings, onBack = closeTool)
+                                    "about" -> AboutView(onBack = closeTool)
                                     "merge" -> MergeView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)
                                     "split" -> SplitView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)
                                     "delete" -> DeleteView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)

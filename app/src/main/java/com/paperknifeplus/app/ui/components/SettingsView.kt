@@ -61,7 +61,7 @@ fun clearAppCache(context: Context): Boolean = try {
 fun SettingsView(
     isDarkMode: Boolean,
     onThemeChange: (Int) -> Unit,
-    onNavigateToAbout: (String) -> Unit
+    onOpenAbout: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -175,7 +175,7 @@ fun SettingsView(
 
             item {
                 SettingsGroup("ABOUT") {
-                    SettingsItem(Icons.Outlined.Info, "About $appName", "How it works, credits and licenses") { onNavigateToAbout("main") }
+                    SettingsItem(Icons.Outlined.Info, "About $appName", "How it works, credits and licenses", onClick = onOpenAbout)
                 }
             }
 
