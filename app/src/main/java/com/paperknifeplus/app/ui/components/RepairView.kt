@@ -17,10 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -169,7 +171,7 @@ fun RepairView(
 
                             Text("READY TO REPAIR", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
                             Text(
-                                "PaperKnife+ will rebuild the PDF index and cross-reference table to restore accessibility.",
+                                "${stringResource(R.string.app_name)} will rebuild the PDF index and cross-reference table to restore accessibility.",
                                 fontSize = 12.sp,
                                 color = Color.Gray,
                                 textAlign = TextAlign.Center,

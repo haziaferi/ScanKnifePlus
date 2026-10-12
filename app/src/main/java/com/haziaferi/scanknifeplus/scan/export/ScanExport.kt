@@ -128,7 +128,7 @@ class ScanExport(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        /** Adds a saved scan to PaperKnife+'s History. History is Compose state, so the entry is added on the main thread. */
+        /** Adds a saved scan to the PDF tools' History. History is Compose state, so the entry is added on the main thread. */
         fun addToHistory(context: Context, saved: SavedPdf) {
             val name = getUriDetails(context, saved.uri).name
             val label = if (saved.pages == 1) "1 page" else "${saved.pages} pages"

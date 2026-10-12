@@ -95,13 +95,34 @@ class ToolUtilsTest {
         assertTrue(saved.document.isClosed)
 
         val expected = PDDocument.load(TestPdfs.plain(2)).use { doc ->
-            doc.documentInformation.creator = "PaperKnife+"
-            doc.documentInformation.producer = "PaperKnife+ Native Engine"
+            doc.documentInformation.creator = "ScanKnife+"
+            doc.documentInformation.producer = "ScanKnife+"
             ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
         }
         // PDFBox gives every save a fresh /ID; everything else must match.
         fun withoutId(bytes: ByteArray) = String(bytes, Charsets.ISO_8859_1).replace(Regex("/ID ?.<[0-9A-Fa-f]*> ?<[0-9A-Fa-f]*>."), "/ID")
         assertEquals(withoutId(expected), withoutId(output.readBytes()))
+    }
+
+    @Test
+    fun `saveAndFlush fills a blank creator and producer with the app name and keeps set ones`() {
+        val blank = File(context.cacheDir, "blank.pdf")
+        saveAndFlush(context, PDDocument.load(TestPdfs.plain()), Uri.fromFile(blank))
+        PDDocument.load(blank).use {
+            assertEquals("ScanKnife+", it.documentInformation.creator)
+            assertEquals("ScanKnife+", it.documentInformation.producer)
+        }
+
+        val set = File(context.cacheDir, "set.pdf")
+        val document = PDDocument.load(TestPdfs.plain()).apply {
+            documentInformation.creator = "Writer"
+            documentInformation.producer = "Press"
+        }
+        saveAndFlush(context, document, Uri.fromFile(set))
+        PDDocument.load(set).use {
+            assertEquals("Writer", it.documentInformation.creator)
+            assertEquals("Press", it.documentInformation.producer)
+        }
     }
 
     @Test
@@ -187,8 +208,8 @@ class ToolUtilsTest {
         assertEquals(COSName.DCT_DECODE, after.first)
         assertArrayEquals(before, after.second)
         val resaved = PDDocument.load(input).use { doc ->
-            doc.documentInformation.creator = "PaperKnife+"
-            doc.documentInformation.producer = "PaperKnife+ Native Engine"
+            doc.documentInformation.creator = "ScanKnife+"
+            doc.documentInformation.producer = "ScanKnife+"
             ByteArrayOutputStream().also { doc.save(it) }.size()
         }
         assertTrue(output.length() <= resaved)
