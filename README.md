@@ -4,35 +4,14 @@
 
 A privacy-first PDF utility and document scanner for Android. Works 100% offline - no internet, no trackers.
 
-ScanKnife+ is a personal-use fork of [PaperKnife+](https://github.com/potatameister/PaperKnifePlus) by potatameister, with the document scanner ported from [OpenScan](https://github.com/ethereal-developers/OpenScan) by Vijay T S and Vikram H. See [NOTICE.md](NOTICE.md) for credits and licenses.
-
-<a href="https://github.com/potatameister/PaperKnifePlus/releases/latest">
-  <img src="https://img.shields.io/badge/Download-APK-green?style=for-the-badge" alt="Download APK">
-</a>
-<a href="https://discord.gg/dSPXHWtHAX">
-  <img src="https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord" alt="Discord">
-</a>
-<a href="https://x.com/potatameister">
-  <img src="https://img.shields.io/badge/Follow-000000?style=for-the-badge&logo=x" alt="X">
-</a>
-
----
-
-## Screenshots
-
-<p float="left">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="24%" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" width="24%" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3.png" width="24%" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4.png" width="24%" />
-</p>
+ScanKnife+ is a personal-use fork of PaperKnife+ with a document scanner ported from OpenScan. See [Credits](#credits) and [NOTICE.md](NOTICE.md).
 
 ---
 
 ## Features
 
 - Merge & Split PDFs
-- Password protect your PDFs  
+- Password protect your PDFs
 - Convert Images to PDF
 - Export PDF pages as Images (ZIP)
 - Rotate and rearrange pages
@@ -45,27 +24,18 @@ All processing happens on your device. Your files never leave your phone.
 
 ## Download
 
-The release and store links below are upstream PaperKnife+'s (package `com.paperknifeplus.app`), not ScanKnife+'s, and do not include the document scanner.
-
-Latest upstream APK: [PaperKnife+ v1.1](https://github.com/potatameister/PaperKnifePlus/releases/latest)
-
-<a href="https://apt.izzysoft.de/fdroid/index/apk/com.paperknifeplus.app">
-  <img src="https://img.shields.io/badge/IzzyOnDroid-F00000?style=for-the-badge" alt="IzzyOnDroid">
-</a>
-<a href="https://f-droid.org/packages/com.paperknifeplus.app">
-  <img src="https://img.shields.io/badge/F--Droid-1976D2?style=for-the-badge&logo=fdroid" alt="F-Droid">
-</a>
+There are no published releases yet. Every CI run of the [Build workflow](https://github.com/haziaferi/ScanKnifePlus/actions/workflows/build.yml) uploads the release APK and AAB as run artifacts, signed when the repository has a signing key (otherwise unsigned, with an "-unsigned" suffix on the artifact name): open a run and download them from its Artifacts section (you need to be signed in to GitHub). Tagged releases will appear on the [releases page](https://github.com/haziaferi/ScanKnifePlus/releases) once they are published.
 
 ---
 
-## Support
+## Credits
 
-<a href="https://github.com/sponsors/potatameister">
-  <img src="https://img.shields.io/badge/GitHub_Sponsors-sponsor-red?style=for-the-badge&logo=github" alt="GitHub Sponsor">
-</a>
-<a href="https://buymeacoffee.com/potatameister">
-  <img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-orange?style=for-the-badge&logo=buymeacoffee" alt="Buy Me Coffee">
-</a>
+ScanKnife+ builds on two open-source projects:
+
+- **PaperKnife+** by potatameister, GPL-3.0-or-later: https://github.com/potatameister/PaperKnifePlus. ScanKnife+ is a fork of it and keeps its PDF tools.
+- **OpenScan** by Vijay T S and Vikram H, BSD-3-Clause: https://github.com/ethereal-developers/OpenScan. The document scanner (edge detection, perspective crop, filters and live scan logic) is ported from it.
+
+[NOTICE.md](NOTICE.md) has the full licence texts and the notices of the other bundled third-party components; the app shows the same text under About > Open Source Libraries.
 
 ---
 

@@ -28,12 +28,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
 import kotlinx.coroutines.launch
@@ -113,53 +115,6 @@ fun HomeView(
             }
 
             item(span = { GridItemSpan(2) }, key = "footer") {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                val isDark = LocalIsDarkTheme.current
-                val coffeeBg = if (isDark) Color(0xFF3D3520) else Color(0xFFFFF9C4)
-                val coffeeBorder = if (isDark) Color(0xFF5D5020) else Color(0xFFFFEB3B)
-                val coffeeIconBg = if (isDark) Color(0xFF5D5020) else Color(0xFFFFEB3B)
-
-                Surface(
-                    onClick = {
-                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://buymeacoffee.com/potatameister"))
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 20.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = coffeeBg,
-                    border = BorderStroke(1.dp, coffeeBorder)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier.size(36.dp).background(coffeeIconBg, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Coffee, null, tint = if (isDark) Color(0xFFFFE082) else Color(0xFF795548), modifier = Modifier.size(20.dp))
-                        }
-                        Spacer(Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                "Buy me a coffee",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isDark) Color(0xFFFFE082) else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                "Help PaperKnife be released on Play Store!",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.Gray
-                            )
-                        }
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(220.dp))
             }
         }
@@ -182,10 +137,11 @@ fun HomeHeader(isDarkMode: Boolean, onThemeToggle: () -> Unit) {
                 partColor = if (isDarkMode) Color.White else Color(0xFF18181B)
             )
             Spacer(modifier = Modifier.width(10.dp))
+            val appName = stringResource(R.string.app_name)
             Text(
                 text = buildAnnotatedString {
-                    append("PaperKnife")
-                    withStyle(SpanStyle(color = PaperPink)) { append("+") }
+                    append(appName.removeSuffix("+"))
+                    if (appName.endsWith("+")) withStyle(SpanStyle(color = PaperPink)) { append("+") }
                 },
                 fontWeight = FontWeight.Black,
                 fontSize = 18.sp,
