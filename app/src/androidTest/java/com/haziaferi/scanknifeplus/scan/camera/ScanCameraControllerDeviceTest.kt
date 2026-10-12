@@ -12,7 +12,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Display
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.Lifecycle
@@ -412,6 +416,68 @@ class ScanCameraControllerDeviceTest {
         controller = ScanCameraController(context)
         controller.frameListener = listener
         controller.bind(owner, surfaceProvider)
+    }
+
+    /**
+     * Keeps the back camera open through a binding of its own to another started owner, as a second camera user in the process would, and
+     * returns its release.
+     */
+    private fun holdTheBackCameraOpen(): () -> Unit {
+        val provider = ProcessCameraProvider.getInstance(context).get()
+        val holder = TestOwner()
+        val analysis = ImageAnalysis.Builder().build()
+        val camera = main {
+            holder.registry.currentState = Lifecycle.State.RESUMED
+            analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { it.close() }
+            provider.bindToLifecycle(holder, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+        }
+        val end = System.currentTimeMillis() + 10_000
+        while (main { camera.cameraInfo.cameraState.value?.type } != CameraState.Type.OPEN && System.currentTimeMillis() < end) Thread.sleep(20)
+        assertEquals(CameraState.Type.OPEN, main { camera.cameraInfo.cameraState.value?.type })
+        return {
+            main {
+                provider.unbind(analysis)
+                holder.registry.currentState = Lifecycle.State.DESTROYED
+            }
+        }
+    }
+
+    @Test
+    fun aCameraHeldOpenElsewhereIsBoundOnceTheCloseWaitRunsOut() {
+        val releaseHolder = holdTheBackCameraOpen()
+        try {
+            val start = System.currentTimeMillis()
+            main { controller.bind(owner, surfaceProvider) }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS / 2)
+            assertEquals("still waiting for the camera to leave OPEN", null, state().lens)
+            val bound = waitFor("the bind after the close wait") { it.lens != null }
+            val waited = System.currentTimeMillis() - start
+            Log.i(TAG, "bound after $waited ms: $bound")
+            assertTrue("bound after $waited ms", waited >= ScanCameraController.CLOSE_WAIT_MS)
+            waitFor("the camera to open") { it.ready }
+        } finally {
+            releaseHolder()
+        }
+    }
+
+    @Test
+    fun unbindingDuringTheCloseWaitBindsNothing() {
+        val releaseHolder = holdTheBackCameraOpen()
+        try {
+            val published = ArrayList<ScanCameraState>()
+            main { controller.bind(owner, surfaceProvider) }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS / 4)
+            main {
+                assertEquals("still waiting for the camera to leave OPEN", null, controller.state.lens)
+                controller.unbind()
+                controller.stateListener = { published += it }
+            }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS * 2)
+            assertEquals(ScanCameraState(), state())
+            assertEquals("no state after the unbind", emptyList<ScanCameraState>(), main { published.toList() })
+        } finally {
+            releaseHolder()
+        }
     }
 
     @Test
