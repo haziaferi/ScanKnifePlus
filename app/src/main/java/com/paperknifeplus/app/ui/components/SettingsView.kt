@@ -176,7 +176,6 @@ fun SettingsView(
             item {
                 SettingsGroup("ABOUT") {
                     SettingsItem(Icons.Outlined.Info, "About $appName", "How it works, credits and licenses") { onNavigateToAbout("main") }
-                    SettingsItem(Icons.Outlined.StarOutline, "Hall of Fame", "The legends who made this possible", accentColor = Color(0xFFFFD700)) { onNavigateToAbout("hall") }
                 }
             }
 

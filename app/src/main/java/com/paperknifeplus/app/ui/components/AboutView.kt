@@ -16,16 +16,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.animation.core.*
 import androidx.activity.compose.BackHandler
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
@@ -69,7 +65,6 @@ fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onB
                         text = when(currentSubPage) {
                             "libraries" -> "Open Source"
                             "license" -> "License"
-                            "hall" -> "Hall of Fame"
                             else -> "About"
                         },
                         fontSize = 18.sp,
@@ -86,7 +81,6 @@ fun AboutView(initialPage: String = "main", isFromSettings: Boolean = false, onB
                 "main" -> AboutMain(onNavigate = { currentSubPage = it })
                 "libraries" -> LibrariesPage()
                 "license" -> LicensePage()
-                "hall" -> HallOfFamePage()
             }
         }
     }
@@ -168,12 +162,6 @@ fun AboutMain(onNavigate: (String) -> Unit) {
                 Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
                 "The document scanner is ported from OpenScan by Vijay T S and Vikram H.\nhttps://github.com/ethereal-developers/OpenScan", PaperPink
             )
-        }
-
-        item {
-            AboutSection("COMMUNITY") {
-                AboutMenuItem(Icons.Filled.Star, "Hall of Fame", "PaperKnife+ supporters") { onNavigate("hall") }
-            }
         }
 
         item {
@@ -310,126 +298,6 @@ private fun LibraryRow(icon: androidx.compose.ui.graphics.vector.ImageVector, na
                 Spacer(Modifier.height(4.dp))
                 Text(description, fontSize = 11.sp, color = Color.Gray)
             }
-        }
-    }
-}
-
-@Composable
-fun HallOfFamePage() {
-    val infiniteTransition = rememberInfiniteTransition(label = "star")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "scale"
-    )
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.6f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "glow"
-    )
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(24.dp)
-    ) {
-        item {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Filled.Star, null,
-                    modifier = Modifier
-                        .size(80.dp)
-                        .graphicsLayer { scaleX = scale; scaleY = scale }
-                        .alpha(glowAlpha),
-                    tint = PaperPink.copy(alpha = 0.4f)
-                )
-                Icon(
-                    Icons.Filled.Star, null,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .graphicsLayer { scaleX = scale; scaleY = scale },
-                    tint = PaperPink
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Text("The Legends", fontWeight = FontWeight.Black, fontSize = 20.sp)
-            Text("PEOPLE WHO MADE THIS POSSIBLE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.5.sp)
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Kalyan", Color(0xFFF43F5E), Modifier.weight(1f))
-                HallSlot("For the Planet!", Color(0xFF10B981), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("1260er", Color(0xFFF59E0B), Modifier.weight(1f))
-                HallSlot("Sushant Sangle", Color(0xFF8B5CF6), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Bittu Shaw", Color(0xFF06B6D4), Modifier.weight(1f))
-                HallSlot("@chetly968", Color(0xFFEF4444), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Andrei", Color(0xFF84CC16), Modifier.weight(1f))
-                HallSlot("Csaba Gal", Color(0xFFEC4899), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Jason", Color(0xFF6366F1), Modifier.weight(1f))
-                HallSlot("Vishnumahanthy Mohan", Color(0xFF14B8A6), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Maurin", Color(0xFFF97316), Modifier.weight(1f))
-                HallSlot("Moh", Color(0xFFA855F7), Modifier.weight(1f))
-            }
-        }
-
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HallSlot("Balboc", Color(0xFF0EA5E9), Modifier.weight(1f))
-                HallSlot("Winkewinke", Color(0xFF22C55E), Modifier.weight(1f))
-            }
-        }
-
-        item { Spacer(Modifier.height(100.dp)) }
-    }
-}
-
-@Composable
-fun HallSlot(name: String, accentColor: Color, modifier: Modifier = Modifier) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-        shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f)),
-        modifier = modifier.aspectRatio(1.2f)
-    ) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Filled.Favorite, null, tint = accentColor.copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(name, fontSize = 16.sp, fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
         }
     }
 }

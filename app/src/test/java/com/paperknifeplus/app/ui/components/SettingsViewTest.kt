@@ -33,6 +33,7 @@ class SettingsViewTest {
 
         list.performScrollToNode(hasText("ScanKnife+ V", substring = true))
         rule.onNodeWithText("Support Us").assertDoesNotExist()
+        rule.onNodeWithText("Hall of Fame").assertDoesNotExist()
         rule.onNodeWithText("PaperKnife", substring = true).assertDoesNotExist()
     }
 }
