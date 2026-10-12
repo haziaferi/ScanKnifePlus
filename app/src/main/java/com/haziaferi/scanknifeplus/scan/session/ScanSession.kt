@@ -149,15 +149,13 @@ class ScanSession(
      * Gives up on failed shot [failure]: deletes its camera shot and drops it from [state]. False if it is not a current failure or the session
      * has ended, which deletes every failed shot itself.
      */
-    fun dismiss(failure: ShotFailure): Boolean {
-        val entry = synchronized(lock) {
-            val entry = failed(failure) ?: return false
-            entries -= entry
-            publish()
-            entry
-        }
+    fun dismiss(failure: ShotFailure): Boolean = synchronized(lock) {
+        val entry = failed(failure) ?: return false
+        entries -= entry
+        // Deleted before the state that drops it is published, as in process().
         entry.shot?.delete()
-        return true
+        publish()
+        true
     }
 
     /** The entry of current failure [failure], or null once the session is ending; callers hold [lock]. */
@@ -243,15 +241,16 @@ class ScanSession(
                 null
             }
         }
-        val (failed, undone) = synchronized(lock) {
+        val undone = synchronized(lock) {
             entry.pageId = pageId
             entry.done = true
             // A shot undone while it was being stored is no failure, whatever became of it.
             entry.failed = pageId == null && !entry.undone
+            // Deleted before the state that drops it from pending is published, so whoever sees that state never finds the shot still there.
+            if (!entry.failed) entry.shot?.delete()
             publish()
-            entry.failed to entry.undone
+            entry.undone
         }
-        if (!failed) entry.shot?.delete()
         // Undone while it was being stored: the page was added all the same, and goes again now.
         if (pageId != null && undone) removeUndone(entry)
     }
