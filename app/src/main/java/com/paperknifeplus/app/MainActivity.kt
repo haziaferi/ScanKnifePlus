@@ -184,11 +184,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onToolClick = {
                                             toolInitialUri = null
-                                            if (it == "about") {
-                                                aboutInitialPage = "support"
-                                                isAboutFromSettings = false
-                                                currentTool = "about"
-                                            } else if (it == "tools") {
+                                            if (it == "tools") {
                                                 scope.launch { pagerState.animateScrollToPage(1) }
                                             } else {
                                                 currentTool = it

@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
@@ -64,6 +66,7 @@ fun SettingsView(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val isDarkBg = LocalIsDarkTheme.current
+    val appName = stringResource(R.string.app_name)
 
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
     var currentTheme by remember { mutableIntStateOf(PreferencesManager.getTheme(context)) }
@@ -171,16 +174,15 @@ fun SettingsView(
             }
 
             item {
-                SettingsGroup("COMMUNITY") {
-                    SettingsItem(Icons.Outlined.Info, "About PaperKnife+", "Our mission and how it works") { onNavigateToAbout("main") }
-                    SettingsItem(Icons.Outlined.FavoriteBorder, "Support Us", "Help reach the Play Store", accentColor = Color(0xFFF43F5E)) { onNavigateToAbout("support") }
+                SettingsGroup("ABOUT") {
+                    SettingsItem(Icons.Outlined.Info, "About $appName", "How it works, credits and licenses") { onNavigateToAbout("main") }
                     SettingsItem(Icons.Outlined.StarOutline, "Hall of Fame", "The legends who made this possible", accentColor = Color(0xFFFFD700)) { onNavigateToAbout("hall") }
                 }
             }
 
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("PaperKnife+ V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text("$appName V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                 }
             }
         }

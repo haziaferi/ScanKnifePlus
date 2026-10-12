@@ -38,6 +38,13 @@ class HomeViewTest {
     }
 
     @Test
+    fun `the header shows the app name`() {
+        rule.setContent { HomeHeader(isDarkMode = false, onThemeToggle = {}) }
+        rule.onNodeWithText("ScanKnife+").assertExists()
+        rule.onNodeWithText("PaperKnife", substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `recent PDFs open in the reader and ZIP outputs open History`() {
         Robolectric.setupContentProvider(TypedProvider::class.java, "com.paperknifeplus.app.test.typed")
         val pdf = Uri.parse("content://com.paperknifeplus.app.test.typed/merged.pdf")
