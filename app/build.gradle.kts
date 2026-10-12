@@ -1,12 +1,11 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
 android {
     namespace = "com.paperknifeplus.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.haziaferi.scanknifeplus"
@@ -44,10 +43,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
-    lint {
-        // Compose 1.6.8's bundled check cannot read Kotlin 2.3 metadata and crashes lint; remove when the Compose BOM is bumped.
-        disable += "CoroutineCreationDuringComposition"
-    }
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
     testOptions { unitTests.isIncludeAndroidResources = true }
 }

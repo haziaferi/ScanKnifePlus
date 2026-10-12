@@ -27,7 +27,7 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        packages: "build-tools;36.0.0"
+        packages: "build-tools;36.0.0 platforms;android-37.0"
 
     # Validates the wrapper jar; caches are written only from the default branch.
     - name: Setup Gradle
