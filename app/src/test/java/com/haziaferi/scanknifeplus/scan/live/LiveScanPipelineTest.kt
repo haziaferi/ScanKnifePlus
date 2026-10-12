@@ -47,6 +47,7 @@ class LiveScanPipelineTest {
         val captures = mutableListOf<CaptureRequest>()
         var onCapture: (CaptureRequest) -> Unit = {}
         var onQuad: () -> Unit = {}
+        var onSteady: (Boolean) -> Unit = {}
         override fun onSmoothedQuadChanged(quad: Quad?) {
             quads += quad
             events += "quad"
@@ -57,6 +58,10 @@ class LiveScanPipelineTest {
         }
         override fun onAutoCaptureImminentChanged(imminent: Boolean) {
             events += "imminent=$imminent"
+        }
+        override fun onHoldingSteadyChanged(steady: Boolean) {
+            events += "steady=$steady"
+            onSteady(steady)
         }
         override fun onAutoCapture(request: CaptureRequest) {
             captures += request
@@ -263,6 +268,22 @@ class LiveScanPipelineTest {
     }
 
     @Test
+    fun `nothing is published after a listener disposes the pipeline as the cue ends at auto-capture`() {
+        recorder.onSteady = { steady -> if (!steady) pipeline.dispose() }
+        detect(doc, times = 8)
+        assertEquals("steady=false", recorder.events.last())
+        assertEquals(0, recorder.captures.size)
+        assertTrue(detector.disposed)
+    }
+
+    @Test
+    fun `a manual capture is refused when the listener disposes the pipeline as the cue ends`() {
+        detect(doc, times = 2)
+        recorder.onSteady = { steady -> if (!steady) pipeline.dispose() }
+        assertNull(pipeline.beginCapture())
+    }
+
+    @Test
     fun `frames pause from the shutter until the still is taken`() {
         assertNotNull(pipeline.beginCapture())
         feed(6)
@@ -314,30 +335,97 @@ class LiveScanPipelineTest {
     }
 
     @Test
-    fun `the front camera shows the overlay and auto-captures, but without a quad`() {
-        feed(3, rotation = 270, lens = CameraLens.FRONT)
-        assertEquals(QuadMapping.FRONT, detector.submitted.single().mapping)
-        detect(doc, times = 8)
-        assertSame(doc, recorder.quads.first())
-        assertNull(recorder.captures.single().quad)
-        pipeline.endCapture()
-        assertNull(pipeline.beginCapture()!!.quad)
+    fun `a lens without live detection detects nothing but still reports low light`() {
+        for (lens in listOf(CameraLens.FRONT, CameraLens.EXTERNAL)) {
+            for (rotation in listOf(90, 270)) assertEquals(QuadMapping.NONE, QuadMapping.of(rotation, lens))
+        }
+        feed(3)
+        detect(doc)
+        assertNotNull(pipeline.smoothedQuad)
+        feed(3, value = 10, lens = CameraLens.FRONT)
+        assertTrue(pipeline.isLowLight)
+        assertNull("the back camera's track is dropped", pipeline.smoothedQuad)
+        feed(30, lens = CameraLens.EXTERNAL)
+        assertEquals("only the back camera's frame was sent", 1, detector.submitted.size)
+        detect(doc, times = 8, mapping = QuadMapping.NONE)
+        assertNull(pipeline.smoothedQuad)
+        assertFalse(pipeline.isHoldingSteady)
+        assertEquals(0, recorder.captures.size)
+        assertNull("the manual shutter keeps the whole photo", pipeline.beginCapture()!!.quad)
     }
 
     @Test
     fun `a back camera at 0 or 180 degrees gives no overlay and no capture quad`() {
         for (rotation in listOf(0, 180)) {
             feed(3, rotation = rotation)
-            assertEquals(QuadMapping.NONE, detector.submitted.last().mapping)
-            detect(doc, times = 8)
+            assertEquals(0, detector.submitted.size)
+            detect(doc, times = 8, mapping = QuadMapping.NONE)
             assertNull(pipeline.smoothedQuad)
             assertEquals(0, recorder.captures.size)
             assertNull(pipeline.beginCapture()!!.quad)
             pipeline.endCapture()
         }
         feed(3)
+        assertEquals(QuadMapping.AS_IS, detector.submitted.single().mapping)
         detect(doc)
         assertNotNull(pipeline.beginCapture()!!.quad)
+    }
+
+    @Test
+    fun `holding steady starts at the second still quad, unlike the imminent quirk, and ends as the capture begins`() {
+        detect(doc)
+        assertTrue("OpenScan's imminent signal is on as soon as a document is tracked", pipeline.isAutoCaptureImminent)
+        assertFalse(pipeline.isHoldingSteady)
+        detect(doc)
+        assertTrue(pipeline.isHoldingSteady)
+        detect(doc, times = 5)
+        assertTrue(pipeline.isHoldingSteady)
+        assertEquals(0, recorder.captures.size)
+        detect(doc)
+        assertEquals(1, recorder.captures.size)
+        assertFalse(pipeline.isHoldingSteady)
+        assertEquals(listOf("steady=true", "steady=false"), recorder.events.filter { it.startsWith("steady") })
+        assertEquals("steady=false", recorder.events[recorder.events.indexOf("capture") - 1])
+    }
+
+    @Test
+    fun `a moving document is not holding steady`() {
+        val card = Quad(Pt(0.1, 0.3), Pt(0.4, 0.3), Pt(0.4, 0.6), Pt(0.1, 0.6))
+        detect(card, times = 2)
+        assertTrue(pipeline.isHoldingSteady)
+        // 0.05 per result: under the smoother's jump threshold, so the track follows, and well over the 0.02 tolerance once it has caught up.
+        for (step in 1..8) {
+            val dx = 0.05 * step
+            detect(Quad(Pt(0.1 + dx, 0.3), Pt(0.4 + dx, 0.3), Pt(0.4 + dx, 0.6), Pt(0.1 + dx, 0.6)))
+        }
+        assertFalse(pipeline.isHoldingSteady)
+        assertEquals(0, recorder.captures.size)
+    }
+
+    @Test
+    fun `holding steady stays off with auto-capture off, while zooming and in the cooldown`() {
+        detect(doc, times = 2)
+        pipeline.setAutoCaptureEnabled(false)
+        assertFalse(pipeline.isHoldingSteady)
+        detect(doc, times = 5)
+        assertFalse(pipeline.isHoldingSteady)
+        pipeline.setAutoCaptureEnabled(true)
+        detect(doc, times = 2)
+        assertTrue(pipeline.isHoldingSteady)
+
+        pipeline.setZooming(true)
+        assertFalse(pipeline.isHoldingSteady)
+        detect(doc, times = 5)
+        assertFalse(pipeline.isHoldingSteady)
+        pipeline.setZooming(false)
+
+        assertNotNull(pipeline.beginCapture())
+        pipeline.notifyCaptured()
+        pipeline.endCapture()
+        detect(doc, times = 19) // 1.9 s, still inside the 2 s cooldown
+        assertFalse(pipeline.isHoldingSteady)
+        detect(doc, times = 2)
+        assertTrue("after the cooldown", pipeline.isHoldingSteady)
     }
 
     @Test

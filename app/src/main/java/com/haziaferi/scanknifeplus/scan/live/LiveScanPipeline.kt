@@ -16,6 +16,7 @@ import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /** A capture the pipeline has started: [quad] is the boundary on screen as the shutter fires (portrait, [0,1]), or null to keep the whole photo. */
 class CaptureRequest(val quad: Quad?)
@@ -23,7 +24,8 @@ class CaptureRequest(val quad: Quad?)
 /**
  * The non-visual part of OpenScan's live-scan screen: every third analysis frame -> [FrameAdapter] grayscale -> [LowLightDetector] and
  * [LiveScanController] -> [QuadSmoother] -> [AutoCaptureDetector] -> [Listener.onAutoCapture], with the smoother and auto-capture advancing on
- * [clock] whenever a result arrives. [onFrame] runs on the analysis thread and every other method on any thread.
+ * [clock] whenever a result arrives, plus an app-side holding-steady cue ([isHoldingSteady]). [onFrame] runs on the analysis thread and every
+ * other method on any thread.
  */
 class LiveScanPipeline internal constructor(
     private val listener: Listener,
@@ -52,6 +54,13 @@ class LiveScanPipeline internal constructor(
          * [setAutoCaptureEnabled] or [notifyCaptured], or on the analysis thread when the frames come from another camera.
          */
         fun onAutoCaptureImminentChanged(imminent: Boolean) {}
+
+        /**
+         * The document is being held steady (auto-capture is counting down), or no longer is: the real cue, as [onAutoCaptureImminentChanged]
+         * is true whenever a document is tracked. Runs on the detection thread or on the thread that called [setAutoCaptureEnabled],
+         * [setZooming] or [beginCapture], or on the analysis thread when the frames come from another camera.
+         */
+        fun onHoldingSteadyChanged(steady: Boolean) {}
 
         /**
          * The document has been held still long enough: take the still now. The capture is already begun (as by [beginCapture]), so the caller
@@ -94,6 +103,18 @@ class LiveScanPipeline internal constructor(
     var isAutoCaptureImminent = false
         private set
 
+    /**
+     * Whether the document has stayed still for [HOLDING_STEADY_QUADS] smoothed quads in a row, with auto-capture on and out of its cooldown;
+     * the value last passed to [Listener.onHoldingSteadyChanged].
+     */
+    @Volatile
+    var isHoldingSteady = false
+        private set
+
+    // Under lock: the last smoothed quad of the current still run and the run's length.
+    private var steadyQuad: Quad? = null
+    private var steadyRun = 0
+
     /** Whether a capture is in progress, from [beginCapture] (or an auto-capture) until [endCapture]. */
     val isCapturing: Boolean get() = capturing
 
@@ -104,8 +125,9 @@ class LiveScanPipeline internal constructor(
 
     /**
      * Handles one frame from [lens]: the Y plane of a YUV_420_888 image in sensor orientation (pixel stride 1, rows [rowStride] bytes apart, read
-     * from the buffer's position, which is left unchanged) and the [rotationDegrees] that turn it upright. A back camera at 90 or 270 degrees and
-     * the front camera (as in OpenScan) yield quads; every third frame is analysed, none while detection is busy, zooming or the shutter is open.
+     * from the buffer's position, which is left unchanged) and the [rotationDegrees] that turn it upright. Every third frame is analysed, none
+     * while detection is busy, zooming or the shutter is open; only a back camera at 90 or 270 degrees is sent for detection, while every lens
+     * still updates low light.
      */
     fun onFrame(yPlane: ByteBuffer, rowStride: Int, width: Int, height: Int, rotationDegrees: Int, lens: CameraLens) {
         if (disposed || shutterOpen) return
@@ -140,6 +162,7 @@ class LiveScanPipeline internal constructor(
                 listener.onLowLightChanged(isLowLight)
             }
         }
+        if (mapping == QuadMapping.NONE) return
         val (w, h) = FrameAdapter.downsampledSize(width, height) ?: return
         detector.submitFrame(gray, w, h, mapping)
     }
@@ -147,24 +170,32 @@ class LiveScanPipeline internal constructor(
     /** Pauses detection and auto-capture while the user is zooming, as OpenScan does during a zoom drag. */
     fun setZooming(zooming: Boolean) {
         this.zooming = zooming
-    }
-
-    /** Turns auto-capture on or off (on by default). Persisting the choice is the caller's job. */
-    fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
-        if (disposed) return
-        autoCapture.enabled = enabled
+        if (zooming) synchronized(lock) { resetHoldingSteady() }
     }
 
     /**
-     * Starts a capture (auto-capture calls this itself) and snapshots the smoothed quad, null when the frames do not map onto the still (the
-     * front camera); follow with [notifyCaptured] once the still is taken and [endCapture] when done, and frames pause until then, as OpenScan
-     * stops its stream. Returns null, doing nothing, if a capture is in progress or the pipeline is disposed.
+     * Turns auto-capture on or off (on by default). The pipeline does not persist the choice: the caller stores it in
+     * [com.haziaferi.scanknifeplus.scan.ScanPreferences] and applies it here when a session starts.
+     */
+    fun setAutoCaptureEnabled(enabled: Boolean): Unit = synchronized(lock) {
+        if (disposed) return
+        autoCapture.enabled = enabled
+        if (!enabled) resetHoldingSteady()
+    }
+
+    /**
+     * Starts a capture (auto-capture calls this itself) and snapshots the smoothed quad, null when nothing is tracked or the lens runs no live
+     * detection; follow with [notifyCaptured] once the still is taken and [endCapture] when done, and frames pause until then, as OpenScan stops
+     * its stream. Returns null if a capture is in progress or the pipeline is disposed (including by the listener as the cue ends).
      */
     fun beginCapture(): CaptureRequest? = synchronized(lock) {
         if (disposed || capturing) return null
         capturing = true
         shutterOpen = true
-        CaptureRequest(if (frameMapping.mapsOntoStill) smoother.smoothedQuad else null)
+        resetHoldingSteady()
+        // The cue's listener may have disposed the pipeline; then no capture starts and onAutoCapture never runs.
+        if (disposed) return null
+        CaptureRequest(smoother.smoothedQuad)
     }
 
     /** The still has been taken: starts the auto-capture cooldown, drops the smoothed track so the next document starts fresh, resumes frames. */
@@ -207,7 +238,35 @@ class LiveScanPipeline internal constructor(
         smoothedQuad = quad
         listener.onSmoothedQuadChanged(quad)
         if (zooming || disposed) return
+        // Before the detector, whose onStable may begin the capture that ends the cue.
+        updateHoldingSteady(quad)
+        if (disposed) return
         autoCapture.onQuadUpdate(quad)
+    }
+
+    // Under lock. Counts only where the detector counts: a tracked quad, auto-capture on, no cooldown, no capture under way.
+    private fun updateHoldingSteady(quad: Quad?) {
+        if (quad == null || capturing || !autoCapture.enabled || autoCapture.isInCooldown) {
+            resetHoldingSteady()
+            return
+        }
+        val last = steadyQuad
+        steadyRun = if (last != null && isStill(last, quad)) steadyRun + 1 else 1
+        steadyQuad = quad
+        setHoldingSteady(steadyRun >= HOLDING_STEADY_QUADS)
+    }
+
+    // Under lock.
+    private fun resetHoldingSteady() {
+        steadyQuad = null
+        steadyRun = 0
+        setHoldingSteady(false)
+    }
+
+    private fun setHoldingSteady(steady: Boolean) {
+        if (disposed || isHoldingSteady == steady) return
+        isHoldingSteady = steady
+        listener.onHoldingSteadyChanged(steady)
     }
 
     // Called by the auto-capture detector, under lock.
@@ -225,25 +284,35 @@ class LiveScanPipeline internal constructor(
 }
 
 /**
- * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
- * 270 degrees sees the page turned half way round. The front camera keeps OpenScan's mapping for the overlay and auto-capture, but its frames
- * do not match its unmirrored still; other rotations yield no quad.
+ * Smoothed quads in a row, each within [AutoCaptureDetector.POSITION_TOLERANCE_FRACTION] of the last, that count as holding steady: two is the
+ * first evidence the page has stopped (about 100 ms), so the cue shows for most of the detector's [AutoCaptureDetector.MIN_STABLE_DURATION_MICROS].
  */
-internal enum class QuadMapping(val mapsOntoStill: Boolean) {
-    AS_IS(true),
-    HALF_TURN(true),
-    FRONT(false),
-    NONE(false);
+internal const val HOLDING_STEADY_QUADS = 2
+
+// The detector's own per-corner check, which is private to scanner-core.
+private fun isStill(a: Quad, b: Quad): Boolean = a.points.zip(b.points).all { (p, q) ->
+    abs(p.x - q.x) <= AutoCaptureDetector.POSITION_TOLERANCE_FRACTION && abs(p.y - q.y) <= AutoCaptureDetector.POSITION_TOLERANCE_FRACTION
+}
+
+/**
+ * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
+ * 270 degrees sees the page turned half way round. Other rotations, and lenses without [CameraLens.liveDetection] (every lens but the back
+ * camera, see [CameraLens]), yield no quad.
+ */
+internal enum class QuadMapping {
+    AS_IS,
+    HALF_TURN,
+    NONE;
 
     fun map(quad: Quad): Quad? = when (this) {
-        AS_IS, FRONT -> quad
+        AS_IS -> quad
         HALF_TURN -> Contours.sortCorners(quad.points.map { Pt(1 - it.x, 1 - it.y) })
         NONE -> null
     }
 
     companion object {
         fun of(rotationDegrees: Int, lens: CameraLens): QuadMapping = when {
-            lens != CameraLens.BACK -> FRONT
+            !lens.liveDetection -> NONE
             rotationDegrees == 90 -> AS_IS
             rotationDegrees == 270 -> HALF_TURN
             else -> NONE

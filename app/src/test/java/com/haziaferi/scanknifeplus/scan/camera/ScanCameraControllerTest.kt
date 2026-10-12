@@ -9,7 +9,6 @@ import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,7 +41,6 @@ class ScanCameraControllerTest {
         assertEquals(CameraError.PERMISSION_DENIED, controller.state.error)
         assertEquals(CameraStatus.IDLE, controller.state.status)
         assertEquals(listOf(controller.state), states)
-        assertFalse(controller.switchLens())
         assertNull(runBlocking { controller.takePicture(app.cacheDir) })
     }
 
@@ -53,7 +51,6 @@ class ScanCameraControllerTest {
         assertEquals(false, torch)
         controller.setZoom(2f)
         controller.finishZoom()
-        assertFalse(controller.switchLens())
         assertNull(runBlocking { controller.takePicture(app.cacheDir) })
         controller.unbind()
         assertEquals(ScanCameraState(), controller.state)

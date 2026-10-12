@@ -2,8 +2,16 @@ package com.haziaferi.scanknifeplus.scan.camera
 
 import androidx.camera.core.CameraState
 
-/** Which way the camera faces. The live pipeline needs it: only the back camera's frames map onto its still for the auto-crop quad. */
-enum class CameraLens { BACK, FRONT }
+/** Which way the camera faces; [LensPolicy] picks one. [liveDetection] (outline, holding-steady cue, auto-capture) is on for the back camera only. */
+enum class CameraLens(val liveDetection: Boolean) {
+    BACK(true),
+
+    /** Off because its frames are mirrored against its unmirrored still, so a quad found on them would not fit the photo. */
+    FRONT(false),
+
+    /** Off because the policy enables detection for back cameras only; an external camera's mount and orientation are unknown. */
+    EXTERNAL(false),
+}
 
 /** Where the camera is in its life: not bound, opening (or waiting to reopen), streaming, or closed while the screen is stopped. */
 enum class CameraStatus { IDLE, OPENING, READY, CLOSED }
@@ -57,7 +65,6 @@ data class ScanCameraState(
     val status: CameraStatus = CameraStatus.IDLE,
     val error: CameraError? = null,
     val lens: CameraLens? = null,
-    val canSwitchLens: Boolean = false,
     val torchAvailable: Boolean = false,
     val torchOn: Boolean = false,
     val minZoom: Float = 1f,
@@ -73,6 +80,9 @@ data class ScanCameraState(
 ) {
     /** True when frames are flowing and a picture can be taken. */
     val ready: Boolean get() = status == CameraStatus.READY
+
+    /** Whether the open camera runs live detection (outline, holding-steady cue, auto-capture); otherwise only the manual shutter is offered. */
+    val liveDetection: Boolean get() = lens?.liveDetection == true
 
     /** Whether a zoom control has any range to offer. */
     val zoomSupported: Boolean get() = maxZoom > minZoom
