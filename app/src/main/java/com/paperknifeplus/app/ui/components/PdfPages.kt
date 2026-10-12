@@ -2,27 +2,35 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSInteger
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSNull
+import com.tom_roush.pdfbox.cos.COSString
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDPageLabelRange
 import com.tom_roush.pdfbox.pdmodel.common.PDPageLabels
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardSecurityHandler
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.UUID
+
+private const val TAG = "PdfPages"
 
 /**
  * Copies [src] from another document onto the end of this one, as [appendPagesFrom] does for a single page: links on it to itself keep
@@ -84,6 +92,9 @@ fun PDDocument.keepPages(order: List<Int>) {
     val keptSet = identitySetOf(kept.map { it.cosObject })
     val removed = identitySetOf(all.map { it.cosObject }.filter { it !in keptSet })
     val labels = pageLabelsByIndex(all.size)
+    // Resolved while page indices still mean what they did; afterwards they would point at other pages.
+    pinPageNumbers(all)
+    val outlineTargets = outlineTargets()
 
     for (page in kept) {
         for (key in INHERITABLE_PAGE_KEYS) {
@@ -99,7 +110,7 @@ fun PDDocument.keepPages(order: List<Int>) {
         val removedAnnotations = identitySetOf(
             all.filter { it.cosObject in removed }.flatMap { page -> (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray).dicts() }
         )
-        documentCatalog.documentOutline?.let { pruneOutline(it.cosObject, removed, identitySetOf()) }
+        documentCatalog.documentOutline?.let { pruneOutline(it.cosObject, removed, outlineTargets, identitySetOf()) }
         pruneForm(removedAnnotations)
         pruneNamedDestinations(removed)
         (documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION))?.let {
@@ -141,17 +152,83 @@ private fun destinationPage(value: COSBase?): COSDictionary? = when (value) {
     else -> null
 }
 
+/** Every outline item, depth first; a malformed (cyclic) outline is walked once. */
+private fun PDDocument.outlineItems(): List<COSDictionary> {
+    val items = mutableListOf<COSDictionary>()
+    val seen = identitySetOf<COSDictionary>()
+    fun walk(first: COSDictionary?) {
+        var item = first
+        while (item != null && seen.add(item)) {
+            items += item
+            walk(item.getDictionaryObject(COSName.FIRST) as? COSDictionary)
+            item = item.getDictionaryObject(COSName.NEXT) as? COSDictionary
+        }
+    }
+    val outline = documentCatalog.cosObject.getDictionaryObject(COSName.OUTLINES) as? COSDictionary
+    walk(outline?.getDictionaryObject(COSName.FIRST) as? COSDictionary)
+    return items
+}
+
 /**
- * Drops the outline items under [node] that lead to a removed page and have no kept children; one with kept children loses only its
- * target. Relinks the survivors and recounts /Count, keeping each item open or closed as it was.
+ * Replaces the page numbers some producers write into destinations (outline items, links, named destinations, the open action) with the
+ * page in [all] they mean, so they keep leading there once [keepPages] renumbers the pages. Numbers past the end are left as they are.
  */
-private fun PDDocument.pruneOutline(node: COSDictionary, removed: Set<COSDictionary>, seen: MutableSet<COSDictionary>) {
+private fun PDDocument.pinPageNumbers(all: List<PDPage>) {
+    fun pin(destination: COSBase?) {
+        when (destination) {
+            is COSArray -> {
+                val page = (destination.getObject(0) as? COSInteger)?.intValue()?.let(all::getOrNull)
+                if (page != null) destination.set(0, page.cosObject)
+            }
+            is COSDictionary -> pin(destination.getDictionaryObject(COSName.D))
+            else -> {}
+        }
+    }
+    val annotations = all.flatMap { page -> (page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray).dicts() }
+    for (holder in outlineItems() + annotations) {
+        pin(holder.getDictionaryObject(COSName.DEST))
+        pin(holder.getDictionaryObject(COSName.A))
+    }
+    val catalog = documentCatalog.cosObject
+    pin(catalog.getDictionaryObject(COSName.OPEN_ACTION))
+    (catalog.getDictionaryObject(COSName.DESTS) as? COSDictionary)?.let { dests ->
+        dests.keySet().forEach { pin(dests.getDictionaryObject(it)) }
+    }
+    forEachNamedDestinationLeaf { pairs -> for (i in 1 until pairs.size() step 2) pin(pairs.getObject(i)) }
+}
+
+/** The page each outline item leads to, resolved before the page tree changes; null where it leads nowhere or cannot be resolved. */
+private fun PDDocument.outlineTargets(): Map<COSDictionary, COSDictionary?> {
+    val targets = IdentityHashMap<COSDictionary, COSDictionary?>()
+    for (item in outlineItems()) {
+        targets[item] = try {
+            PDOutlineItem(item).findDestinationPage(this)?.cosObject
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Malformed destinations, or a page number past the end: unresolved, as the Bookmarks tool shows them.
+            Log.w(TAG, "Unresolved outline target", e)
+            null
+        }
+    }
+    return targets
+}
+
+/**
+ * Drops the outline items under [node] whose [targets] page was removed and that have no kept children; one with kept children loses only
+ * its target. Relinks the survivors and recounts /Count, keeping each item open or closed as it was.
+ */
+private fun pruneOutline(
+    node: COSDictionary,
+    removed: Set<COSDictionary>,
+    targets: Map<COSDictionary, COSDictionary?>,
+    seen: MutableSet<COSDictionary>
+) {
     val survivors = mutableListOf<COSDictionary>()
     var child = node.getDictionaryObject(COSName.FIRST) as? COSDictionary
     while (child != null && seen.add(child)) {
-        pruneOutline(child, removed, seen)
-        val item = PDOutlineItem(child)
-        val leadsAway = item.findDestinationPage(this)?.cosObject in removed
+        pruneOutline(child, removed, targets, seen)
+        val leadsAway = targets[child] in removed
         if (leadsAway) {
             child.removeItem(COSName.DEST)
             child.removeItem(COSName.A)
@@ -204,20 +281,26 @@ private fun PDDocument.pruneNamedDestinations(removed: Set<COSDictionary>) {
     (catalog.getDictionaryObject(COSName.DESTS) as? COSDictionary)?.let { dests ->
         dests.keySet().toList().forEach { if (destinationPage(dests.getDictionaryObject(it)) in removed) dests.removeItem(it) }
     }
-    val tree = (catalog.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.DESTS) as? COSDictionary ?: return
+    forEachNamedDestinationLeaf { pairs ->
+        for (i in (pairs.size() / 2 - 1) downTo 0) {
+            if (destinationPage(pairs.getObject(2 * i + 1)) in removed) {
+                pairs.remove(2 * i + 1)
+                pairs.remove(2 * i)
+            }
+        }
+    }
+}
+
+/** Hands [block] the /Names array (name, destination, name, ...) of each node of the /Names /Dests tree. */
+private fun PDDocument.forEachNamedDestinationLeaf(block: (COSArray) -> Unit) {
+    val names = documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSDictionary
+    val tree = names?.getDictionaryObject(COSName.DESTS) as? COSDictionary ?: return
     val seen = identitySetOf<COSDictionary>()
     val nodes = ArrayDeque(listOf(tree))
     while (nodes.isNotEmpty()) {
         val node = nodes.removeFirst()
         if (!seen.add(node)) continue
-        (node.getDictionaryObject(COSName.NAMES) as? COSArray)?.let { pairs ->
-            for (i in (pairs.size() / 2 - 1) downTo 0) {
-                if (destinationPage(pairs.getObject(2 * i + 1)) in removed) {
-                    pairs.remove(2 * i + 1)
-                    pairs.remove(2 * i)
-                }
-            }
-        }
+        (node.getDictionaryObject(COSName.NAMES) as? COSArray)?.let(block)
         nodes.addAll((node.getDictionaryObject(COSName.KIDS) as? COSArray).dicts())
     }
 }
@@ -277,17 +360,75 @@ private fun PDDocument.relabel(labels: List<PageLabel>) {
 }
 
 /**
- * The encryption that keeps a tool's output as protected as this source, opened with [password]: the same open password, AES-256 as Protect
- * uses, and the source's permissions. The owner password is kept when [password] was it; otherwise it cannot be read, and a random one keeps
- * the permissions in force. Null for an unencrypted source.
+ * The encryption that keeps a tool's output as protected as this source, opened with [password], with the source's permissions:
+ * - AES-256, as Protect uses. AES-256 prepares passwords with SASLprep, which refuses some characters (control characters, for one) that
+ *   an older (revision 2-4) file accepts; only then does the output keep the source's key length and RC4 or AES-128 cipher.
+ * - The open password stays the same. Opened with the owner password, a revision 2-4 file gives up its user password, which is kept; a
+ *   revision 5-6 (AES-256) file cannot, so its owner password then also becomes the open password.
+ * - The owner password is kept when [password] was it; otherwise it cannot be read, and a random one keeps the permissions in force.
+ * Null for an unencrypted source.
  */
 internal fun PDDocument.sameProtection(password: String): StandardProtectionPolicy? {
     if (!isEncrypted) return null
-    val owner = if (currentAccessPermission.isOwnerPermission) password else UUID.randomUUID().toString()
-    return StandardProtectionPolicy(owner, password, AccessPermission(encryption.permissions)).apply { encryptionKeyLength = 256 }
+    val source = encryption
+    val legacy = source.revision <= 4
+    val opener = currentAccessPermission.isOwnerPermission
+    val user = if (opener && legacy) recoverUserPassword(password) ?: password else password
+    val owner = if (opener) password else UUID.randomUUID().toString()
+    return StandardProtectionPolicy(owner, user, AccessPermission(source.permissions)).apply {
+        if (legacy && !aes256Accepts(owner, user)) {
+            encryptionKeyLength = if (source.length <= 40) 40 else 128
+            isPreferAES = source.stdCryptFilterDictionary?.cryptFilterMethod == COSName.AESV2
+        } else {
+            encryptionKeyLength = 256
+        }
+    }
 }
 
-/** Opens [input] with [password], lets [edit] change it in place and writes it to [output] as protected as it was. Blocking; throws on failure. */
+/** Whether AES-256 encryption takes [owner] and [user], tried on an empty document: SASLprep throws on a password it refuses. */
+private fun aes256Accepts(owner: String, user: String): Boolean = try {
+    PDDocument().use { probe ->
+        probe.protect(StandardProtectionPolicy(owner, user, AccessPermission()).apply { encryptionKeyLength = 256 })
+        probe.save(ByteArrayOutputStream())
+    }
+    true
+} catch (e: IllegalArgumentException) {
+    false
+}
+
+/** The padding revision 2-4 handlers append to a password to make it 32 bytes (ISO 32000-1, 7.6.3.3, Algorithm 2). */
+private val PASSWORD_PADDING = intArrayOf(
+    0x28, 0xBF, 0x4E, 0x5E, 0x4E, 0x75, 0x8A, 0x41, 0x64, 0x00, 0x4E, 0x56, 0xFF, 0xFA, 0x01, 0x08,
+    0x2E, 0x2E, 0x00, 0xB6, 0xD0, 0x68, 0x3E, 0x80, 0x2F, 0x0C, 0xA9, 0xFE, 0x64, 0x53, 0x69, 0x7A
+).map { it.toByte() }.toByteArray()
+
+/**
+ * The user password of this revision 2-4 document, recovered from its [ownerPassword] (the owner key holds it, RC4-encrypted with a key
+ * derived from the owner password) and checked against the user key; null if that fails.
+ */
+private fun PDDocument.recoverUserPassword(ownerPassword: String): String? = try {
+    val source = encryption
+    val keyBytes = source.length / 8
+    val handler = StandardSecurityHandler()
+    val padded = handler.getUserPassword(ownerPassword.toByteArray(Charsets.ISO_8859_1), source.ownerKey, source.revision, keyBytes)
+    val id = (document.documentID?.getObject(0) as? COSString)?.bytes ?: ByteArray(0)
+    (0..padded.size).map { padded.copyOf(it) }
+        .filter { padded.copyOfRange(it.size, padded.size).contentEquals(PASSWORD_PADDING.copyOf(padded.size - it.size)) }
+        .firstOrNull {
+            handler.isUserPassword(it, source.userKey, source.ownerKey, source.permissions, id, source.revision, keyBytes, source.isEncryptMetaData)
+        }
+        ?.toString(Charsets.ISO_8859_1)
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.w(TAG, "Cannot recover the user password", e)
+    null
+}
+
+/**
+ * Opens [input] with [password], lets [edit] change it in place and writes it to [output] as protected as it was ([sameProtection]). Tools
+ * pass the file as picked, never its decrypted cache copy, so the encryption can be read. Blocking; throws on failure.
+ */
 private fun editKeepingProtection(context: Context, input: Uri, password: String, output: Uri, edit: (PDDocument) -> Unit) {
     context.contentResolver.requireInputStream(input).use { stream ->
         PDDocument.load(stream, password).use { document ->

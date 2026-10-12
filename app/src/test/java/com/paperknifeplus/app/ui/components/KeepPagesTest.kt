@@ -7,6 +7,7 @@ import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSInteger
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
@@ -45,12 +46,12 @@ class KeepPagesTest {
 
     private fun contains(bytes: ByteArray, text: String) = String(bytes, Charsets.ISO_8859_1).contains(text)
 
-    /** The top-level outline items as title to page index (-1 for none), each item's children nested as "title/child". */
+    /** The outline items as title to page index (-1 for none or unresolvable), each item's children nested as "title/child". */
     private fun PDDocument.outline(): Map<String, Int> {
         val result = linkedMapOf<String, Int>()
         fun walk(items: Iterable<PDOutlineItem>, path: String) {
             for (item in items) {
-                result[path + item.title] = item.findDestinationPage(this)?.let { pages.indexOf(it) } ?: -1
+                result[path + item.title] = runCatching { item.findDestinationPage(this) }.getOrNull()?.let { pages.indexOf(it) } ?: -1
                 walk(item.children(), "$path${item.title}/")
             }
         }
@@ -109,6 +110,33 @@ class KeepPagesTest {
         val bytes = run(source) { input, output -> deletePages(context, input, output, "", setOf(2)) }
         assertFalse(contains(bytes, TestPdfs.structuredMarker(3)))
         PDDocument.load(bytes).use { assertEquals(3, it.numberOfPages) }
+    }
+
+    /** [TestPdfs.structured] with two more outline items: "N" to page index 3 written as a number, and "X" with a destination that is not one. */
+    private fun withNumberedAndBrokenOutline(): ByteArray = PDDocument.load(TestPdfs.structured()).use { doc ->
+        val outline = doc.documentCatalog.documentOutline
+        outline.addLast(PDOutlineItem().apply {
+            title = "N"
+            cosObject.setItem(COSName.DEST, COSArray().apply {
+                add(COSInteger.get(3))
+                add(COSName.getPDFName("Fit"))
+            })
+        })
+        outline.addLast(PDOutlineItem().apply {
+            title = "X"
+            cosObject.setItem(COSName.DEST, COSInteger.get(5))
+        })
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    @Test
+    fun `outline targets are resolved before the pages change, page numbers included, and a broken one is kept unresolved`() {
+        val deleted = run(withNumberedAndBrokenOutline()) { input, output -> deletePages(context, input, output, "", setOf(0)) }
+        PDDocument.load(deleted).use { doc ->
+            assertEquals(mapOf("B" to 0, "B/B1" to 1, "C" to 1, "D" to 2, "N" to 2, "X" to -1), doc.outline())
+        }
+        val rearranged = run(withNumberedAndBrokenOutline()) { input, output -> rearrangePages(context, input, output, "", listOf(3, 2, 1, 0)) }
+        PDDocument.load(rearranged).use { doc -> assertEquals(0, doc.outline()["N"]) }
     }
 
     @Test

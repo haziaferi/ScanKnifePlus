@@ -42,7 +42,6 @@ fun DeleteView(
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    // The file as picked; selectedUri becomes its decrypted copy once unlocked, but the output is made from this so it stays protected.
     var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
