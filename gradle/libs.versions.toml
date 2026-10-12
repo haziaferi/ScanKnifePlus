@@ -5,6 +5,7 @@ coreKtx = "1.19.1"
 lifecycle = "2.11.0"
 # Newest activity that keeps Compose at the BOM's 1.6.8: activity-compose 1.10+ needs Compose runtime 1.7+, and 1.13 pulls ui 1.9.2.
 activity = "1.9.3"
+# AGP 9.3 lint silently skips the Compose 1.6.8 lint checks (runtime, ui, foundation, material3, animation); they return with the BOM bump.
 composeBom = "2024.06.00"
 pdfbox = "2.0.27.0"
 coil = "2.7.0"
