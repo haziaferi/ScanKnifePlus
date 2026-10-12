@@ -10,6 +10,7 @@ import java.io.File
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -262,11 +263,43 @@ class PageEditingTest {
     }
 
     @Test
-    fun `a re-crop after a turn starts again from the original`() {
+    fun `turns are recorded against the original and kept by a re-crop`() {
         val (id, page) = newPage()
-        library.rotatePage(id, page.id, 1)
+        assertEquals(1, library.rotatePage(id, page.id, 1)!!.pages.single().quarterTurns)
+        library.applyFilter(id, page.id, "B&W")
+        assertEquals(3, library.rotatePage(id, page.id, 2)!!.pages.single().quarterTurns)
         val recropped = library.recropPage(id, page.id, quad)!!.pages.single()
-        assertEquals("crop0(original)", text(id, recropped.image))
+        assertEquals("crop3(original)", text(id, recropped.image))
+        assertEquals(3, recropped.quarterTurns)
         assertEquals(recropped.files.toSet(), folderFiles(id))
+        // An explicit turn replaces the recorded one.
+        val upright = library.recropPage(id, page.id, quad, quarterTurns = 0)!!.pages.single()
+        assertEquals("crop0(original)", text(id, upright.image))
+        assertEquals(0, upright.quarterTurns)
+    }
+
+    @Test
+    fun `a re-crop keeps the turn of a page without an original, whose image already shows it`() {
+        val (id, page) = newPage(keepOriginal = false)
+        val turned = library.rotatePage(id, page.id, 1)!!.pages.single()
+        assertEquals(0, turned.quarterTurns)
+        val recropped = library.recropPage(id, page.id, quad)!!.pages.single()
+        assertEquals("norm3200@80(turn1(page))", text(id, recropped.original))
+        assertEquals("crop0(turn1(page))", text(id, recropped.image))
+        assertEquals(0, recropped.quarterTurns)
+    }
+
+    @Test
+    fun `the turn is stored only for turned pages, and a record without it reads as unturned`() {
+        val (id, page) = newPage()
+        val record = File(File(root, id), ScanLibrary.RECORD)
+        assertFalse(record.readText().contains("quarterTurns"))
+        library.rotatePage(id, page.id, -1)
+        assertTrue(record.readText().contains("\"quarterTurns\": 3"))
+        assertEquals(3, ScanLibrary(root).document(id)!!.pages.single().quarterTurns)
+        // A record written before turns were stored.
+        record.writeText(record.readText().replace(Regex(",\\s*\"quarterTurns\": 3"), ""))
+        assertFalse(record.readText().contains("quarterTurns"))
+        assertEquals(0, library.document(id)!!.pages.single().quarterTurns)
     }
 }

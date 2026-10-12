@@ -114,6 +114,20 @@ class PageEditingDeviceTest {
     }
 
     @Test
+    fun aRecropKeepsATurnWithOrWithoutAnOriginal() {
+        val doc = library.create()
+        val whole = Quad(Pt(0.0, 0.0), Pt(1.0, 0.0), Pt(1.0, 1.0), Pt(0.0, 1.0))
+        for (keepOriginal in listOf(true, false)) {
+            val page = library.addCapture(doc.id, ImageSource.of(photo()), null, keepOriginal)!!.document.pages.last()
+            library.rotatePage(doc.id, page.id, 1)
+            val recropped = library.recropPage(doc.id, page.id, whole)!!.pages.first { it.id == page.id }
+            val image = library.file(doc.id, recropped.image)
+            assertEquals("original kept: $keepOriginal", PageSize(1600, 1200), ImageCodec.orientedSize(ImageSource.of(image)))
+            assertColor(Color.rgb(30, 60, 200), pixel(image, 0.25, 0.25), "top left, original kept: $keepOriginal")
+        }
+    }
+
+    @Test
     fun aRecropIsFittedToThePageCap() {
         val doc = library.create()
         // 3000x4000 is stored with a 2400x3200 original; the whole original re-cropped is fitted to 1800x2400.

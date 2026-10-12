@@ -6,7 +6,8 @@ import org.json.JSONObject
 /**
  * One page of a scanned document. File names are relative to the document's folder. Mirrors OpenScan's `pages` table: [image] is what the page
  * shows; [original] is the uncropped capture kept for re-cropping; [unfiltered] is the page before any filter, kept so filters never compound;
- * [filter] is the applied filter's name, or null for none.
+ * [filter] is the applied filter's name, or null for none. [quarterTurns] (0 to 3, clockwise) is how far the page is turned from [original], so a
+ * re-crop keeps the turn; it stays 0 without an original, whose image already shows any turn.
  */
 data class ScanPage(
     val id: String,
@@ -14,6 +15,7 @@ data class ScanPage(
     val original: String? = null,
     val unfiltered: String? = null,
     val filter: String? = null,
+    val quarterTurns: Int = 0,
 ) {
     /** Every file this page owns. */
     val files: List<String> get() = listOfNotNull(image, original, unfiltered).distinct()
@@ -45,10 +47,15 @@ data class ScanDocument(
                 .put("original", p.original ?: JSONObject.NULL)
                 .put("unfiltered", p.unfiltered ?: JSONObject.NULL)
                 .put("filter", p.filter ?: JSONObject.NULL)
+                // Only when turned, so records of unturned pages stay as they were and older versions read them unchanged.
+                .apply { if (p.quarterTurns != 0) put("quarterTurns", p.quarterTurns) }
         }))
 
     internal companion object {
-        /** Written for future migrations; records are read best-effort whatever their version, since every field read here is required in v1. */
+        /**
+         * Written for future migrations; records are read best-effort whatever their version, since every field read here is required in v1
+         * except the optional `quarterTurns`.
+         */
         const val FORMAT_VERSION = 1
 
         fun fromJson(json: JSONObject): ScanDocument {
@@ -66,6 +73,7 @@ data class ScanDocument(
                         original = p.optStringOrNull("original"),
                         unfiltered = p.optStringOrNull("unfiltered"),
                         filter = p.optStringOrNull("filter"),
+                        quarterTurns = p.optInt("quarterTurns", 0).mod(4),
                     )
                 },
             )

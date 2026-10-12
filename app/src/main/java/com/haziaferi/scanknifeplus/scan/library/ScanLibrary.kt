@@ -179,13 +179,14 @@ class ScanLibrary(
     }
 
     /**
-     * Re-crops page [pageId] to [quad] (fractions of the source's upright size), turned clockwise by [quarterTurns], as OpenScan's crop step does:
-     * from the kept original (else the unfiltered copy, else the page), so crops never compound, giving a page without an original one first; the
-     * new page is fitted to the page cap and filter-free. Returns the updated document, or null if nothing changed; where OpenScan stores an
-     * unnormalized copy when normalizing fails, the re-crop fails here.
+     * Re-crops page [pageId] to [quad] (fractions of the source's upright size), turned clockwise by [quarterTurns] (null keeps the page's
+     * recorded [ScanPage.quarterTurns]), as OpenScan's crop step does: from the kept original (else the unfiltered copy, else the page), so crops
+     * never compound, giving a page without an original one first; the new page is fitted to the page cap and filter-free. Returns the updated
+     * document, or null if nothing changed; where OpenScan stores an unnormalized copy when normalizing fails, the re-crop fails here.
      */
-    fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int = 0): ScanDocument? {
+    fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int? = null): ScanDocument? {
         val (_, page) = snapshot(id, pageId) ?: return null
+        val turns = (quarterTurns ?: page.quarterTurns).mod(4)
         val reserved = reserve(id, if (page.original == null) listOf("", "orig_") else listOf("")) ?: return null
         try {
             val cropped = reserved[0]
@@ -196,8 +197,9 @@ class ScanLibrary(
                 return discard(reserved)
             }
             val source = file(id, page.original ?: page.unfiltered ?: page.image)
-            if (!images.crop(source, quad, quarterTurns, cropped)) return discard(reserved)
-            val edited = page.copy(image = cropped.name, original = page.original ?: promoted!!.name, unfiltered = null, filter = null)
+            if (!images.crop(source, quad, turns, cropped)) return discard(reserved)
+            val original = page.original ?: promoted!!.name
+            val edited = page.copy(image = cropped.name, original = original, unfiltered = null, filter = null, quarterTurns = turns)
             return commit(id, page, edited, reserved, listOfNotNull(page.image, page.unfiltered))
         } finally {
             release(reserved)
@@ -206,9 +208,9 @@ class ScanLibrary(
 
     /**
      * Turns page [pageId] clockwise by [quarterTurns] (negative turns count anticlockwise; a whole turn changes nothing), at the cost of one JPEG
-     * generation. Its unfiltered copy is turned with it, so a later filter change keeps the turn; the kept original stays as captured, since a
-     * re-crop takes its own turn. Returns the updated (or, with nothing to do, unchanged) document, or null, leaving the page as it was, if the
-     * page does not exist, an image could not be turned, or the page changed meanwhile.
+     * generation. Its unfiltered copy turns with it, so filter changes keep the turn; the kept original stays as captured and the turn is added
+     * to [ScanPage.quarterTurns], which a re-crop applies. Returns the updated (or, with nothing to do, unchanged) document, or null, leaving the
+     * page as it was, if the page does not exist, an image could not be turned, or the page changed meanwhile.
      */
     fun rotatePage(id: String, pageId: String, quarterTurns: Int): ScanDocument? {
         val (doc, page) = snapshot(id, pageId) ?: return null
@@ -220,7 +222,9 @@ class ScanLibrary(
             val unfiltered = reserved.getOrNull(1)
             if (!images.rotate(file(id, page.image), turns, turned)) return discard(reserved)
             if (unfiltered != null && !images.rotate(file(id, page.unfiltered!!), turns, unfiltered)) return discard(reserved)
-            val edited = page.copy(image = turned.name, unfiltered = unfiltered?.name)
+            // Without an original the turned image becomes the original of a later re-crop, so there is no turn to record.
+            val recorded = if (page.original == null) 0 else (page.quarterTurns + turns).mod(4)
+            val edited = page.copy(image = turned.name, unfiltered = unfiltered?.name, quarterTurns = recorded)
             return commit(id, page, edited, reserved, listOfNotNull(page.image, page.unfiltered))
         } finally {
             release(reserved)
