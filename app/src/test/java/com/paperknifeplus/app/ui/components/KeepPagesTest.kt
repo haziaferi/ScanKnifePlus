@@ -95,6 +95,23 @@ class KeepPagesTest {
     }
 
     @Test
+    fun `a deleted page reachable only through data not pruned by name, an article bead here, is still left out`() {
+        val source = PDDocument.load(TestPdfs.structured()).use { doc ->
+            val bead = COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.getPDFName("Bead"))
+                setItem(COSName.P, doc.getPage(2).cosObject)
+            }
+            val thread = COSDictionary().apply { setItem(COSName.F, bead) }
+            bead.setItem(COSName.getPDFName("T"), thread)
+            doc.documentCatalog.cosObject.setItem(COSName.getPDFName("Threads"), COSArray().apply { add(thread) })
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val bytes = run(source) { input, output -> deletePages(context, input, output, "", setOf(2)) }
+        assertFalse(contains(bytes, TestPdfs.structuredMarker(3)))
+        PDDocument.load(bytes).use { assertEquals(3, it.numberOfPages) }
+    }
+
+    @Test
     fun `an outline item whose page is deleted stays as a heading while it has kept children`() {
         val bytes = run(TestPdfs.structured()) { input, output -> deletePages(context, input, output, "", setOf(1)) }
         PDDocument.load(bytes).use { doc ->
