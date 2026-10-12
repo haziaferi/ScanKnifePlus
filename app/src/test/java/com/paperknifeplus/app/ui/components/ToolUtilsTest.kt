@@ -88,7 +88,7 @@ class ToolUtilsTest {
     }
 
     @Test
-    fun `saveAndFlush writes the same bytes as before`() {
+    fun `saveAndFlush writes the expected bytes, with the app name as Creator and Producer`() {
         val output = File(context.cacheDir, "out.pdf")
         val saved = PDDocument.load(TestPdfs.plain(2))
         saveAndFlush(context, saved, Uri.fromFile(output))

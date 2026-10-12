@@ -187,7 +187,10 @@ fun ProtectView(
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Filled.Warning, null, tint = Color(0xFFF43F5E), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(10.dp))
-                                    Text("${stringResource(R.string.app_name)} cannot recover lost passwords.", fontSize = 10.sp, color = Color(0xFF9F1239), fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "${stringResource(R.string.app_name)} cannot recover lost passwords.",
+                                        fontSize = 10.sp, color = Color(0xFF9F1239), fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                             
