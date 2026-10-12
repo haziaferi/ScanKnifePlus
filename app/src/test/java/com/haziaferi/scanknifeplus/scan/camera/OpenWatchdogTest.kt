@@ -1,35 +1,10 @@
 package com.haziaferi.scanknifeplus.scan.camera
 
-import com.haziaferi.scanknifeplus.scanner.live.Cancellable
-import com.haziaferi.scanknifeplus.scanner.live.DelayScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /** The camera-open watchdog against a hand-driven timer: one retry after a timeout, the error only after a second one. Plain JVM. */
 class OpenWatchdogTest {
-    private class FakeTimer : DelayScheduler {
-        var now = 0L
-        private class Task(val due: Long, val action: () -> Unit) { var cancelled = false }
-        private val tasks = ArrayList<Task>()
-
-        override fun schedule(delayMicros: Long, action: () -> Unit): Cancellable {
-            val task = Task(now + delayMicros, action)
-            tasks += task
-            return Cancellable { task.cancelled = true }
-        }
-
-        fun advance(micros: Long) {
-            val end = now + micros
-            while (true) {
-                val next = tasks.filter { !it.cancelled && it.due <= end }.minByOrNull { it.due } ?: break
-                tasks.remove(next)
-                now = next.due
-                next.action()
-            }
-            now = end
-        }
-    }
-
     private val timer = FakeTimer()
     private val events = ArrayList<String>()
     private val timeout = 5_000_000L
