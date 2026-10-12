@@ -60,7 +60,12 @@ jobs:
         jarsigner -keystore keystore.jks -storepass:env KS_PASS -keypass:env KEY_PASS \
           -signedjar app/build/outputs/bundle/release/ScanKnife+.aab \
           app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
-        jarsigner -verify app/build/outputs/bundle/release/ScanKnife+.aab
+        # Checked against the keystore (a self-signed key has no CA chain, which bare -strict rejects); jarsigner still exits 0 on an
+        # unsigned bundle, so the "jar verified." line is required too.
+        VERIFY=$(jarsigner -verify -strict -keystore keystore.jks -storepass:env KS_PASS \
+          app/build/outputs/bundle/release/ScanKnife+.aab "$KEY_ALIAS")
+        printf '%s\n' "$VERIFY"
+        printf '%s\n' "$VERIFY" | grep -qx 'jar verified\.'
 
     - name: Log APK Size
       run: |

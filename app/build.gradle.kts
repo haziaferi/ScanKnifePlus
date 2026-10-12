@@ -25,7 +25,7 @@ android {
     }
 
     val shared = keystoreProperties?.let { props ->
-        fun prop(key: String): String = requireNotNull(props.getProperty(key)) { "keystore.properties has no $key" }
+        fun prop(key: String): String = requireNotNull(props.getProperty(key)?.takeIf { it.isNotBlank() }) { "keystore.properties has no $key" }
         signingConfigs.create("shared") {
             storeFile = rootProject.file(prop("storeFile"))
             storePassword = prop("storePassword")
