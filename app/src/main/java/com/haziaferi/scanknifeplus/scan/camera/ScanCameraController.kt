@@ -83,6 +83,12 @@ class ScanCameraController(context: Context) {
         /** Quality of the staged still; CameraX's default when not maximizing quality, which is what OpenScan's camera plugin used. */
         const val STILL_JPEG_QUALITY = 95
 
+        /**
+         * How long a bind waits for the camera to leave OPEN: CameraX starts closing within tens of ms of the last unbind, so this only runs out
+         * when something else holds the camera open, and it leaves most of [OPEN_TIMEOUT_MS] for the open itself.
+         */
+        const val CLOSE_WAIT_MS = 1_000L
+
         private const val FLAGS_AF_AE = FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
     }
 
@@ -139,6 +145,8 @@ class ScanCameraController(context: Context) {
         scheduler = mainScheduler,
     )
 
+    private val closeWait = CloseWait(mainScheduler, CLOSE_WAIT_MS * 1_000)
+
     private val openWatchdog = OpenWatchdog(mainScheduler, OPEN_TIMEOUT_MS * 1_000, onRetry = ::retryOpen, onTimeout = ::reportOpenTimeout)
 
     private val cameraStateObserver = Observer<CameraState> { onCameraState(it) }
@@ -194,7 +202,7 @@ class ScanCameraController(context: Context) {
                 return@addListener
             }
             provider = p
-            bindUseCases(p)
+            bindUseCases(p, waitForClose = true)
         }, mainExecutor)
     }
 
@@ -209,6 +217,7 @@ class ScanCameraController(context: Context) {
     @MainThread
     fun unbind() {
         generation++
+        closeWait.cancel()
         openWatchdog.pause()
         zoomThrottle.cancel()
         detachCamera()
@@ -377,7 +386,7 @@ class ScanCameraController(context: Context) {
         }, mainExecutor)
     }
 
-    private fun bindUseCases(p: ProcessCameraProvider) {
+    private fun bindUseCases(p: ProcessCameraProvider, waitForClose: Boolean) {
         val owner = owner ?: return
         val available = try {
             p.availableCameraInfos.mapNotNull(::lensOf)
@@ -394,8 +403,26 @@ class ScanCameraController(context: Context) {
             CameraLens.FRONT -> CameraSelector.DEFAULT_FRONT_CAMERA
             CameraLens.EXTERNAL -> CameraSelector.Builder().addCameraFilter { infos -> infos.filter { lensOf(it) == lens } }.build()
         }
+        val info = try {
+            selector.filter(p.availableCameraInfos).first()
+        } catch (e: Exception) {
+            fail(CameraError.BIND_FAILED, e)
+            return
+        }
+        // CameraX posts its camera state with LiveData.postValue but drops a state equal to the value the main thread last received. A rebind
+        // closes and reopens the camera fast enough to post CLOSING, OPENING and OPEN before the main thread runs, so with the previous
+        // binding's OPEN still received, the new OPEN is dropped and the state stays OPENING. Binding therefore waits until the camera has left
+        // OPEN, which assumes this controller was its only user; if something else keeps it open, the wait times out and binds anyway.
+        val states = info.cameraState
+        if (waitForClose && states.value?.type == CameraState.Type.OPEN) {
+            val token = generation
+            closeWait.start(states) { timedOut ->
+                if (timedOut) Log.w(TAG, "Camera still open after $CLOSE_WAIT_MS ms; binding anyway")
+                if (token == generation && !released) bindUseCases(p, waitForClose = false)
+            }
+            return
+        }
         try {
-            val info = selector.filter(p.availableCameraInfos).first()
             val shape = sensorShape(info)?.let { CameraSizes.standardShape(it) }
             val preview = Preview.Builder()
                 .setResolutionSelector(streamSelector(shape, CameraSizes.PREVIEW_BOUND))

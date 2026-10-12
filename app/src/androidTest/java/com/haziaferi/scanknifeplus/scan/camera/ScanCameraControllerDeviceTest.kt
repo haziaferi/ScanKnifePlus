@@ -12,7 +12,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.Display
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.Lifecycle
@@ -115,7 +119,8 @@ class ScanCameraControllerDeviceTest {
 
     /**
      * The still the controller should pick, worked out independently from camera2: the largest JPEG size with the sensor's active-array shape,
-     * minus the sizes CameraX 1.4.2's ExcludedSupportedSizesQuirk withholds on this device (OnePlus 6T camera 0: 4160x3120 and 4000x3000).
+     * minus the sizes CameraX's ExcludedSupportedSizesQuirk withholds on this device (OnePlus 6T camera 0: 4160x3120 and 4000x3000; the same
+     * in CameraX 1.4.2 and 1.5.3).
      */
     private fun expectedStill(cameraId: String): Dim {
         val chars = context.getSystemService(CameraManager::class.java).getCameraCharacteristics(cameraId)
@@ -377,6 +382,104 @@ class ScanCameraControllerDeviceTest {
         waitForFrames(3)
     }
 
+    /**
+     * Reopens the streaming camera through [rebind] while the main thread is busy for a moment once the new binding is made, as it is while a
+     * screen is recreated, so CameraX posts the camera's whole close and reopen before the main thread receives any of it. Frames from the new
+     * binding then prove the camera open, and the controller must say so too: a lost OPEN would leave it at OPENING until the watchdog's retry.
+     */
+    private fun reopenWhileTheMainThreadIsBusy(rebind: () -> Unit) {
+        repeat(REOPENS) { i ->
+            if (!state().ready) bind()
+            waitForFrames(3)
+            main {
+                rebind()
+                controller.stateListener = { s ->
+                    if (s.lens != null) {
+                        controller.stateListener = null
+                        Thread.sleep(BUSY_MS)
+                    }
+                }
+            }
+            waitForFrames(3)
+            main {} // delivers the camera states CameraX posted before those frames
+            assertTrue("round $i: streaming, but state ${state()}", state().ready)
+        }
+    }
+
+    @Test
+    fun rebindingTheStreamingCameraReportsItOpen() = reopenWhileTheMainThreadIsBusy { controller.bind(owner, surfaceProvider) }
+
+    @Test
+    fun aNewControllerReportsOpenTheCameraTheOldOneJustReleased() = reopenWhileTheMainThreadIsBusy {
+        val listener = controller.frameListener
+        controller.release()
+        controller = ScanCameraController(context)
+        controller.frameListener = listener
+        controller.bind(owner, surfaceProvider)
+    }
+
+    /**
+     * Keeps the back camera open through a binding of its own to another started owner, as a second camera user in the process would, and
+     * returns its release.
+     */
+    private fun holdTheBackCameraOpen(): () -> Unit {
+        val provider = ProcessCameraProvider.getInstance(context).get()
+        val holder = TestOwner()
+        val analysis = ImageAnalysis.Builder().build()
+        val camera = main {
+            holder.registry.currentState = Lifecycle.State.RESUMED
+            analysis.setAnalyzer(ContextCompat.getMainExecutor(context)) { it.close() }
+            provider.bindToLifecycle(holder, CameraSelector.DEFAULT_BACK_CAMERA, analysis)
+        }
+        val end = System.currentTimeMillis() + 10_000
+        while (main { camera.cameraInfo.cameraState.value?.type } != CameraState.Type.OPEN && System.currentTimeMillis() < end) Thread.sleep(20)
+        assertEquals(CameraState.Type.OPEN, main { camera.cameraInfo.cameraState.value?.type })
+        return {
+            main {
+                provider.unbind(analysis)
+                holder.registry.currentState = Lifecycle.State.DESTROYED
+            }
+        }
+    }
+
+    @Test
+    fun aCameraHeldOpenElsewhereIsBoundOnceTheCloseWaitRunsOut() {
+        val releaseHolder = holdTheBackCameraOpen()
+        try {
+            val start = System.currentTimeMillis()
+            main { controller.bind(owner, surfaceProvider) }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS / 2)
+            assertEquals("still waiting for the camera to leave OPEN", null, state().lens)
+            val bound = waitFor("the bind after the close wait") { it.lens != null }
+            val waited = System.currentTimeMillis() - start
+            Log.i(TAG, "bound after $waited ms: $bound")
+            assertTrue("bound after $waited ms", waited >= ScanCameraController.CLOSE_WAIT_MS)
+            waitFor("the camera to open") { it.ready }
+        } finally {
+            releaseHolder()
+        }
+    }
+
+    @Test
+    fun unbindingDuringTheCloseWaitBindsNothing() {
+        val releaseHolder = holdTheBackCameraOpen()
+        try {
+            val published = ArrayList<ScanCameraState>()
+            main { controller.bind(owner, surfaceProvider) }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS / 4)
+            main {
+                assertEquals("still waiting for the camera to leave OPEN", null, controller.state.lens)
+                controller.unbind()
+                controller.stateListener = { published += it }
+            }
+            Thread.sleep(ScanCameraController.CLOSE_WAIT_MS * 2)
+            assertEquals(ScanCameraState(), state())
+            assertEquals("no state after the unbind", emptyList<ScanCameraState>(), main { published.toList() })
+        } finally {
+            releaseHolder()
+        }
+    }
+
     @Test
     fun destroyingTheOwnerUnbinds() {
         bind()
@@ -386,5 +489,9 @@ class ScanCameraControllerDeviceTest {
 
     private companion object {
         const val TAG = "ScanCameraTest"
+        const val REOPENS = 3
+
+        /** Longer than the camera takes to close and reopen. */
+        const val BUSY_MS = 1_500L
     }
 }
