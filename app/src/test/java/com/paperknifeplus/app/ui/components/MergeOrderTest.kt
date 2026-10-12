@@ -8,19 +8,24 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -65,7 +70,7 @@ class MergeOrderTest {
     }
 }
 
-/** Rearrange end to end on a file whose pages inherit Resources, MediaBox and Rotate from the page tree. */
+/** Rearrange end to end: pages that inherit Resources, MediaBox and Rotate from the page tree, and a file unlocked at the prompt. */
 @RunWith(RobolectricTestRunner::class)
 class RearrangeViewTest {
     @get:Rule(order = 0)
@@ -107,6 +112,29 @@ class RearrangeViewTest {
                 assertEquals(TestPdfs.INHERITED_MEDIA_BOX.toString(), page.mediaBox.toString())
                 assertEquals(TestPdfs.INHERITED_ROTATION, page.rotation)
             }
+        }
+    }
+
+    @Test
+    fun `a file unlocked at the prompt is saved with its password, not from the decrypted copy`() {
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
+        val output = File(context.cacheDir, "locked-reordered.pdf").apply { delete() }
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(Uri.fromFile(output))) {
+                RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("UNLOCK FILE")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("UNLOCK FILE").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("SAVE NEW ORDER")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("SAVE NEW ORDER").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange Complete")).fetchSemanticsNodes().isNotEmpty() }
+
+        assertThrows(InvalidPasswordException::class.java) { PDDocument.load(output).close() }
+        PDDocument.load(output, TestPdfs.USER_PASSWORD).use { doc ->
+            assertTrue(doc.isEncrypted)
+            assertEquals(2, doc.numberOfPages)
         }
     }
 }

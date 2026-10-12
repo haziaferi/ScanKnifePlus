@@ -13,10 +13,10 @@ import java.io.IOException
 
 /** What opening a PDF without a password showed, as [inspectPdf] reports it. */
 sealed interface PdfAccess {
-    /** Opens and is not encrypted. */
+    /** Opens without a password: not encrypted, or (unless [inspectPdf] counts owner passwords) protected by an owner password only. */
     data object Open : PdfAccess
 
-    /** Needs a password, or opens with an empty one but carries an owner password; the tool screens ask for a password either way. */
+    /** Needs a user password to open, or carries an owner password when [inspectPdf] was asked to count those. */
     data object Encrypted : PdfAccess
 
     /** Missing, not a PDF, or too large to parse. */
@@ -28,11 +28,17 @@ private const val TAG = "PdfAccess"
 /** What the tool screens toast for a [PdfAccess.Unreadable] file before returning to file selection. */
 const val UNREADABLE_PDF_MESSAGE = "Error: Cannot read this PDF"
 
-/** Opens [uri] once without a password to classify it. Parsing spills to temp files, so large PDFs do not exhaust the heap. */
-suspend fun inspectPdf(context: Context, uri: Uri): PdfAccess = withContext(Dispatchers.IO) {
+/**
+ * Opens [uri] once without a password to classify it. A file with only an owner password (permission restrictions, no open password) is
+ * [PdfAccess.Open], so tools do not ask for a password it does not need; Unlock and Protect pass [countOwnerPassword] to see it as
+ * [PdfAccess.Encrypted]. Parsing spills to temp files, so large PDFs do not exhaust the heap.
+ */
+suspend fun inspectPdf(context: Context, uri: Uri, countOwnerPassword: Boolean = false): PdfAccess = withContext(Dispatchers.IO) {
     try {
         context.contentResolver.openInputStream(uri)?.use { stream ->
-            PDDocument.load(stream, MemoryUsageSetting.setupTempFileOnly()).use { if (it.isEncrypted) PdfAccess.Encrypted else PdfAccess.Open }
+            PDDocument.load(stream, MemoryUsageSetting.setupTempFileOnly()).use {
+                if (it.isEncrypted && countOwnerPassword) PdfAccess.Encrypted else PdfAccess.Open
+            }
         } ?: PdfAccess.Unreadable
     } catch (e: InvalidPasswordException) {
         PdfAccess.Encrypted

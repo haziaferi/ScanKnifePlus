@@ -19,7 +19,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -38,6 +37,7 @@ fun RotateView(
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -59,6 +59,8 @@ fun RotateView(
     fun handleFileSelection(uri: Uri) {
         dropDecryptedCopy()
         selectedUri = uri
+        sourceUri = uri
+        unlockPassword = ""
         fileName = getUriDetails(context, uri).name
         unlockError = false
         isFileLoading = true
@@ -90,22 +92,15 @@ fun RotateView(
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        val source = sourceUri
+        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val rotations = pageRotations
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        document.pages.forEachIndexed { index, page ->
-                            val rot = rotations[index] ?: 0
-                            if (rot != 0) page.rotation = (page.rotation + rot) % 360
-                        }
-                        saveAndFlush(context, document, uri)
-                    }
-                }
+                rotatePages(context, source, uri, password, rotations)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {

@@ -20,7 +20,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +39,7 @@ fun SplitView(
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -65,6 +65,7 @@ fun SplitView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        sourceUri = uri
         unlockPassword = password.orEmpty()
         fileName = getUriDetails(context, uri).name
         unlockError = false
@@ -98,26 +99,18 @@ fun SplitView(
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        val source = sourceUri
+        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val pages = selectedPages
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
                 withContext(Dispatchers.Main) { progressCount = 0 }
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        PDDocument().use { target ->
-                            val kept = pages.sorted().filter { it < document.numberOfPages }
-                            target.appendPagesFrom(kept.map { document.getPage(it) })
-                            withContext(Dispatchers.Main) { progressCount = kept.size }
-                            saveAndFlush(context, target, uri)
-                        }
-                    }
-                }
+                val finalCount = extractPages(context, source, uri, password, pages)
+                withContext(Dispatchers.Main) { progressCount = finalCount }
                 val timeStr = formatElapsed(startTime)
-                val finalCount = getPageCount(context, uri, null)
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri

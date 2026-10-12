@@ -21,7 +21,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,6 +40,7 @@ fun RearrangeView(
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
@@ -64,6 +64,7 @@ fun RearrangeView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
+        sourceUri = uri
         unlockPassword = password.orEmpty()
         fileName = getUriDetails(context, uri).name
         unlockError = false
@@ -95,21 +96,15 @@ fun RearrangeView(
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        val source = sourceUri
+        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val order = pageOrder
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        PDDocument().use { target ->
-                            target.appendPagesFrom(order.map { document.getPage(it) })
-                            saveAndFlush(context, target, uri)
-                        }
-                    }
-                }
+                rearrangePages(context, source, uri, password, order)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
