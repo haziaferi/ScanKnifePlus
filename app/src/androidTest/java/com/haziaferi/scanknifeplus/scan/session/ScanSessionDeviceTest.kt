@@ -132,6 +132,14 @@ class ScanSessionDeviceTest {
         assertTrue("$label: expected ${e.toList()}, got ${actual.toList()}", e.indices.all { abs(e[it] - actual[it]) < 60 })
     }
 
+    private fun awaitIdle(session: ScanSession) {
+        val until = System.currentTimeMillis() + 60_000
+        while (session.state.value.pending > 0) {
+            check(System.currentTimeMillis() < until) { "the queue never drained" }
+            Thread.sleep(10)
+        }
+    }
+
     @Test
     fun galleryPicksAreStoredUprightAndCappedWhileBadPicksFailAlone() {
         val library = ScanLibrary(root)
@@ -141,11 +149,12 @@ class ScanSessionDeviceTest {
         val uris = listOf(uri(turnedJpeg()), uri(text), uri(bigPng(8000, 10000)), uri(gone))
         gone.delete() // picked, then deleted before it was read
         assertTrue(session.import(context.contentResolver, uris))
+        awaitIdle(session)
+        assertEquals(listOf(ShotFailure(1, ShotOrigin.IMPORT), ShotFailure(3, ShotOrigin.IMPORT)), session.state.value.failures)
         val result = session.finish()
 
         val doc = library.document(result.documentId!!)!!
         assertEquals(2, result.pagesAdded)
-        assertEquals(listOf(ShotFailure(1, ShotOrigin.IMPORT), ShotFailure(3, ShotOrigin.IMPORT)), session.state.value.failures)
         // Turned upright: the photo's left (red) becomes the top.
         val turned = library.file(doc.id, doc.pages[0].image)
         assertEquals(PageSize(300, 400), ImageCodec.orientedSize(ImageSource.of(turned)))
@@ -163,16 +172,12 @@ class ScanSessionDeviceTest {
         val session = ScanSession(library, shotDir)
         val late = File(picks, "late.jpg")
         assertTrue(session.import(context.contentResolver, listOf(uri(late))))
-        val until = System.currentTimeMillis() + 10_000
-        while (session.state.value.failures.isEmpty()) {
-            check(System.currentTimeMillis() < until) { "the pick never failed" }
-            Thread.sleep(10)
-        }
+        awaitIdle(session)
         turnedJpeg().renameTo(late)
         assertTrue(session.retry(session.state.value.failures.single()))
-        val result = session.finish()
-        assertEquals(1, result.pagesAdded)
+        awaitIdle(session)
         assertTrue(session.state.value.failures.isEmpty())
+        assertEquals(1, session.finish().pagesAdded)
     }
 
     /**
@@ -251,8 +256,9 @@ class ScanSessionDeviceTest {
         val library = ScanLibrary(root)
         val session = ScanSession(library, shotDir)
         assertTrue(session.import(context.contentResolver, listOf(uri(file))))
-        val result = session.finish()
+        awaitIdle(session)
         assertTrue("${session.state.value.failures}", session.state.value.failures.isEmpty())
+        val result = session.finish()
         val page = library.file(result.documentId!!, library.document(result.documentId!!)!!.pages.single().image)
         // Turned upright by its container's rotation, once: the image's left (red) becomes the top.
         assertEquals(PageSize(256, 512), ImageCodec.orientedSize(ImageSource.of(page)))

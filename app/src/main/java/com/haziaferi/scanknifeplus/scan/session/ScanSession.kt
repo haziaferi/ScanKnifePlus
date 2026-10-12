@@ -24,15 +24,15 @@ import kotlinx.coroutines.flow.asStateFlow
 enum class ShotOrigin { CAMERA, IMPORT }
 
 /**
- * A shot or picked image that could not be stored (OpenScan's "couldn't capture"), kept until it is retried, dismissed or the session ends;
- * [seq] grows by one per shot and per retry, so a UI can tell new ones.
+ * A shot or picked image that could not be stored (OpenScan's "couldn't capture"), kept with its file until it is retried or dismissed, or the
+ * session ends and drops both; [seq] grows by one per shot and per retry, so a UI can tell new ones.
  */
 data class ShotFailure(val seq: Long, val origin: ShotOrigin)
 
 /**
  * What a scan session shows: the document it fills ([documentId] is null until a new document gets its first page), the ids of the pages
- * this session stored and still keeps, in shutter order, the shots still waiting to be stored, and the shots that could not be stored and were
- * neither retried nor dismissed.
+ * this session stored and still keeps, in the order they joined the document (shutter order, with a retried shot after the shots before its
+ * retry), the shots still waiting to be stored, and the failures not yet retried or dismissed (none once the session has [finished]).
  */
 data class ScanSessionState(
     val documentId: String? = null,
@@ -134,7 +134,6 @@ class ScanSession(
      * [failure] is not a current failure or the session has ended.
      */
     fun retry(failure: ShotFailure): Boolean = synchronized(lock) {
-        if (ending != null) return false
         val entry = failed(failure) ?: return false
         entry.failed = false
         entry.done = false
@@ -146,7 +145,10 @@ class ScanSession(
         true
     }
 
-    /** Gives up on failed shot [failure]: deletes its camera shot and drops it from [state]. False if it is not a current failure. */
+    /**
+     * Gives up on failed shot [failure]: deletes its camera shot and drops it from [state]. False if it is not a current failure or the session
+     * has ended, which deletes every failed shot itself.
+     */
     fun dismiss(failure: ShotFailure): Boolean {
         val entry = synchronized(lock) {
             val entry = failed(failure) ?: return false
@@ -158,8 +160,9 @@ class ScanSession(
         return true
     }
 
-    /** The entry of current failure [failure]; callers hold [lock]. */
-    private fun failed(failure: ShotFailure): Entry? = entries.firstOrNull { it.failed && it.seq == failure.seq && it.origin == failure.origin }
+    /** The entry of current failure [failure], or null once the session is ending; callers hold [lock]. */
+    private fun failed(failure: ShotFailure): Entry? =
+        if (ending != null) null else entries.firstOrNull { it.failed && it.seq == failure.seq && it.origin == failure.origin }
 
     /**
      * Takes back the most recent page of this session, as OpenScan's undo does: a shot still waiting is dropped, one being stored is removed as
@@ -288,7 +291,8 @@ class ScanSession(
             documentId = docId,
             pages = entries.filter { !it.undone }.mapNotNull { it.pageId },
             pending = entries.count { !it.undone && !it.done },
-            failures = entries.filter { it.failed }.map { ShotFailure(it.seq, it.origin) },
+            // An ended session has deleted the failed shots, so none can be retried or dismissed any more.
+            failures = if (finished) emptyList() else entries.filter { it.failed }.map { ShotFailure(it.seq, it.origin) },
             finished = finished,
         )
     }

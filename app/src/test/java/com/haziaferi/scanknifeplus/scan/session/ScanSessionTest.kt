@@ -195,10 +195,11 @@ class ScanSessionTest {
     fun `a session whose every shot failed leaves no document behind`() {
         val s = session()
         s.shoot("bad 1")
+        s.idle()
+        assertEquals(listOf(ShotFailure(0, ShotOrigin.CAMERA)), s.state.value.failures)
         val result = s.finish()
         assertNull(result.documentId)
         assertTrue(documents().isEmpty())
-        assertEquals(listOf(ShotFailure(0, ShotOrigin.CAMERA)), s.state.value.failures)
     }
 
     @Test
@@ -279,9 +280,10 @@ class ScanSessionTest {
         assumeTrue("needs a read-only folder: not on Windows, not as root", library.setWritable(false) && !File(library, "probe").mkdir())
         val s = session()
         assertTrue(s.import { "page 1".byteInputStream() })
+        s.idle()
+        assertEquals(listOf(ShotFailure(0, ShotOrigin.IMPORT)), s.state.value.failures)
         val result = Background { s.finish() }.join()
         assertNull(result.documentId)
-        assertEquals(listOf(ShotFailure(0, ShotOrigin.IMPORT)), s.state.value.failures)
     }
 
     @Test
@@ -381,9 +383,10 @@ class ScanSessionTest {
         s.shoot("bad 2")
         s.import { "bad 3".byteInputStream() }
         s.shoot("page 4")
+        s.idle()
+        assertEquals(listOf(ShotFailure(1, ShotOrigin.CAMERA), ShotFailure(2, ShotOrigin.IMPORT)), s.state.value.failures)
         val result = s.finish()
         assertEquals(listOf("page 1", "page 4"), pages(result.documentId))
-        assertEquals(listOf(ShotFailure(1, ShotOrigin.CAMERA), ShotFailure(2, ShotOrigin.IMPORT)), s.state.value.failures)
     }
 
     @Test
@@ -412,7 +415,8 @@ class ScanSessionTest {
     fun `a retried shot is stored as the newest page`() {
         val s = session()
         val flaky = s.shot("flaky 1")
-        s.capture(flaky, quad)
+        val own = Quad(Pt(0.2, 0.3), Pt(0.8, 0.3), Pt(0.8, 0.7), Pt(0.2, 0.7))
+        s.capture(flaky, own)
         s.shoot("page 2")
         s.idle()
         val failure = s.state.value.failures.single()
@@ -423,7 +427,7 @@ class ScanSessionTest {
         assertFalse(s.retry(failure)) // no longer a failure
         val id = s.state.value.documentId
         assertEquals(listOf("page 2", "flaky 1"), pages(id))
-        assertEquals(listOf(quad, quad, quad), quads) // retried with its own quad
+        assertEquals(listOf(own, quad, own), quads) // retried with its own quad
         assertTrue(s.undoLast()) // the retried page is the newest
         assertEquals(ScanSessionResult(id, 1, SessionEnd.FINISHED), s.finish())
         assertEquals(listOf("page 2"), pages(id))
@@ -475,7 +479,7 @@ class ScanSessionTest {
     }
 
     @Test
-    fun `finish and cancel delete the shots of failures left, and refuse retries after`() {
+    fun `finish and cancel delete the shots of failures left and drop them, refusing retries and dismissals after`() {
         for (end in SessionEnd.values()) {
             val s = session()
             val failed = root.resolve("bad $end.jpg").apply { writeText("bad") }
@@ -484,7 +488,9 @@ class ScanSessionTest {
             val failure = s.state.value.failures.single()
             if (end == SessionEnd.FINISHED) s.finish() else s.cancel()
             assertFalse(end.name, failed.exists())
+            assertEquals(end.name, emptyList<ShotFailure>(), s.state.value.failures)
             assertFalse(end.name, s.retry(failure))
+            assertFalse(end.name, s.dismiss(failure))
         }
         assertTrue(documents().isEmpty())
     }
