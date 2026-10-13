@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.annotation.WorkerThread
+import androidx.core.content.edit
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import java.io.File
@@ -48,10 +49,12 @@ class FolderAccess(private val context: Context) {
         } catch (e: SecurityException) {
             return false // the picker did not grant write access, or not persistably
         }
-        if (!SafFolderStore(resolver, treeUri).isAvailable() || !prefs.edit().putString(KEY_TREE, treeUri.toString()).commit()) {
+        if (!SafFolderStore(resolver, treeUri).isAvailable()) {
             if (treeUri != treeUri()) release(treeUri)
             return false
         }
+        // Written to disk before the older grants go, so a crash in between never leaves a folder saved without its grant.
+        prefs.edit(commit = true) { putString(KEY_TREE, treeUri.toString()) }
         for (p in resolver.persistedUriPermissions) {
             if (p.uri != treeUri && DocumentsContract.isTreeUri(p.uri)) release(p.uri)
         }
