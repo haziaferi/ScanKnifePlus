@@ -70,9 +70,7 @@ fun SettingsView(
 
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
     var currentTheme by remember { mutableIntStateOf(PreferencesManager.getTheme(context)) }
-    var historyRetention by remember { mutableIntStateOf(PreferencesManager.getHistoryRetention(context)) }
 
-    var showRetentionDialog by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -153,14 +151,6 @@ fun SettingsView(
 
             item {
                 SettingsGroup("PRIVACY & STORAGE") {
-                    SettingsItem(Icons.Outlined.AutoDelete, "Auto-Delete History", when(historyRetention) {
-                        0 -> "Unlimited (Never delete)"
-                        1 -> "Delete after 24 hours"
-                        7 -> "Delete after 7 days"
-                        else -> "Delete after 30 days"
-                    }) {
-                        showRetentionDialog = true
-                    }
                     SettingsItem(Icons.Outlined.DeleteSweep, "Clear History", "Wipe all session history now") {
                         showClearConfirm = true
                     }
@@ -185,33 +175,6 @@ fun SettingsView(
                 }
             }
         }
-    }
-
-    if (showRetentionDialog) {
-        AlertDialog(
-            onDismissRequest = { showRetentionDialog = false },
-            title = { Text("Auto-Delete History", fontWeight = FontWeight.Black) },
-            text = {
-                Column {
-                    val options = listOf(0 to "Unlimited", 1 to "24 Hours", 7 to "7 Days", 30 to "30 Days")
-                    options.forEach { (days, label) ->
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                historyRetention = days
-                                PreferencesManager.setHistoryRetention(context, days)
-                                showRetentionDialog = false
-                            }.padding(vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = historyRetention == days, onClick = null)
-                            Spacer(Modifier.width(12.dp))
-                            Text(label, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            },
-            confirmButton = {}
-        )
     }
 
     if (showClearConfirm) {

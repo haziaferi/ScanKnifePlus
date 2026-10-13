@@ -16,7 +16,6 @@ import android.provider.OpenableColumns
 import android.util.Log
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
-import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSStream
@@ -72,15 +71,6 @@ object PreferencesManager {
     fun getTheme(context: Context): Int {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
         return prefs.getInt("theme_mode", 0) // 0: System, 1: Light, 2: Dark
-    }
-
-    fun setHistoryRetention(context: Context, days: Int) {
-        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putInt("history_retention", days).apply()
-    }
-    fun getHistoryRetention(context: Context): Int {
-        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        return prefs.getInt("history_retention", 0) // 0: Unlimited, 1, 7, 30
     }
 }
 
@@ -394,20 +384,15 @@ suspend fun convertPdfToImages(
 }
 
 /**
- * Writes [document] to [outputUri]; [applyDefaults] fills a blank creator and producer with the app name (no PDFBox version: the APK
- * strips its version.properties) and a blank author with the default, and the Metadata tool turns it off so cleared fields stay cleared.
- * Throws if the output cannot be opened or written, and closes [document] either way (closing again is harmless, so `use {}` is fine).
+ * Writes [document] to [outputUri]; [applyDefaults] fills a blank author with the default author, and the Metadata tool turns it off so a
+ * cleared author stays cleared. The app writes no Creator or Producer of its own. Throws if the output cannot be opened or written, and
+ * closes [document] either way (closing again is harmless, so `use {}` is fine).
  */
 fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri, applyDefaults: Boolean = true) {
     try {
         if (applyDefaults) {
-            val info = document.documentInformation
-            val appName = context.getString(R.string.app_name)
-            if (info.creator.isNullOrBlank()) info.creator = appName
-            if (info.producer.isNullOrBlank()) info.producer = appName
-
             val autoAuthor = PreferencesManager.getDefaultAuthor(context)
-            if (autoAuthor.isNotEmpty() && info.author.isNullOrBlank()) info.author = autoAuthor
+            if (autoAuthor.isNotEmpty() && document.documentInformation.author.isNullOrBlank()) document.documentInformation.author = autoAuthor
         }
 
         // "wt" truncates a reused file and falls back to "w"; "rwt" left 0-byte files on some devices (commit 0461d05).

@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.graphics.vector.ImageVector
 import java.util.UUID
 
-/** One History entry. [id] is unique (it keys the History list); [createdAt] is when the output was made, in epoch milliseconds. */
+/** One History entry. [id] is unique (it keys the History list). */
 data class ActivityEntry(
     val id: String,
     val name: String,
@@ -13,8 +13,7 @@ data class ActivityEntry(
     val size: String,
     val icon: ImageVector,
     val uri: Uri? = null,
-    val pageCount: Int = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val pageCount: Int = 0
 )
 
 data class Tool(
@@ -34,13 +33,6 @@ object SessionManager {
 
     fun addEntry(name: String, tool: String, size: String, icon: ImageVector, uri: Uri? = null, pageCount: Int = 0) {
         history.add(0, ActivityEntry(UUID.randomUUID().toString(), name, tool, size, icon, uri, pageCount))
-    }
-
-    /** Removes entries older than [retentionDays] days before [now]; 0 or less keeps everything. */
-    fun purgeHistory(retentionDays: Int, now: Long = System.currentTimeMillis()) {
-        if (retentionDays <= 0) return
-        val cutoff = now - retentionDays.toLong() * 24 * 60 * 60 * 1000
-        history.removeAll { it.createdAt < cutoff }
     }
 
     fun clearHistory() {
