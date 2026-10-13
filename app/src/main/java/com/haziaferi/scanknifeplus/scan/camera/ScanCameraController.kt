@@ -38,8 +38,8 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import com.google.common.util.concurrent.ListenableFuture
@@ -125,6 +125,7 @@ class ScanCameraController(context: Context) {
 
     private var provider: ProcessCameraProvider? = null
     private var owner: LifecycleOwner? = null
+    private var cameraLifecycle: CameraLifecycle? = null
     private var surfaceProvider: Preview.SurfaceProvider? = null
     private var camera: Camera? = null
     private var preview: Preview? = null
@@ -153,8 +154,8 @@ class ScanCameraController(context: Context) {
     private val torchObserver = Observer<Int> { update { copy(torchOn = it == TorchState.ON) } }
     private val zoomObserver = Observer<ZoomState> { onZoomState(it) }
 
-    private val lifecycleObserver = object : DefaultLifecycleObserver {
-        override fun onDestroy(owner: LifecycleOwner) = unbind()
+    private val lifecycleObserver = LifecycleEventObserver { source, event ->
+        if (event == Lifecycle.Event.ON_DESTROY) unbind() else cameraLifecycle?.follow(source.lifecycle.currentState, camera?.cameraInfo?.cameraState)
     }
 
     /** Picks the lens among the cameras CameraX reports; [LensPolicy.choose] except in device tests that pose as another kind of device. */
@@ -163,8 +164,9 @@ class ScanCameraController(context: Context) {
 
     /**
      * Opens the camera [LensPolicy] picks for [owner]'s lifecycle, replacing any earlier binding (OpenScan offered the front camera too, and
-     * fell back to its first camera); [surfaceProvider] receives the preview, or null runs without one. CameraX then closes and reopens the camera
-     * with the owner's lifecycle; without the CAMERA permission this fails cleanly with [CameraError.PERMISSION_DENIED].
+     * fell back to its first camera); [surfaceProvider] receives the preview, or null runs without one. The camera is open only while [owner] is
+     * resumed: it closes at ON_PAUSE, as OpenScan's did, and reopens at ON_RESUME. Without the CAMERA permission this fails cleanly with
+     * [CameraError.PERMISSION_DENIED].
      */
     @MainThread
     fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider?) = bind(owner, surfaceProvider, fresh = true)
@@ -181,10 +183,12 @@ class ScanCameraController(context: Context) {
         if (owner.lifecycle.currentState == Lifecycle.State.DESTROYED) return
         this.owner = owner
         this.surfaceProvider = surfaceProvider
+        cameraLifecycle = CameraLifecycle(mainScheduler, CLOSE_WAIT_MS * 1_000)
+        // Adding the observer brings the camera's lifecycle up to the screen's state.
         owner.lifecycle.addObserver(lifecycleObserver)
         update { ScanCameraState(status = CameraStatus.OPENING) }
-        // A screen that is not started yet opens nothing; CameraX reports OPENING when it starts, which arms the watchdog then.
-        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) openWatchdog.opening()
+        // A screen that is not resumed yet opens nothing; CameraX reports OPENING when it resumes, which arms the watchdog then.
+        if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) openWatchdog.opening()
 
         val token = generation
         val future = try {
@@ -236,6 +240,8 @@ class ScanCameraController(context: Context) {
         imageAnalysis = null
         owner?.lifecycle?.removeObserver(lifecycleObserver)
         owner = null
+        cameraLifecycle?.destroy()
+        cameraLifecycle = null
         if (state != ScanCameraState()) update { ScanCameraState() }
     }
 
@@ -387,7 +393,7 @@ class ScanCameraController(context: Context) {
     }
 
     private fun bindUseCases(p: ProcessCameraProvider, waitForClose: Boolean) {
-        val owner = owner ?: return
+        val cameraOwner = cameraLifecycle ?: return
         val available = try {
             p.availableCameraInfos.mapNotNull(::lensOf)
         } catch (e: Exception) {
@@ -446,7 +452,7 @@ class ScanCameraController(context: Context) {
             this.preview = preview
             this.imageCapture = capture
             this.imageAnalysis = analysis
-            val camera = p.bindToLifecycle(owner, selector, preview, capture, analysis)
+            val camera = p.bindToLifecycle(cameraOwner, selector, preview, capture, analysis)
             attachCamera(camera, lens)
         } catch (e: Exception) {
             fail(CameraError.BIND_FAILED, e)
