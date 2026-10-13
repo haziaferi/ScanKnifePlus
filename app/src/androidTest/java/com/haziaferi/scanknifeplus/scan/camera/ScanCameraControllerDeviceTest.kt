@@ -50,7 +50,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** The scan camera on real hardware: streams, a full-resolution still, torch, zoom, the lens policy, lifecycle and unbinding. */
+/** The scan camera on real hardware: streams, a full-resolution still, torch, zoom, the lens policy, lifecycle (pause and stop) and unbinding. */
 @OptIn(DelicateCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class ScanCameraControllerDeviceTest {
@@ -366,6 +366,94 @@ class ScanCameraControllerDeviceTest {
         assertNotNull(takePicture())
     }
 
+    /** Whether camera2 reports [cameraId] free for other apps, kept up to date on the main thread. */
+    private fun watchAvailability(cameraId: String): Pair<AtomicReference<Boolean>, CameraManager.AvailabilityCallback> {
+        val available = AtomicReference<Boolean>()
+        val callback = object : CameraManager.AvailabilityCallback() {
+            override fun onCameraAvailable(id: String) {
+                if (id == cameraId) available.set(true)
+            }
+
+            override fun onCameraUnavailable(id: String) {
+                if (id == cameraId) available.set(false)
+            }
+        }
+        context.getSystemService(CameraManager::class.java).registerAvailabilityCallback(callback, Handler(Looper.getMainLooper()))
+        return available to callback
+    }
+
+    private fun waitUntil(what: String, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + 10_000
+        while (!condition() && System.currentTimeMillis() < end) Thread.sleep(5)
+        assertTrue("timed out waiting for $what", condition())
+    }
+
+    @Test
+    fun pausingTheScreenReleasesTheCameraToOtherAppsAndResumingReopensIt() {
+        val s = bind()
+        val (available, callback) = watchAvailability(s.cameraId!!)
+        try {
+            waitUntil("camera2 to report the camera in use") { available.get() == false }
+            repeat(PAUSES) { i ->
+                waitForFrames(3)
+                val paused = System.nanoTime()
+                main { owner.registry.currentState = Lifecycle.State.STARTED }
+                waitUntil("the camera to be free for other apps") { available.get() == true }
+                val released = (System.nanoTime() - paused) / 1_000_000
+                assertEquals(CameraStatus.CLOSED, waitFor("the camera to close") { it.status == CameraStatus.CLOSED }.status)
+                Thread.sleep(300)
+                val before = frames.get()
+                Thread.sleep(300)
+                assertEquals("no frames while paused", before, frames.get())
+
+                val resumed = System.nanoTime()
+                main { owner.registry.currentState = Lifecycle.State.RESUMED }
+                waitFor("the camera to reopen") { it.ready }
+                val reopened = (System.nanoTime() - resumed) / 1_000_000
+                waitForFrames(1)
+                val firstFrame = (System.nanoTime() - resumed) / 1_000_000
+                Log.i(TAG, "pause $i: camera free after $released ms; resume: open after $reopened ms, first frame after $firstFrame ms")
+            }
+            assertNotNull(takePicture())
+        } finally {
+            context.getSystemService(CameraManager::class.java).unregisterAvailabilityCallback(callback)
+        }
+    }
+
+    @Test
+    fun aScreenThatIsNotResumedKeepsTheCameraClosed() {
+        main {
+            owner.registry.currentState = Lifecycle.State.STARTED
+            controller.bind(owner, surfaceProvider)
+        }
+        waitFor("the use cases to be bound") { it.lens != null }
+        Thread.sleep(1_000)
+        assertEquals(0, frames.get())
+        assertFalse(state().ready)
+        main { owner.registry.currentState = Lifecycle.State.RESUMED }
+        waitFor("the camera to open") { it.ready }
+        waitForFrames(3)
+    }
+
+    @Test
+    fun aQuickPauseAndResumeWhileTheMainThreadIsBusyReopensTheCamera() {
+        bind()
+        repeat(REOPENS) { i ->
+            waitForFrames(3)
+            val start = System.nanoTime()
+            // A focus change in multi-window: paused and resumed before the main thread hears of the camera closing, then busy for a moment.
+            main {
+                owner.registry.currentState = Lifecycle.State.STARTED
+                owner.registry.currentState = Lifecycle.State.RESUMED
+                Thread.sleep(BUSY_MS)
+            }
+            waitForFrames(3)
+            main {} // delivers the camera states CameraX posted before those frames
+            assertTrue("round $i: streaming, but state ${state()}", state().ready)
+            Log.i(TAG, "quick pause $i: streaming again ${(System.nanoTime() - start) / 1_000_000 - BUSY_MS} ms after the busy main thread")
+        }
+    }
+
     @Test
     fun unbindStopsFramesAndResetsState() {
         bind()
@@ -490,6 +578,7 @@ class ScanCameraControllerDeviceTest {
     private companion object {
         const val TAG = "ScanCameraTest"
         const val REOPENS = 3
+        const val PAUSES = 3
 
         /** Longer than the camera takes to close and reopen. */
         const val BUSY_MS = 1_500L
