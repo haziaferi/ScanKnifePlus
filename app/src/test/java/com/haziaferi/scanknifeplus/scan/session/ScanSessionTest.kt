@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
+import com.haziaferi.scanknifeplus.scan.library.BookCaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scanner.cv.Pt
@@ -22,6 +23,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -31,7 +33,8 @@ import org.robolectric.RobolectricTestRunner
 /**
  * The scan session (OpenScan live_scan_screen.dart and directory_cubit.dart createImage). The fake capture writer stores a shot's own text as
  * the page, so each test can read back which shot became which page; a shot whose text contains "bad" cannot be stored, one with "flaky" cannot
- * be stored the first time only, one with "slow" waits for [gate] first, and filtering one with "held" waits for [filterGate].
+ * be stored the first time only, one with "slow" waits for [gate] first, and filtering one with "held" waits for [filterGate]. The fake book
+ * writer follows the same rules and stores a shot's text with " left" and " right" as its two pages.
  */
 @RunWith(RobolectricTestRunner::class)
 class ScanSessionTest {
@@ -61,6 +64,26 @@ class ScanSessionTest {
             StoredCapture(page, original, cropped = quad != null, pageWidth = 1, pageHeight = 1)
         }
     }
+    private val books = Collections.synchronizedList(mutableListOf<Triple<Quad?, Double, Int>>())
+    private val bookWriter = BookCaptureWriter { source, spread, split, quarterTurns, pages, originals ->
+        val text = source.open().use { it.readBytes().decodeToString() }
+        books += Triple(spread, split, quarterTurns)
+        if ("slow" in text) {
+            entered.countDown()
+            gate.await(10, TimeUnit.SECONDS)
+        }
+        if ("bad" in text || ("flaky" in text && flaked.add(text))) {
+            null
+        } else {
+            pages.toList().zip(listOf("left", "right")) { page, side ->
+                page.writeText("$text $side")
+                StoredCapture(page, null, cropped = true, pageWidth = 1, pageHeight = 1)
+            }.zip(originals?.toList() ?: listOf(null, null)) { page, original ->
+                original?.writeText("original $text")
+                page.copy(original = original)
+            }
+        }
+    }
     private val filtering = CountDownLatch(1)
     private val filterGate = CountDownLatch(1)
     private val images = object : PageImages {
@@ -77,7 +100,7 @@ class ScanSessionTest {
         override fun normalize(source: File, dest: File, maxEdge: Int, quality: Int) = false
         override fun rotate(source: File, quarterTurns: Int, dest: File) = false
     }
-    private val scans = ScanLibrary(library, clock = { now++ }, capture = writer, images = images)
+    private val scans = ScanLibrary(library, clock = { now++ }, capture = writer, images = images, bookCapture = bookWriter)
     private val quad = Quad(Pt(0.1, 0.1), Pt(0.9, 0.1), Pt(0.9, 0.9), Pt(0.1, 0.9))
     private val counter = AtomicInteger()
 
@@ -96,6 +119,8 @@ class ScanSessionTest {
     private fun ScanSession.shot(text: String): File = shotDir.resolve("shot${counter.getAndIncrement()}.jpg").apply { writeText(text) }
 
     private fun ScanSession.shoot(text: String, q: Quad? = quad) = capture(shot(text), q)
+
+    private fun ScanSession.shootBook(text: String, split: Double = 0.5, quarterTurns: Int = 0) = captureBook(shot(text), quad, split, quarterTurns)
 
     /** The texts of document [id]'s pages, in order. */
     private fun pages(id: String?): List<String> = scans.document(id!!)!!.pages.map { scans.file(id, it.image).readText() }
@@ -677,5 +702,104 @@ class ScanSessionTest {
         assertFalse(first.shotDir.exists())
         assertTrue(loose.exists())
         assertTrue(other.exists())
+    }
+
+    @Test
+    fun `a book shot becomes two pages, left then right, counted as two while pending`() {
+        val s = session()
+        s.shoot("page 1")
+        assertTrue(s.shootBook("slow book", 0.4, 1))
+        assertTrue(entered.await(10, TimeUnit.SECONDS))
+        assertEquals(2, s.state.value.pending)
+        assertEquals(3, s.state.value.count)
+        gate.countDown()
+        s.idle()
+        val id = s.state.value.documentId
+        assertEquals(scans.document(id!!)!!.pages.map { it.id }, s.state.value.pages)
+        val result = s.finish()
+        assertEquals(listOf("page 1", "slow book left", "slow book right"), pages(id))
+        assertEquals(3, result.pagesAdded)
+        assertEquals(listOf(Triple<Quad?, Double, Int>(quad, 0.4, 1)), books)
+        val (left, right) = scans.document(id)!!.pages.drop(1)
+        assertEquals(listOf(1, 1), listOf(left.quarterTurns, right.quarterTurns))
+        assertTrue(left.original != right.original)
+    }
+
+    @Test
+    fun `undo takes back both pages of a book shot`() {
+        val s = session()
+        s.shoot("page 1")
+        s.shootBook("book 2")
+        s.idle()
+        val id = s.state.value.documentId!!
+        assertTrue(s.undoLast())
+        assertEquals(1, s.state.value.pages.size)
+        val result = s.finish()
+        assertEquals(1, result.pagesAdded)
+        assertEquals(listOf("page 1"), pages(id))
+        assertEquals(scans.document(id)!!.pages.flatMap { it.files }.toSet() + ScanLibrary.RECORD, File(library, id).list()!!.toSet())
+    }
+
+    @Test
+    fun `a book shot undone while being stored loses both pages`() {
+        val s = session()
+        s.shootBook("slow book")
+        assertTrue(entered.await(10, TimeUnit.SECONDS))
+        assertTrue(s.undoLast())
+        assertEquals(0, s.state.value.count)
+        gate.countDown()
+        assertNull(s.finish().documentId)
+        assertTrue(documents().isEmpty())
+    }
+
+    @Test
+    fun `a book shot whose deletes fail keeps both pages`() {
+        val existing = scans.create().id
+        val s = session(existing)
+        s.shootBook("book 1")
+        s.idle()
+        val blocker = File(File(library, existing), "document.json.tmp").apply { mkdir() }
+        assertTrue(s.undoLast())
+        val result = s.finish()
+        blocker.delete()
+        assertEquals(ScanSessionResult(existing, 2, SessionEnd.FINISHED), result)
+        assertEquals(listOf("book 1 left", "book 1 right"), pages(existing))
+    }
+
+    @Test
+    fun `a failed book shot stores neither page and is retried whole`() {
+        val s = session()
+        val shot = s.shot("flaky book")
+        assertTrue(s.captureBook(shot, quad))
+        s.idle()
+        val failure = s.state.value.failures.single()
+        assertTrue(shot.exists())
+        assertTrue(s.state.value.pages.isEmpty())
+        assertTrue(s.retry(failure))
+        s.idle()
+        assertEquals(2, s.state.value.pages.size)
+        assertFalse(shot.exists())
+        assertEquals(listOf("flaky book left", "flaky book right"), pages(s.finish().documentId))
+    }
+
+    @Test
+    fun `cancel removes both pages of a book shot`() {
+        val existing = scans.create().id
+        scans.addCapture(existing, { "before".byteInputStream() }, null, keepOriginal = false)
+        val s = session(existing)
+        s.shootBook("book 1")
+        s.idle()
+        assertEquals(ScanSessionResult(existing, 0, SessionEnd.CANCELLED), s.cancel())
+        assertEquals(listOf("before"), pages(existing))
+    }
+
+    @Test
+    fun `a split outside the spread is refused at the shutter`() {
+        val s = session()
+        for (split in listOf(-0.1, 1.5, Double.NaN)) {
+            assertThrows(IllegalArgumentException::class.java) { s.shootBook("book", split) }
+        }
+        assertEquals(0, s.state.value.count)
+        s.finish()
     }
 }

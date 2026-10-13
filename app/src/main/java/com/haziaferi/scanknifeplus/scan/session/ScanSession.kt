@@ -10,6 +10,7 @@ import androidx.annotation.WorkerThread
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
+import com.haziaferi.scanknifeplus.scanner.cv.BookSplit
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import java.io.File
 import java.io.IOException
@@ -32,7 +33,8 @@ data class ShotFailure(val seq: Long, val origin: ShotOrigin)
 /**
  * What a scan session shows: the document it fills ([documentId] is null until a new document gets its first page), the ids of the pages
  * this session stored and still keeps, in the order they joined the document (shutter order, with a retried shot after the shots before its
- * retry), the shots still waiting to be stored, and the failures not yet retried or dismissed (none once the session has [finished]).
+ * retry, and a book spread's left page before its right), the pages still waiting to be stored (two per book spread), and the failures not
+ * yet retried or dismissed (none once the session has [finished]).
  */
 data class ScanSessionState(
     val documentId: String? = null,
@@ -69,9 +71,15 @@ class ScanSession(
     private val defaultFilter: String? = null,
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "scan-session").apply { isDaemon = true } },
 ) : AutoCloseable {
-    /** One shot in the queue. Fields are guarded by [lock]; [pageId] is set by the worker once the page is stored. */
-    private class Entry(var seq: Long, val origin: ShotOrigin, val source: ImageSource, val quad: Quad?, val shot: File?) {
-        var pageId: String? = null
+    /** How a book spread is split into its two pages; see [captureBook]. */
+    private class Book(val split: Double, val quarterTurns: Int)
+
+    /**
+     * One shot in the queue, which becomes one page, or two for a [book] spread. Fields are guarded by [lock]; [pageIds] is set by the worker
+     * once the shot is stored.
+     */
+    private class Entry(var seq: Long, val origin: ShotOrigin, val source: ImageSource, val quad: Quad?, val shot: File?, val book: Book?) {
+        var pageIds: List<String> = emptyList()
         var done = false
         var undone = false
         var failed = false
@@ -105,21 +113,32 @@ class ScanSession(
      * for the whole image). Returns at once; the shot file is deleted once stored or undone, or at once (returning false) if the session has
      * already ended. A shot that cannot be stored shows up in [ScanSessionState.failures] and keeps its file until [dismiss] or the session ends.
      */
-    fun capture(shot: File, quad: Quad?): Boolean = enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), quad, shot)
+    fun capture(shot: File, quad: Quad?): Boolean = enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), quad, shot, null)
+
+    /**
+     * Book mode: queues camera shot [shot] of an open book to be stored as its two facing pages, left then right, both or neither, as one shot
+     * that [undoLast], [retry] and [dismiss] treat whole. [spread] (fractional portrait coordinates, null for the whole image) is split
+     * [split] of the way along its top and bottom edges, with the book upright once the photo is turned clockwise by [quarterTurns]; see
+     * ScanLibrary.addBookCapture. Otherwise as [capture]. Throws IllegalArgumentException for a [split] outside 0 to 1.
+     */
+    fun captureBook(shot: File, spread: Quad?, split: Double = BookSplit.DEFAULT_SPLIT, quarterTurns: Int = 0): Boolean {
+        require(split in 0.0..1.0) { "Split outside the spread: $split" }
+        return enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), spread, shot, Book(split, quarterTurns))
+    }
 
     /** Queues gallery picks [uris], read through [resolver], as whole-image pages (OpenScan's imported pages have no quad). */
     fun import(resolver: ContentResolver, uris: List<Uri>): Boolean = uris.all { import(ImageSource.of(resolver, it)) }
 
     /** Queues one picked image as a whole-image page; false if the session has already ended. */
-    fun import(source: ImageSource): Boolean = enqueue(ShotOrigin.IMPORT, source, null, null)
+    fun import(source: ImageSource): Boolean = enqueue(ShotOrigin.IMPORT, source, null, null, null)
 
-    private fun enqueue(origin: ShotOrigin, source: ImageSource, quad: Quad?, shot: File?): Boolean {
+    private fun enqueue(origin: ShotOrigin, source: ImageSource, quad: Quad?, shot: File?, book: Book?): Boolean {
         synchronized(lock) {
             if (ending != null) {
                 shot?.delete()
                 return false
             }
-            val entry = Entry(nextSeq++, origin, source, quad, shot)
+            val entry = Entry(nextSeq++, origin, source, quad, shot, book)
             entries += entry
             // Submitted under the lock, so the worker sees entries in exactly the order they joined the list.
             worker.execute { process(entry) }
@@ -169,7 +188,7 @@ class ScanSession(
      */
     fun undoLast(): Boolean = synchronized(lock) {
         if (ending != null) return false
-        val entry = entries.lastOrNull { !it.undone && (!it.done || it.pageId != null) } ?: return false
+        val entry = entries.lastOrNull { !it.undone && (!it.done || it.pageIds.isNotEmpty()) } ?: return false
         entry.undone = true
         // A stored page is deleted on the worker, behind anything already queued; a pending one is dealt with by its own task.
         if (entry.done) worker.execute { removeUndone(entry) }
@@ -223,7 +242,7 @@ class ScanSession(
         }
         docId = doc?.id
         return synchronized(lock) {
-            val kept = entries.count { it.pageId != null && !it.undone }
+            val kept = entries.filter { !it.undone }.sumOf { it.pageIds.size }
             publish(finished = true)
             ScanSessionResult(doc?.id, if (doc == null) 0 else kept, applied)
         }
@@ -232,54 +251,69 @@ class ScanSession(
     /** Runs on the worker: stores [entry] unless it was undone first, then gets rid of the shot file unless the store failed. */
     private fun process(entry: Entry) {
         val skip = synchronized(lock) { entry.undone }
-        var pageId: String? = null
+        var pageIds = emptyList<String>()
         if (!skip) {
             // Any exception (create() throws when no document can be made) is a failed shot; a task that threw would leave it pending for good.
-            pageId = try {
+            pageIds = try {
                 store(entry)
             } catch (e: Exception) {
-                null
+                emptyList()
             }
         }
         val undone = synchronized(lock) {
-            entry.pageId = pageId
+            entry.pageIds = pageIds
             entry.done = true
             // A shot undone while it was being stored is no failure, whatever became of it.
-            entry.failed = pageId == null && !entry.undone
+            entry.failed = pageIds.isEmpty() && !entry.undone
             // Deleted before the state that drops it from pending is published, so whoever sees that state never finds the shot still there.
             if (!entry.failed) entry.shot?.delete()
             publish()
             entry.undone
         }
-        // Undone while it was being stored: the page was added all the same, and goes again now.
-        if (pageId != null && undone) removeUndone(entry)
+        // Undone while it was being stored: the pages were added all the same, and go again now.
+        if (pageIds.isNotEmpty() && undone) removeUndone(entry)
     }
 
-    /** Stores [entry] as a new page of the session's document, creating that document on the first page; the new page's id or null. */
-    private fun store(entry: Entry): String? {
+    /**
+     * Stores [entry] as new last pages of the session's document, creating that document on the first page; returns the ids of the new pages
+     * that are in the document, empty if none could be stored.
+     */
+    private fun store(entry: Entry): List<String> {
         val id = docId ?: library.create().id.also {
             docId = it
             created = true
         }
-        val added = library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter) ?: return null
-        return added.pageId.takeIf { pageId -> added.document.pages.any { it.id == pageId } }
+        val book = entry.book
+        val (doc, pageIds) = if (book == null) {
+            library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter)?.let { it.document to listOf(it.pageId) }
+        } else {
+            library.addBookCapture(id, entry.source, entry.quad, book.split, book.quarterTurns, keepOriginal, defaultFilter)
+                ?.let { it.document to it.pageIds }
+        } ?: return emptyList()
+        return pageIds.filter { pageId -> doc.pages.any { it.id == pageId } }
     }
 
     /**
-     * Runs on the worker: deletes the page of an undone [entry]. The document is always kept (an empty one this session created goes when the
-     * session ends). The page is forgotten only once it is verifiably gone; if the delete failed, the entry counts as kept again.
+     * Runs on the worker: deletes the pages of an undone [entry]. The document is always kept (an empty one this session created goes when the
+     * session ends). A page is forgotten only once it is verifiably gone; if a delete failed, the entry counts as kept again, with the pages
+     * that are still there.
      */
     private fun removeUndone(entry: Entry) {
-        val pageId = synchronized(lock) { entry.pageId } ?: return
+        val pageIds = synchronized(lock) { entry.pageIds }
+        if (pageIds.isEmpty()) return
         val id = docId ?: return
-        try {
-            library.deletePage(id, pageId, keepDocument = true)
-        } catch (e: IOException) {
-            // Checked below: the record could not be written, so the page is still there.
+        for (pageId in pageIds) {
+            try {
+                library.deletePage(id, pageId, keepDocument = true)
+            } catch (e: IOException) {
+                // Checked below: the record could not be written, so the page is still there.
+            }
         }
-        val gone = library.document(id)?.pages?.none { it.id == pageId } ?: true
+        val present = library.document(id)?.pages.orEmpty().map { it.id }
+        val remaining = pageIds.filter { it in present }
         synchronized(lock) {
-            if (gone) entry.pageId = null else entry.undone = false
+            entry.pageIds = remaining
+            if (remaining.isNotEmpty()) entry.undone = false
             publish()
         }
     }
@@ -288,8 +322,8 @@ class ScanSession(
     private fun publish(finished: Boolean = _state.value.finished) {
         _state.value = ScanSessionState(
             documentId = docId,
-            pages = entries.filter { !it.undone }.mapNotNull { it.pageId },
-            pending = entries.count { !it.undone && !it.done },
+            pages = entries.filter { !it.undone }.flatMap { it.pageIds },
+            pending = entries.filter { !it.undone && !it.done }.sumOf { if (it.book != null) 2 else 1 },
             // An ended session has deleted the failed shots, so none can be retried or dismissed any more.
             failures = if (finished) emptyList() else entries.filter { it.failed }.map { ShotFailure(it.seq, it.origin) },
             finished = finished,

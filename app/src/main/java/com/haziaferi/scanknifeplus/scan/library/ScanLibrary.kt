@@ -22,9 +22,24 @@ import org.json.JSONObject
 /** What [ScanLibrary.addCapture] stored: the updated [document] and the id of the page it added, wherever that page now is. */
 data class AddedPage(val document: ScanDocument, val pageId: String)
 
+/** What [ScanLibrary.addBookCapture] stored: the updated [document] and the ids of the pages it added, left page first. */
+data class AddedPages(val document: ScanDocument, val pageIds: List<String>)
+
 /** Stores a capture into the given files; [CaptureStore.store] in the app, a fake in tests. */
 fun interface CaptureWriter {
     fun store(source: ImageSource, quad: Quad?, pageDest: File, originalDest: File?): StoredCapture?
+}
+
+/** Stores a book spread's two pages into the given files, left first; [CaptureStore.storeBook] in the app, a fake in tests. */
+fun interface BookCaptureWriter {
+    fun store(
+        source: ImageSource,
+        spread: Quad?,
+        split: Double,
+        quarterTurns: Int,
+        pageDests: Pair<File, File>,
+        originalDests: Pair<File, File>?,
+    ): List<StoredCapture>?
 }
 
 /**
@@ -40,6 +55,7 @@ class ScanLibrary(
     private val timeZone: TimeZone = TimeZone.getDefault(),
     private val capture: CaptureWriter = CaptureWriter(CaptureStore::store),
     private val images: PageImages = AndroidPageImages,
+    private val bookCapture: BookCaptureWriter = BookCaptureWriter(CaptureStore::storeBook),
 ) {
     /**
      * All readable documents, newest first. Folders without a readable record are skipped; leftover tombstones are swept away. The first call
@@ -102,45 +118,87 @@ class ScanLibrary(
      * document does not exist, no page could be stored, or the record could not be updated; in every null case the new files are removed again.
      */
     fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean, filter: String? = null): AddedPage? {
-        val (added, pageId) = addPage(id, source, quad, keepOriginal) ?: return null
-        if (filter == null || DocumentFilters.byName(filter) == DocumentFilters.default) return AddedPage(added, pageId)
-        val doc = applyFilter(id, pageId, filter) ?: document(id) ?: return null
-        return AddedPage(doc, pageId)
+        val added = addPages(id, 1, keepOriginal, 0, filter) { pages, originals ->
+            capture.store(source, quad, pages[0], originals?.get(0))?.let { listOf(it) }
+        } ?: return null
+        return AddedPage(added.document, added.pageIds.single())
     }
 
-    private fun addPage(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean): Pair<ScanDocument, String>? {
-        val (pageFile, originalFile) = synchronized(LOCK) {
+    /**
+     * Stores a photo of an open book as the two new last pages of document [id], left then right, both or neither: [spread] (fractional
+     * portrait coordinates, or null for the whole image) is split [split] of the way along its top and bottom edges (see BookSplit.page), with
+     * the book upright once the photo is turned clockwise by [quarterTurns]. With [keepOriginal] each page gets its own copy of the original,
+     * so editing or deleting one page never touches the other, and records [quarterTurns] as its turn from that original. [filter] and the
+     * null cases are as in [addCapture].
+     */
+    fun addBookCapture(
+        id: String,
+        source: ImageSource,
+        spread: Quad?,
+        split: Double,
+        quarterTurns: Int,
+        keepOriginal: Boolean,
+        filter: String? = null,
+    ): AddedPages? = addPages(id, 2, keepOriginal, quarterTurns.mod(4), filter) { pages, originals ->
+        bookCapture.store(source, spread, split, quarterTurns, pages[0] to pages[1], originals?.let { it[0] to it[1] })
+    }
+
+    /**
+     * Reserves [count] new page files (and originals, if [keepOriginal]) in document [id], has [store] write them, and adds the pages it
+     * stored, in order, to the record in one update; a page that kept its original records [quarterTurns]. Then applies [filter] as
+     * [addCapture] describes. Null, with the new files removed, if [store] fails or the record cannot be updated.
+     */
+    private fun addPages(
+        id: String,
+        count: Int,
+        keepOriginal: Boolean,
+        quarterTurns: Int,
+        filter: String?,
+        store: (pages: List<File>, originals: List<File>?) -> List<StoredCapture>?,
+    ): AddedPages? {
+        val (pageFiles, originalFiles) = synchronized(LOCK) {
             val folder = folderOf(id)?.takeIf { read(it) != null } ?: return null
-            var stamp = nextStamp()
-            // A clock that went back can repeat a stamp from an earlier run; never overwrite a page that exists.
-            while (File(folder, "$stamp.jpg").exists() || File(folder, "orig_$stamp.jpg").exists()) stamp = nextStamp()
-            val page = File(folder, "$stamp.jpg").apply { createNewFile() } // reserved before the lock is released
-            val original = if (keepOriginal) File(folder, "orig_$stamp.jpg") else null
-            hold(listOfNotNull(page, original))
-            page to original
+            val pages = mutableListOf<File>()
+            val originals = mutableListOf<File>()
+            repeat(count) {
+                var stamp = nextStamp()
+                // A clock that went back can repeat a stamp from an earlier run; never overwrite a page that exists.
+                while (File(folder, "$stamp.jpg").exists() || File(folder, "orig_$stamp.jpg").exists()) stamp = nextStamp()
+                pages += File(folder, "$stamp.jpg").apply { createNewFile() } // reserved before the lock is released
+                if (keepOriginal) originals += File(folder, "orig_$stamp.jpg")
+            }
+            hold(pages + originals)
+            pages to originals.takeIf { keepOriginal }
         }
-        fun discard(): Pair<ScanDocument, String>? {
-            pageFile.delete()
-            originalFile?.delete()
+        val created = pageFiles + originalFiles.orEmpty()
+        fun discard(): AddedPages? {
+            created.forEach { it.delete() }
             return null
         }
 
-        try {
+        val added = try {
             // The slow part (decode, warp, encode) runs without the lock, so listing and other documents are not held up.
-            val stored = capture.store(source, quad, pageFile, originalFile) ?: return discard()
+            val stored = store(pageFiles, originalFiles)?.takeIf { it.size == count } ?: return discard()
 
-            return synchronized(LOCK) {
+            synchronized(LOCK) {
                 val doc = document(id) ?: return discard() // deleted while the capture was being stored
-                val page = ScanPage(id = "p${pageFile.nameWithoutExtension}", image = pageFile.name, original = stored.original?.name)
+                val pages = stored.zip(pageFiles) { capture, file ->
+                    val turns = if (capture.original != null) quarterTurns else 0
+                    ScanPage(id = "p${file.nameWithoutExtension}", image = file.name, original = capture.original?.name, quarterTurns = turns)
+                }
                 try {
-                    update(doc.copy(pages = doc.pages + page)) to page.id
+                    AddedPages(update(doc.copy(pages = doc.pages + pages)), pages.map { it.id })
                 } catch (e: IOException) {
-                    discard()
+                    return discard()
                 }
             }
         } finally {
-            release(listOfNotNull(pageFile, originalFile))
+            release(created)
         }
+        if (filter == null || DocumentFilters.byName(filter) == DocumentFilters.default) return added
+        var doc = added.document
+        for (pageId in added.pageIds) doc = applyFilter(id, pageId, filter) ?: document(id) ?: return null
+        return added.copy(document = doc)
     }
 
     /**
