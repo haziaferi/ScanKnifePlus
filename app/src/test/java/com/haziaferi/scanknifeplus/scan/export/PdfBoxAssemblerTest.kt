@@ -57,6 +57,14 @@ class PdfBoxAssemblerTest {
     }
 
     @Test
+    fun `the PDF carries no Creator or Producer`() {
+        PDDocument.load(write(null)).use { doc ->
+            assertNull(doc.documentInformation.creator)
+            assertNull(doc.documentInformation.producer)
+        }
+    }
+
+    @Test
     fun `with a password the PDF is AES-256 as Protect writes it and opens only with that password`() {
         val pdf = write("secret")
         assertThrows(InvalidPasswordException::class.java) { PDDocument.load(pdf).close() }

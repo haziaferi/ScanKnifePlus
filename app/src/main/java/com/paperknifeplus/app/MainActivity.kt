@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +29,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -104,17 +102,6 @@ class MainActivity : ComponentActivity() {
                     1 -> false
                     2 -> true
                     else -> systemDark
-                }
-            }
-
-            var isInitialized by rememberSaveable { mutableStateOf(false) }
-
-            LaunchedEffect(Unit) {
-                if (!isInitialized) {
-                    val retention = PreferencesManager.getHistoryRetention(applicationContext)
-                    SessionManager.purgeHistory(retention)
-                    kotlinx.coroutines.delay(1200)
-                    isInitialized = true
                 }
             }
 
@@ -293,25 +280,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = !isInitialized,
-                        exit = androidx.compose.animation.fadeOut(animationSpec = tween(500))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(if (isDarkMode) Color.Black else Color.White)
-                                .testTag("splash"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Logo(modifier = Modifier.size(64.dp), partColor = if (isDarkMode) Color.White else Color.Black)
-                                Spacer(Modifier.height(24.dp))
-                                CircularProgressIndicator(color = PaperPink, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                             }
                         }
                     }

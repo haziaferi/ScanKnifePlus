@@ -587,7 +587,6 @@ class ScanLibrary(
 
         /** Names of the page files the library makes, and of the temp files written beside them while they are encoded. */
         private val LIBRARY_FILE = Regex("(orig_|unfilt_)?[0-9]+[.]jpg([.]tmp)?")
-        const val NAME_PREFIX = "ScanKnife"
         private const val TAG = "ScanLibrary"
 
         /** One lock for every instance, since instances over the same folder would otherwise race on records and stamps. */
@@ -609,13 +608,16 @@ class ScanLibrary(
         private fun isSafeName(name: String) = name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\\' !in name
 
         /**
-         * The name a document gets when it is created, `ScanKnife-2026-10-10-<epoch ms>`: OpenScan's scheme with this app's name. The date is
-         * there to be read and the epoch stamp to be unique, and the whole name is safe on every filesystem (no spaces or colons).
+         * The name a document gets when it is created, `scanknife-scan-2026-10-10-143005` in local time to the second; [create] adds `-2`,
+         * `-3`, ... when it is taken. Lowercase ASCII with no spaces or colons, so it is safe on every filesystem.
          */
         fun defaultName(epochMillis: Long, timeZone: TimeZone = TimeZone.getDefault()): String {
             // Gregorian whatever the locale (a Buddhist or Japanese calendar would change the year), and Locale.ROOT digits.
             val c = GregorianCalendar(timeZone, Locale.ROOT).apply { timeInMillis = epochMillis }
-            return String.format(Locale.ROOT, "%s-%04d-%02d-%02d-%d", NAME_PREFIX, c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH), epochMillis)
+            return String.format(
+                Locale.ROOT, "scanknife-scan-%04d-%02d-%02d-%02d%02d%02d", c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1,
+                c.get(Calendar.DAY_OF_MONTH), c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), c.get(Calendar.SECOND)
+            )
         }
     }
 }
