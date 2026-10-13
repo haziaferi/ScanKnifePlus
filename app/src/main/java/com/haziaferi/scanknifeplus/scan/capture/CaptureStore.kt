@@ -14,6 +14,9 @@ import kotlin.math.roundToLong
 /** A capture as stored: the page (cropped to the quad when one was given and the warp worked) and, if kept, the uncropped original. */
 data class StoredCapture(val page: File, val original: File?, val cropped: Boolean, val pageWidth: Int, val pageHeight: Int)
 
+/** A book spread as stored: its two [pages], left first, and the [spread] they were split from, in fractions of the photo's upright size. */
+data class StoredBook(val pages: List<StoredCapture>, val spread: Quad)
+
 /**
  * Turns a camera capture or a picked image into stored files, following OpenScan's native capture path (file_operations.dart
  * _writeCaptureNatively, capture_pipeline.dart encodeStoredPageIsolateEntry): the page decoded just large enough, flattened onto white, warped
@@ -35,8 +38,8 @@ object CaptureStore {
      * whole image) is split as [BookSplit.page] splits it, [split] of the way along its top and bottom edges with the book upright once the
      * photo is turned clockwise by [quarterTurns], and each page is warped, turned upright and written to its [pageDests] file as a captured
      * page is. Each page gets its own copy of the original in [originalDests], if given; a copy that fails only costs that page its original.
-     * Returns null, leaving nothing in [pageDests], if either page could not be written: unlike a single page, a split that fails keeps neither
-     * page rather than storing the whole photo twice.
+     * Returns the pages with the spread in the original's coordinates, or null, leaving nothing in [pageDests], if either page could not be
+     * written: unlike a single page, a split that fails keeps neither page rather than storing the whole photo twice.
      */
     fun storeBook(
         source: ImageSource,
@@ -45,7 +48,7 @@ object CaptureStore {
         quarterTurns: Int,
         pageDests: Pair<File, File>,
         originalDests: Pair<File, File>?,
-    ): List<StoredCapture>? {
+    ): StoredBook? {
         val dests = pageDests.toList()
         val header = ImageCodec.readHeader(source)
         val pages = header?.let { storeBookPages(source, it, spread, split, quarterTurns, dests) }
@@ -53,10 +56,12 @@ object CaptureStore {
             dests.forEach { it.delete() }
             return null
         }
-        if (originalDests == null) return pages
+        val size = header.oriented
+        val stored = StoredBook(pages, spreadIn(spread, size.width, size.height).scaled(1.0 / size.width, 1.0 / size.height))
+        if (originalDests == null) return stored
         val first = storeOriginal(source, header, originalDests.first)
         val originals = listOf(first, first?.let { copied(it, originalDests.second) })
-        return pages.zip(originals) { page, original -> page.copy(original = original) }
+        return stored.copy(pages = pages.zip(originals) { page, original -> page.copy(original = original) })
     }
 
     private fun storeBookPages(

@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
+import com.haziaferi.scanknifeplus.scan.capture.StoredBook
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
 import com.haziaferi.scanknifeplus.scan.library.BookCaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
@@ -75,13 +76,14 @@ class ScanSessionTest {
         if ("bad" in text || ("flaky" in text && flaked.add(text))) {
             null
         } else {
-            pages.toList().zip(listOf("left", "right")) { page, side ->
+            val stored = pages.toList().zip(listOf("left", "right")) { page, side ->
                 page.writeText("$text $side")
                 StoredCapture(page, null, cropped = true, pageWidth = 1, pageHeight = 1)
             }.zip(originals?.toList() ?: listOf(null, null)) { page, original ->
                 original?.writeText("original $text")
                 page.copy(original = original)
             }
+            StoredBook(stored, spread ?: quad)
         }
     }
     private val filtering = CountDownLatch(1)
@@ -723,6 +725,7 @@ class ScanSessionTest {
         val (left, right) = scans.document(id)!!.pages.drop(1)
         assertEquals(listOf(1, 1), listOf(left.quarterTurns, right.quarterTurns))
         assertTrue(left.original != right.original)
+        assertEquals(listOf(0.4, 0.4), listOf(left.book!!.split, right.book!!.split))
     }
 
     @Test

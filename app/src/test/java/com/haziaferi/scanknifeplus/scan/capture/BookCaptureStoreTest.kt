@@ -54,10 +54,11 @@ class BookCaptureStoreTest {
     fun `an upright spread is stored as its left and right pages, each with its own copy of the original`() {
         val source = photo(300, 200) { x, _ -> if (x < 150) Color.RED else Color.BLUE }
         val stored = CaptureStore.storeBook(source, null, 0.5, 0, pages, originals)!!
-        assertEquals(listOf(pages.first, pages.second), stored.map { it.page })
-        assertEquals(listOf(originals.first, originals.second), stored.map { it.original })
-        assertEquals(listOf(150 to 200, 150 to 200), stored.map { it.pageWidth to it.pageHeight })
-        assertTrue(stored.all { it.cropped })
+        assertEquals(listOf(pages.first, pages.second), stored.pages.map { it.page })
+        assertEquals(listOf(originals.first, originals.second), stored.pages.map { it.original })
+        assertEquals(listOf(150 to 200, 150 to 200), stored.pages.map { it.pageWidth to it.pageHeight })
+        assertTrue(stored.pages.all { it.cropped })
+        assertEquals(Quad(Pt(0.0, 0.0), Pt(1.0, 0.0), Pt(1.0, 1.0), Pt(0.0, 1.0)), stored.spread)
         assertColor(Color.RED, pages.first, 75, 100)
         assertColor(Color.BLUE, pages.second, 75, 100)
         assertArrayEquals(originals.first.readBytes(), originals.second.readBytes())
@@ -70,8 +71,8 @@ class BookCaptureStoreTest {
         // the photo's bottom-left corner) and the top half the right page (blue).
         val source = photo(200, 300) { x, y -> if (x < 20 && y >= 280) Color.GREEN else if (y >= 150) Color.RED else Color.BLUE }
         val stored = CaptureStore.storeBook(source, null, 0.5, 1, pages, null)!!
-        assertEquals(listOf(150 to 200, 150 to 200), stored.map { it.pageWidth to it.pageHeight })
-        assertEquals(listOf(null, null), stored.map { it.original })
+        assertEquals(listOf(150 to 200, 150 to 200), stored.pages.map { it.pageWidth to it.pageHeight })
+        assertEquals(listOf(null, null), stored.pages.map { it.original })
         assertColor(Color.GREEN, pages.first, 5, 5)
         assertColor(Color.RED, pages.first, 100, 150)
         assertColor(Color.BLUE, pages.second, 75, 100)
@@ -84,7 +85,12 @@ class BookCaptureStoreTest {
         val source = photo(200, 300) { x, _ -> if (x < 100) Color.RED else Color.BLUE }
         val spread = Quad(Pt(0.2, 0.1), Pt(0.8, 0.1), Pt(0.8, 0.9), Pt(0.2, 0.9))
         val stored = CaptureStore.storeBook(source, spread, 0.5, 0, pages, null)!!
-        assertEquals(listOf(60 to 240, 60 to 240), stored.map { it.pageWidth to it.pageHeight })
+        assertEquals(listOf(60 to 240, 60 to 240), stored.pages.map { it.pageWidth to it.pageHeight })
+        // A portrait photo's fractions are the original's.
+        for ((e, a) in spread.points.zip(stored.spread.points)) {
+            assertEquals(e.x, a.x, 1e-12)
+            assertEquals(e.y, a.y, 1e-12)
+        }
         assertColor(Color.RED, pages.first, 30, 120)
         assertColor(Color.BLUE, pages.second, 30, 120)
     }
