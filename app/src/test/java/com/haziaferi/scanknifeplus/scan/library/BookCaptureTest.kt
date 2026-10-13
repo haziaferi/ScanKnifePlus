@@ -17,6 +17,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -103,8 +104,8 @@ class BookCaptureTest {
         assertEquals("original left", text(id, left.original))
         assertEquals("original right", text(id, right.original))
         assertEquals(listOf(3, 3), listOf(left.quarterTurns, right.quarterTurns))
-        assertEquals(BookCrop(photoSpread, 0.4, BookPage.LEFT, 3), left.book)
-        assertEquals(BookCrop(photoSpread, 0.4, BookPage.RIGHT, 3), right.book)
+        assertEquals(BookCrop(photoSpread, 0.4, BookPage.LEFT, 3, shot = left.id), left.book)
+        assertEquals(BookCrop(photoSpread, 0.4, BookPage.RIGHT, 3, shot = left.id), right.book)
         assertNull(pages[0].book)
         assertEquals(pages.flatMap { it.files }.toSet(), folderFiles(id))
         assertEquals(added.document, library.document(id))
@@ -255,5 +256,33 @@ class BookCaptureTest {
         val read = ScanLibrary(root).document(id)!!.pages
         assertEquals(3, read.size)
         assertEquals(listOf(null, null, null), read.map { it.book })
+    }
+
+    @Test
+    fun `pages of two different shots of the same spread are not re-split together`() {
+        val id = library.create().id
+        val (left, right) = library.addBookCapture(id, anySource, spread, 0.5, 0, keepOriginal = true)!!.document.pages
+        val (secondLeft, secondRight) = library.addBookCapture(id, anySource, spread, 0.5, 0, keepOriginal = true)!!.document.pages.drop(2)
+        assertEquals(left.book!!.copy(shot = null), secondLeft.book!!.copy(shot = null)) // identical but for the shot
+        val before = library.document(id)!!
+        assertNull(library.resplitBook(id, left.id, secondRight.id, 0.3))
+        assertNull(library.resplitBook(id, secondLeft.id, right.id, 0.3))
+        assertEquals(before, library.document(id))
+        assertTrue(library.resplitBook(id, secondLeft.id, secondRight.id, 0.3) != null)
+    }
+
+    @Test
+    fun `a book field written without a shot id still reads and re-splits`() {
+        val id = library.create().id
+        val (left, right) = library.addBookCapture(id, anySource, spread, 0.5, 2, keepOriginal = true)!!.document.pages
+        val record = File(File(root, id), ScanLibrary.RECORD)
+        val json = JSONObject(record.readText())
+        val pages = json.getJSONArray("pages")
+        for (i in 0 until pages.length()) assertNotNull(pages.getJSONObject(i).getJSONObject("book").remove("shot"))
+        record.writeText(json.toString())
+
+        val read = ScanLibrary(root).document(id)!!.pages
+        assertEquals(listOf(left.book!!.copy(shot = null), right.book!!.copy(shot = null)), read.map { it.book })
+        assertEquals(listOf(0.7, 0.7), library.resplitBook(id, left.id, right.id, 0.7)!!.pages.map { it.book!!.split })
     }
 }

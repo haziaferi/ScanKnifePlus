@@ -35,11 +35,10 @@ object CaptureStore {
 
     /**
      * Stores [source], a photo of an open book, as its two facing pages, left first: [spread] (fractional portrait coordinates, or null for the
-     * whole image) is split as [BookSplit.page] splits it, [split] of the way along its top and bottom edges with the book upright once the
-     * photo is turned clockwise by [quarterTurns], and each page is warped, turned upright and written to its [pageDests] file as a captured
-     * page is. Each page gets its own copy of the original in [originalDests], if given; a copy that fails only costs that page its original.
-     * Returns the pages with the spread in the original's coordinates, or null, leaving nothing in [pageDests], if either page could not be
-     * written: unlike a single page, a split that fails keeps neither page rather than storing the whole photo twice.
+     * whole image) is split as [BookSplit.page] splits it, and each page is warped, turned upright by [quarterTurns] and written to [pageDests].
+     * With [originalDests] the original is encoded once into the first file and copied byte for byte into the second, so each page owns an
+     * identical file: if the encode fails neither page gets one, and if only the copy fails the right page goes without. Returns the pages with
+     * the spread in the original's coordinates, or null, leaving nothing in [pageDests], if either page could not be written.
      */
     fun storeBook(
         source: ImageSource,

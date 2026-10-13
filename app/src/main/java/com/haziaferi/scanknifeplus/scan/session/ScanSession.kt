@@ -116,13 +116,16 @@ class ScanSession(
     fun capture(shot: File, quad: Quad?): Boolean = enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), quad, shot, null)
 
     /**
-     * Book mode: queues camera shot [shot] of an open book to be stored as its two facing pages, left then right, both or neither, as one shot
-     * that [undoLast], [retry] and [dismiss] treat whole. [spread] (fractional portrait coordinates, null for the whole image) is split
-     * [split] of the way along its top and bottom edges, with the book upright once the photo is turned clockwise by [quarterTurns]; see
-     * ScanLibrary.addBookCapture. Otherwise as [capture]. Throws IllegalArgumentException for a [split] outside 0 to 1.
+     * Book mode: queues camera shot [shot] of an open book as its two facing pages, left then right, both or neither, one shot to [undoLast],
+     * [retry] and [dismiss]. [spread] (fractional portrait coordinates, null for the whole image) is split
+     * [split] of the way along its top and bottom edges, with the book upright once the photo is turned clockwise by [quarterTurns] (see
+     * ScanLibrary.addBookCapture). Otherwise as [capture], and a [split] outside 0 to 1 is refused like a shot after the session ended.
      */
     fun captureBook(shot: File, spread: Quad?, split: Double = BookSplit.DEFAULT_SPLIT, quarterTurns: Int = 0): Boolean {
-        require(split in 0.0..1.0) { "Split outside the spread: $split" }
+        if (split !in 0.0..1.0) {
+            shot.delete()
+            return false
+        }
         return enqueue(ShotOrigin.CAMERA, ImageSource.of(shot), spread, shot, Book(split, quarterTurns))
     }
 
@@ -182,9 +185,9 @@ class ScanSession(
         if (ending != null) null else entries.firstOrNull { it.failed && it.seq == failure.seq && it.origin == failure.origin }
 
     /**
-     * Takes back the most recent page of this session, as OpenScan's undo does: a shot still waiting is dropped, one being stored is removed as
-     * soon as it is, and a stored page is deleted from the document in the background (if that delete fails, the page comes back into
-     * [state]). Pages the document had before the session are never touched. Returns false if the session has no page to take back.
+     * Takes back the most recent shot of this session (its page, or both pages of a book spread), as OpenScan's undo does: a waiting shot is
+     * dropped, one being stored is removed once stored, and stored pages are deleted in the background, coming back into [state] if that fails.
+     * Pages the document had before the session are never touched; returns false if the session has nothing to take back.
      */
     fun undoLast(): Boolean = synchronized(lock) {
         if (ending != null) return false

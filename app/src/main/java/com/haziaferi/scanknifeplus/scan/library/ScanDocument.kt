@@ -8,18 +8,17 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * How a Book mode page was cut from its original: [side] of [spread] (fractions of the original's upright width and height) split [split] of
- * the way along the spread's top and bottom edges, with the book upright once the original is turned clockwise by [turns] (see BookSplit.page).
- * Kept so the split line can be moved later; a page's own later turns are in [ScanPage.quarterTurns].
+ * How a Book mode page was cut from its original, kept so the split line can be moved later: [side] of [spread] (fractions of the original's
+ * upright size) split at [split], with the book upright after [turns] clockwise quarter turns (see BookSplit.page). [shot] is the same for both
+ * pages of one photo, and null in records written before it existed.
  */
-data class BookCrop(val spread: Quad, val split: Double, val side: BookPage, val turns: Int)
+data class BookCrop(val spread: Quad, val split: Double, val side: BookPage, val turns: Int, val shot: String? = null)
 
 /**
- * One page of a scanned document. File names are relative to the document's folder. Mirrors OpenScan's `pages` table: [image] is what the page
- * shows; [original] is the uncropped capture kept for re-cropping; [unfiltered] is the page before any filter, kept so filters never compound;
- * [filter] is the applied filter's name, or null for none. [quarterTurns] (0 to 3, clockwise) is how far the page is turned from [original], so a
- * re-crop keeps the turn; it stays 0 without an original, whose image already shows any turn. [book] is set on a Book mode page that kept its
- * original, until the page is re-cropped by hand.
+ * One page of a scanned document, mirroring OpenScan's `pages` table, with file names relative to the document's folder: [image] is shown,
+ * [original] is the uncropped capture for re-crops, [unfiltered] keeps filters from compounding, and [filter] names the applied filter. A re-crop
+ * keeps [quarterTurns], the clockwise turn from [original] (0 without one); [book] is set on a Book mode page with an original until it is
+ * re-cropped by hand.
  */
 data class ScanPage(
     val id: String,
@@ -99,6 +98,7 @@ data class ScanDocument(
             .put("split", b.split)
             .put("side", b.side.name)
             .put("turns", b.turns)
+            .apply { b.shot?.let { put("shot", it) } }
 
         /** The book crop recorded in [json], or null if it is damaged: the page then reads as a plain page rather than losing the record. */
         private fun readBook(json: JSONObject): BookCrop? = try {
@@ -107,7 +107,8 @@ data class ScanDocument(
             val c = List(4) { Pt(s.getDouble(2 * it), s.getDouble(2 * it + 1)) }
             val split = json.getDouble("split")
             require(split in 0.0..1.0)
-            BookCrop(Quad(c[0], c[1], c[2], c[3]), split, BookPage.valueOf(json.getString("side")), json.getInt("turns").mod(4))
+            val shot = if (json.isNull("shot")) null else json.getString("shot")
+            BookCrop(Quad(c[0], c[1], c[2], c[3]), split, BookPage.valueOf(json.getString("side")), json.getInt("turns").mod(4), shot)
         } catch (e: JSONException) {
             null
         } catch (e: IllegalArgumentException) {

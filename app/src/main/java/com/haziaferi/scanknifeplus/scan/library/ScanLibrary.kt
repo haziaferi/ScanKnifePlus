@@ -130,9 +130,8 @@ class ScanLibrary(
     /**
      * Stores a photo of an open book as the two new last pages of document [id], left then right, both or neither: [spread] (fractional
      * portrait coordinates, or null for the whole image) is split [split] of the way along its top and bottom edges (see BookSplit.page), with
-     * the book upright once the photo is turned clockwise by [quarterTurns]. With [keepOriginal] each page gets its own copy of the original,
-     * so editing or deleting one page never touches the other, and records [quarterTurns] as its turn from that original and its [BookCrop]
-     * for [resplitBook]. [filter] and the null cases are as in [addCapture].
+     * the book upright once the photo is turned clockwise by [quarterTurns]. With [keepOriginal] each page gets its own copy of the original
+     * and records the turn and its [BookCrop] for [resplitBook]; [filter] and the null cases are as in [addCapture].
      */
     fun addBookCapture(
         id: String,
@@ -188,7 +187,8 @@ class ScanLibrary(
                 val doc = document(id) ?: return discard() // deleted while the capture was being stored
                 val pages = stored.zip(pageFiles) { (capture, crop), file ->
                     // Without an original there is nothing to re-split from, and the page image already shows the turn.
-                    val book = crop?.takeIf { capture.original != null }
+                    // Both pages of one photo are tagged with the first page's id, so a re-split can tell which pages belong together.
+                    val book = crop?.takeIf { capture.original != null }?.copy(shot = "p${pageFiles[0].nameWithoutExtension}")
                     val pageId = "p${file.nameWithoutExtension}"
                     ScanPage(pageId, file.name, original = capture.original?.name, quarterTurns = book?.turns ?: 0, book = book)
                 }
@@ -272,10 +272,10 @@ class ScanLibrary(
     }
 
     /**
-     * Moves the split line of a Book mode shot: re-crops pages [leftId] and [rightId], both cut from the same spread, from their own originals
-     * at [split] (0 to 1 along the spread's top and bottom edges), each keeping its own [ScanPage.quarterTurns]; both or neither. Like
-     * [recropPage] the new pages are filter-free. Returns the updated document, or null, leaving both pages as they were, if they are not the
-     * left and right page of one spread with their originals, [split] is outside 0 to 1, a crop fails, or either page changed meanwhile.
+     * Moves the split line of a Book mode shot: re-crops pages [leftId] and [rightId] from their own originals at [split] (0 to 1), each
+     * keeping its own [ScanPage.quarterTurns] and, like [recropPage], filter-free; both or neither. Returns the updated document, or null,
+     * leaving both pages as they were, if they are not the left and right page of one shot with their originals, [split] is outside 0 to 1, a
+     * crop fails, or either page changed meanwhile.
      */
     fun resplitBook(id: String, leftId: String, rightId: String, split: Double): ScanDocument? {
         if (split !in 0.0..1.0) return null
@@ -283,7 +283,7 @@ class ScanLibrary(
         val (_, right) = snapshot(id, rightId) ?: return null
         val l = left.book ?: return null
         val r = right.book ?: return null
-        if (l.side != BookPage.LEFT || r.side != BookPage.RIGHT || l.spread != r.spread || l.turns != r.turns) return null
+        if (l.side != BookPage.LEFT || r.side != BookPage.RIGHT || l.shot != r.shot || l.spread != r.spread || l.turns != r.turns) return null
         if (left.original == null || right.original == null) return null
         val reserved = mutableListOf<File>()
         try {

@@ -24,7 +24,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -797,10 +796,12 @@ class ScanSessionTest {
     }
 
     @Test
-    fun `a split outside the spread is refused at the shutter`() {
+    fun `a split outside the spread is refused at the shutter, and the shot deleted`() {
         val s = session()
         for (split in listOf(-0.1, 1.5, Double.NaN)) {
-            assertThrows(IllegalArgumentException::class.java) { s.shootBook("book", split) }
+            val shot = s.shot("book")
+            assertFalse(s.captureBook(shot, quad, split))
+            assertFalse(shot.exists())
         }
         assertEquals(0, s.state.value.count)
         s.finish()

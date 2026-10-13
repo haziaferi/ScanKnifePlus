@@ -13,9 +13,9 @@ object BookSplit {
     const val DEFAULT_SPLIT = 0.5
 
     /**
-     * The quad of [page] in [spread], split [split] of the way (0 to 1, from the book's left) along its top and bottom edges. The book reads
-     * upright once its image is turned clockwise by [quarterTurns]. The result is in [spread]'s coordinates and in the image's own corner order,
-     * so warping it and turning the warp by [quarterTurns] gives the upright page. Throws IllegalArgumentException for a [split] outside 0 to 1.
+     * The quad of [page] in [spread], split [split] of the way (0 to 1, from the book's left) along the top and bottom edges of the book as it
+     * reads once the image is turned clockwise by [quarterTurns]. The quad is in the image's coordinates and corner order, so warping it and
+     * turning the warp by [quarterTurns] gives the upright page; a [split] outside 0 to 1 throws IllegalArgumentException.
      */
     fun page(spread: Quad, page: BookPage, split: Double = DEFAULT_SPLIT, quarterTurns: Int = 0): Quad {
         require(split in 0.0..1.0) { "Split outside the spread: $split" }
