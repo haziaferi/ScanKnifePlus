@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window background is the dark Compose background, so the first frame in dark mode is not white. -->
+    <style name="Theme.PaperKnifePlus" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF000000</item>
+    </style>
+</resources>

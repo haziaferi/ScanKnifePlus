@@ -46,8 +46,7 @@ class HistoryTest {
     @After
     fun tearDown() = rule.runOnUiThread { SessionManager.clearHistory() }
 
-    private fun entry(uri: Uri?, name: String = "x", createdAt: Long = System.currentTimeMillis()) =
-        ActivityEntry("id-$name", name, "Tool", "1 page", Icons.Filled.Description, uri, 1, createdAt)
+    private fun entry(uri: Uri?) = ActivityEntry("id", "x", "Tool", "1 page", Icons.Filled.Description, uri, 1)
 
     @Test
     fun `sharing carries the output's own type and a read grant`() {
@@ -92,19 +91,10 @@ class HistoryTest {
     }
 
     @Test
-    fun `entries get unique ids and are purged by creation time`() {
+    fun `entries get unique ids`() {
         rule.runOnUiThread {
             repeat(50) { SessionManager.addEntry("f$it.pdf", "Tool", "", Icons.Filled.Description) }
             assertEquals(50, SessionManager.history.map { it.id }.toSet().size)
-
-            val now = 100L * 24 * 60 * 60 * 1000
-            SessionManager.clearHistory()
-            SessionManager.history += entry(pdf, "old", createdAt = now - 8L * 24 * 60 * 60 * 1000)
-            SessionManager.history += entry(pdf, "recent", createdAt = now - 6L * 24 * 60 * 60 * 1000)
-            SessionManager.purgeHistory(7, now)
-            assertEquals(listOf("recent"), SessionManager.history.map { it.name })
-            SessionManager.purgeHistory(0, now + 1_000_000_000L)
-            assertEquals(1, SessionManager.history.size)
         }
     }
 

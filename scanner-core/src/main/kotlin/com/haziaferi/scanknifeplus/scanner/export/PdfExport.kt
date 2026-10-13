@@ -24,16 +24,36 @@ enum class ExportQuality(val jpegQuality: Int, val maxEdge: Int) {
     }
 }
 
-/** PDF page sizes in points, computed as the Dart pdf package's PdfPageFormat does so the values match to the last bit. */
+/**
+ * PDF page sizes in points, computed as the Dart pdf package's PdfPageFormat does so the values match to the last bit. [width] x [height] is
+ * every page's size, except with [FIT], which OpenScan does not have: each page there takes its image's aspect ratio and A4's long edge, so
+ * portrait and landscape scans both come out paper-sized (see [pageFor]).
+ */
 enum class PdfPageSize(val width: Double, val height: Double) {
     A4(21.0 * CM, 29.7 * CM),
     LETTER(8.5 * INCH, 11.0 * INCH),
-    LEGAL(8.5 * INCH, 14.0 * INCH);
+    LEGAL(8.5 * INCH, 14.0 * INCH),
+    FIT(21.0 * CM, 29.7 * CM);
+
+    /** The page a [imageWidth] x [imageHeight] image is drawn on: [width] x [height], or for [FIT] the image scaled to this long edge. */
+    fun pageFor(imageWidth: Int, imageHeight: Int): PdfPageBox {
+        require(imageWidth > 0 && imageHeight > 0) { "Empty image: ${imageWidth}x$imageHeight" }
+        if (this != FIT) return PdfPageBox(width, height)
+        val long = maxOf(width, height)
+        return if (imageWidth >= imageHeight) {
+            PdfPageBox(long, long * imageHeight / imageWidth)
+        } else {
+            PdfPageBox(long * imageWidth / imageHeight, long)
+        }
+    }
 
     companion object {
         val DEFAULT = A4
     }
 }
+
+/** A PDF page's size in points. */
+data class PdfPageBox(val width: Double, val height: Double)
 
 private const val INCH = 72.0
 private const val CM = INCH / 2.54
@@ -47,10 +67,12 @@ object PdfLayout {
 
     /**
      * Where createPdf's `Center(Image(...))` puts a [imageWidth] x [imageHeight] image on a [page] with a [MARGIN] margin: scaled to fit the
-     * printable area (up or down, keeping its aspect ratio) and centred in it.
+     * printable area (up or down, keeping its aspect ratio) and centred in it. A [PdfPageSize.FIT] page has the image's own shape, so the image
+     * fills it with no margin.
      */
     fun imageRect(page: PdfPageSize, imageWidth: Int, imageHeight: Int): PdfImageRect {
         require(imageWidth > 0 && imageHeight > 0) { "Empty image: ${imageWidth}x$imageHeight" }
+        if (page == PdfPageSize.FIT) return page.pageFor(imageWidth, imageHeight).let { PdfImageRect(0.0, 0.0, it.width, it.height) }
         val boxW = page.width - 2 * MARGIN
         val boxH = page.height - 2 * MARGIN
         val w = imageWidth.toDouble()
