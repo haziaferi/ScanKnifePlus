@@ -17,8 +17,8 @@ import java.io.File
 /** Writes JPEG pages into a PDF, one page each. */
 fun interface PdfAssembler {
     /**
-     * Writes [pages] to [dest] on [size] pages, using [workDir] for scratch space, encrypted so it opens only with [password] unless that is
-     * null; false if it could not. Blocking.
+     * Writes [pages] to [dest] on [size] pages (for [PdfPageSize.FIT], each its image's shape), using [workDir] for scratch space, encrypted so
+     * it opens only with [password] unless that is null; false if it could not. Blocking.
      */
     fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?): Boolean
 }
@@ -33,7 +33,8 @@ object PdfBoxAssembler : PdfAssembler {
         PDDocument(MemoryUsageSetting.setupTempFileOnly().setTempDir(workDir)).use { doc ->
             for (file in pages) {
                 val image = file.inputStream().use { JPEGFactory.createFromStream(doc, it) }
-                val page = PDPage(PDRectangle(size.width.toFloat(), size.height.toFloat()))
+                val box = size.pageFor(image.width, image.height)
+                val page = PDPage(PDRectangle(box.width.toFloat(), box.height.toFloat()))
                 doc.addPage(page)
                 val r = PdfLayout.imageRect(size, image.width, image.height)
                 PDPageContentStream(doc, page).use { it.drawImage(image, r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat()) }
