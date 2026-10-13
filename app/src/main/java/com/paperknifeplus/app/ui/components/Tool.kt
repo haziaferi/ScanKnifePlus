@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.graphics.vector.ImageVector
 import java.util.UUID
 
-/** One History entry. [id] is unique (it keys the History list); [createdAt] is when the output was made, in epoch milliseconds. */
+/** One History entry. [id] is unique (it keys the History list). */
 data class ActivityEntry(
     val id: String,
     val name: String,
@@ -13,8 +13,7 @@ data class ActivityEntry(
     val size: String,
     val icon: ImageVector,
     val uri: Uri? = null,
-    val pageCount: Int = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val pageCount: Int = 0
 )
 
 data class Tool(

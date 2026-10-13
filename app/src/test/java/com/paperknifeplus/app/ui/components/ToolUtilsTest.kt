@@ -218,11 +218,7 @@ class ToolUtilsTest {
         val after = PDDocument.load(output).use { doc -> doc.getPage(0).resources.let { r -> r.getXObject(r.xObjectNames.first()) as PDImageXObject }.let { it.cosObject.filters to rawBytes(it) } }
         assertEquals(COSName.DCT_DECODE, after.first)
         assertArrayEquals(before, after.second)
-        val resaved = PDDocument.load(input).use { doc ->
-            doc.documentInformation.creator = "ScanKnife+"
-            doc.documentInformation.producer = "ScanKnife+"
-            ByteArrayOutputStream().also { doc.save(it) }.size()
-        }
+        val resaved = PDDocument.load(input).use { doc -> ByteArrayOutputStream().also { doc.save(it) }.size() }
         assertTrue(output.length() <= resaved)
     }
 
