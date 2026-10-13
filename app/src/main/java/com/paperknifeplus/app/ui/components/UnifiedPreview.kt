@@ -99,61 +99,43 @@ fun UnifiedPdfPreview(
             }
         }
     } else if (mode == PreviewMode.REORDER) {
-        // --- REARRANGE MODE: BUTTON DRIVEN (Drag & Drop Coming Soon) ---
-        Box(Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp)
-            ) {
-                items(pageCount, key = { pageOrder?.get(it) ?: it }) { index ->
-                    val isSelected = selectedPages?.contains(index) == true
-                    val pageIdx = pageOrder?.get(index) ?: index
-                    
-                    PdfPageItem(
-                        uri = uri,
-                        index = pageIdx,
-                        password = password,
-                        isGrayscale = isGrayscale,
-                        showIndexNumbers = showIndexNumbers,
-                        imageLoader = imageLoader,
-                        accentColor = accentColor,
-                        onClick = { onToggleSelection?.invoke(index) },
-                        scale = 0.6f,
-                        modifier = if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier
-                    ) {
-                        if (isSelected) {
-                            Box(modifier = Modifier.fillMaxSize().background(accentColor.copy(alpha = 0.15f)))
-                            if (showSelectionIcon) {
-                                Surface(
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
-                                    color = accentColor,
-                                    shape = CircleShape
-                                ) {
-                                    Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.padding(4.dp))
-                                }
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp)
+        ) {
+            items(pageCount, key = { pageOrder?.get(it) ?: it }) { index ->
+                val isSelected = selectedPages?.contains(index) == true
+                val pageIdx = pageOrder?.get(index) ?: index
+                
+                PdfPageItem(
+                    uri = uri,
+                    index = pageIdx,
+                    password = password,
+                    isGrayscale = isGrayscale,
+                    showIndexNumbers = showIndexNumbers,
+                    imageLoader = imageLoader,
+                    accentColor = accentColor,
+                    onClick = { onToggleSelection?.invoke(index) },
+                    scale = 0.6f,
+                    modifier = if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier
+                ) {
+                    if (isSelected) {
+                        Box(modifier = Modifier.fillMaxSize().background(accentColor.copy(alpha = 0.15f)))
+                        if (showSelectionIcon) {
+                            Surface(
+                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
+                                color = accentColor,
+                                shape = CircleShape
+                            ) {
+                                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.padding(4.dp))
                             }
                         }
-                        itemOverlay?.invoke(this, index)
                     }
+                    itemOverlay?.invoke(this, index)
                 }
-            }
-            
-            Surface(
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                color = Color.Black.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(
-                    "DRAG & DROP COMING SOON",
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    letterSpacing = 1.sp
-                )
             }
         }
     } else {

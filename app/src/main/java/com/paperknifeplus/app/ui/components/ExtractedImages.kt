@@ -100,7 +100,21 @@ private fun colorSpaceName(space: COSBase?): String? = when (space) {
 }
 
 /** Images written and images left out by [writeImages]. */
-internal data class ExtractCounts(val written: Int, val skipped: Int)
+internal data class ExtractCounts(val written: Int, val skipped: Int) {
+    /** The result line: what was saved and, when some images could not be decoded, how many were left out. */
+    val summary: String
+        get() = if (skipped == 0) "Found $written assets in document" else "Saved $written of ${written + skipped} images; ${images(skipped)} could not be read"
+
+    /** Why the ZIP is empty, or null when it is not: either the PDF has no images, or none of them could be decoded. */
+    val emptyReason: String?
+        get() = when {
+            written > 0 -> null
+            skipped == 0 -> "No images found in PDF"
+            else -> "The PDF has ${images(skipped)}, but none could be read"
+        }
+
+    private fun images(count: Int) = if (count == 1) "1 image" else "$count images"
+}
 
 /**
  * Writes every image of [document] (each XObject once, also from inside form XObjects) into [zip] as `asset_<n>_p<page>.<ext>`, in the

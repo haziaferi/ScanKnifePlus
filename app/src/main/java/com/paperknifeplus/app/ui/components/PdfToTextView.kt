@@ -226,7 +226,7 @@ fun PdfToTextView(
                                         Icon(Icons.Filled.ContentCopy, null, tint = accentColor, modifier = Modifier.size(18.dp))
                                     }
                                     Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { saveTxtLauncher.launch(pdfBaseName(fileName) + ".txt") }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
+                                    IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
                                         Icon(Icons.Filled.Save, null, tint = accentColor, modifier = Modifier.size(18.dp))
                                     }
                                 }

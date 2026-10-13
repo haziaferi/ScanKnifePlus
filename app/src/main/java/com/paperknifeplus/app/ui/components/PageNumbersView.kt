@@ -216,7 +216,7 @@ fun PageNumbersView(
                             Spacer(Modifier.height(8.dp))
 
                             Button(
-                                onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-numbered.pdf") },
+                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)

@@ -235,14 +235,6 @@ fun MergeView(
                         val listState = rememberLazyListState()
 
                         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Drag and drop coming soon", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                            }
-
                             LazyColumn(
                                 state = listState,
                                 modifier = Modifier.weight(1f),
@@ -292,7 +284,7 @@ fun MergeView(
 
                             val allReady = selectedFiles.size > 1 && selectedFiles.all { !it.isLocked || it.isUnlocked }
                             Button(
-                                onClick = { saveLauncher.launch("merged_${System.currentTimeMillis() / 1000}.pdf") },
+                                onClick = { saveLauncher.launch(outputFileName("merged_${System.currentTimeMillis() / 1000}", "pdf")) },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
                                 enabled = allReady,
                                 shape = RoundedCornerShape(20.dp),

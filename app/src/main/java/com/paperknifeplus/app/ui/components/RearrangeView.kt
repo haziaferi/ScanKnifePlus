@@ -245,7 +245,7 @@ fun RearrangeView(
                             }
 
                             Button(
-                                onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-reordered.pdf") },
+                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
                                 shape = RoundedCornerShape(24.dp)

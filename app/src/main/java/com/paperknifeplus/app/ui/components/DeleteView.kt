@@ -297,7 +297,7 @@ fun DeleteView(
                             
                             Button(
                                 onClick = { 
-                                    val defaultName = pdfBaseName(fileName) + "-cleaned.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-cleaned", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, 
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 

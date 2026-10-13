@@ -344,7 +344,7 @@ fun SignView(
 
                             val hasSigned = placedSignatures.isNotEmpty()
                             Button(
-                                onClick = { if (hasSigned) saveLauncher.launch(pdfBaseName(fileName) + "-signed.pdf") },
+                                onClick = { if (hasSigned) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf")) },
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp),
                                 enabled = hasSigned,
                                 shape = RoundedCornerShape(20.dp),
@@ -485,7 +485,7 @@ fun SignView(
                                     Button(
                                         onClick = {
                                             lightboxPage = null
-                                            saveLauncher.launch(pdfBaseName(fileName) + "-signed.pdf")
+                                            saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf"))
                                         },
                                         modifier = Modifier.weight(1f).height(50.dp),
                                         shape = RoundedCornerShape(16.dp),
@@ -531,7 +531,7 @@ fun SignView(
                                     IconButton(
                                         onClick = {
                                             selectedSignatureFile = file
-                                            exportSignatureLauncher.launch("signature_${System.currentTimeMillis()}.png")
+                                            exportSignatureLauncher.launch(outputFileName("signature_${System.currentTimeMillis()}", "png"))
                                         },
                                         modifier = Modifier.align(Alignment.BottomEnd).size(22.dp)
                                     ) {

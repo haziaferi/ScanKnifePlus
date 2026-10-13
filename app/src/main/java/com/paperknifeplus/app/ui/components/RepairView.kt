@@ -182,7 +182,7 @@ fun RepairView(
 
                             Button(
                                 onClick = {
-                                    val defaultName = pdfBaseName(fileName) + "-repaired.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-repaired", "pdf")
                                     saveLauncher.launch(defaultName)
                                 },
                                 modifier = Modifier.fillMaxWidth().height(60.dp),
