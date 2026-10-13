@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -36,6 +38,18 @@ class AboutViewTest {
     private fun scrollTo(text: String, substring: Boolean = false) {
         rule.onNode(hasScrollAction()).performScrollToNode(hasText(text, substring = substring))
         rule.onAllNodesWithText(text, substring = substring).onFirst().assertExists()
+    }
+
+    /** Brings every item of the lazy list into composition in turn, since a lazy list only composes the visible items. */
+    private fun assertNowhereOnPage(vararg texts: String) {
+        val list = rule.onNode(hasScrollAction())
+        var index = 0
+        while (true) {
+            list.performScrollToIndex(index++)
+            for (text in texts) rule.onAllNodes(hasText(text, substring = true, ignoreCase = true)).assertCountEquals(0)
+            val range = list.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+            if (range.value() >= range.maxValue()) break
+        }
     }
 
     private fun openLibraries() {
@@ -73,13 +87,13 @@ class AboutViewTest {
     @Test
     fun `the About page credits both upstream projects and shows the app name and version`() {
         rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
-        scrollTo("By potatameister, with contributions from Gabbar-v7", substring = true)
+        scrollTo("By potatameister; contributors are listed on the project's GitHub page", substring = true)
         scrollTo("[GPL-3.0-or-later]")
-        scrollTo("By Vijay T S and Vikram H (Ethereal Developers), with contributions from yk1234f", substring = true)
+        scrollTo("By Vijay T S and Vikram H (Ethereal Developers); contributors are listed on the project's GitHub page", substring = true)
         scrollTo("not affiliated with or endorsed by the PaperKnife+ or OpenScan projects", substring = true)
         scrollTo("ScanKnife+ V", substring = true)
         rule.onNodeWithText("PaperKnife+ V", substring = true).assertDoesNotExist()
-        rule.onAllNodes(hasText("supporter", substring = true, ignoreCase = true)).assertCountEquals(0)
+        assertNowhereOnPage("supporter", "Gabbar-v7", "yk1234f", "phyrz91", "meskobalazs", "IzzySoft", "PatrykMis", "VasilisKos")
     }
 
     @Test

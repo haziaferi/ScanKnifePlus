@@ -32,8 +32,8 @@ There are no published releases yet. Every CI run of the [Build workflow](https:
 
 ScanKnife+ builds on two open-source projects. Thanks to their authors and contributors:
 
-- **PaperKnife+** (GPL-3.0-or-later, https://github.com/potatameister/PaperKnifePlus): ScanKnife+ is a fork of it and keeps the app and its PDF tools. Written by potatameister, with contributions from Gabbar-v7 ([contributors](https://github.com/potatameister/PaperKnifePlus/graphs/contributors)).
-- **OpenScan** (BSD-3-Clause, https://github.com/ethereal-developers/OpenScan): the document scanner (edge detection, perspective crop, filters and live scan logic) is ported from it to Kotlin. Written by Vijay T S (veejayts) and Vikram H (vikram0230) of Ethereal Developers, with contributions from yk1234f, phyrz91, meskobalazs, IzzySoft, PatrykMis and VasilisKos ([contributors](https://github.com/ethereal-developers/OpenScan/graphs/contributors)).
+- **PaperKnife+** (GPL-3.0-or-later, https://github.com/potatameister/PaperKnifePlus): ScanKnife+ is a fork of it and keeps the app and its PDF tools. Written by potatameister; its contributors are listed on [GitHub](https://github.com/potatameister/PaperKnifePlus/graphs/contributors).
+- **OpenScan** (BSD-3-Clause, https://github.com/ethereal-developers/OpenScan): the document scanner (edge detection, perspective crop, filters and live scan logic) is ported from it to Kotlin. Written by Vijay T S (veejayts) and Vikram H (vikram0230) of Ethereal Developers; its contributors are listed on [GitHub](https://github.com/ethereal-developers/OpenScan/graphs/contributors).
 
 ScanKnife+ is an independent fork and is not affiliated with or endorsed by the PaperKnife+ or OpenScan projects or their authors.
 
