@@ -84,7 +84,7 @@ class ScanCameraController(context: Context) {
         const val STILL_JPEG_QUALITY = 95
 
         /**
-         * How long a bind waits for the camera to leave OPEN: CameraX starts closing within tens of ms of the last unbind, so this only runs out
+         * How long a bind or a resume waits for the camera to leave OPEN: CameraX starts closing within tens of ms of the last unbind, so this only runs out
          * when something else holds the camera open, and it leaves most of [OPEN_TIMEOUT_MS] for the open itself.
          */
         const val CLOSE_WAIT_MS = 1_000L
@@ -508,7 +508,7 @@ class ScanCameraController(context: Context) {
         }
         if (status == CameraStatus.OPENING) openWatchdog.opening() else openWatchdog.reset()
         if (status == CameraStatus.CLOSED) {
-            // A screen stopped mid-drag never sends the gesture's end. CameraX may post its zoom reset just before CLOSING, while the gesture
+            // A screen paused mid-drag never sends the gesture's end. CameraX may post its zoom reset just before CLOSING, while the gesture
             // still held the ratio, so the camera's own value is read again once the gesture is dropped.
             zoomThrottle.cancel()
             camera?.cameraInfo?.zoomState?.value?.let(::onZoomState)
