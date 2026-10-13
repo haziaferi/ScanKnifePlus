@@ -5,6 +5,7 @@ import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -51,15 +52,24 @@ class ScanLibraryTest {
     }
 
     @Test
-    fun `default names follow OpenScan's filesystem-safe scheme`() {
-        assertEquals("ScanKnife-2026-10-10-1791590400000", ScanLibrary.defaultName(now, utc))
-        assertTrue(ScanLibrary.defaultName(now, utc).matches(Regex("[A-Za-z0-9-]+")))
+    fun `default names are lowercase local date and time to the second, in Gregorian ASCII digits`() {
+        val afternoon = now + ((14 * 60 + 30) * 60 + 5) * 1000L + 999 // 2026-10-10T14:30:05.999Z
+        assertEquals("scanknife-scan-2026-10-10-000000", ScanLibrary.defaultName(now, utc))
+        assertEquals("scanknife-scan-2026-10-10-143005", ScanLibrary.defaultName(afternoon, utc))
+        assertEquals("scanknife-scan-2026-10-10-163005", ScanLibrary.defaultName(afternoon, TimeZone.getTimeZone("Europe/Rome")))
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("th-TH-u-ca-buddhist-nu-thai"))
+            assertEquals("scanknife-scan-2026-10-10-143005", ScanLibrary.defaultName(afternoon, utc))
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test
     fun `a created document is persisted and listed`() {
         val doc = library.create()
-        assertEquals("ScanKnife-2026-10-10-1791590400000", doc.id)
+        assertEquals("scanknife-scan-2026-10-10-000000", doc.id)
         assertNull(doc.name)
         assertEquals(doc.id, doc.displayName)
         assertTrue(File(root, "${doc.id}/document.json").isFile)
@@ -67,11 +77,15 @@ class ScanLibraryTest {
     }
 
     @Test
-    fun `documents created in the same millisecond get distinct folders`() {
+    fun `documents created in the same second get numbered suffixes`() {
         val a = library.create()
+        now += 400
         val b = library.create()
-        assertNotEquals(a.id, b.id)
-        assertEquals("${a.id}-2", b.id)
+        val c = library.create()
+        now += 600
+        val d = library.create()
+        assertEquals(listOf("${a.id}-2", "${a.id}-3"), listOf(b.id, c.id))
+        assertEquals("scanknife-scan-2026-10-10-000001", d.id)
     }
 
     @Test
