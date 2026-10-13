@@ -150,13 +150,21 @@ fun AboutMain(onNavigate: (String) -> Unit) {
         item {
             LibraryRow(
                 Icons.Filled.Description, "PaperKnife+", "GPL-3.0-or-later",
-                "$appName is a fork of PaperKnife+ by potatameister.\nhttps://github.com/potatameister/PaperKnifePlus", PaperPink
+                "$appName is a fork of PaperKnife+ and keeps its PDF tools.\nBy potatameister, with contributions from Gabbar-v7.\n" +
+                    "https://github.com/potatameister/PaperKnifePlus", PaperPink
             )
         }
         item {
             LibraryRow(
                 Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
-                "The document scanner is ported from OpenScan by Vijay T S and Vikram H.\nhttps://github.com/ethereal-developers/OpenScan", PaperPink
+                "The document scanner is ported from OpenScan to Kotlin.\nBy Vijay T S and Vikram H (Ethereal Developers), with contributions from " +
+                    "yk1234f, phyrz91, meskobalazs, IzzySoft, PatrykMis and VasilisKos.\nhttps://github.com/ethereal-developers/OpenScan", PaperPink
+            )
+        }
+        item {
+            Text(
+                "$appName is an independent fork and is not affiliated with or endorsed by the PaperKnife+ or OpenScan projects or their authors.",
+                fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(horizontal = 4.dp)
             )
         }
 

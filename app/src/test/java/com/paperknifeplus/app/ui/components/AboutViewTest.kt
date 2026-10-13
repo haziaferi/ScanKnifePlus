@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -72,11 +73,13 @@ class AboutViewTest {
     @Test
     fun `the About page credits both upstream projects and shows the app name and version`() {
         rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
-        scrollTo("fork of PaperKnife+ by potatameister", substring = true)
+        scrollTo("By potatameister, with contributions from Gabbar-v7", substring = true)
         scrollTo("[GPL-3.0-or-later]")
-        scrollTo("OpenScan by Vijay T S and Vikram H", substring = true)
+        scrollTo("By Vijay T S and Vikram H (Ethereal Developers), with contributions from yk1234f", substring = true)
+        scrollTo("not affiliated with or endorsed by the PaperKnife+ or OpenScan projects", substring = true)
         scrollTo("ScanKnife+ V", substring = true)
         rule.onNodeWithText("PaperKnife+ V", substring = true).assertDoesNotExist()
+        rule.onAllNodes(hasText("supporter", substring = true, ignoreCase = true)).assertCountEquals(0)
     }
 
     @Test
