@@ -7,7 +7,7 @@ import com.haziaferi.scanknifeplus.scanner.live.Cancellable
 import com.haziaferi.scanknifeplus.scanner.live.DelayScheduler
 
 /**
- * Holds a bind back until the camera has left OPEN (see [ScanCameraController]), but no longer than [timeoutMicros]. Not thread-safe: use it on
+ * Holds a bind or a resume back until the camera has left OPEN (see [ScanCameraController]), but no longer than [timeoutMicros]. Not thread-safe: use it on
  * the main thread, where LiveData delivers, and let [scheduler] run its actions there too.
  */
 internal class CloseWait(private val scheduler: DelayScheduler, private val timeoutMicros: Long) {

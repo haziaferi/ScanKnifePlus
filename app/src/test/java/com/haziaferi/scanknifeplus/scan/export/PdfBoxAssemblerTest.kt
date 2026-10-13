@@ -92,4 +92,23 @@ class PdfBoxAssemblerTest {
     fun `a non-Latin password round-trips`() {
         PDDocument.load(write("пароль"), "пароль").use { assertEquals(2, it.numberOfPages) }
     }
+
+    @Test
+    fun `Fit gives each page its image's shape with A4's long edge, the image filling it`() {
+        val landscape = File(dir, "wide.jpg").also { f ->
+            val b = Bitmap.createBitmap(120, 40, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+            f.outputStream().use { b.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+            b.recycle()
+        }
+        val pdf = File(dir, "fit.pdf")
+        assertTrue(PdfBoxAssembler.write(listOf(pages[0], landscape), PdfPageSize.FIT, dir, pdf, null))
+        PDDocument.load(pdf).use { doc ->
+            val long = PdfPageSize.A4.height.toFloat()
+            val boxes = doc.pages.map { it.mediaBox.width to it.mediaBox.height }
+            assertEquals(long * 60 / 80, boxes[0].first, 0.01f)
+            assertEquals(long, boxes[0].second, 0.01f)
+            assertEquals(long, boxes[1].first, 0.01f)
+            assertEquals(long / 3, boxes[1].second, 0.01f)
+        }
+    }
 }

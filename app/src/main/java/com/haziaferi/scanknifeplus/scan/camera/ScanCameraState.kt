@@ -13,7 +13,7 @@ enum class CameraLens(val liveDetection: Boolean) {
     EXTERNAL(false),
 }
 
-/** Where the camera is in its life: not bound, opening (or waiting to reopen), streaming, or closed while the screen is stopped. */
+/** Where the camera is in its life: not bound, opening (or waiting to reopen), streaming, or closed while the screen is paused or stopped. */
 enum class CameraStatus { IDLE, OPENING, READY, CLOSED }
 
 /** Why the camera is not (or not yet) usable. Kinds marked recoverable clear by themselves when CameraX manages to reopen the camera. */
