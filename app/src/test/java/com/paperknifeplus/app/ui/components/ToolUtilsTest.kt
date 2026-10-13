@@ -88,31 +88,24 @@ class ToolUtilsTest {
     }
 
     @Test
-    fun `saveAndFlush writes the expected bytes, with the app name as Creator and Producer`() {
+    fun `saveAndFlush writes the document as it is, with no Creator or Producer of its own`() {
         val output = File(context.cacheDir, "out.pdf")
         val saved = PDDocument.load(TestPdfs.plain(2))
         saveAndFlush(context, saved, Uri.fromFile(output))
         assertTrue(saved.document.isClosed)
 
-        val expected = PDDocument.load(TestPdfs.plain(2)).use { doc ->
-            doc.documentInformation.creator = "ScanKnife+"
-            doc.documentInformation.producer = "ScanKnife+"
-            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-        }
+        val expected = PDDocument.load(TestPdfs.plain(2)).use { ByteArrayOutputStream().also { out -> it.save(out) }.toByteArray() }
         // PDFBox gives every save a fresh /ID; everything else must match.
         fun withoutId(bytes: ByteArray) = String(bytes, Charsets.ISO_8859_1).replace(Regex("/ID ?.<[0-9A-Fa-f]*> ?<[0-9A-Fa-f]*>."), "/ID")
         assertEquals(withoutId(expected), withoutId(output.readBytes()))
+        PDDocument.load(output).use {
+            assertNull(it.documentInformation.creator)
+            assertNull(it.documentInformation.producer)
+        }
     }
 
     @Test
-    fun `saveAndFlush fills a blank creator and producer with the app name and keeps set ones`() {
-        val blank = File(context.cacheDir, "blank.pdf")
-        saveAndFlush(context, PDDocument.load(TestPdfs.plain()), Uri.fromFile(blank))
-        PDDocument.load(blank).use {
-            assertEquals("ScanKnife+", it.documentInformation.creator)
-            assertEquals("ScanKnife+", it.documentInformation.producer)
-        }
-
+    fun `saveAndFlush keeps a document's own Creator and Producer`() {
         val set = File(context.cacheDir, "set.pdf")
         val document = PDDocument.load(TestPdfs.plain()).apply {
             documentInformation.creator = "Writer"
@@ -122,6 +115,24 @@ class ToolUtilsTest {
         PDDocument.load(set).use {
             assertEquals("Writer", it.documentInformation.creator)
             assertEquals("Press", it.documentInformation.producer)
+        }
+    }
+
+    @Test
+    fun `saveAndFlush fills a blank author with the default author unless defaults are off`() {
+        PreferencesManager.setDefaultAuthor(context, "Ada")
+        try {
+            fun authorAfterSave(name: String, author: String?, applyDefaults: Boolean): String? {
+                val out = File(context.cacheDir, name)
+                val document = PDDocument.load(TestPdfs.plain()).apply { if (author != null) documentInformation.author = author }
+                saveAndFlush(context, document, Uri.fromFile(out), applyDefaults)
+                return PDDocument.load(out).use { it.documentInformation.author }
+            }
+            assertEquals("Ada", authorAfterSave("blank.pdf", null, applyDefaults = true))
+            assertEquals("Grace", authorAfterSave("set.pdf", "Grace", applyDefaults = true))
+            assertNull(authorAfterSave("off.pdf", null, applyDefaults = false))
+        } finally {
+            PreferencesManager.setDefaultAuthor(context, "")
         }
     }
 

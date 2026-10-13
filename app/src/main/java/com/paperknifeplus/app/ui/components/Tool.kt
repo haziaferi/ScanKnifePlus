@@ -36,13 +36,6 @@ object SessionManager {
         history.add(0, ActivityEntry(UUID.randomUUID().toString(), name, tool, size, icon, uri, pageCount))
     }
 
-    /** Removes entries older than [retentionDays] days before [now]; 0 or less keeps everything. */
-    fun purgeHistory(retentionDays: Int, now: Long = System.currentTimeMillis()) {
-        if (retentionDays <= 0) return
-        val cutoff = now - retentionDays.toLong() * 24 * 60 * 60 * 1000
-        history.removeAll { it.createdAt < cutoff }
-    }
-
     fun clearHistory() {
         history.clear()
     }
