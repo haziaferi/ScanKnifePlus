@@ -463,18 +463,19 @@ class ScanLibrary(
 
     /**
      * Creates a new, empty document folder named [base], or `<base>-2` and so on, and returns its name. mkdir is atomic, so two callers never
-     * share a folder; only a name that is taken moves on to the next suffix, and any other failure throws IOException rather than looping.
+     * share a folder; only a name that is taken moves on to the next suffix, and any other failure throws IOException. The cap on tries is a
+     * backstop: this runs under the global lock, so a loop that never ended would stall every library call in the process.
      */
     private fun claimFolder(base: String): String {
         root.mkdirs()
         var id = base
-        var n = 2
-        while (true) {
+        for (n in 2..MAX_CLAIMS) {
             val dir = File(root, id)
             if (dir.mkdir()) return id
             if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
-            id = "$base-${n++}"
+            id = "$base-$n"
         }
+        throw IOException("No free folder name for $base")
     }
 
     /**
@@ -667,6 +668,7 @@ class ScanLibrary(
         private const val RECORD_TMP = "document.json.tmp"
         private const val TOMBSTONE = ".trash-"
         private const val MAX_RECORD_BYTES = 1L shl 20
+        private const val MAX_CLAIMS = 10_000
 
         /** How old an unnamed file must be before [sweep] removes it; a day, as for stale PDF export work folders. */
         internal const val STALE_MILLIS = 24L * 60 * 60 * 1000
