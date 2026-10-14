@@ -66,7 +66,7 @@ private val RICH_TEXT = COSName.getPDFName("RC")
 private val SUBJECT = COSName.getPDFName("Subj")
 private val FILE_ATTACHMENT = COSName.getPDFName("FileAttachment")
 private val POPUP = COSName.getPDFName("Popup")
-private val FILE_NAME_KEYS = listOf(COSName.F, COSName.UF, COSName.DESC, COSName.getPDFName("DOS"), COSName.getPDFName("Mac"), COSName.getPDFName("Unix"))
+private val FILE_NAME_KEYS = listOf(COSName.F, COSName.UF, COSName.DESC) + listOf("DOS", "Mac", "Unix").map(COSName::getPDFName)
 
 /** A PDF string token: a literal (one level of nested parentheses) or a hex string. */
 private const val PDF_STRING = """\((?:\\.|[^\\()]|\((?:\\.|[^\\()])*\))*\)|<[0-9A-Fa-f\s]*>"""
@@ -165,7 +165,10 @@ private class PageText(private val chars: String, private val owners: List<TextP
     fun find(phrase: String, crop: PDRectangle): List<PDRectangle> {
         val (text, glyphs) = normalized()
         // Folded the way the page text is (compatibility forms, lower case one character at a time), so the two compare.
-        val needle = Normalizer.normalize(phrase, Normalizer.Form.NFKC).map { Character.toLowerCase(it) }.joinToString("").replace(WHITESPACE, " ")
+        val needle = Normalizer.normalize(phrase, Normalizer.Form.NFKC).map { Character.toLowerCase(it) }.joinToString("")
+            .replace(WHITESPACE, " ").trim()
+        // An empty needle would match at every index without end.
+        if (needle.isEmpty()) return emptyList()
         val boxes = mutableListOf<PDRectangle>()
         var from = text.indexOf(needle)
         while (from >= 0) {
