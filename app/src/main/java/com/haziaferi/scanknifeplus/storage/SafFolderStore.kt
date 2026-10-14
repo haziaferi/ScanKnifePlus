@@ -4,12 +4,14 @@ import android.content.ContentResolver
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.SyncFailedException
 
 /**
  * A [FolderStore] over the SAF tree the user picked ([treeUri], with a persisted read and write grant), through DocumentsContract and the
@@ -60,7 +62,26 @@ class SafFolderStore(private val resolver: ContentResolver, val treeUri: Uri) : 
     }
 
     override fun openWrite(id: String): OutputStream = provider("write $id") {
-        resolver.openOutputStream(uri(id), "w") ?: throw IOException("Cannot write $id")
+        SyncingStream(resolver.openFileDescriptor(uri(id), "w") ?: throw IOException("Cannot write $id"))
+    }
+
+    /**
+     * Syncs the descriptor before closing, so a `.tmp` is on storage before it is renamed into place and a crash cannot leave a renamed but
+     * empty file. A pipe or a provider's virtual file cannot be synced; there the size check before the rename is the only guard.
+     */
+    private class SyncingStream(pfd: ParcelFileDescriptor) : ParcelFileDescriptor.AutoCloseOutputStream(pfd) {
+        private var closed = false
+
+        override fun close() {
+            if (closed) return
+            closed = true
+            try {
+                fd.sync()
+            } catch (e: SyncFailedException) {
+                // not a plain file: nothing to sync
+            }
+            super.close()
+        }
     }
 
     override fun sizeOf(id: String): Long = provider("measure $id") {

@@ -41,7 +41,7 @@ interface FolderStore {
     @WorkerThread
     fun openRead(id: String): InputStream
 
-    /** Opens a file this layer just created for writing. */
+    /** Opens a file this layer just created for writing; closing the stream syncs it to storage where the storage allows. */
     @WorkerThread
     fun openWrite(id: String): OutputStream
 

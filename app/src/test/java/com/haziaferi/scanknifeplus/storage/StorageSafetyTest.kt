@@ -145,21 +145,118 @@ class StorageSafetyTest {
         assertEquals(1, f.library.documents().size)
     }
 
+    private fun staging() = File(f.libraryRoot, "${WorkingCopies.IMPORT_PREFIX}test").apply { mkdirs() }
+
     @Test(timeout = 10_000)
-    fun `importing under a name the file system refuses fails instead of looping`() {
-        val staged = File(f.base, "staged").apply { mkdirs() }
-        val tooLong = "a".repeat(300)
+    fun `importing under a name the file system refuses fails and adds nothing`() {
+        val staged = staging()
         try {
-            f.library.import(staged, tooLong, ScanDocument("x", null, 1, 1, emptyList()))
+            f.library.import(staged, "a".repeat(300), ScanDocument("x", null, 1, 1, emptyList()))
             fail("imported under a name no file system takes")
         } catch (e: java.io.IOException) {
             // expected
         }
+        assertEquals(listOf(staged.name), f.libraryRoot.list()!!.toList())
     }
 
     @Test
-    fun `an import that fails while moving files in leaves no folder behind`() {
-        val staged = File(f.base, "staged").apply { mkdirs() }
+    fun `an import's pages appear in the library only together with their record`() {
+        val staged = staging()
+        File(staged, "1.jpg").writeText("page")
+        val doc = ScanDocument("x", "Receipt", 1, 2, listOf(com.haziaferi.scanknifeplus.scan.library.ScanPage("p1", "1.jpg")))
+        var seenMeanwhile: List<String>? = null
+
+        f.library.import(staged, "Receipt", doc) { seenMeanwhile = f.libraryRoot.list()!!.filter { !it.startsWith(".") } }
+
+        // A kill at that moment leaves only the hidden staging folder, which the launch sweep removes, never pages without a record.
+        assertEquals(emptyList<String>(), seenMeanwhile)
+        assertEquals(listOf("Receipt"), f.libraryRoot.list()!!.toList())
+        assertEquals(doc.pages, f.library.document("Receipt")!!.pages)
+    }
+
+    @Test
+    fun `a PDF the user put at the scan's PDF name is never replaced`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.file("Receipt.pdf").writeText("the user's own Receipt")
+        repeat(2) {
+            f.now += 1000
+            f.library.rename(doc.id, "Renamed $it")
+            assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        }
+
+        assertEquals("the user's own Receipt", f.file("Receipt.pdf").readText())
+        assertEquals("pdf of Renamed 1 with 1 pages", f.file("Receipt-2.pdf").readText())
+        assertEquals("Receipt-2.pdf", f.copies.get(doc.id)!!.pdfName)
+    }
+
+    @Test
+    fun `a retried migration never replaces a PDF it did not write`() {
+        val doc = f.scan("Receipt", pages = 1)
+        f.copies.put(doc.id, Binding(f.store.location, "Receipt", base = null, confirmed = null)) // a first attempt that stopped early
+        f.file("Receipt.pdf").writeText("the user's")
+
+        assertEquals(listOf(doc.id), folder.migrate(f.pdfs).written)
+
+        assertEquals("the user's", f.file("Receipt.pdf").readText())
+        assertEquals("pdf of Receipt with 1 pages", f.file("Receipt-2.pdf").readText())
+    }
+
+    @Test
+    fun `a merge whose working copy cannot take the result says so instead of Written`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.remoteAddsPage("Receipt", doc)
+        f.now += 1000
+        f.library.rename(doc.id, "Mine")
+        val noPageReads = object : FolderStore by f.store {
+            override fun openRead(id: String) = if (id.endsWith(".jpg")) throw java.io.IOException("unreadable") else f.store.openRead(id)
+        }
+        val scans = ScanFolder(noPageReads, f.library, f.libraryRoot, f.copies, clock = { f.now }, timeZone = f.utc)
+
+        assertTrue(scans.writeBack(doc.id, f.pdfs) is WriteResult.Incomplete)
+        assertTrue(scans.hasChanges(doc.id))
+        assertEquals("pdf of Receipt with 1 pages", f.file("Receipt.pdf").readText())
+    }
+
+    @Test
+    fun `a copy-in whose binding cannot be saved leaves no working copy, so a retry makes exactly one`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.library.delete(doc.id)
+        f.copies.remove(doc.id)
+        val blocker = File(f.bindingsDir, "Receipt.json.tmp").apply { mkdirs() } // the binding cannot be written
+
+        assertEquals(CopyInResult.Failed, folder.copyIn("Receipt"))
+        assertTrue(f.library.documents().isEmpty())
+
+        blocker.delete()
+        val ready = folder.copyIn("Receipt") as CopyInResult.Ready
+        assertEquals(ready, folder.copyIn("Receipt"))
+        assertEquals(listOf(ready.id), f.library.documents().map { it.id })
+    }
+
+    @Test
+    fun `an unreadable folder record falls back to its previous version`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.now += 1000
+        f.library.rename(doc.id, "Second")
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.library.delete(doc.id)
+        f.copies.remove(doc.id)
+        f.file("Scan sources/Receipt/document.json").writeText("{ damaged")
+
+        val ready = folder.copyIn("Receipt") as CopyInResult.Ready
+
+        assertEquals("Receipt", f.library.document(ready.id)!!.name)
+    }
+
+
+
+    @Test
+    fun `an import that refuses its staged files leaves no folder behind`() {
+        val staged = staging()
         File(staged, "document.json").writeText("{}") // never moved in: the record is written by the library itself
         try {
             f.library.import(staged, "Receipt", ScanDocument("x", null, 1, 1, emptyList()))
@@ -167,7 +264,7 @@ class StorageSafetyTest {
         } catch (e: IllegalArgumentException) {
             // expected
         }
-        assertTrue(f.libraryRoot.list()!!.isEmpty())
+        assertEquals(listOf(staged.name), f.libraryRoot.list()!!.toList())
     }
 
     @Test
@@ -214,7 +311,7 @@ class StorageSafetyTest {
     @Test
     fun `the library imports a staged document into a folder it claims, never one that exists`() {
         File(f.libraryRoot, "Receipt").mkdirs() // left by someone else, empty
-        val staged = File(f.base, "staged").apply { mkdirs() }
+        val staged = staging()
         File(staged, "1.jpg").writeText("page")
         val doc = ScanDocument("x", "Receipt", 1, 2, listOf(com.haziaferi.scanknifeplus.scan.library.ScanPage("p1", "1.jpg")))
 

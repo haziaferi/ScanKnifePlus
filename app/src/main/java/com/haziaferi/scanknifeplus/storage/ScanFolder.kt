@@ -16,7 +16,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.TimeZone
-import org.json.JSONObject
 
 /** A file at the top level of the user's folder; [size] is null when the provider does not report one. */
 data class FolderFile(val id: String, val name: String, val size: Long?, val modified: Long)
@@ -45,6 +44,12 @@ sealed interface WriteResult {
 
     /** The folder cannot be reached: the user has to choose it again. Nothing was lost; the working copy is unchanged. */
     data object FolderUnavailable : WriteResult
+
+    /**
+     * The record went to the folder as [name], merged with a change made there, but the working copy could not take the merged result, so
+     * no PDF was made; write back again. [conflicts] as in [Written].
+     */
+    data class Incomplete(val name: String, val conflicts: List<ConflictReport>) : WriteResult
 
     /** The folder is there but the write failed; it can be tried again. */
     data object Failed : WriteResult
@@ -75,12 +80,10 @@ fun interface PdfMaker {
 }
 
 /**
- * The scans and tool outputs in the user's folder: PDFs at the top level, each scan's sources in `Scan sources/<name>/`. The app edits a
- * working copy in the private [library] and writes it back here; [copies] ties each working copy to its scan in this folder only.
- *
- * New files are written as `<name>.tmp` and renamed, a replaced file keeps its previous version as `<name>.bak`, and a sync conflict's loser
- * is kept as `<name>.lost-<time>`. Besides its own `.tmp`/`.bak` files and fully merged conflict copies, this deletes only page files an edit
- * made obsolete (see [writeBack]). Every method blocks, and they run one at a time across instances.
+ * The user's folder: PDFs at the top level and each scan's sources in `Scan sources/<name>/`, written back from working copies in the private
+ * [library] that [copies] ties to this folder. Files are written as `.tmp` then renamed, replaced ones kept as `.bak`, conflict losers as
+ * `.lost-<time>`, and nothing is deleted but its own leftovers, merged conflict copies and pages an edit made obsolete ([writeBack]). Every
+ * method blocks, and they run one at a time across instances.
  */
 class ScanFolder(
     private val store: FolderStore,
@@ -151,8 +154,12 @@ class ScanFolder(
             stale.forEach { copies.remove(it) }
             if (existing.isNotEmpty()) return refresh(existing.first(), folder.id, entries, record, reports)
 
-            val stored = staged(entries, record.doc.pages.flatMap { it.files }) { staging -> library.import(staging, name, record.doc) }
-            copies.put(stored.document.id, Binding(store.location, name, base = record.hash, confirmed = WorkingCopies.sha256(stored.bytes)))
+            val stored = staged(entries, record.doc.pages.flatMap { it.files }) { staging ->
+                library.import(staging, name, record.doc) { pending ->
+                    // Bound before the record lands, so no kill in between can leave a working copy that no binding knows about.
+                    copies.put(pending.document.id, Binding(store.location, name, record.hash, WorkingCopies.sha256(pending.bytes)))
+                }
+            }
             CopyInResult.Ready(stored.document.id, reports)
         } catch (e: IOException) {
             Log.w(TAG, "Copying $name in failed", e)
@@ -173,6 +180,8 @@ class ScanFolder(
         val working = library.stored(id) ?: return WriteResult.Failed
         val doc = working.document
         val binding = copies.get(id)?.takeIf { it.folder == store.location }
+        var pdfName = binding?.pdfName
+        var pdfHash = binding?.pdfHash
         try {
             val reports = mutableListOf<ConflictReport>()
             val top = store.list(store.rootId)
@@ -181,8 +190,9 @@ class ScanFolder(
             val name = binding?.name ?: FolderNames.free(ExportNames.exportFileName(doc.displayName, doc.id), isFolder = true) { n ->
                 scans.any { it.name.equals(n, ignoreCase = true) } || top.any { it.name.equals("$n$PDF", ignoreCase = true) }
             }
+            fun bind(base: String?, confirmed: String?) = copies.put(id, Binding(store.location, name, base, confirmed, pdfName, pdfHash))
             // Saved first, so a retry after a failure writes to the same folder instead of starting a second one.
-            if (binding == null) copies.put(id, Binding(store.location, name, base = null, confirmed = null))
+            if (binding == null) bind(base = null, confirmed = null)
             val folder = scans.firstOrNull { it.isFolder && it.name == name } ?: createFolderExact(sources.id, name)
 
             var entries = resolveRecordConflicts(folder.id, store.list(folder.id), name, reports)
@@ -211,7 +221,7 @@ class ScanFolder(
             val recordBytes = if (unchangedInFolder) {
                 working.bytes
             } else {
-                val merge = mergeRecords(doc, folderRecord!!.doc, entries.mapTo(HashSet()) { it.name })
+                val merge = mergeRecords(doc, folderRecord.doc, entries.mapTo(HashSet()) { it.name })
                 if (merge.loserLostSomething) {
                     val loserBytes = if (merge.loser === doc) working.bytes else folderRecord.bytes
                     val lost = lostNameIn(entries, ScanLibrary.RECORD)
@@ -220,7 +230,7 @@ class ScanFolder(
                     entries = store.list(folder.id)
                 }
                 merged = merge.merged
-                jsonBytes(merge.merged)
+                ScanLibrary.recordBytes(merge.merged)
             }
             replaceFile(folder.id, ScanLibrary.RECORD, entries) { it.write(recordBytes) }
             val base = WorkingCopies.sha256(recordBytes)
@@ -228,7 +238,7 @@ class ScanFolder(
             // The binding follows the folder at once, so a later failure (the PDF, say) never makes the next write-back merge with its own
             // output; after a merge, only once the working copy holds the merged record too.
             val current = if (merged == null) {
-                copies.put(id, Binding(store.location, name, base, confirmed = null))
+                bind(base, confirmed = null)
                 if (mayDelete && folderRecord != null && entries.none { FolderNames.isLost(it.name) }) {
                     val keep = doc.pages.flatMapTo(HashSet()) { it.files }
                     val obsolete = folderRecord.doc.pages.flatMap { it.files }.filter { it !in keep }.toSet()
@@ -238,17 +248,19 @@ class ScanFolder(
             } else {
                 // Edited during the write-back, or not reloadable: the old base keeps the next write-back merging instead of dropping pages.
                 val reloaded = reload(id, working, folder.id, merged) ?: run {
-                    copies.put(id, Binding(store.location, name, folderRecord!!.hash, confirmed = null))
-                    return WriteResult.Written(name, reports)
+                    bind(folderRecord!!.hash, confirmed = null)
+                    return WriteResult.Incomplete(name, reports)
                 }
-                copies.put(id, Binding(store.location, name, base, confirmed = null))
+                bind(base, confirmed = null)
                 reloaded
             }
 
             // Built from the working copy as it now is, so after a merge the PDF shows the merged pages.
             if (pdf != null) {
-                writePdf(id, name, pdf)
-                copies.put(id, Binding(store.location, name, base, confirmed = WorkingCopies.sha256(current.bytes)))
+                val (writtenName, writtenHash) = writePdf(id, name, pdf, pdfName, pdfHash)
+                pdfName = writtenName
+                pdfHash = writtenHash
+                bind(base, confirmed = WorkingCopies.sha256(current.bytes))
             }
             WriteResult.Written(name, reports)
         } catch (e: IOException) {
@@ -259,8 +271,8 @@ class ScanFolder(
 
     /**
      * Writes every working copy whose record this folder does not have yet (at first every scan, after a change of folder every scan) with
-     * its PDF, creating files and deleting nothing. The list is fixed first and private copies stay until the launch sweep finds them
-     * confirmed, so a migration that stops halfway loses nothing. Run it with no scan session open.
+     * its PDF, creating files and deleting nothing (a PDF already at a scan's name gets a `-2` name rather than being replaced). The list is
+     * fixed first and private copies stay until the launch sweep finds them confirmed, so a migration that stops halfway loses nothing.
      */
     @WorkerThread
     fun migrate(pdf: PdfMaker?): Migration = synchronized(LOCK) {
@@ -270,7 +282,7 @@ class ScanFolder(
         for ((i, id) in snapshot.withIndex()) {
             when (writeBack(id, pdf, mayDelete = false)) {
                 is WriteResult.Written -> written += id
-                WriteResult.Failed -> failed += id
+                is WriteResult.Incomplete, WriteResult.Failed -> failed += id
                 WriteResult.FolderUnavailable -> return Migration(written, failed + snapshot.drop(i), folderUnavailable = true)
             }
         }
@@ -310,6 +322,7 @@ class ScanFolder(
         if (WorkingCopies.sha256(working.bytes) != binding.confirmed) {
             return when (val r = writeBack(id)) {
                 is WriteResult.Written -> CopyInResult.Ready(id, reports + r.conflicts)
+                is WriteResult.Incomplete -> CopyInResult.Failed
                 WriteResult.FolderUnavailable -> CopyInResult.FolderUnavailable
                 WriteResult.Failed -> CopyInResult.Failed
             }
@@ -359,18 +372,33 @@ class ScanFolder(
         }
     }
 
-    private fun writePdf(id: String, name: String, pdf: PdfMaker) {
+    /**
+     * Writes document [id]'s PDF at the top level and returns its name and SHA-256. It replaces [ownName] only while that file is still
+     * exactly the PDF this binding wrote ([ownHash]); otherwise it creates `<name>.pdf` or the next free `-2` name, so a PDF the user put
+     * there, or changed, is never replaced.
+     */
+    private fun writePdf(id: String, name: String, pdf: PdfMaker, ownName: String?, ownHash: String?): Pair<String, String> {
         var failure: IOException? = null
+        var written: Pair<String, String>? = null
         val delivered = pdf.make(id) { file ->
             try {
-                replaceFile(store.rootId, "$name$PDF", store.list(store.rootId)) { out -> file.inputStream().use { it.copyTo(out) } }
+                val hash = file.inputStream().use(WorkingCopies::sha256)
+                val top = store.list(store.rootId)
+                val own = ownName?.let { n -> top.firstOrNull { it.name == n && !it.isFolder } }
+                val copy: (OutputStream) -> Unit = { out -> file.inputStream().use { it.copyTo(out) } }
+                val entry = if (own != null && ownHash != null && store.openRead(own.id).use(WorkingCopies::sha256) == ownHash) {
+                    replaceFile(store.rootId, own.name, top, copy)
+                } else {
+                    writeNew(store.rootId, FolderNames.free("$name$PDF") { n -> top.any { it.name.equals(n, ignoreCase = true) } }, top, copy)
+                }
+                written = entry.name to hash
                 true
             } catch (e: IOException) {
                 failure = e
                 false
             }
         }
-        if (!delivered) throw failure ?: IOException("No PDF for $id")
+        return written.takeIf { delivered } ?: throw failure ?: IOException("No PDF for $id")
     }
 
     /** Settles conflict copies of top-level PDFs: the newer version keeps the name, the other is kept as `.lost-`. */
@@ -408,6 +436,11 @@ class ScanFolder(
         var entries = start
         val path = "$SCAN_SOURCES/$name/${ScanLibrary.RECORD}"
         for (copy in start.filter { !it.isFolder && FolderNames.conflictOf(it.name) == ScanLibrary.RECORD }) {
+            // A record this app cannot read is set aside first, so the merge below never moves it to .bak and later drops it.
+            entries.firstOrNull { it.name == ScanLibrary.RECORD && !it.isFolder && parse(it) == null }?.let {
+                keepLost(it, entries, path, reports)
+                entries = store.list(folderId)
+            }
             val other = parse(copy)
             val main = recordOf(entries)
             when {
@@ -424,7 +457,9 @@ class ScanFolder(
                         if (merge.loser === other.doc) renameExact(copy, keptAs) else writeNew(folderId, keptAs, entries) { it.write(main.bytes) }
                         entries = store.list(folderId)
                     }
-                    if (merge.merged != main.doc) replaceFile(folderId, ScanLibrary.RECORD, entries) { it.write(jsonBytes(merge.merged)) }
+                    if (merge.merged != main.doc) {
+                        replaceFile(folderId, ScanLibrary.RECORD, entries) { it.write(ScanLibrary.recordBytes(merge.merged)) }
+                    }
                     // Merged in whole, so the copy has nothing left to keep.
                     if (keptAs == null || merge.loser !== other.doc) store.delete(copy.id)
                     reports += ConflictReport(path, keptAs)
@@ -449,26 +484,28 @@ class ScanFolder(
         val hash: String = WorkingCopies.sha256(bytes)
     }
 
-    /** The scan record among [entries]: `document.json`, else the `.tmp` a write interrupted between its renames leaves, else the `.bak`. */
+    /**
+     * The scan record among [entries]: `document.json`; if it is missing, the `.tmp` a write interrupted between its renames leaves, then the
+     * `.bak`; if it cannot be read, the `.bak`, then the `.tmp`.
+     */
     private fun recordOf(entries: List<FolderEntry>): Record? {
-        fun named(n: String) = entries.firstOrNull { it.name == n && !it.isFolder }
-        named(ScanLibrary.RECORD)?.let { return parse(it) }
-        return named(ScanLibrary.RECORD + FolderNames.TMP)?.let(::parse) ?: named(ScanLibrary.RECORD + FolderNames.BAK)?.let(::parse)
+        fun named(n: String) = entries.firstOrNull { it.name == n && !it.isFolder }?.let(::parse)
+        val tmp = ScanLibrary.RECORD + FolderNames.TMP
+        val bak = ScanLibrary.RECORD + FolderNames.BAK
+        if (entries.any { it.name == ScanLibrary.RECORD && !it.isFolder }) return named(ScanLibrary.RECORD) ?: named(bak) ?: named(tmp)
+        return named(tmp) ?: named(bak)
     }
 
-    /** Reads a record, or null if it is too large, not one, or names a file that could point outside its folder. */
+    /** Reads a record as the library would, or null if it is not one or names a file hidden in the folder. */
     private fun parse(entry: FolderEntry): Record? {
-        if ((entry.size ?: 0) > MAX_RECORD_BYTES) return null
-        return try {
-            val bytes = store.openRead(entry.id).use { readAtMost(it, MAX_RECORD_BYTES) } ?: return null
-            val doc = ScanDocument.fromJson(JSONObject(String(bytes, Charsets.UTF_8)))
-            if (doc.pages.any { p -> p.files.any { !FolderNames.isSafe(it) || FolderNames.isHidden(it) || it == ScanLibrary.RECORD } }) null
-            else Record(doc, bytes)
-        } catch (e: Exception) {
+        if ((entry.size ?: 0) > ScanLibrary.MAX_RECORD_BYTES) return null
+        val bytes = try {
+            store.openRead(entry.id).use { readAtMost(it, ScanLibrary.MAX_RECORD_BYTES) }
+        } catch (e: IOException) {
             null
-        } catch (e: StackOverflowError) {
-            null // absurdly nested JSON
-        }
+        } ?: return null
+        val doc = ScanLibrary.parseRecord(bytes) ?: return null
+        return if (doc.pages.any { p -> p.files.any(FolderNames::isHidden) }) null else Record(doc, bytes)
     }
 
     /** All of [input], or null if it holds more than [max] bytes (a provider may not report a size up front). */
@@ -547,8 +584,6 @@ class ScanFolder(
 
     private fun fileOf(e: FolderEntry) = FolderFile(e.id, e.name, e.size, e.modified)
 
-    private fun jsonBytes(doc: ScanDocument): ByteArray = doc.toJson().toString(2).toByteArray(Charsets.UTF_8)
-
     private class CountingStream(out: OutputStream) : FilterOutputStream(out) {
         var count = 0L
             private set
@@ -567,7 +602,6 @@ class ScanFolder(
     private companion object {
         const val TAG = "ScanFolder"
         const val PDF = ".pdf"
-        const val MAX_RECORD_BYTES = 1L shl 20
 
         /** One lock for every instance, as two over the same folder would race on its names. */
         val LOCK = Any()

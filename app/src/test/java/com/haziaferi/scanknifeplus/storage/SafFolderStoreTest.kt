@@ -152,4 +152,25 @@ class SafFolderStoreTest {
         assertEquals(FolderState.NotChosen, access.state())
         assertTrue(resolver.persistedUriPermissions.isEmpty())
     }
+
+    @Test
+    fun `a folder that does not take new files is not adopted`() {
+        resolver.releasePersistableUriPermission(treeUri, readWrite)
+        TestDocumentsProvider.readOnly = true
+        val access = FolderAccess(context)
+        assertFalse(access.adopt(treeUri))
+        assertEquals(FolderState.NotChosen, access.state())
+        assertTrue(resolver.persistedUriPermissions.isEmpty())
+    }
+
+    @Test
+    fun `a grant that is only read access counts as no folder to write to`() {
+        val access = FolderAccess(context)
+        assertTrue(access.adopt(treeUri))
+        resolver.releasePersistableUriPermission(treeUri, readWrite)
+        resolver.takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        assertFalse(store.isAvailable())
+        assertEquals(FolderState.ChooseAgain, access.state())
+    }
 }

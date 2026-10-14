@@ -45,7 +45,17 @@ class FileFolderStore(private val root: File) : FolderStore {
 
     override fun openRead(id: String): InputStream = FileInputStream(fileOf(id))
 
-    override fun openWrite(id: String): OutputStream = FileOutputStream(fileOf(id))
+    override fun openWrite(id: String): OutputStream = object : FileOutputStream(fileOf(id)) {
+        private var closed = false
+
+        // Synced on close like SafFolderStore's streams, so tests run the same order of events.
+        override fun close() {
+            if (closed) return
+            closed = true
+            fd.sync()
+            super.close()
+        }
+    }
 
     override fun sizeOf(id: String): Long = fileOf(id).let { if (it.isFile) it.length() else throw IOException("No file $id") }
 

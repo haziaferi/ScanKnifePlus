@@ -67,7 +67,10 @@ class TestDocumentsProvider : DocumentsProvider() {
         row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified())
         row.add(
             Document.COLUMN_FLAGS,
-            if (file.isDirectory) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_RENAME,
+            when {
+                file.isDirectory -> if (readOnly) 0 else Document.FLAG_DIR_SUPPORTS_CREATE
+                else -> Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_RENAME
+            },
         )
     }
 
@@ -103,11 +106,15 @@ class TestDocumentsProvider : DocumentsProvider() {
         /** Throw a provider's own bug from every listing. */
         var crash = false
 
+        /** Report folders as not accepting new files, as a read-only volume does. */
+        var readOnly = false
+
         /** Registers a provider serving [folder] with Robolectric's ContentResolver. */
         fun install(folder: File) {
             base = folder
             emptyForMissing = false
             crash = false
+            readOnly = false
             val info = ProviderInfo().apply {
                 authority = AUTHORITY
                 exported = true
