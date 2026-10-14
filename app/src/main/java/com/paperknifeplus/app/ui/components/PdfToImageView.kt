@@ -272,7 +272,7 @@ fun PdfToImageView(
                         }
 
                         Button(
-                            onClick = { saveLauncher.launch(pdfBaseName(fileName) + ".zip") },
+                            onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName), "zip")) },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(56.dp),
                             enabled = selectedPages.isNotEmpty(),
                             colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),

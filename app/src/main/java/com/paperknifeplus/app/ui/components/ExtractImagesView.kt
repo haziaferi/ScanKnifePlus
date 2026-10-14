@@ -52,6 +52,7 @@ fun ExtractImagesView(
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var extractedCount by remember { mutableIntStateOf(0) }
+    var resultSummary by remember { mutableStateOf("") }
     val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
@@ -102,13 +103,13 @@ fun ExtractImagesView(
                         }
                     }
                 }
-                if (counts.skipped > 0) Log.w("ExtractImagesView", "${counts.skipped} images could not be decoded and were left out")
-                if (counts.written == 0) throw IOException("No images found in PDF")
+                counts.emptyReason?.let { throw IOException(it) }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
+                    resultSummary = counts.summary
                     SessionManager.addEntry(fileName, "Extract Image", "$extractedCount assets", Icons.Filled.Collections, uri)
                     currentState = ToolState.SUCCESS
                 }
@@ -185,7 +186,7 @@ fun ExtractImagesView(
 
                             Button(
                                 onClick = {
-                                    val safeName = pdfBaseName(fileName.replace(Regex("[^a-zA-Z0-9.-]"), "_")) + "-assets.zip"
+                                    val safeName = outputFileName(pdfBaseName(fileName) + "-assets", "zip")
                                     saveLauncher.launch(safeName)
                                 },
                                 modifier = Modifier.fillMaxWidth().height(60.dp),
@@ -211,7 +212,7 @@ fun ExtractImagesView(
                     ToolState.SUCCESS -> {
                         SuccessView(
                             message = "Extraction Complete",
-                            subMessage = "Found $extractedCount assets in document",
+                            subMessage = resultSummary,
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {

@@ -238,7 +238,7 @@ fun MetadataView(
 
                             Button(
                                 onClick = {
-                                    val defaultName = pdfBaseName(fileName) + "-meta.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-meta", "pdf")
                                     saveLauncher.launch(defaultName)
                                 },
                                 modifier = Modifier.fillMaxWidth().height(60.dp),
