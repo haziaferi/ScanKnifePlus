@@ -155,6 +155,54 @@ class ExtractedImagesTest {
         assertEquals(ExtractCounts(written = 0, skipped = 1), counts)
     }
 
+    /** A page holding one fake raw JPEG per width and height in [sizes], so [writeImages] copies them without decoding. */
+    private fun jpegPage(doc: PDDocument, vararg sizes: Pair<Int, Int>) {
+        val page = PDPage().apply { resources = PDResources() }
+        sizes.forEachIndexed { i, (width, height) ->
+            val image: COSStream = doc.document.createCOSStream().apply {
+                setItem(COSName.TYPE, COSName.XOBJECT)
+                setItem(COSName.SUBTYPE, COSName.IMAGE)
+                setInt(COSName.WIDTH, width)
+                setInt(COSName.HEIGHT, height)
+                setInt(COSName.BITS_PER_COMPONENT, 8)
+                setItem(COSName.COLORSPACE, COSName.DEVICERGB)
+                createRawOutputStream().use { it.write(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), i.toByte(), 0xFF.toByte(), 0xD9.toByte())) }
+                setItem(COSName.FILTER, COSName.DCT_DECODE)
+            }
+            page.resources.put(COSName.getPDFName("Im$i"), PDImageXObject(com.tom_roush.pdfbox.pdmodel.common.PDStream(image), null))
+        }
+        doc.addPage(page)
+    }
+
+    @Test
+    fun `images below the minimum size are left out and counted apart from unreadable ones`() {
+        PDDocument().use { doc ->
+            // Too small both ways, too narrow, too short, then two large enough.
+            jpegPage(doc, 10 to 20, 49 to 300, 300 to 49, 50 to 50, 300 to 310)
+            val zip = ByteArrayOutputStream()
+            val counts = ZipOutputStream(zip).use { writeImages(doc, it, minSize = 50) }
+            assertEquals(ExtractCounts(written = 2, skipped = 0, filtered = 3), counts)
+            assertEquals(listOf("asset_1_p1.jpg", "asset_2_p1.jpg"), readZip(zip.toByteArray()).keys.toList())
+        }
+    }
+
+    @Test
+    fun `without a minimum size every image is written, as before`() {
+        PDDocument().use { doc ->
+            jpegPage(doc, 1 to 1, 10 to 20, 300 to 310)
+            val counts = ZipOutputStream(ByteArrayOutputStream()).use { writeImages(doc, it) }
+            assertEquals(ExtractCounts(written = 3, skipped = 0, filtered = 0), counts)
+        }
+    }
+
+    @Test
+    fun `filtered images are named in the result and explain an empty ZIP`() {
+        assertEquals("Found 3 assets in document; 2 images below the minimum size left out", ExtractCounts(3, 0, 2).summary)
+        assertEquals("Saved 1 of 2 images; 1 image could not be read; 1 image below the minimum size left out", ExtractCounts(1, 1, 1).summary)
+        assertEquals("All 4 images of the PDF are below the minimum size", ExtractCounts(0, 0, 4).emptyReason)
+        assertEquals("The PDF has 1 image, but none could be read", ExtractCounts(0, 1, 3).emptyReason)
+    }
+
     @Test
     fun `the result tells how many images were left out, and an empty ZIP says why`() {
         assertEquals("Found 3 assets in document", ExtractCounts(3, 0).summary)

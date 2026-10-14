@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
 import kotlinx.coroutines.runBlocking
@@ -18,6 +19,8 @@ import org.robolectric.RobolectricTestRunner
 import org.w3c.dom.Element
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Calendar
+import java.util.TimeZone
 import javax.xml.parsers.DocumentBuilderFactory
 
 @RunWith(RobolectricTestRunner::class)
@@ -41,17 +44,19 @@ class MetadataWriterTest {
             keywords = if (xmpOnlyKeywords) null else "old, words"
             creator = "Old Tool"
             producer = "Old Producer"
+            creationDate = OLD_CREATED
+            modificationDate = OLD_CREATED
         }
         doc.documentCatalog.metadata = PDMetadata(doc, OLD_XMP.byteInputStream(Charsets.UTF_8))
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
-    /** Reads [source]'s properties and saves what [edit] makes of them, as the Metadata tool does, then reloads the result. */
-    private fun save(source: ByteArray, edit: (PdfProperties) -> PdfProperties = { edited }): PDDocument {
+    /** Reads [source]'s properties and saves what [edit] makes of them with [extras], as the Metadata tool does, then reloads the result. */
+    private fun save(source: ByteArray, extras: MetadataExtras = MetadataExtras(), edit: (PdfProperties) -> PdfProperties = { edited }): PDDocument {
         val input = TestPdfs.write(context.cacheDir, source, "meta-in.pdf")
         val output = File(context.cacheDir, "meta-out.pdf").apply { delete() }
         val original = runBlocking { loadMetadata(context, input, null) }!!
-        saveProperties(context, input, "", Uri.fromFile(output), original, edit(original))
+        saveProperties(context, input, "", Uri.fromFile(output), original, edit(original), extras)
         return PDDocument.load(output)
     }
 
@@ -121,10 +126,59 @@ class MetadataWriterTest {
     }
 
     @Test
+    fun `a save that changes nothing adds no document information`() {
+        val source = TestPdfs.plain()
+        PDDocument.load(source).use { assertNull(it.document.trailer.getDictionaryObject(COSName.INFO)) }
+        save(source) { it }.use { assertNull(it.document.trailer.getDictionaryObject(COSName.INFO)) }
+    }
+
+    @Test
     fun `a file without XMP gets none`() {
         save(TestPdfs.plain()).use { doc ->
             assertNull(doc.documentCatalog.metadata)
             assertEquals("New Title", doc.documentInformation.title)
+        }
+    }
+
+    @Test
+    fun `edited dates go into Info and XMP, and the other date stays`() {
+        val created = date(2024, 5, 6, 7, 8, 9, "GMT+02:00")
+        save(withXmp(), MetadataExtras(created = DateEdit.Change(created))) { it }.use { doc ->
+            assertEquals(created.timeInMillis, doc.documentInformation.creationDate.timeInMillis)
+            assertEquals(OLD_CREATED.timeInMillis, doc.documentInformation.modificationDate.timeInMillis)
+            assertEquals("2024-05-06T07:08:09+02:00", xmpValue(doc.xmp(), XMP, "CreateDate"))
+            assertEquals("2001-02-03T04:05:06Z", xmpValue(doc.xmp(), XMP, "ModifyDate"))
+            assertEquals("Old Title", doc.documentInformation.title)
+        }
+    }
+
+    @Test
+    fun `cleared dates leave Info and XMP`() {
+        save(withXmp(), MetadataExtras(created = DateEdit.Change(null), modified = DateEdit.Change(null))) { it }.use { doc ->
+            assertNull(doc.documentInformation.creationDate)
+            assertNull(doc.documentInformation.modificationDate)
+            assertNull(doc.documentInformation.cosObject.getItem(COSName.CREATION_DATE))
+            assertNull(xmpValue(doc.xmp(), XMP, "CreateDate"))
+            assertNull(xmpValue(doc.xmp(), XMP, "ModifyDate"))
+            assertEquals("Old Tool", xmpValue(doc.xmp(), XMP, "CreatorTool"))
+        }
+    }
+
+    @Test
+    fun `removing XMP drops the stream and still applies the edits to Info`() {
+        save(withXmp(), MetadataExtras(modified = DateEdit.Change(date(2020, 1, 2, 3, 4, 5, "UTC")), removeXmp = true)).use { doc ->
+            assertNull(doc.documentCatalog.metadata)
+            assertNull(doc.documentCatalog.cosObject.getItem(COSName.METADATA))
+            assertEquals("New Title", doc.documentInformation.title)
+            assertEquals(2020, doc.documentInformation.modificationDate.get(Calendar.YEAR))
+        }
+    }
+
+    @Test
+    fun `a date edit gives a file without XMP none`() {
+        save(TestPdfs.plain(), MetadataExtras(created = DateEdit.Change(OLD_CREATED))) { it }.use { doc ->
+            assertNull(doc.documentCatalog.metadata)
+            assertEquals(OLD_CREATED.timeInMillis, doc.documentInformation.creationDate.timeInMillis)
         }
     }
 
@@ -134,12 +188,21 @@ class MetadataWriterTest {
         const val PDF = "http://ns.adobe.com/pdf/1.3/"
         const val XMP = "http://ns.adobe.com/xap/1.0/"
 
+        val OLD_CREATED: Calendar = date(2001, 2, 3, 4, 5, 6, "UTC")
+
+        fun date(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int, zone: String): Calendar =
+            Calendar.getInstance(TimeZone.getTimeZone(zone)).apply {
+                clear()
+                set(year, month - 1, day, hour, minute, second)
+            }
+
         val OLD_XMP = """
             <?xpacket begin="${'﻿'}" id="W5M0MpCehiHzreSzNTczkc9d"?>
             <x:xmpmeta xmlns:x="adobe:ns:meta/">
               <rdf:RDF xmlns:rdf="$RDF">
                 <rdf:Description rdf:about="" xmlns:dc="$DC" xmlns:pdf="$PDF" xmlns:xmp="$XMP"
-                    pdf:Producer="Old Producer" xmp:CreatorTool="Old Tool">
+                    pdf:Producer="Old Producer" xmp:CreatorTool="Old Tool" xmp:CreateDate="2001-02-03T04:05:06Z">
+                  <xmp:ModifyDate>2001-02-03T04:05:06Z</xmp:ModifyDate>
                   <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Old Title</rdf:li></rdf:Alt></dc:title>
                   <dc:creator><rdf:Seq><rdf:li>Old Author</rdf:li></rdf:Seq></dc:creator>
                   <dc:description><rdf:Alt><rdf:li xml:lang="x-default">Old Subject</rdf:li></rdf:Alt></dc:description>

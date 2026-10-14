@@ -139,7 +139,7 @@ private fun inheritedValue(page: COSDictionary, key: COSName): COSBase? {
     return null
 }
 
-private fun <T> identitySetOf(items: Collection<T> = emptyList()): MutableSet<T> =
+internal fun <T> identitySetOf(items: Collection<T> = emptyList()): MutableSet<T> =
     Collections.newSetFromMap(IdentityHashMap<T, Boolean>()).apply { addAll(items) }
 
 private fun COSArray?.dicts(): List<COSDictionary> =
@@ -479,13 +479,21 @@ suspend fun extractPages(context: Context, input: Uri, output: Uri, password: St
 }
 
 /**
- * Writes [input] (opened with [unlockPassword] if it has one) to [output] encrypted with AES-256, [newPassword] serving as both user and
- * owner password. Throws on failure; the password may also be rejected with IllegalArgumentException by SASLprep.
+ * Writes [input] (opened with [unlockPassword] if it has one) to [output] encrypted with AES-256, [newPassword] opening it with the
+ * permissions and owner password of [options] ([protectionPolicy]). Throws on failure; the password may also be rejected with
+ * IllegalArgumentException by SASLprep.
  */
-suspend fun protectPdf(context: Context, input: Uri, output: Uri, unlockPassword: String?, newPassword: String) = withContext(Dispatchers.IO) {
+suspend fun protectPdf(
+    context: Context,
+    input: Uri,
+    output: Uri,
+    unlockPassword: String?,
+    newPassword: String,
+    options: ProtectOptions = ProtectOptions()
+) = withContext(Dispatchers.IO) {
     context.contentResolver.requireInputStream(input).use { stream ->
         PDDocument.load(stream, unlockPassword.orEmpty()).use { document ->
-            document.protect(StandardProtectionPolicy(newPassword, newPassword, AccessPermission()).apply { encryptionKeyLength = 256 })
+            document.protect(protectionPolicy(newPassword, options))
             saveAndFlush(context, document, output)
         }
     }

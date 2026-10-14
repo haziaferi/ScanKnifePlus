@@ -99,18 +99,26 @@ private fun colorSpaceName(space: COSBase?): String? = when (space) {
     else -> null
 }
 
-/** Images written and images left out by [writeImages]. */
-internal data class ExtractCounts(val written: Int, val skipped: Int) {
-    /** The result line: what was saved and, when some images could not be decoded, how many were left out. */
+/** Images written, images left out because they could not be decoded, and images [writeImages] filtered out as too small. */
+internal data class ExtractCounts(val written: Int, val skipped: Int, val filtered: Int = 0) {
+    /** The result line: what was saved and, when some images could not be decoded or were too small, how many were left out. */
     val summary: String
-        get() = if (skipped == 0) "Found $written assets in document" else "Saved $written of ${written + skipped} images; ${images(skipped)} could not be read"
+        get() {
+            val saved = if (skipped == 0) {
+                "Found $written assets in document"
+            } else {
+                "Saved $written of ${written + skipped} images; ${images(skipped)} could not be read"
+            }
+            return if (filtered == 0) saved else "$saved; ${images(filtered)} below the minimum size left out"
+        }
 
-    /** Why the ZIP is empty, or null when it is not: either the PDF has no images, or none of them could be decoded. */
+    /** Why the ZIP is empty, or null when it is not: the PDF has no images, none of them could be decoded, or all were too small. */
     val emptyReason: String?
         get() = when {
             written > 0 -> null
-            skipped == 0 -> "No images found in PDF"
-            else -> "The PDF has ${images(skipped)}, but none could be read"
+            skipped > 0 -> "The PDF has ${images(skipped)}, but none could be read"
+            filtered > 0 -> "All ${images(filtered)} of the PDF are below the minimum size"
+            else -> "No images found in PDF"
         }
 
     private fun images(count: Int) = if (count == 1) "1 image" else "$count images"
@@ -118,11 +126,13 @@ internal data class ExtractCounts(val written: Int, val skipped: Int) {
 
 /**
  * Writes every image of [document] (each XObject once, also from inside form XObjects) into [zip] as `asset_<n>_p<page>.<ext>`, in the
- * format [rawOutput] or [decodedOutput] picks. [onWritten] gets the running count. Blocking.
+ * format [rawOutput] or [decodedOutput] picks. An image narrower or shorter than [minSize] pixels is left out and counted as filtered; 0
+ * keeps every image. [onWritten] gets the running count. Blocking.
  */
-internal fun writeImages(document: PDDocument, zip: ZipOutputStream, onWritten: (Int) -> Unit = {}): ExtractCounts {
+internal fun writeImages(document: PDDocument, zip: ZipOutputStream, minSize: Int = 0, onWritten: (Int) -> Unit = {}): ExtractCounts {
     var written = 0
     var skipped = 0
+    var filtered = 0
     val seen = mutableSetOf<String>()
 
     fun writeEntry(pageIdx: Int, output: ImageOutput, write: (ZipOutputStream) -> Unit) {
@@ -134,6 +144,11 @@ internal fun writeImages(document: PDDocument, zip: ZipOutputStream, onWritten: 
     }
 
     fun extract(image: PDImageXObject, pageIdx: Int) {
+        // The size comes from the image dictionary, so a filtered image is never decoded.
+        if (image.width < minSize || image.height < minSize) {
+            filtered++
+            return
+        }
         val traits = imageTraits(image)
         val raw = rawOutput(traits)
         if (raw != null) {
@@ -176,5 +191,5 @@ internal fun writeImages(document: PDDocument, zip: ZipOutputStream, onWritten: 
     }
 
     document.pages.forEachIndexed { pageIdx, page -> extractFrom(page.resources, pageIdx) }
-    return ExtractCounts(written, skipped)
+    return ExtractCounts(written, skipped, filtered)
 }
