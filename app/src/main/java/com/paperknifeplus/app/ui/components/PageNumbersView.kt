@@ -25,8 +25,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
-import com.tom_roush.pdfbox.pdmodel.PDDocument
-import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,6 +58,7 @@ fun PageNumbersView(
     var format by remember { mutableStateOf("Page {n}") }
     var numberColor by remember { mutableStateOf(Color.Black) }
     var showPreviewOverlay by remember { mutableStateOf(true) }
+    val previewDate = remember { pageDate() }
 
     var showSettingsSheet by remember { mutableStateOf(false) }
     var showPositionSheet by remember { mutableStateOf(false) }
@@ -167,7 +166,7 @@ fun PageNumbersView(
                             Box(modifier = Modifier.weight(1f)) {
                                 val numberOverlay: @Composable (BoxScope.(Int) -> Unit) = { index ->
                                     if (showPreviewOverlay) {
-                                        val text = format.replace("{n}", (index + 1).toString())
+                                        val text = expandPageTokens(format, index + 1, pageCount, previewDate)
                                         Box(Modifier.fillMaxSize(), contentAlignment = when {
                                             position.contains("Bottom") && position.contains("Left") -> Alignment.BottomStart
                                             position.contains("Bottom") && position.contains("Center") -> Alignment.BottomCenter
@@ -397,26 +396,6 @@ fun PageNumbersView(
                     }
                 }
             }
-        }
-    }
-}
-
-/** What the Page Numbers tool stamps: [format] with {n} for the page number, in a corner [position], [fontSize] points, in [color]. */
-private data class PageNumbering(val format: String, val position: String, val fontSize: Float, val color: Color)
-
-private fun applyPageNumbers(document: PDDocument, numbering: PageNumbering) {
-    val font = PDType1Font.HELVETICA_BOLD
-    document.pages.forEachIndexed { pageIdx, page ->
-        document.appendTo(page).use { cs ->
-            val text = numbering.format.replace("{n}", (pageIdx + 1).toString())
-            val textWidth = font.getStringWidth(text) / 1000 * numbering.fontSize
-            val placement = pageNumberPlacement(numbering.position, textWidth, numbering.fontSize, PageBox.of(page))
-            cs.beginText()
-            cs.setFont(font, numbering.fontSize)
-            cs.setNonStrokingColor(numbering.color.red, numbering.color.green, numbering.color.blue)
-            cs.setTextMatrix(placement.matrix())
-            cs.showText(text)
-            cs.endText()
         }
     }
 }
