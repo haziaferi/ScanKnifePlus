@@ -43,6 +43,7 @@ fun GrayscaleView(
     var fileName by remember { mutableStateOf("") }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
+    var fallbackPages by remember { mutableIntStateOf(0) }
 
     var pageCount by remember { mutableIntStateOf(0) }
     var progressPage by remember { mutableIntStateOf(0) }
@@ -96,13 +97,14 @@ fun GrayscaleView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                performGrayscaleRewrite(context, source, uri, unlockPassword.ifEmpty { null }) { current, _ ->
+                val imagePages = performGrayscaleRewrite(context, source, uri, unlockPassword.ifEmpty { null }) { current, _ ->
                     progressPage = current
                 }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
+                    fallbackPages = imagePages
                     outputUri = uri
                     fileName = outputName
                     SessionManager.addEntry(fileName, "Grayscale", "Converted to B&W", Icons.Outlined.Palette, uri, pageCount)
@@ -198,7 +200,7 @@ fun GrayscaleView(
 
                             Button(
                                 onClick = {
-                                    val defaultName = pdfBaseName(fileName) + "-grayscale.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")
                                     saveLauncher.launch(defaultName)
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(60.dp),
@@ -224,7 +226,7 @@ fun GrayscaleView(
                     ToolState.SUCCESS -> {
                         SuccessView(
                             message = "Grayscale Complete",
-                            subMessage = "Colors removed from all elements",
+                            subMessage = grayscaleSummary(fallbackPages),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { dropDecryptedCopy(); selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
@@ -268,4 +270,11 @@ fun GrayscaleView(
             }
         }
     }
+}
+
+/** The result line; pages that had to be stored as images lose their text layer, so the user is told how many there were. */
+internal fun grayscaleSummary(imagePages: Int): String = when (imagePages) {
+    0 -> "Colors removed from all elements"
+    1 -> "Colors removed; 1 page could only be converted as an image"
+    else -> "Colors removed; $imagePages pages could only be converted as images"
 }

@@ -264,7 +264,7 @@ fun SplitView(
                             }
                             
                             Button(
-                                onClick = { saveLauncher.launch(pdfBaseName(fileName) + "-split.pdf") }, 
+                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-split", "pdf")) }, 
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 
                                 enabled = selectedPages.isNotEmpty(),
                                 shape = RoundedCornerShape(20.dp), 

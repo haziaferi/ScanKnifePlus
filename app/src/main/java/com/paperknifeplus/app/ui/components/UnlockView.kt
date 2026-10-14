@@ -184,7 +184,7 @@ fun UnlockView(
                             Spacer(Modifier.height(32.dp))
                             Button(
                                 onClick = { 
-                                    val defaultName = pdfBaseName(fileName) + "-unlocked.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-unlocked", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, 
                                 modifier = Modifier.fillMaxWidth().height(60.dp), 

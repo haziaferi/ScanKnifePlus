@@ -5,36 +5,36 @@ import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSStream
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
+import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
-import com.tom_roush.pdfbox.rendering.ImageType
-import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -174,47 +174,28 @@ suspend fun getPageCount(context: Context, uri: Uri, password: String?): Int = t
     0
 }
 
-fun toGrayscaleBitmap(src: Bitmap): Bitmap {
-    val bmpGrayscale = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bmpGrayscale)
-    // White first, so transparent areas do not turn black.
-    canvas.drawColor(android.graphics.Color.WHITE)
-    val paint = Paint()
-    val cm = ColorMatrix().apply { setSaturation(0f) }
-    paint.colorFilter = ColorMatrixColorFilter(cm)
-    canvas.drawBitmap(src, 0f, 0f, paint)
-    return bmpGrayscale
-}
-
 private fun loadPdf(context: Context, uri: Uri, password: String?, block: (PDDocument) -> Unit) {
     context.contentResolver.requireInputStream(uri).use { input ->
         (if (password != null) PDDocument.load(input, password) else PDDocument.load(input)).use(block)
     }
 }
 
-suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, password: String?, onProgress: (Int, Int) -> Unit) =
+/**
+ * Writes a gray copy of [inputUri], opened with [password], to [outputUri] with [GrayscaleConverter], which keeps text, links, forms, outline and
+ * metadata; returns how many pages could only be stored as images. The copy is not encrypted. Pages are buffered in temp files.
+ */
+suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, password: String?, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
-        loadPdf(context, inputUri, password) { sourceDoc ->
-            if (sourceDoc.isEncrypted) sourceDoc.isAllSecurityToBeRemoved = true
-            PDDocument().use { targetDoc ->
-                val renderer = PDFRenderer(sourceDoc)
-                val total = sourceDoc.numberOfPages
-                for (i in 0 until total) {
-                    onProgress(i + 1, total)
-                    val scale = 1.2f
-                    val bitmap = renderer.renderImage(i, scale, ImageType.RGB)
-                    val grayBitmap = toGrayscaleBitmap(bitmap)
-                    bitmap.recycle()
-
-                    val pdImage = JPEGFactory.createFromImage(targetDoc, grayBitmap, 0.7f)
-                    val page = PDPage(PDRectangle(pdImage.width.toFloat() / scale, pdImage.height.toFloat() / scale))
-                    targetDoc.addPage(page)
-                    PDPageContentStream(targetDoc, page).use {
-                        it.drawImage(pdImage, 0f, 0f, page.mediaBox.width, page.mediaBox.height)
-                    }
-                    grayBitmap.recycle()
+        val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
+        context.contentResolver.requireInputStream(inputUri).use { input ->
+            PDDocument.load(input, password.orEmpty(), memory).use { document ->
+                val encrypted = document.isEncrypted
+                if (encrypted) document.isAllSecurityToBeRemoved = true
+                NativePageRasterizer(context, inputUri, if (encrypted) password.orEmpty() else null).use { rasterizer ->
+                    val fallbacks = GrayscaleConverter(document, rasterizer).convert(onProgress)
+                    saveAndFlush(context, document, outputUri)
+                    fallbacks
                 }
-                saveAndFlush(context, targetDoc, outputUri)
             }
         }
     }
@@ -287,33 +268,28 @@ suspend fun compressPdf(context: Context, inputUri: Uri, outputUri: Uri, passwor
         }
     }
 
+/** Fit pages show the image at the size it would print at this resolution. */
+private const val IMAGE_PAGE_DPI = 300f
+
+/** Quality of JPEGs Image to PDF has to re-encode. */
+private const val IMAGE_JPEG_QUALITY = 0.9f
+
 /**
- * Writes one page per image in [imageUris], decoded upright (EXIF orientation applied) at full resolution and embedded as JPEG 0.8.
- * Images that cannot be decoded are skipped. Returns the number of pages written; throws if there are none.
+ * Writes one page per image in [imageUris], sized at 300 DPI (Fit) or centred on A4, and returns the page count; throws if no image could be
+ * read, and skips the others that cannot. Baseline colour JPEGs are embedded byte for byte without location data, a turn becoming the page's
+ * /Rotate; other JPEGs are re-encoded and other formats stored losslessly ([embedImage]).
  */
 suspend fun convertImagesToPdf(context: Context, imageUris: List<Uri>, outputUri: Uri, pageSize: String, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
-        PDDocument().use { document ->
+        PDDocument(MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)).use { document ->
             imageUris.forEachIndexed { index, uri ->
                 onProgress(index + 1, imageUris.size)
-                val bitmap = ImageCodec.decodeUpright(ImageSource.of(context.contentResolver, uri))
-                if (bitmap == null) {
-                    Log.w(TAG, "Skipping an image that cannot be decoded: $uri")
+                val placed = embedImage(context, document, uri)
+                if (placed == null) {
+                    Log.w(TAG, "Skipping an image that cannot be read: $uri")
                     return@forEachIndexed
                 }
-                val pdImage = JPEGFactory.createFromImage(document, bitmap, 0.8f)
-                bitmap.recycle()
-                val rect = if (pageSize == "A4") PDRectangle.A4 else PDRectangle(pdImage.width.toFloat(), pdImage.height.toFloat())
-                val page = PDPage(rect)
-                document.addPage(page)
-                PDPageContentStream(document, page).use { cs ->
-                    if (pageSize == "A4") {
-                        val sc = Math.min(rect.width / pdImage.width, rect.height / pdImage.height)
-                        val x = (rect.width - pdImage.width * sc) / 2
-                        val y = (rect.height - pdImage.height * sc) / 2
-                        cs.drawImage(pdImage, x, y, pdImage.width * sc, pdImage.height * sc)
-                    } else cs.drawImage(pdImage, 0f, 0f)
-                }
+                addImagePage(document, placed, pageSize == "A4")
             }
             val pages = document.numberOfPages
             if (pages == 0) throw IOException("None of the images could be read")
@@ -321,6 +297,79 @@ suspend fun convertImagesToPdf(context: Context, imageUris: List<Uri>, outputUri
             pages
         }
     }
+
+/** An embedded image and the clockwise turn, in degrees, its page needs to show it upright. */
+private class PlacedImage(val image: PDImageXObject, val rotation: Int)
+
+/**
+ * Embeds the image at [uri] in [document], or null if it cannot be read, including when it is too large for memory. Upright or turned
+ * baseline 3-component JPEGs are streamed in as they are (pdfbox labels every JPEG DeviceRGB, and a mirror has no /Rotate); anything else is
+ * decoded upright, JPEGs re-encoded and other formats stored losslessly.
+ */
+private fun embedImage(context: Context, document: PDDocument, uri: Uri): PlacedImage? {
+    val resolver = context.contentResolver
+    return try {
+        val header = resolver.openInputStream(uri)?.buffered()?.use { input ->
+            val header = JpegHeader.read(input)
+            if (header != null && header.baseline && header.components == 3 && header.width > 0 && header.height > 0) {
+                val rotation = when (header.orientation) {
+                    ExifInterface.ORIENTATION_NORMAL -> 0
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> null
+                }
+                if (rotation != null) return PlacedImage(embedJpeg(document, header, input), rotation)
+            }
+            header
+        }
+        val bitmap = ImageCodec.decodeUpright(ImageSource.of(resolver, uri)) ?: return null
+        try {
+            val image = if (header != null) JPEGFactory.createFromImage(document, bitmap, IMAGE_JPEG_QUALITY) else LosslessFactory.createFromImage(document, bitmap)
+            PlacedImage(image, 0)
+        } finally {
+            bitmap.recycle()
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Cannot embed $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Cannot embed $uri", e)
+        null
+    }
+}
+
+/** An image XObject holding the JPEG whose [header] was read from [rest], copied into the document's temp storage without GPS data. */
+private fun embedJpeg(document: PDDocument, header: JpegHeader, rest: InputStream): PDImageXObject {
+    val stream = document.document.createCOSStream()
+    stream.createRawOutputStream().use { header.copyWithoutGps(rest, it) }
+    stream.setItem(COSName.TYPE, COSName.XOBJECT)
+    stream.setItem(COSName.SUBTYPE, COSName.IMAGE)
+    stream.setItem(COSName.FILTER, COSName.DCT_DECODE)
+    stream.setItem(COSName.COLORSPACE, COSName.DEVICERGB)
+    stream.setInt(COSName.BITS_PER_COMPONENT, 8)
+    stream.setInt(COSName.WIDTH, header.width)
+    stream.setInt(COSName.HEIGHT, header.height)
+    return PDImageXObject(PDStream(stream), null)
+}
+
+private fun addImagePage(document: PDDocument, placed: PlacedImage, a4: Boolean) {
+    val image = placed.image
+    val turned = placed.rotation == 90 || placed.rotation == 270
+    // The page is laid out in the image's stored orientation; /Rotate then turns page and image upright together.
+    val rect = when {
+        !a4 -> PDRectangle(image.width * 72f / IMAGE_PAGE_DPI, image.height * 72f / IMAGE_PAGE_DPI)
+        turned -> PDRectangle(PDRectangle.A4.height, PDRectangle.A4.width)
+        else -> PDRectangle.A4
+    }
+    val page = PDPage(rect)
+    page.rotation = placed.rotation
+    document.addPage(page)
+    val scale = minOf(rect.width / image.width, rect.height / image.height)
+    val width = image.width * scale
+    val height = image.height * scale
+    PDPageContentStream(document, page).use { it.drawImage(image, (rect.width - width) / 2, (rect.height - height) / 2, width, height) }
+}
 
 suspend fun convertPdfToImages(
     context: Context,

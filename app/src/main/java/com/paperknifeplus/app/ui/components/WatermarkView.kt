@@ -315,7 +315,7 @@ fun WatermarkView(
 
                             val hasWatermark = placedWatermarks.isNotEmpty()
                             Button(
-                                onClick = { if (hasWatermark) saveLauncher.launch(pdfBaseName(fileName) + "-watermarked.pdf") },
+                                onClick = { if (hasWatermark) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf")) },
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp),
                                 enabled = hasWatermark,
                                 shape = RoundedCornerShape(20.dp),
@@ -457,7 +457,7 @@ fun WatermarkView(
                                     Button(
                                         onClick = {
                                             lightboxPage = null
-                                            saveLauncher.launch(pdfBaseName(fileName) + "-watermarked.pdf")
+                                            saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf"))
                                         },
                                         modifier = Modifier.weight(1f).height(50.dp),
                                         shape = RoundedCornerShape(16.dp),

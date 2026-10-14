@@ -155,6 +155,16 @@ class ExtractedImagesTest {
         assertEquals(ExtractCounts(written = 0, skipped = 1), counts)
     }
 
+    @Test
+    fun `the result tells how many images were left out, and an empty ZIP says why`() {
+        assertEquals("Found 3 assets in document", ExtractCounts(3, 0).summary)
+        assertEquals("Saved 3 of 5 images; 2 images could not be read", ExtractCounts(3, 2).summary)
+        assertEquals("Saved 2 of 3 images; 1 image could not be read", ExtractCounts(2, 1).summary)
+        assertNull(ExtractCounts(1, 4).emptyReason)
+        assertEquals("No images found in PDF", ExtractCounts(0, 0).emptyReason)
+        assertEquals("The PDF has 2 images, but none could be read", ExtractCounts(0, 2).emptyReason)
+    }
+
     private fun readZip(bytes: ByteArray): Map<String, ByteArray> {
         val entries = linkedMapOf<String, ByteArray>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->

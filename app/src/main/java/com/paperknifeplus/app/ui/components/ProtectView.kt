@@ -197,7 +197,7 @@ fun ProtectView(
                             Spacer(Modifier.height(24.dp))
                             Button(
                                 onClick = { 
-                                    val defaultName = pdfBaseName(fileName) + "-protected.pdf"
+                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-protected", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, 
                                 modifier = Modifier.fillMaxWidth().height(60.dp), 
