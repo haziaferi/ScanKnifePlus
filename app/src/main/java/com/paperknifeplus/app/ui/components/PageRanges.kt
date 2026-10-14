@@ -20,15 +20,23 @@ sealed interface RangeList {
 
 /** The page-range text the page tools accept, e.g. "1-3, 5, 8-": 1-based pages in, 0-based page indices out. */
 object PageRanges {
-    // A page, a range or a range to the end. Digits only, so "+3" and "-4" are malformed.
+    // A page, a range or a range to the end, in ASCII digits after asciiDigits; "+3" and "-4" are malformed.
     private val PART = Regex("""(\d+)(?:\s*-\s*(\d*))?""")
 
     /** One comma-separated part. Pages are 1-based, null when too large for an Int; [end] is null for "8-", [start] for a single page. */
     private class Part(val isRange: Boolean, val start: Int?, val end: Int?, val open: Boolean)
 
+    /** [text] with every decimal digit of any script (Arabic-Indic, Devanagari, full-width...) as its ASCII digit. */
+    private fun asciiDigits(text: String): String = buildString {
+        for (char in text) {
+            val digit = Character.digit(char, 10)
+            append(if (digit >= 0) '0' + digit else char)
+        }
+    }
+
     /** Reads one trimmed part, or null when it is malformed. */
     private fun readPart(text: String): Part? {
-        val match = PART.matchEntire(text) ?: return null
+        val match = PART.matchEntire(asciiDigits(text)) ?: return null
         val start = match.groupValues[1].toIntOrNull()
         val isRange = match.groups[2] != null
         val endText = match.groupValues[2]
@@ -42,7 +50,7 @@ object PageRanges {
     /**
      * Parses [input] for a document of [max] pages as the Split and Delete screens do while the user types. Each comma-separated part is
      * read on its own, so a malformed part is skipped without losing the others; ranges are clamped to 1..[max] and may run backwards,
-     * single pages outside it are ignored, and open ranges ("8-") are skipped.
+     * single pages outside it are ignored, and open ranges ("8-") and signed numbers ("+3") are skipped. Digits of any script count.
      */
     fun parse(input: String, max: Int): Set<Int> {
         if (max < 1) return emptySet()
@@ -63,8 +71,8 @@ object PageRanges {
 
     /**
      * Parses [input] strictly for a document of [pageCount] pages, as the tools that write one output per range or take a range per file
-     * do: a typo must never pick other pages. "8-" runs to the last page and blank parts are ignored; any other problem refuses the whole
-     * list, naming the first part at fault.
+     * do: a typo must never pick other pages. "8-" runs to the last page, digits of any script count and blank parts are ignored;
+     * any other problem refuses the whole list, naming the first part at fault.
      */
     fun parseList(input: String, pageCount: Int): RangeList {
         val ranges = mutableListOf<IntRange>()

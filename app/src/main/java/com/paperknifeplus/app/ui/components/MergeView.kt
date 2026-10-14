@@ -151,7 +151,7 @@ fun MergeView(
         val files = selectedFiles
         scope.launch(Dispatchers.IO) {
             try {
-                val finalCount = mergeFiles(context, files, uri) { current, _ -> progressCount = current }
+                val finalCount = mergeFiles(context, files, uri) { current, _ -> scope.launch(Dispatchers.Main) { progressCount = current } }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {

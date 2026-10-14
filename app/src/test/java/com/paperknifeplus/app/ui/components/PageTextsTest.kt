@@ -51,6 +51,15 @@ class PageTextsTest {
     }
 
     @Test
+    fun `separators that only framed a dropped character go with it`() {
+        assertEquals("14.10.26", printableDate("14.10.26 г."))
+        assertEquals("14/10/2026", printableDate("١٤‏/١٠‏/٢٠٢٦"))
+        assertEquals("14.10.26", printableDate("14.г.10.26"))
+        assertEquals("2026 10 14", printableDate("2026年10月14日"))
+        assertEquals("26. 10. 14.", printableDate("26. 10. 14."))
+    }
+
+    @Test
     fun `header and footer lines are stamped on every page with the page count and date`() {
         val bytes = PDDocument.load(TestPdfs.plain(3)).use { doc ->
             applyPageNumbers(

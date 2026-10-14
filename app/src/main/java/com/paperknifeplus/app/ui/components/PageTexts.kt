@@ -32,20 +32,38 @@ fun expandPageTokens(format: String, page: Int, total: Int, date: String): Strin
 fun pageDate(now: Date = Date(), locale: Locale = Locale.getDefault()): String {
     val format = DateFormat.getDateInstance(DateFormat.SHORT, locale)
     format.calendar = GregorianCalendar(locale)
-    val text = format.format(now)
-    return buildString {
+    return printableDate(format.format(now))
+}
+
+/**
+ * [date] with ASCII digits and without the characters Helvetica cannot encode. The spaces and punctuation that only framed a dropped
+ * character go with it, so "14.10.26 г." becomes "14.10.26", while a dropped character between two numbers leaves a space.
+ */
+internal fun printableDate(date: String): String {
+    val marked = buildString {
         var i = 0
-        while (i < text.length) {
-            val codePoint = text.codePointAt(i)
+        while (i < date.length) {
+            val codePoint = date.codePointAt(i)
             val digit = Character.digit(codePoint, 10)
             when {
                 digit >= 0 -> append('0' + digit)
                 encodes(String(Character.toChars(codePoint))) -> appendCodePoint(codePoint)
+                else -> append(DROPPED)
             }
             i += Character.charCount(codePoint)
         }
-    }.trim()
+    }
+    return marked
+        .replace(Regex(" *$DROPPED+ *"), "$DROPPED")
+        .replace(Regex("^$DROPPED[.,]?|$DROPPED[.,]?$"), "")
+        .replace(Regex("([.,/-])$DROPPED\\1"), "$1")
+        .replace(Regex("(?<=[0-9])$DROPPED(?=[0-9])"), " ")
+        .replace("$DROPPED", "")
+        .trim()
 }
+
+/** Stands in for a dropped character while [printableDate] tidies what was around it. */
+private const val DROPPED = '\u0000'
 
 private fun encodes(text: String): Boolean = try {
     PAGE_TEXT_FONT.encode(text)

@@ -11,11 +11,9 @@ data class SplitPart(val pages: IntRange, val title: String? = null)
 data class BookmarkSplit(val parts: List<SplitPart>, val skipped: Int)
 
 /**
- * The parts that split a document of [pageCount] pages with [outline] (as [readOutline] reads it) at its bookmarks of depth 0 to [maxDepth]
- * (0 for the top level only). Each part runs from its bookmark's page to the page before the next bookmark's, in page order, so a bookmark
- * pointing backwards still cuts where its page is; pages before the first bookmark form an untitled part of their own. When bookmarks share
- * a page, the first of them in the outline names the part. Bookmarks whose target is not a page of the document are skipped and counted.
- * No parts when no bookmark leads to a page.
+ * The parts that split a document of [pageCount] pages at the bookmarks of [outline] ([readOutline]) of depth 0 to [maxDepth]: each runs, in
+ * page order, from its bookmark's page to the page before the next one's, with pages before the first bookmark as an untitled part. Bookmarks
+ * sharing a page make one part named after the first; bookmarks leading to no page of the document are skipped and counted.
  */
 fun bookmarkParts(outline: List<Bookmark>, pageCount: Int, maxDepth: Int = 0): BookmarkSplit {
     val chosen = outline.filter { it.depth <= maxDepth }
@@ -34,10 +32,9 @@ fun bookmarkParts(outline: List<Bookmark>, pageCount: Int, maxDepth: Int = 0): B
 }
 
 /**
- * Writes each of [parts] of a PDF as its own document. Each part is a fresh copy of the source, opened from [open] with [password] (empty
- * for none) in [memory], reduced to its pages in place as [keepPages] does, so outline items, links, form fields, named destinations and
- * page labels that stay inside the part keep working and nothing outside it is written. It keeps the source's protection
- * ([sameProtection]), and [write] saves it (it is closed afterwards). Blocking; throws on failure, after the parts already written.
+ * Writes each of [parts] as its own document: a fresh copy of the source from [open] with [password] (empty for none), read into [memory]
+ * and reduced in place by [keepPages], so outline items, links, form fields and labels inside the part keep working. It keeps the
+ * source's protection ([sameProtection]) and [write] saves it before it is closed. Blocking; throws on failure.
  */
 fun splitPdf(
     open: () -> InputStream,

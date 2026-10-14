@@ -34,6 +34,13 @@ class PageRangesTest {
     }
 
     @Test
+    fun `digits of any script count and a signed number is malformed`() {
+        assertEquals(setOf(1, 2, 3, 6), PageRanges.parse("٢-٤, ７", 10))
+        assertEquals(setOf(4), PageRanges.parse("+3, 5", 10))
+        assertEquals(RangeList.Valid(listOf(1..3)), PageRanges.parseList("२-४", 10))
+    }
+
+    @Test
     fun `format writes the shortest range text and round-trips`() {
         assertEquals("", PageRanges.format(emptySet()))
         assertEquals("1", PageRanges.format(setOf(0)))

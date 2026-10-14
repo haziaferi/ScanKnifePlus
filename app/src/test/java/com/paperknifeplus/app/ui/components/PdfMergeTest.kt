@@ -5,12 +5,16 @@ import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,6 +66,34 @@ class PdfMergeTest {
             assertEquals(mapOf("A" to 1, "B" to 2, "D" to 0), doc.outline())
         }
         assertFalse(String(bytes, Charsets.ISO_8859_1).contains(TestPdfs.structuredMarker(3)))
+    }
+
+    @Test
+    fun `a repeated page keeps what it inherits from an intermediate pages node`() {
+        // Move the root's inherited attributes and pages under one intermediate /Pages node.
+        val nested = PDDocument.load(TestPdfs.inheritedAttributes(2)).use { doc ->
+            val root = doc.pages.cosObject
+            val middle = COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.PAGES)
+                setItem(COSName.PARENT, root)
+                setInt(COSName.COUNT, 2)
+                for (key in listOf(COSName.KIDS, COSName.RESOURCES, COSName.MEDIA_BOX, COSName.ROTATE)) {
+                    setItem(key, root.getDictionaryObject(key))
+                    if (key != COSName.KIDS) root.removeItem(key)
+                }
+            }
+            doc.pages.forEach { it.cosObject.setItem(COSName.PARENT, middle) }
+            root.setItem(COSName.KIDS, COSArray().apply { add(middle) })
+            ByteArrayOutputStream().also(doc::save).toByteArray()
+        }
+        PDDocument.load(merge(source(nested, listOf(1..1, 1..1)))).use { doc ->
+            assertEquals(2, doc.numberOfPages)
+            for (page in doc.pages) {
+                assertEquals(TestPdfs.INHERITED_MEDIA_BOX.toString(), page.mediaBox.toString())
+                assertEquals(TestPdfs.INHERITED_ROTATION, page.rotation)
+                assertTrue(page.resources.fontNames.contains(TestPdfs.INHERITED_FONT))
+            }
+        }
     }
 
     @Test

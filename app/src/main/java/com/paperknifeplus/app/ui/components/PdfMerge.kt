@@ -3,19 +3,24 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageTree
 import java.io.InputStream
 import java.io.OutputStream
 
 /** One file of a merge: [open] reads it, and [ranges] (from [PageRanges.parseList]) are its pages to take in that order, null for all. */
 class MergeSource(val open: () -> InputStream, val ranges: List<IntRange>? = null)
 
+/** Page attributes a page may inherit from its /Pages ancestors. */
+private val INHERITABLE_KEYS = listOf(COSName.RESOURCES, COSName.MEDIA_BOX, COSName.CROP_BOX, COSName.ROTATE)
+
 /**
  * Reduces [document] to the pages of [ranges] in that order, in place as [keepPages] does. A page named more than once is repeated as a
- * copy sharing its content, since one page object cannot sit in the page tree twice.
+ * copy sharing its content, since one page object cannot sit in the page tree twice; the copy keeps what it inherits.
  */
 internal fun PDDocument.keepRanges(ranges: List<IntRange>) {
     val seen = HashSet<Int>()
@@ -23,7 +28,13 @@ internal fun PDDocument.keepRanges(ranges: List<IntRange>) {
         if (seen.add(index)) {
             index
         } else {
-            addPage(PDPage(COSDictionary(getPage(index).cosObject)))
+            val source = getPage(index).cosObject
+            val copy = COSDictionary(source)
+            // The copy hangs off the root, so it would lose what the page inherits from an intermediate /Pages node.
+            for (key in INHERITABLE_KEYS) {
+                if (!copy.containsKey(key)) PDPageTree.getInheritableAttribute(source, key)?.let { copy.setItem(key, it) }
+            }
+            addPage(PDPage(copy))
             numberOfPages - 1
         }
     }
