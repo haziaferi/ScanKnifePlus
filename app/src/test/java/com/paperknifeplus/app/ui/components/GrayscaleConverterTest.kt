@@ -322,7 +322,7 @@ class GrayscaleConverterTest {
             val im1 = xobject(page.resources, "Im1")
             assertEquals(COSName.DCT_DECODE, im1.getDictionaryObject(COSName.FILTER))
             val jpeg = im1.createRawInputStream().use { s -> s.readBytes() }
-            assertEquals(1, JpegInfo.read(jpeg)!!.components)
+            assertEquals(1, JpegHeadersTest.header(jpeg)!!.components)
             val decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
             assertTrue(abs(Color.red(decoded.getPixel(8, 8)) - 54) <= 4)
 
@@ -395,6 +395,114 @@ class GrayscaleConverterTest {
             val cm = tokens(it.getPage(2).contents.use { s -> s.readBytes() })
             val index = cm.indexOfFirst { t -> t is Operator && t.name == "cm" }
             assertEquals(listOf(0f, 792f, -612f, 0f, 612f, 0f), cm.subList(index - 6, index).map { t -> (t as COSNumber).floatValue() })
+        }
+    }
+
+    /** Separation whose tint transform gives that much cyan, in DeviceCMYK. */
+    private fun cyanSeparation() = array("Separation", "Spot", "DeviceCMYK", COSDictionary().apply {
+        setInt(COSName.FUNCTION_TYPE, 2)
+        setItem(COSName.DOMAIN, array(0, 1))
+        setItem(COSName.C0, array(0, 0, 0, 0))
+        setItem(COSName.C1, array(1, 0, 0, 0))
+        setInt(COSName.N, 1)
+    })
+
+    @Test
+    fun `forms and Type 3 glyphs are converted with the colour space their caller set`() {
+        val doc = PDDocument()
+        val form = form(doc, "1 sc 0 0 10 10 re f")
+        val glyph = stream(doc, "750 0 d0 1 sc 0 0 750 750 re f".toByteArray())
+        val type3 = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.FONT)
+            setItem(COSName.SUBTYPE, COSName.TYPE3)
+            setItem(COSName.FONT_BBOX, array(0, 0, 750, 750))
+            setItem(COSName.FONT_MATRIX, array(0.001f, 0, 0, 0.001f, 0, 0))
+            setItem(COSName.CHAR_PROCS, COSDictionary().apply { setItem(name("a"), glyph) })
+            setItem(COSName.ENCODING, COSDictionary().apply { setItem(COSName.DIFFERENCES, array(97, "a")) })
+            setInt(COSName.FIRST_CHAR, 97)
+            setInt(COSName.LAST_CHAR, 97)
+            setItem(COSName.WIDTHS, array(750))
+        }
+        val palette = array("Indexed", "DeviceRGB", 1, COSString(byteArrayOf(-1, 0, 0, 0, 0, -1)))
+        val res = resources(
+            "ColorSpace" to mapOf("CS1" to cyanSeparation(), "CS2" to palette),
+            "XObject" to mapOf("Fm0" to form),
+            "Font" to mapOf("T3" to type3)
+        )
+        addPage(doc, "/CS1 cs /Fm0 Do BT /T3 12 Tf (a) Tj ET /CS2 cs /Fm0 Do".toByteArray(), res)
+
+        val (out, fallbacks) = convertAndReload(doc)
+        out.use {
+            assertEquals(0, fallbacks)
+            val page = it.getPage(0)
+            assertEquals("0.787 g /Fm0 Do BT /T3 12 Tf (a) Tj ET 0.213 g /GrayForm0 Do", pageText(page))
+            assertEquals("0.787 g 0 0 10 10 re f", streamText(xobject(page.resources, "Fm0")))
+            assertEquals("0.072 g 0 0 10 10 re f", streamText(xobject(page.resources, "GrayForm0")))
+            val font = (page.resources.cosObject.getDictionaryObject(COSName.FONT) as COSDictionary).getDictionaryObject(name("T3")) as COSDictionary
+            val proc = (font.getDictionaryObject(COSName.CHAR_PROCS) as COSDictionary).getDictionaryObject(name("a")) as COSStream
+            assertEquals("750 0 d0 0.787 g 0 0 750 750 re f", streamText(proc))
+        }
+    }
+
+    @Test
+    fun `a CMYK JPEG becomes a gray JPEG`() {
+        val doc = PDDocument()
+        // A 16x16 Adobe CMYK JPEG, all C=0 M=100% Y=100% K=0 (red), from an outside encoder: the platform cannot write CMYK.
+        val cmykJpeg = java.util.Base64.getDecoder().decode(
+            "/9j/7gAOQWRvYmUAZAAAAAAA/9sAQwACAQEBAQECAQEBAgICAgIEAwICAgIFBAQDBAYFBgYGBQYGBgcJCAYHCQcGBggLCAkKCgoKCgYICwwLCgwJCgoK/8AAFAgAEAAQBEMRAE0R" +
+                "AFkRAEsRAP/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJ" +
+                "ChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV" +
+                "1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/aAA4EQwBNAFkASwAAPwD9/K/n/r+f+v38oooooooooooor//Z"
+        )
+        val image = stream(doc, cmykJpeg, "Type" to name("XObject"), "Subtype" to name("Image"), "Width" to COSInteger.get(16),
+            "Height" to COSInteger.get(16), "BitsPerComponent" to COSInteger.get(8), "ColorSpace" to name("DeviceCMYK"),
+            "Filter" to name("DCTDecode"))
+        addPage(doc, "/Im0 Do".toByteArray(), resources("XObject" to mapOf("Im0" to image)))
+
+        val (out, fallbacks) = convertAndReload(doc)
+        out.use {
+            assertEquals(0, fallbacks)
+            val converted = xobject(it.getPage(0).resources, "Im0")
+            assertEquals(COSName.DEVICEGRAY, converted.getDictionaryObject(COSName.COLORSPACE))
+            val jpeg = converted.createRawInputStream().use { s -> s.readBytes() }
+            assertEquals(1, JpegHeadersTest.header(jpeg)!!.components)
+            val decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+            assertTrue(abs(Color.red(decoded.getPixel(8, 8)) - 54) <= 6)
+        }
+    }
+
+    @Test
+    fun `an annotation that cannot be converted sends its page to the fallback and is drawn into the image`() {
+        val doc = PDDocument()
+        val page = addPage(doc, "1 0 0 rg 0 0 10 10 re f".toByteArray())
+        val appearance = form(doc, "/X cs 1 sc 0 0 10 10 re f", resources("ColorSpace" to mapOf("X" to array("Bogus"))))
+        val stamp = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.ANNOT)
+            setItem(COSName.SUBTYPE, name("Stamp"))
+            setItem(COSName.RECT, array(10, 10, 60, 60))
+            setItem(COSName.AP, COSDictionary().apply { setItem(COSName.N, appearance) })
+        }
+        val note = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.ANNOT)
+            setItem(COSName.SUBTYPE, name("FreeText"))
+            setItem(COSName.RECT, array(100, 100, 300, 140))
+            setItem(COSName.DS, COSString("font: 12pt Helvetica; color:#FF0000"))
+            setItem(COSName.RC, COSString("<body style=\"color:rgb(0,0,255)\"><p style=\"color:#f00\">x</p></body>"))
+        }
+        page.cosObject.setItem(COSName.ANNOTS, array(stamp, note))
+        val rasterizer = PageRasterizer { _, w, h -> Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) } }
+
+        val (out, fallbacks) = convertAndReload(doc, rasterizer)
+        out.use {
+            assertEquals(1, fallbacks)
+            val kept = it.getPage(0)
+            assertEquals(listOf("FreeText"), kept.annotations.map { a -> a.subtype })
+            val freeText = kept.annotations.single().cosObject
+            assertEquals("font: 12pt Helvetica; color:#363636", freeText.getString(COSName.DS))
+            assertEquals("<body style=\"color:#121212\"><p style=\"color:#363636\">x</p></body>", freeText.getString(COSName.RC))
+            val image = xobject(kept.resources, kept.resources.xObjectNames.single().name)
+            // Away from the stamp, the image is the rendered page, untouched by drawing the stamp over it.
+            assertEquals(54, pixels(image)[1275 * 100 + 1000])
         }
     }
 

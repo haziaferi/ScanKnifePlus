@@ -28,7 +28,7 @@ class GrayJpegEncoderTest {
 
     @Test
     fun `writes a baseline one-channel JPEG`() {
-        val info = JpegInfo.read(grayJpeg())!!
+        val info = JpegHeadersTest.header(grayJpeg())!!
         assertTrue(info.baseline)
         assertEquals(1, info.components)
     }

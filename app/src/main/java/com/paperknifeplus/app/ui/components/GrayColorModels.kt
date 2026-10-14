@@ -47,7 +47,10 @@ internal sealed class ColorModel {
         override fun gray(c: FloatArray) = luminance(c[0], c[1], c[2])
     }
 
-    /** DeviceCMYK, or an ICC profile with four components; converted with the naive formula of PDF 32000 section 10.4. */
+    /**
+     * DeviceCMYK, or an ICC profile with four components: R = (1 - C)(1 - K) and likewise for G and B, then [luminance]. This is the profile-less
+     * conversion the platform JPEG decoder applies to CMYK JPEGs, so CMYK images and CMYK vector colours turn the same gray.
+     */
     object Cmyk : ColorModel() {
         override val components = 4
         override val initial get() = floatArrayOf(0f, 0f, 0f, 1f)
@@ -94,33 +97,37 @@ internal sealed class ColorModel {
     class Pattern(val base: ColorModel?) : ColorModel() {
         override val components = base?.components ?: 0
         override fun gray(c: FloatArray) = base?.gray(c) ?: throw IOException("A coloured pattern has no colour components")
+
+        companion object {
+            val COLOURED = Pattern(null)
+        }
     }
 }
 
 /**
  * The [ColorModel] of a colour space entry, resolving names through [resources]. Throws [IOException] for a space it cannot map, so the
- * caller can fall back to rendering.
+ * caller can fall back to rendering. With a [cache], one colour space object always gives the same model instance.
  */
-internal fun colorModel(space: COSBase?, resources: PDResources?, depth: Int = 0): ColorModel {
+internal fun colorModel(space: COSBase?, resources: PDResources?, cache: MutableMap<COSBase, ColorModel>? = null, depth: Int = 0): ColorModel {
     if (depth > 8) throw IOException("Colour space nesting too deep")
     return when (val s = if (space is COSObject) space.getObject() else space) {
         is COSName -> when (s.name) {
             "DeviceGray", "G", "CalGray" -> ColorModel.Gray
             "DeviceRGB", "RGB", "CalRGB" -> ColorModel.Rgb
             "DeviceCMYK", "CMYK" -> ColorModel.Cmyk
-            "Pattern" -> ColorModel.Pattern(null)
+            "Pattern" -> ColorModel.Pattern.COLOURED
             else -> {
                 val named = (resources?.cosObject?.getDictionaryObject(COSName.COLORSPACE) as? COSDictionary)?.getDictionaryObject(s)
                     ?: throw IOException("Unknown colour space ${s.name}")
-                colorModel(named, resources, depth + 1)
+                colorModel(named, resources, cache, depth + 1)
             }
         }
-        is COSArray -> arrayModel(s, resources, depth)
+        is COSArray -> cache?.getOrPut(s) { arrayModel(s, resources, cache, depth) } ?: arrayModel(s, resources, null, depth)
         else -> throw IOException("Unreadable colour space $s")
     }
 }
 
-private fun arrayModel(space: COSArray, resources: PDResources?, depth: Int): ColorModel {
+private fun arrayModel(space: COSArray, resources: PDResources?, cache: MutableMap<COSBase, ColorModel>?, depth: Int): ColorModel {
     val family = space.getObject(0) as? COSName ?: throw IOException("Colour space without a family")
     return when (family.name) {
         "DeviceGray", "G", "CalGray" -> ColorModel.Gray
@@ -137,7 +144,7 @@ private fun arrayModel(space: COSArray, resources: PDResources?, depth: Int): Co
             else -> throw IOException("ICC profile with an unsupported component count")
         }
         "Indexed", "I" -> {
-            val base = colorModel(space.getObject(1), resources, depth + 1)
+            val base = colorModel(space.getObject(1), resources, cache, depth + 1)
             if (base is ColorModel.Pattern || base is ColorModel.Indexed) throw IOException("Indexed over ${family.name}")
             val hival = (space.getObject(2) as? COSNumber)?.intValue() ?: throw IOException("Indexed without hival")
             val lookup = when (val table = space.getObject(3)) {
@@ -149,11 +156,11 @@ private fun arrayModel(space: COSArray, resources: PDResources?, depth: Int): Co
         }
         "Separation", "DeviceN" -> {
             val count = if (family.name == "Separation") 1 else (space.getObject(1) as? COSArray)?.size() ?: throw IOException("DeviceN without names")
-            val alternate = colorModel(space.getObject(2), resources, depth + 1)
+            val alternate = colorModel(space.getObject(2), resources, cache, depth + 1)
             if (alternate is ColorModel.Pattern || alternate is ColorModel.Indexed) throw IOException("${family.name} over an unusable alternate")
             ColorModel.Tinted(count, alternate, PDFunction.create(space.getObject(3)))
         }
-        "Pattern" -> ColorModel.Pattern(if (space.size() > 1) colorModel(space.getObject(1), resources, depth + 1) else null)
+        "Pattern" -> ColorModel.Pattern(if (space.size() > 1) colorModel(space.getObject(1), resources, cache, depth + 1) else null)
         else -> throw IOException("Unsupported colour space ${family.name}")
     }
 }

@@ -23,6 +23,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.graphics.form.PDFormXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -180,7 +182,7 @@ private fun loadPdf(context: Context, uri: Uri, password: String?, block: (PDDoc
 
 /**
  * Writes a gray copy of [inputUri], opened with [password], to [outputUri] with [GrayscaleConverter], which keeps text, links, forms, outline and
- * metadata; returns how many pages could only be stored as images. Encryption is removed, as before. Pages are buffered in temp files.
+ * metadata; returns how many pages could only be stored as images. The copy is not encrypted. Pages are buffered in temp files.
  */
 suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, password: String?, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
@@ -273,10 +275,9 @@ private const val IMAGE_PAGE_DPI = 300f
 private const val IMAGE_JPEG_QUALITY = 0.9f
 
 /**
- * Writes one page per image in [imageUris]: on Fit pages the image's size at 300 DPI, on A4 pages centred. Baseline colour JPEGs that are
- * upright or turned a quarter, half or three quarters are embedded byte for byte, without any header carrying GPS, and the turn becomes the
- * page's /Rotate; other JPEGs are decoded upright and re-encoded, and every other format is stored losslessly. Images that cannot be read
- * are skipped. Pages are buffered in temp files. Returns the number of pages written; throws if there are none.
+ * Writes one page per image in [imageUris], sized at 300 DPI (Fit) or centred on A4, and returns the page count; throws if no image could be
+ * read, and skips the others that cannot. Baseline colour JPEGs are embedded byte for byte without location data, a turn becoming the page's
+ * /Rotate; other JPEGs are re-encoded and other formats stored losslessly ([embedImage]).
  */
 suspend fun convertImagesToPdf(context: Context, imageUris: List<Uri>, outputUri: Uri, pageSize: String, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
@@ -285,7 +286,7 @@ suspend fun convertImagesToPdf(context: Context, imageUris: List<Uri>, outputUri
                 onProgress(index + 1, imageUris.size)
                 val placed = embedImage(context, document, uri)
                 if (placed == null) {
-                    Log.w(TAG, "Skipping an image that cannot be decoded: $uri")
+                    Log.w(TAG, "Skipping an image that cannot be read: $uri")
                     return@forEachIndexed
                 }
                 addImagePage(document, placed, pageSize == "A4")
@@ -300,31 +301,56 @@ suspend fun convertImagesToPdf(context: Context, imageUris: List<Uri>, outputUri
 /** An embedded image and the clockwise turn, in degrees, its page needs to show it upright. */
 private class PlacedImage(val image: PDImageXObject, val rotation: Int)
 
+/**
+ * Embeds the image at [uri] in [document], or null if it cannot be read, including when it is too large for memory. Upright or turned
+ * baseline 3-component JPEGs are streamed in as they are (pdfbox labels every JPEG DeviceRGB, and a mirror has no /Rotate); anything else is
+ * decoded upright, JPEGs re-encoded and other formats stored losslessly.
+ */
 private fun embedImage(context: Context, document: PDDocument, uri: Uri): PlacedImage? {
-    val bytes = try {
-        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-    } catch (e: Exception) {
-        null
-    } ?: return null
-    val jpeg = JpegInfo.read(bytes)
-    // pdfbox labels every JPEG DeviceRGB, so only 3-component ones can be passed through; mirrored orientations have no /Rotate equivalent.
-    if (jpeg != null && jpeg.baseline && jpeg.components == 3) {
-        val rotation = when (jpeg.orientation) {
-            ExifInterface.ORIENTATION_NORMAL -> 0
-            ExifInterface.ORIENTATION_ROTATE_180 -> 180
-            ExifInterface.ORIENTATION_ROTATE_90 -> 90
-            ExifInterface.ORIENTATION_ROTATE_270 -> 270
-            else -> null
-        }
-        if (rotation != null) return PlacedImage(JPEGFactory.createFromByteArray(document, withoutGpsSegments(bytes)), rotation)
-    }
-    val bitmap = ImageCodec.decodeUpright(ImageSource { bytes.inputStream() }) ?: return null
+    val resolver = context.contentResolver
     return try {
-        val image = if (jpeg != null) JPEGFactory.createFromImage(document, bitmap, IMAGE_JPEG_QUALITY) else LosslessFactory.createFromImage(document, bitmap)
-        PlacedImage(image, 0)
-    } finally {
-        bitmap.recycle()
+        val header = resolver.openInputStream(uri)?.buffered()?.use { input ->
+            val header = JpegHeader.read(input)
+            if (header != null && header.baseline && header.components == 3 && header.width > 0 && header.height > 0) {
+                val rotation = when (header.orientation) {
+                    ExifInterface.ORIENTATION_NORMAL -> 0
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> null
+                }
+                if (rotation != null) return PlacedImage(embedJpeg(document, header, input), rotation)
+            }
+            header
+        }
+        val bitmap = ImageCodec.decodeUpright(ImageSource.of(resolver, uri)) ?: return null
+        try {
+            val image = if (header != null) JPEGFactory.createFromImage(document, bitmap, IMAGE_JPEG_QUALITY) else LosslessFactory.createFromImage(document, bitmap)
+            PlacedImage(image, 0)
+        } finally {
+            bitmap.recycle()
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Cannot embed $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Cannot embed $uri", e)
+        null
     }
+}
+
+/** An image XObject holding the JPEG whose [header] was read from [rest], copied into the document's temp storage without GPS data. */
+private fun embedJpeg(document: PDDocument, header: JpegHeader, rest: InputStream): PDImageXObject {
+    val stream = document.document.createCOSStream()
+    stream.createRawOutputStream().use { header.copyWithoutGps(rest, it) }
+    stream.setItem(COSName.TYPE, COSName.XOBJECT)
+    stream.setItem(COSName.SUBTYPE, COSName.IMAGE)
+    stream.setItem(COSName.FILTER, COSName.DCT_DECODE)
+    stream.setItem(COSName.COLORSPACE, COSName.DEVICERGB)
+    stream.setInt(COSName.BITS_PER_COMPONENT, 8)
+    stream.setInt(COSName.WIDTH, header.width)
+    stream.setInt(COSName.HEIGHT, header.height)
+    return PDImageXObject(PDStream(stream), null)
 }
 
 private fun addImagePage(document: PDDocument, placed: PlacedImage, a4: Boolean) {

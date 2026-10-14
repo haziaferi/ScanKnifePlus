@@ -132,7 +132,7 @@ class ImageToPdfTest {
         convert(listOf(file("gray.jpg", gray)))
         PDDocument.load(output).use { doc ->
             val embedded = rawBytes(image(doc.getPage(0)))
-            assertEquals(3, JpegInfo.read(embedded)!!.components)
+            assertEquals(3, JpegHeadersTest.header(embedded)!!.components)
         }
     }
 

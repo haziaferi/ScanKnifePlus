@@ -1,6 +1,10 @@
 package com.paperknifeplus.app.ui.components
 
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 
 private const val SOI = 0xD8
 private const val SOS = 0xDA
@@ -8,45 +12,68 @@ private const val APP1 = 0xE1
 private const val TAG_ORIENTATION = 0x0112
 private const val TAG_GPS_IFD = 0x8825
 
+// Each header segment is at most 64 KB; a header larger than this is not a photo worth passing through.
+private const val MAX_HEADER_BYTES = 4 * 1024 * 1024
+
 /** One marker segment of a JPEG header: [start] is its 0xFF, [end] is one past its last byte. */
 private class Segment(val marker: Int, val start: Int, val end: Int) {
     val payloadStart get() = start + 4
 }
 
-/** What Image to PDF needs from a JPEG's headers, read from the bytes without decoding the image. */
-internal class JpegInfo(
+/**
+ * A JPEG's header, read from a stream up to the start of the compressed data and no further, so the image itself is never held in memory.
+ * Image to PDF uses it to decide whether a file can be embedded as it is, and to copy it without location data.
+ */
+internal class JpegHeader private constructor(private val bytes: ByteArray, private val segments: List<Segment>) {
+    private val frame = segments.firstOrNull { it.marker in 0xC0..0xCF && it.marker != 0xC4 && it.marker != 0xC8 && it.marker != 0xCC }
+        ?.takeIf { it.end - it.payloadStart >= 6 }
+
     /** Baseline sequential (SOF0), which every PDF reader can decode. */
-    val baseline: Boolean,
-    val components: Int,
+    val baseline: Boolean get() = frame?.marker == 0xC0
+    val components: Int get() = frame?.let { u8(bytes, it.payloadStart + 5) } ?: 0
+    val width: Int get() = frame?.let { u16(bytes, it.payloadStart + 3, bigEndian = true) } ?: 0
+    val height: Int get() = frame?.let { u16(bytes, it.payloadStart + 1, bigEndian = true) } ?: 0
+
     /** The EXIF orientation, 1 (upright) when there is none. */
-    val orientation: Int
-) {
+    val orientation: Int = segments.firstNotNullOfOrNull { exifTags(bytes, it)?.get(TAG_ORIENTATION) }?.takeIf { it in 1..8 } ?: 1
+
+    /**
+     * Writes the JPEG to [out]: this header without the segments that carry a location (an EXIF block with a GPS directory or too broken to
+     * tell, and XMP or any other application segment naming GPS properties), then [rest], the stream it was read from, byte for byte.
+     */
+    fun copyWithoutGps(rest: InputStream, out: OutputStream) {
+        out.write(bytes, 0, 2)
+        for (segment in segments) if (!carriesGps(bytes, segment)) out.write(bytes, segment.start, segment.end - segment.start)
+        rest.copyTo(out)
+    }
+
     companion object {
-        /** The headers of [bytes], or null if they are not a well-formed JPEG header. */
-        fun read(bytes: ByteArray): JpegInfo? {
-            val segments = segments(bytes) ?: return null
-            val frame = segments.firstOrNull { it.marker in 0xC0..0xCF && it.marker != 0xC4 && it.marker != 0xC8 && it.marker != 0xCC } ?: return null
-            if (frame.end - frame.payloadStart < 6) return null
-            val orientation = segments.firstNotNullOfOrNull { exifTags(bytes, it)?.get(TAG_ORIENTATION) }
-            return JpegInfo(frame.marker == 0xC0, bytes[frame.payloadStart + 5].toInt() and 0xFF, orientation?.takeIf { it in 1..8 } ?: 1)
+        /** Reads the header from [input], leaving it at the compressed data; null if it is not a well-formed JPEG header. Blocking. */
+        fun read(input: InputStream): JpegHeader? = try {
+            readSegments(DataInputStream(input))
+        } catch (e: IOException) {
+            null
+        }
+
+        private fun readSegments(data: DataInputStream): JpegHeader {
+            if (data.readUnsignedByte() != 0xFF || data.readUnsignedByte() != SOI) throw IOException("No start of image")
+            val bytes = ByteArrayOutputStream().apply { write(0xFF); write(SOI) }
+            val segments = ArrayList<Segment>()
+            do {
+                if (data.readUnsignedByte() != 0xFF) throw IOException("No marker")
+                var marker = data.readUnsignedByte()
+                while (marker == 0xFF) marker = data.readUnsignedByte() // fill bytes
+                if (marker == 0x01 || marker in 0xD0..0xD7) continue
+                val length = data.readUnsignedShort()
+                if (length < 2 || bytes.size() + length > MAX_HEADER_BYTES) throw IOException("Bad segment length")
+                val start = bytes.size()
+                bytes.write(byteArrayOf(0xFF.toByte(), marker.toByte(), (length shr 8).toByte(), length.toByte()))
+                bytes.write(ByteArray(length - 2).also { data.readFully(it) })
+                segments += Segment(marker, start, start + 2 + length)
+            } while (marker != SOS)
+            return JpegHeader(bytes.toByteArray(), segments)
         }
     }
-}
-
-/**
- * [jpeg] without the header segments that carry a location: an EXIF block with a GPS directory (or one too broken to tell), and XMP or
- * any other application segment naming GPS properties. Everything else, the image data included, is copied byte for byte.
- */
-internal fun withoutGpsSegments(jpeg: ByteArray): ByteArray {
-    val segments = segments(jpeg) ?: return jpeg
-    val kept = segments.filterNot { carriesGps(jpeg, it) }
-    if (kept.size == segments.size) return jpeg
-    val out = ByteArrayOutputStream(jpeg.size)
-    out.write(jpeg, 0, 2)
-    kept.dropLast(1).forEach { out.write(jpeg, it.start, it.end - it.start) }
-    val scan = segments.last()
-    out.write(jpeg, scan.start, jpeg.size - scan.start)
-    return out.toByteArray()
 }
 
 private fun carriesGps(bytes: ByteArray, segment: Segment): Boolean {
@@ -54,29 +81,6 @@ private fun carriesGps(bytes: ByteArray, segment: Segment): Boolean {
     if (isExif(bytes, segment)) return exifTags(bytes, segment)?.containsKey(TAG_GPS_IFD) ?: true
     // XMP writes GPS properties as exif:GPSLatitude and the like.
     return String(bytes, segment.payloadStart, segment.end - segment.payloadStart, Charsets.ISO_8859_1).contains(":GPS")
-}
-
-/** The header segments of [bytes] up to and including the start of scan (always last), or null if it is not a well-formed JPEG header. */
-private fun segments(bytes: ByteArray): List<Segment>? {
-    if (bytes.size < 4 || u8(bytes, 0) != 0xFF || u8(bytes, 1) != SOI) return null
-    val segments = ArrayList<Segment>()
-    var pos = 2
-    while (pos + 4 <= bytes.size) {
-        if (u8(bytes, pos) != 0xFF) return null
-        while (pos + 1 < bytes.size && u8(bytes, pos + 1) == 0xFF) pos++ // fill bytes
-        val marker = u8(bytes, pos + 1)
-        if (marker == 0x01 || marker in 0xD0..0xD7) {
-            pos += 2
-            continue
-        }
-        if (pos + 4 > bytes.size) return null
-        val length = u16(bytes, pos + 2, bigEndian = true)
-        if (length < 2 || pos + 2 + length > bytes.size) return null
-        segments += Segment(marker, pos, pos + 2 + length)
-        if (marker == SOS) return segments
-        pos += 2 + length
-    }
-    return null
 }
 
 private fun isExif(bytes: ByteArray, segment: Segment): Boolean {

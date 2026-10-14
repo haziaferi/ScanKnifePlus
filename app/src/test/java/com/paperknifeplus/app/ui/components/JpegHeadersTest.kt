@@ -11,7 +11,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,24 +51,35 @@ class JpegHeadersTest {
             error("No start of scan")
         }
 
+        internal fun header(jpeg: ByteArray): JpegHeader? = JpegHeader.read(jpeg.inputStream())
+
+        /** [jpeg] as Image to PDF copies it: header read from a stream, then the stream's rest. */
+        fun withoutGps(jpeg: ByteArray): ByteArray {
+            val input = jpeg.inputStream()
+            val header = JpegHeader.read(input)!!
+            return ByteArrayOutputStream().also { header.copyWithoutGps(input, it) }.toByteArray()
+        }
+
         fun ByteArray.contains(text: String) = String(this, Charsets.ISO_8859_1).contains(text)
     }
 
     @Test
     fun `reads baseline, components and orientation`() {
-        val upright = JpegInfo.read(colourJpeg(context.cacheDir, "a.jpg"))!!
+        val upright = header(colourJpeg(context.cacheDir, "a.jpg"))!!
         assertTrue(upright.baseline)
         assertEquals(3, upright.components)
         assertEquals(1, upright.orientation)
+        assertEquals(40, upright.width)
+        assertEquals(20, upright.height)
 
-        val turned = JpegInfo.read(colourJpeg(context.cacheDir, "b.jpg") { setAttribute(ExifInterface.TAG_ORIENTATION, "6") })!!
+        val turned = header(colourJpeg(context.cacheDir, "b.jpg") { setAttribute(ExifInterface.TAG_ORIENTATION, "6") })!!
         assertEquals(6, turned.orientation)
     }
 
     @Test
     fun `not a JPEG gives no info`() {
-        assertNull(JpegInfo.read("not a jpeg".toByteArray()))
-        assertNull(JpegInfo.read(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0x7F, 0x00)))
+        assertNull(header("not a jpeg".toByteArray()))
+        assertNull(header(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0x7F, 0x00)))
     }
 
     @Test
@@ -79,7 +89,7 @@ class JpegHeadersTest {
             setLatLong(52.5163, 13.3777)
         }
         assertTrue(jpeg.contains("Exif"))
-        val stripped = withoutGpsSegments(jpeg)
+        val stripped = withoutGps(jpeg)
         assertFalse(stripped.contains("Exif"))
         assertArrayEquals(scanData(jpeg), scanData(stripped))
         assertNotNull(BitmapFactory.decodeByteArray(stripped, 0, stripped.size))
@@ -88,19 +98,19 @@ class JpegHeadersTest {
     @Test
     fun `EXIF without GPS is kept, so the bytes stay the same`() {
         val jpeg = colourJpeg(context.cacheDir, "nogps.jpg") { setAttribute(ExifInterface.TAG_ORIENTATION, "3") }
-        assertSame(jpeg, withoutGpsSegments(jpeg))
+        assertArrayEquals(jpeg, withoutGps(jpeg))
     }
 
     @Test
     fun `XMP naming GPS properties is removed, other XMP kept`() {
         val plain = colourJpeg(context.cacheDir, "xmp.jpg")
         val located = withXmp(plain, "<rdf:Description exif:GPSLatitude=\"52,31.0N\"/>")
-        val stripped = withoutGpsSegments(located)
+        val stripped = withoutGps(located)
         assertFalse(stripped.contains("GPSLatitude"))
         assertArrayEquals(plain, stripped)
 
         val harmless = withXmp(plain, "<rdf:Description xmp:Rating=\"5\"/>")
-        assertSame(harmless, withoutGpsSegments(harmless))
+        assertArrayEquals(harmless, withoutGps(harmless))
     }
 
     @Test
@@ -113,6 +123,6 @@ class JpegHeadersTest {
             write(payload)
             write(plain, 2, plain.size - 2)
         }.toByteArray()
-        assertArrayEquals(plain, withoutGpsSegments(broken))
+        assertArrayEquals(plain, withoutGps(broken))
     }
 }

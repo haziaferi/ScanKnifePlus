@@ -3,6 +3,8 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
@@ -28,6 +30,8 @@ import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.common.function.PDFunction
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDInlineImage
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation
+import com.tom_roush.pdfbox.rendering.PDFRenderer
 import com.tom_roush.pdfbox.util.Matrix
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -49,7 +53,7 @@ private const val JPEG_QUALITY = 90
 /** Resolution of a page that falls back to an image. */
 private const val FALLBACK_DPI = 150f
 
-// A fallback bitmap is ARGB, 4 bytes a pixel: 16 MP is 64 MB, about A2 at 150 DPI. Larger pages render at a lower resolution.
+// A fallback bitmap is ARGB, 4 bytes a pixel: 16 MP is 64 MB, a little under A1 at 150 DPI. Larger pages render at a lower resolution.
 private const val MAX_FALLBACK_PIXELS = 16_000_000f
 
 /** Renders one page of the source PDF, for the pages [GrayscaleConverter] cannot convert. */
@@ -58,11 +62,21 @@ internal fun interface PageRasterizer {
     fun render(pageIndex: Int, width: Int, height: Int): Bitmap
 }
 
+/** The colour spaces a content stream starts with: the defaults, or those of the caller drawing a form or a Type 3 glyph. */
+private data class StartColours(val fill: ColorModel, val stroke: ColorModel)
+
+private val DEFAULT_COLOURS = StartColours(ColorModel.Gray, ColorModel.Gray)
+
+/** A rewritten content stream, and whether it used a colour space it inherited from its caller. */
+private class Rewritten(val tokens: List<Any>, val inherits: Boolean)
+
+/** How a form was converted: under [start], with its [original] content kept when it [inherits], for copies drawn under other colours. */
+private class FormUse(val start: StartColours, val inherits: Boolean, val original: ByteArray?)
+
 /**
- * Turns [document] gray in place, so text, links, form fields, outline and metadata all stay. Colour operators in every content stream
- * (pages, form XObjects, annotation appearances, tiling patterns, Type 3 glyphs) are rewritten as DeviceGray; shadings get a sampled gray
- * function; images are re-encoded as one-channel DeviceGray, JPEGs as gray JPEGs and everything else losslessly. A page using a colour the
- * converter cannot map is replaced by an image of itself from [rasterizer], gray and lossless. Shared objects are converted once. Blocking.
+ * Turns [document] gray in place, rewriting colours in every content stream, shading and image, so text, links, forms, outline and metadata
+ * stay. A page with a colour it cannot map, in its content or in an annotation, is replaced by a gray lossless image from [rasterizer].
+ * Blocking.
  */
 internal class GrayscaleConverter(private val document: PDDocument, private val rasterizer: PageRasterizer) {
     private fun identitySet() = Collections.newSetFromMap(IdentityHashMap<COSBase, Boolean>())
@@ -71,6 +85,10 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
     private val inProgress = identitySet()
     private val failed = identitySet()
     private val grayPatternSpaces = IdentityHashMap<COSDictionary, COSName>()
+    private val models = IdentityHashMap<COSBase, ColorModel>()
+    private val formUses = IdentityHashMap<COSStream, FormUse>()
+    private val formCopies = IdentityHashMap<COSStream, MutableList<Pair<StartColours, COSStream>>>()
+    private val fontUses = IdentityHashMap<COSDictionary, Pair<StartColours, Boolean>>()
 
     /** Converts every page, reporting progress as (page, total); returns how many pages fell back to an image. */
     fun convert(onProgress: (Int, Int) -> Unit = { _, _ -> }): Int {
@@ -78,28 +96,34 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         val total = document.numberOfPages
         document.pages.forEachIndexed { index, page ->
             onProgress(index + 1, total)
-            try {
-                convertPage(page)
-            } catch (e: Throwable) {
-                // Running out of memory on one huge image is a reason to fall back too; any other error is not.
-                if (e !is Exception && e !is OutOfMemoryError) throw e
-                Log.w(TAG, "Page ${index + 1} falls back to an image", e)
-                rasterize(index, page)
+            val contentConverted = attempt("Page ${index + 1} content") { convertPage(page) }
+            val unconverted = page.annotations.filterNot { convertAnnotation(it.cosObject) }
+            if (!contentConverted || unconverted.isNotEmpty()) {
+                rasterize(index, page, unconverted)
                 fallbacks++
             }
             grayGroup(page.cosObject)
             // A thumbnail is a small colour picture of the page some viewers show; they make a new one when it is missing.
             page.cosObject.removeItem(COSName.THUMB)
-            page.annotations.forEach { convertAnnotation(it.cosObject) }
         }
         convertFormFields()
         convertOutline()
         return fallbacks
     }
 
+    /** Runs [block]; false if it failed, also by running out of memory on a huge image, which is a reason to fall back too. */
+    private inline fun attempt(what: String, block: () -> Unit): Boolean = try {
+        block()
+        true
+    } catch (e: Throwable) {
+        if (e !is Exception && e !is OutOfMemoryError) throw e
+        Log.w(TAG, "$what cannot be converted", e)
+        false
+    }
+
     private fun convertPage(page: PDPage) {
         if (!page.hasContents()) return
-        val tokens = rewrite(parse(page.contents.use { it.readBytes() }), page.resources)
+        val tokens = rewrite(parse(page.contents.use { it.readBytes() }), page.resources).tokens
         val stream = PDStream(document)
         stream.createOutputStream(COSName.FLATE_DECODE).use { ContentStreamWriter(it).writeTokens(tokens) }
         page.setContents(stream)
@@ -126,13 +150,19 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         tokens
     }
 
-    /** The colour operators of [tokens] rewritten as gray, converting every resource they use on the way. */
-    private fun rewrite(tokens: List<Any>, resources: PDResources?): List<Any> {
+    /** The colour operators of [tokens] rewritten as gray, converting every resource they use on the way; [start] is what it inherits. */
+    private fun rewrite(tokens: List<Any>, resources: PDResources?, start: StartColours = DEFAULT_COLOURS): Rewritten {
         val out = ArrayList<Any>(tokens.size)
         val operands = ArrayList<COSBase>()
-        var fill: ColorModel = ColorModel.Gray
-        var stroke: ColorModel = ColorModel.Gray
-        val saved = ArrayDeque<Pair<ColorModel, ColorModel>>()
+        var state = DrawState(start.fill, start.stroke, fillInherited = true, strokeInherited = true, font = null)
+        val saved = ArrayDeque<DrawState>()
+        var inherits = false
+        fun inheritedBy(childInherits: Boolean) {
+            if (childInherits && (state.fillInherited || state.strokeInherited)) inherits = true
+        }
+        fun set(model: ColorModel, stroking: Boolean) {
+            state = if (stroking) state.copy(stroke = model, strokeInherited = false) else state.copy(fill = model, fillInherited = false)
+        }
         for (token in tokens) {
             if (token !is Operator) {
                 if (token is COSBase) operands += token
@@ -141,17 +171,17 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             val name = token.name
             val stroking = name.first().isUpperCase()
             val replacement: List<Any>? = when (name) {
-                "q" -> null.also { saved.addLast(fill to stroke) }
-                "Q" -> null.also { saved.removeLastOrNull()?.let { fill = it.first; stroke = it.second } }
-                "g", "G" -> null.also { if (stroking) stroke = ColorModel.Gray else fill = ColorModel.Gray }
+                "q" -> null.also { saved.addLast(state) }
+                "Q" -> null.also { saved.removeLastOrNull()?.let { state = it } }
+                "g", "G" -> null.also { set(ColorModel.Gray, stroking) }
                 "rg", "RG", "k", "K" -> {
                     val model = if (name.equals("rg", ignoreCase = true)) ColorModel.Rgb else ColorModel.Cmyk
-                    if (stroking) stroke = model else fill = model
+                    set(model, stroking)
                     grayOperator(model.gray(numbers(operands, model.components)), stroking)
                 }
                 "cs", "CS" -> {
-                    val model = colorModel(operands.singleOrNull(), resources)
-                    if (stroking) stroke = model else fill = model
+                    val model = colorModel(operands.singleOrNull(), resources, models)
+                    set(model, stroking)
                     when {
                         model !is ColorModel.Pattern -> grayOperator(model.gray(model.initial), stroking)
                         model.base != null -> listOf(grayPatternSpace(resources), token)
@@ -159,7 +189,8 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
                     }
                 }
                 "sc", "scn", "SC", "SCN" -> {
-                    val model = if (stroking) stroke else fill
+                    val model = if (stroking) state.stroke else state.fill
+                    if (if (stroking) state.strokeInherited else state.fillInherited) inherits = true
                     if (model is ColorModel.Pattern) {
                         val pattern = operands.lastOrNull() as? COSName ?: throw IOException("$name without a pattern name")
                         convertPattern(resource(resources, COSName.PATTERN, pattern), resources)
@@ -170,9 +201,21 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
                     }
                 }
                 "sh" -> null.also { convertShading(resource(resources, COSName.SHADING, operands.firstOrNull()), resources) }
-                "Do" -> null.also { (resource(resources, COSName.XOBJECT, operands.firstOrNull()) as? COSStream)?.let { convertXObject(it, resources) } }
+                "Do" -> {
+                    val xobject = resource(resources, COSName.XOBJECT, operands.firstOrNull()) as? COSStream
+                    when (xobject?.getCOSName(COSName.SUBTYPE)) {
+                        COSName.IMAGE -> null.also { convertImage(xobject, resources) }
+                        COSName.FORM -> {
+                            val (drawn, formInherits) = convertForm(xobject, resources, StartColours(state.fill, state.stroke))
+                            inheritedBy(formInherits)
+                            if (drawn === xobject) null else listOf(xobjectName(resources, drawn), token)
+                        }
+                        else -> null
+                    }
+                }
                 "BI" -> null.also { convertInlineImage(token, resources) }
-                "Tf" -> null.also { convertFont(resource(resources, COSName.FONT, operands.firstOrNull()), resources) }
+                "Tf" -> null.also { state = state.copy(font = resource(resources, COSName.FONT, operands.firstOrNull())) }
+                "Tj", "TJ", "'", "\"" -> null.also { inheritedBy(convertFont(state.font, resources, StartColours(state.fill, state.stroke))) }
                 "gs" -> null.also { convertExtGState(resource(resources, COSName.EXT_G_STATE, operands.firstOrNull()), resources) }
                 else -> null
             }
@@ -185,8 +228,17 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             operands.clear()
         }
         out.addAll(operands)
-        return out
+        return Rewritten(out, inherits)
     }
+
+    /** The colour state the rewrite tracks through q and Q; the flags say a side still has the colour space the stream inherited. */
+    private data class DrawState(
+        val fill: ColorModel,
+        val stroke: ColorModel,
+        val fillInherited: Boolean,
+        val strokeInherited: Boolean,
+        val font: COSBase?
+    )
 
     private fun grayOperator(gray: Float, stroking: Boolean): List<Any> = listOf(number(gray), Operator.getOperator(if (stroking) "G" else "g"))
 
@@ -208,23 +260,44 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         return (resources?.cosObject?.getDictionaryObject(kind) as? COSDictionary)?.getDictionaryObject(name)
     }
 
+    /** [value] added to the [kind] dictionary of [resources] under a new name starting with [prefix]. */
+    private fun addResource(resources: PDResources?, kind: COSName, prefix: String, value: COSBase): COSName {
+        val dict = resources?.cosObject ?: throw IOException("No resources to add $prefix to")
+        val entries = dict.getDictionaryObject(kind) as? COSDictionary ?: COSDictionary().also { dict.setItem(kind, it) }
+        var i = 0
+        var name: COSName
+        do name = COSName.getPDFName("$prefix${i++}") while (entries.containsKey(name))
+        entries.setItem(name, value)
+        return name
+    }
+
     /** A [/Pattern /DeviceGray] space added to [resources], for uncoloured patterns whose base space was colour. */
     private fun grayPatternSpace(resources: PDResources?): COSName {
         val dict = resources?.cosObject ?: throw IOException("Uncoloured pattern without resources")
         return grayPatternSpaces.getOrPut(dict) {
-            val spaces = dict.getDictionaryObject(COSName.COLORSPACE) as? COSDictionary ?: COSDictionary().also { dict.setItem(COSName.COLORSPACE, it) }
-            var i = 0
-            var name: COSName
-            do name = COSName.getPDFName("GrayPattern${i++}") while (spaces.containsKey(name))
-            spaces.setItem(name, COSArray().apply { add(COSName.PATTERN); add(COSName.DEVICEGRAY) })
-            name
+            addResource(resources, COSName.COLORSPACE, "GrayPattern", COSArray().apply { add(COSName.PATTERN); add(COSName.DEVICEGRAY) })
         }
     }
 
-    private fun rewriteStream(stream: COSStream, resources: PDResources?) {
-        val tokens = rewrite(parse(stream.createInputStream().use { it.readBytes() }), resources)
+    /** The name [form] has in [resources], added if it is a copy made by [convertForm]. */
+    private fun xobjectName(resources: PDResources?, form: COSStream): COSName {
+        val xobjects = resources?.cosObject?.getDictionaryObject(COSName.XOBJECT) as? COSDictionary
+        xobjects?.keySet()?.firstOrNull { xobjects.getDictionaryObject(it) === form }?.let { return it }
+        return addResource(resources, COSName.XOBJECT, "GrayForm", form)
+    }
+
+    private fun readContent(stream: COSStream): ByteArray = stream.createInputStream().use { it.readBytes() }
+
+    private fun writeContent(stream: COSStream, tokens: List<Any>) {
         stream.createOutputStream(COSName.FLATE_DECODE).use { ContentStreamWriter(it).writeTokens(tokens) }
         stream.removeItem(COSName.DECODE_PARMS)
+    }
+
+    /** Rewrites [stream] in place; returns whether it uses colour spaces inherited from [start]. */
+    private fun rewriteStream(stream: COSStream, resources: PDResources?, start: StartColours = DEFAULT_COLOURS): Boolean {
+        val result = rewrite(parse(readContent(stream)), resources, start)
+        writeContent(stream, result.tokens)
+        return result.inherits
     }
 
     private fun ownResources(dict: COSDictionary, fallback: PDResources?): PDResources? =
@@ -236,28 +309,56 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         if (group.containsKey(COSName.CS)) group.setItem(COSName.CS, COSName.DEVICEGRAY)
     }
 
-    private fun convertXObject(stream: COSStream, resources: PDResources?) {
-        when (stream.getCOSName(COSName.SUBTYPE)) {
-            COSName.IMAGE -> convertImage(stream, resources)
-            COSName.FORM -> convertForm(stream, resources)
+    /**
+     * Converts [form] as drawn with [start] colours; returns the form to draw and whether it uses them. A form that uses an inherited colour
+     * space and is drawn again under another one gets a converted copy for that one, as one stream holds one conversion.
+     */
+    private fun convertForm(form: COSStream, parentResources: PDResources?, start: StartColours = DEFAULT_COLOURS): Pair<COSStream, Boolean> {
+        val use = formUses[form]
+        if (use == null) {
+            once(form) {
+                val original = readContent(form)
+                val result = rewrite(parse(original), ownResources(form, parentResources), start)
+                writeContent(form, result.tokens)
+                grayGroup(form)
+                formUses[form] = FormUse(start, result.inherits, original.takeIf { result.inherits })
+            }
+            return form to (formUses[form]?.inherits ?: false)
         }
+        val original = use.original
+        if (original == null || use.start == start) return form to use.inherits
+        val copies = formCopies.getOrPut(form) { mutableListOf() }
+        copies.firstOrNull { it.first == start }?.let { return it.second to true }
+        val copy = document.document.createCOSStream()
+        for (key in form.keySet()) if (key != COSName.LENGTH && key != COSName.FILTER && key != COSName.DECODE_PARMS) copy.setItem(key, form.getItem(key))
+        copy.createOutputStream().use { it.write(original) }
+        copies += start to copy
+        convertForm(copy, parentResources, start)
+        return copy to true
     }
 
-    private fun convertForm(stream: COSStream, parentResources: PDResources?) = once(stream) {
-        rewriteStream(stream, ownResources(stream, parentResources))
-        grayGroup(stream)
-    }
-
-    private fun convertFont(font: COSBase?, resources: PDResources?) {
-        if (font !is COSDictionary || font.getCOSName(COSName.SUBTYPE) != COSName.TYPE3) return
+    /**
+     * Converts the glyphs of a Type 3 [font] as shown with [start] colours; returns whether they use them. A font has one set of glyphs, so
+     * glyphs that use an inherited colour space and are shown under two different ones send the page to the fallback.
+     */
+    private fun convertFont(font: COSBase?, resources: PDResources?, start: StartColours): Boolean {
+        if (font !is COSDictionary || font.getCOSName(COSName.SUBTYPE) != COSName.TYPE3) return false
+        fontUses[font]?.let { (used, inherits) ->
+            if (inherits && used != start) throw IOException("Type 3 glyphs shown under two inherited colour spaces")
+            return inherits
+        }
         once(font) {
             val glyphResources = ownResources(font, resources)
-            val procs = font.getDictionaryObject(COSName.CHAR_PROCS) as? COSDictionary ?: return@once
-            for (key in procs.keySet()) {
-                val proc = procs.getDictionaryObject(key) as? COSStream ?: continue
-                once(proc) { rewriteStream(proc, glyphResources) }
+            var inherits = false
+            (font.getDictionaryObject(COSName.CHAR_PROCS) as? COSDictionary)?.let { procs ->
+                for (key in procs.keySet()) {
+                    val proc = procs.getDictionaryObject(key) as? COSStream ?: continue
+                    once(proc) { if (rewriteStream(proc, glyphResources, start)) inherits = true }
+                }
             }
+            fontUses[font] = start to inherits
         }
+        return fontUses[font]?.second ?: false
     }
 
     private fun convertExtGState(state: COSBase?, resources: PDResources?) {
@@ -268,7 +369,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             // The backdrop colour is given in the mask group's space, so it is read before the group turns gray.
             val backdrop = (mask.getDictionaryObject(COSName.BC) as? COSArray)?.let { bc ->
                 val space = (group.getDictionaryObject(COSName.GROUP) as? COSDictionary)?.getDictionaryObject(COSName.CS) ?: return@let null
-                val model = colorModel(space, ownResources(group, resources))
+                val model = colorModel(space, ownResources(group, resources), models)
                 model.gray(bc.toFloatArray().copyOf(model.components))
             }
             convertForm(group, resources)
@@ -286,7 +387,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
     private fun convertShading(shading: COSBase?, resources: PDResources?) {
         if (shading !is COSDictionary) return
         once(shading) {
-            val model = colorModel(shading.getDictionaryObject(COSName.COLORSPACE), resources)
+            val model = colorModel(shading.getDictionaryObject(COSName.COLORSPACE), resources, models)
             if (model !is ColorModel.Gray) {
                 // Mesh shadings without a function carry their colours in packed vertex data, which is not rewritten.
                 val function = shading.getDictionaryObject(COSName.FUNCTION) ?: throw IOException("Shading colours outside a function")
@@ -340,7 +441,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             if (COSName.JPX_DECODE.name in filters) throw IOException("JPEG 2000 image with its own colour space")
             return@once
         }
-        val model = colorModel(space, resources)
+        val model = colorModel(space, resources, models)
         if (model is ColorModel.Gray) {
             image.setItem(COSName.COLORSPACE, COSName.DEVICEGRAY)
             return@once
@@ -386,7 +487,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
     private fun convertInlineImage(operator: Operator, resources: PDResources?) {
         val params = operator.imageParameters ?: return
         if (params.getBoolean(COSName.IM, COSName.IMAGE_MASK, false)) return
-        val model = colorModel(params.getDictionaryObject(COSName.CS, COSName.COLORSPACE), resources)
+        val model = colorModel(params.getDictionaryObject(COSName.CS, COSName.COLORSPACE), resources, models)
         if (model is ColorModel.Gray) {
             params.removeItem(COSName.COLORSPACE)
             params.setItem(COSName.CS, COSName.G)
@@ -421,7 +522,8 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         operator.imageData = data.toByteArray()
     }
 
-    private fun convertAnnotation(annotation: COSDictionary) {
+    /** Converts an annotation's colours and appearances; false if an appearance cannot be converted, which sends its page to the fallback. */
+    private fun convertAnnotation(annotation: COSDictionary): Boolean {
         grayColour(annotation, COSName.C)
         grayColour(annotation, COSName.IC)
         (annotation.getDictionaryObject(COSName.MK) as? COSDictionary)?.let {
@@ -429,20 +531,28 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             grayColour(it, COSName.BG)
         }
         convertDefaultAppearance(annotation)
-        val appearances = annotation.getDictionaryObject(COSName.AP) as? COSDictionary ?: return
-        for (key in listOf(COSName.N, COSName.R, COSName.D)) {
-            when (val entry = appearances.getDictionaryObject(key)) {
-                is COSStream -> convertAppearance(entry)
-                is COSDictionary -> entry.keySet().forEach { state -> (entry.getDictionaryObject(state) as? COSStream)?.let(::convertAppearance) }
+        grayStyleColours(annotation, COSName.DS)
+        grayStyleColours(annotation, COSName.RC)
+        val appearances = annotation.getDictionaryObject(COSName.AP) as? COSDictionary ?: return true
+        return attempt("An annotation appearance") {
+            for (key in listOf(COSName.N, COSName.R, COSName.D)) {
+                when (val entry = appearances.getDictionaryObject(key)) {
+                    is COSStream -> convertForm(entry, null)
+                    is COSDictionary -> entry.keySet().forEach { state -> (entry.getDictionaryObject(state) as? COSStream)?.let { convertForm(it, null) } }
+                }
             }
         }
     }
 
-    // An appearance that cannot be converted stays as it is: dropping it would hide the annotation, which is worse than its colour.
-    private fun convertAppearance(stream: COSStream) = try {
-        convertForm(stream, null)
-    } catch (e: Exception) {
-        Log.w(TAG, "Leaving an annotation appearance in colour", e)
+    /** CSS colours in a free-text annotation's default style (/DS) or rich text (/RC), which some viewers draw from instead of /AP. */
+    private fun grayStyleColours(dict: COSDictionary, key: COSName) {
+        when (val value = dict.getDictionaryObject(key)) {
+            is COSString -> dict.setItem(key, COSString(grayCss(value.string)))
+            is COSStream -> {
+                val text = grayCss(value.createInputStream().use { String(it.readBytes(), Charsets.UTF_8) })
+                value.createOutputStream().use { it.write(text.toByteArray(Charsets.UTF_8)) }
+            }
+        }
     }
 
     /** An annotation colour array (/C, /IC, /MK's /BC and /BG) with 3 or 4 components becomes one gray component. */
@@ -461,7 +571,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         val appearance = dict.getDictionaryObject(COSName.DA) as? COSString ?: return
         try {
             val out = ByteArrayOutputStream()
-            ContentStreamWriter(out).writeTokens(rewrite(parse(appearance.bytes), null))
+            ContentStreamWriter(out).writeTokens(rewrite(parse(appearance.bytes), null).tokens)
             dict.setItem(COSName.DA, COSString(out.toString("ISO-8859-1").trim().replace('\n', ' ')))
         } catch (e: Exception) {
             Log.w(TAG, "Leaving a default appearance in colour", e)
@@ -503,8 +613,11 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         walk(outline.getDictionaryObject(COSName.FIRST))
     }
 
-    /** Replaces the content of [page] with a gray, lossless image of it; its annotations stay separate and are converted on their own. */
-    private fun rasterize(pageIndex: Int, page: PDPage) {
+    /**
+     * Replaces the content of [page] with a gray, lossless image of it. The [unconverted] annotations are drawn into the image and removed;
+     * the others stay separate, already gray.
+     */
+    private fun rasterize(pageIndex: Int, page: PDPage, unconverted: List<PDAnnotation>) {
         val crop = page.cropBox
         val rotation = ((page.rotation % 360) + 360) % 360
         val turned = rotation == 90 || rotation == 270
@@ -519,6 +632,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         val stream = document.document.createCOSStream()
         val bitmap = rasterizer.render(pageIndex, width, height)
         try {
+            if (unconverted.isNotEmpty()) drawAnnotations(pageIndex, page, unconverted, bitmap, scale)
             val row = IntArray(bitmap.width)
             stream.createOutputStream(COSName.FLATE_DECODE).use { out ->
                 val grayRow = ByteArray(bitmap.width)
@@ -546,6 +660,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             270 -> Matrix(0f, -h, w, 0f, x, y + h)
             else -> Matrix(w, 0f, 0f, h, x, y)
         }
+        if (unconverted.isNotEmpty()) page.annotations = page.annotations.filterNot { a -> unconverted.any { it.cosObject === a.cosObject } }
         page.resources = PDResources()
         PDPageContentStream(document, page).use {
             it.saveGraphicsState()
@@ -555,8 +670,43 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         }
     }
 
+    /**
+     * Draws [annotations] over [bitmap] with pdfbox, as the platform renderer leaves annotations out. They are drawn alone (page content set
+     * aside) on a transparent layer, since pdfbox clears what it draws on, then laid over. One that cannot be drawn is left out.
+     */
+    private fun drawAnnotations(pageIndex: Int, page: PDPage, annotations: List<PDAnnotation>, bitmap: Bitmap, scale: Float) {
+        val contents = page.cosObject.getItem(COSName.CONTENTS)
+        page.cosObject.removeItem(COSName.CONTENTS)
+        var layer: Bitmap? = null
+        try {
+            layer = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            PDFRenderer(document).apply { setAnnotationsFilter { a -> annotations.any { it.cosObject === a.cosObject } } }
+                .renderPageToGraphics(pageIndex, Paint(Paint.ANTI_ALIAS_FLAG), Canvas(layer), scale)
+            Canvas(bitmap).drawBitmap(layer, 0f, 0f, null)
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot draw annotations on page ${pageIndex + 1}", e)
+        } finally {
+            layer?.recycle()
+            if (contents != null) page.cosObject.setItem(COSName.CONTENTS, contents)
+        }
+    }
+
     private companion object {
         val DCT_NAMES = listOf(COSName.DCT_DECODE.name, "DCT")
+
+        val CSS_COLOUR = Regex("""(color\s*:\s*)(#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\))""")
+
+        /** [css] with every hex or rgb() colour value turned into its gray. */
+        fun grayCss(css: String): String = CSS_COLOUR.replace(css) { match ->
+            val value = match.groupValues[2]
+            val rgb = when {
+                value.startsWith("rgb") -> (3..5).map { match.groupValues[it].toInt().coerceIn(0, 255) }
+                value.length == 4 -> (1..3).map { value[it].digitToInt(16) * 17 }
+                else -> (0..2).map { value.substring(1 + 2 * it, 3 + 2 * it).toInt(16) }
+            }
+            val gray = grayByte(luminance(rgb[0] / 255f, rgb[1] / 255f, rgb[2] / 255f)).toInt() and 0xFF
+            match.groupValues[1] + "#%02x%02x%02x".format(gray, gray, gray)
+        }
 
         fun filterNames(filter: COSBase?): List<String> = when (filter) {
             is COSName -> listOf(filter.name)
@@ -573,17 +723,25 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 })
                 ?: throw IOException("Cannot decode a JPEG image")
 
-        /** Writes [bitmap], a decoded JPEG of [model] with 1 or 3 components, as a gray JPEG; [decode] maps its 0-255 samples. */
+        /**
+         * Writes [bitmap], a decoded JPEG of [model], as a gray JPEG; [decode] maps its 0-255 samples. The platform decoder gives RGB, which is
+         * right for gray and RGB data and for CMYK it converts as [ColorModel.Cmyk] does, so CMYK is taken as it comes, with its default Decode.
+         */
         fun writeGrayJpeg(bitmap: Bitmap, model: ColorModel, decode: FloatArray, out: OutputStream) {
             val n = model.components
-            // The platform decoder turns the samples into RGB as if they were YCbCr or gray; that is only right for these spaces.
-            if (n != 1 && n != 3 || model is ColorModel.Lab) throw IOException("JPEG image with $n components in ${model::class.simpleName}")
+            val cmyk = model === ColorModel.Cmyk
+            if (cmyk && !decode.contentEquals(model.defaultDecode(8))) throw IOException("CMYK JPEG with a Decode array")
+            if (!cmyk && (n != 1 && n != 3 || model is ColorModel.Lab)) throw IOException("JPEG image with $n components in ${model::class.simpleName}")
             val pixels = IntArray(bitmap.width)
             val colour = FloatArray(n)
             GrayJpegEncoder.encode(bitmap.width, bitmap.height, JPEG_QUALITY, out) { y, row ->
                 bitmap.getPixels(pixels, 0, bitmap.width, 0, y, bitmap.width, 1)
                 for (x in row.indices) {
                     val p = pixels[x]
+                    if (cmyk) {
+                        row[x] = grayByte(luminance(Color.red(p) / 255f, Color.green(p) / 255f, Color.blue(p) / 255f))
+                        continue
+                    }
                     for (k in 0 until n) {
                         val sample = when (k) { 0 -> Color.red(p); 1 -> Color.green(p); else -> Color.blue(p) }
                         colour[k] = decode[2 * k] + sample * (decode[2 * k + 1] - decode[2 * k]) / 255f
