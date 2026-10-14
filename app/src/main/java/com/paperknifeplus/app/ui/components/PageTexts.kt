@@ -18,9 +18,12 @@ data class PageNumbering(val format: String, val position: String, val fontSize:
 /** The font the Page Numbers tool writes with; it only encodes WinAnsi characters. */
 private val PAGE_TEXT_FONT: PDFont = PDType1Font.HELVETICA_BOLD
 
-/** [format] with `{n}` replaced by the 1-based [page], `{total}` by the document's [total] pages and `{date}` by [date]. */
-fun expandPageTokens(format: String, page: Int, total: Int, date: String): String =
-    format.replace("{n}", page.toString()).replace("{total}", total.toString()).replace("{date}", date)
+/** [format] with `{n}` or `{page}` replaced by the 1-based [page], `{total}` by the document's [total] pages and `{date}` by [date]. */
+fun expandPageTokens(format: String, page: Int, total: Int, date: String): String = format
+    .replace("{n}", page.toString())
+    .replace("{page}", page.toString())
+    .replace("{total}", total.toString())
+    .replace("{date}", date)
 
 /**
  * Today's date as [locale]'s short date, in the Gregorian calendar whatever the locale's own, for `{date}`. Digits become ASCII and any

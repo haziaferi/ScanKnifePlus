@@ -33,14 +33,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.tom_roush.pdfbox.io.MemoryUsageSetting
-import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
-import java.io.InputStream
 
 /** One entry of the merge list. [id] tells apart entries for the same file, which may be added more than once. */
 data class MergeFile(
@@ -154,23 +150,9 @@ fun MergeView(
         val startTime = System.currentTimeMillis()
         val files = selectedFiles
         scope.launch(Dispatchers.IO) {
-            val sourcesToClose = mutableListOf<InputStream>()
             try {
-                val merger = PDFMergerUtility()
-                context.contentResolver.requireOutputStream(uri).use { outputStream ->
-                    merger.destinationStream = outputStream
-                    files.forEachIndexed { index, file ->
-                        withContext(Dispatchers.Main) { progressCount = index + 1 }
-                        // Encrypted files are merged from their decrypted copies; MERGE stays disabled until every one has one.
-                        val inputStream = context.contentResolver.requireInputStream(file.decryptedUri ?: file.uri)
-                        sourcesToClose.add(inputStream)
-                        merger.addSource(inputStream)
-                    }
-                    merger.mergeDocuments(MemoryUsageSetting.setupMainMemoryOnly())
-                    outputStream.flush()
-                }
+                val finalCount = mergeFiles(context, files, uri) { current, _ -> progressCount = current }
                 val timeStr = formatElapsed(startTime)
-                val finalCount = getPageCount(context, uri, null)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
@@ -187,14 +169,6 @@ fun MergeView(
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Merge failed: ${e.message}", Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
-                }
-            } finally {
-                sourcesToClose.forEach {
-                    try {
-                        it.close()
-                    } catch (e: IOException) {
-                        Log.w("MergeView", "Could not close a merge source", e)
-                    }
                 }
             }
         }

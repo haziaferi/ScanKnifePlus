@@ -1,5 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
+import android.net.Uri
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.multipdf.PDFMergerUtility
@@ -56,5 +58,18 @@ fun mergePdfs(
         }
     } finally {
         opened.forEach(PDDocument::close)
+    }
+}
+
+/**
+ * Merges the whole of each of [files], in order, into [output] as the Merge screen does and returns the page count. Encrypted files are read
+ * from their decrypted copies (the screen keeps MERGE disabled until every one has one), and documents are buffered in temp files in the
+ * cache folder. Blocking; throws on failure.
+ */
+fun mergeFiles(context: Context, files: List<MergeFile>, output: Uri, onProgress: (Int, Int) -> Unit = { _, _ -> }): Int {
+    val resolver = context.contentResolver
+    val sources = files.map { file -> MergeSource({ resolver.requireInputStream(file.decryptedUri ?: file.uri) }) }
+    return resolver.requireOutputStream(output).use { stream ->
+        mergePdfs(sources, stream, MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir), onProgress).also { stream.flush() }
     }
 }

@@ -31,6 +31,7 @@ class PageTextsTest {
     @Test
     fun `tokens are replaced wherever they appear and unknown braces stay`() {
         assertEquals("Page 2 of 7 - 14/10/26 {x} 2", expandPageTokens("Page {n} of {total} - {date} {x} {n}", 2, 7, "14/10/26"))
+        assertEquals("3 / 3 of 7", expandPageTokens("{page} / {n} of {total}", 3, 7, "today"))
     }
 
     @Test

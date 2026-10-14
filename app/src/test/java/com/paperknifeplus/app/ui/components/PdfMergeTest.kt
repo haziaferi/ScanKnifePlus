@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -15,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 /** Merge appends whole files or the ranges given per file, in order. */
 @RunWith(RobolectricTestRunner::class)
@@ -60,5 +62,21 @@ class PdfMergeTest {
             assertEquals(mapOf("A" to 1, "B" to 2, "D" to 0), doc.outline())
         }
         assertFalse(String(bytes, Charsets.ISO_8859_1).contains(TestPdfs.structuredMarker(3)))
+    }
+
+    @Test
+    fun `the Merge screen's files are merged whole, an unlocked one from its decrypted copy`() {
+        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(2), "merge-a.pdf")
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(3), "merge-locked.pdf")
+        val decrypted = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "merge-decrypted.pdf")
+        val files = listOf(
+            MergeFile(1, plain, "a.pdf", "1 KB", isLocked = false),
+            MergeFile(2, locked, "b.pdf", "1 KB", isLocked = true, isUnlocked = true, decryptedUri = decrypted)
+        )
+        val output = File(context.cacheDir, "merge-out.pdf").apply { delete() }
+        val progress = mutableListOf<Int>()
+        assertEquals(5, mergeFiles(context, files, Uri.fromFile(output)) { current, total -> progress += current * 10 + total })
+        assertEquals(listOf(12, 22), progress)
+        PDDocument.load(output).use { doc -> assertEquals(listOf(0, 1, 0, 1, 2), doc.pages.map { it.label() }) }
     }
 }
