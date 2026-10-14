@@ -28,6 +28,9 @@ data class AddedPage(val document: ScanDocument, val pageId: String)
 /** What [ScanLibrary.addBookCapture] stored: the updated [document] and the ids of the pages it added, left page first. */
 data class AddedPages(val document: ScanDocument, val pageIds: List<String>)
 
+/** A document's record as stored: the [document] read from it and its exact [bytes]. */
+class StoredRecord(val document: ScanDocument, val bytes: ByteArray)
+
 /** Stores a capture into the given files; [CaptureStore.store] in the app, a fake in tests. */
 fun interface CaptureWriter {
     fun store(source: ImageSource, quad: Quad?, pageDest: File, originalDest: File?): StoredCapture?
@@ -92,18 +95,8 @@ class ScanLibrary(
      * its folder or record cannot be written.
      */
     fun create(name: String? = null): ScanDocument = synchronized(LOCK) {
-        root.mkdirs()
         val now = clock()
-        val base = defaultName(now, timeZone)
-        var id = base
-        var n = 2
-        // mkdir is atomic, so two creations never share a folder; only a name that is taken moves on to the next suffix.
-        while (true) {
-            val dir = File(root, id)
-            if (dir.mkdir()) break
-            if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
-            id = "$base-${n++}"
-        }
+        val id = claimFolder(defaultName(now, timeZone))
         val doc = ScanDocument(id, name?.trim()?.takeIf { it.isNotEmpty() }, now, now, emptyList())
         try {
             write(doc)
@@ -430,6 +423,104 @@ class ScanLibrary(
         updated
     }
 
+    /** Document [id]'s record and its bytes, read together under the library lock, or null if it has no readable record. */
+    @WorkerThread
+    fun stored(id: String): StoredRecord? = synchronized(LOCK) {
+        val folder = folderOf(id) ?: return null
+        val doc = read(folder) ?: return null
+        try {
+            StoredRecord(doc, File(folder, RECORD).readBytes())
+        } catch (e: IOException) {
+            null
+        }
+    }
+
+    /** Whether document [id]'s folder exists, whether or not its record can be read. */
+    @WorkerThread
+    fun exists(id: String): Boolean = synchronized(LOCK) { folderOf(id) != null }
+
+    // The three entry points below are for the storage layer, which assembles documents from the user's folder outside the library and must
+    // claim folders, move files in and delete under the same lock as every edit, so the sweep or an edit can never see half of it.
+
+    /**
+     * Adds a document assembled outside the library in [staged], a hidden folder in the library root holding its page files (written and
+     * synced by the caller): [doc] is written into it as its record, then the folder is renamed into place as [name] or `<name>-2` and so on,
+     * so the document appears whole or not at all. [beforeRecord] gets what is about to appear first, so a caller can note it; if it throws,
+     * nothing is imported. Returns what was written; throws if it cannot be done, leaving [staged] for the caller to remove.
+     */
+    @WorkerThread
+    fun import(staged: File, name: String, doc: ScanDocument, beforeRecord: (StoredRecord) -> Unit = {}): StoredRecord = synchronized(LOCK) {
+        require(isSafeName(name) && !name.startsWith(".")) { "Unsafe name $name" }
+        require(staged.absoluteFile.parentFile == root.absoluteFile && staged.name.startsWith(".")) { "Not a staging folder here: $staged" }
+        for (f in staged.listFiles() ?: throw IOException("Cannot list $staged")) {
+            require(isSafeName(f.name) && f.name != RECORD && f.name != RECORD_TMP) { "Unsafe staged file ${f.name}" }
+        }
+        // Every claim goes through this lock, and the rename below never replaces a folder, so a name free now is still free then.
+        var id = name
+        var n = 2
+        while (File(root, id).exists()) id = "$name-${n++}"
+        val written = doc.copy(id = id)
+        val bytes = recordBytes(written)
+        beforeRecord(StoredRecord(written, bytes))
+        writeRecord(staged, bytes)
+        if (!staged.renameTo(File(root, id))) throw IOException("Cannot move $staged into the library as $id")
+        StoredRecord(written, bytes)
+    }
+
+    /**
+     * Creates a new, empty document folder named [base], or `<base>-2` and so on, and returns its name. mkdir is atomic, so two callers never
+     * share a folder; only a name that is taken moves on to the next suffix, and any other failure throws IOException. The cap on tries is a
+     * backstop: this runs under the global lock, so a loop that never ended would stall every library call in the process.
+     */
+    private fun claimFolder(base: String): String {
+        root.mkdirs()
+        var id = base
+        for (n in 2..MAX_CLAIMS) {
+            val dir = File(root, id)
+            if (dir.mkdir()) return id
+            if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
+            id = "$base-$n"
+        }
+        throw IOException("No free folder name for $base")
+    }
+
+    /**
+     * Replaces document [id] with [doc] if its record is still exactly [expected]: the files in [staged] it lacks move in, [doc] becomes the
+     * record, and files only the old record named are deleted. Returns what was written, or null if the document changed meanwhile or is gone.
+     * Throws IOException if a file cannot be moved or the record written; the document is then as it was, plus any page files moved in.
+     */
+    @WorkerThread
+    fun replace(id: String, expected: ByteArray, staged: File, doc: ScanDocument): StoredRecord? = synchronized(LOCK) {
+        val current = stored(id) ?: return null
+        if (!current.bytes.contentEquals(expected)) return null
+        val folder = File(root, id)
+        moveIn(staged, folder)
+        val written = doc.copy(id = id)
+        val bytes = write(written)
+        val kept = written.pages.flatMapTo(HashSet()) { it.files }
+        current.document.pages.flatMap { it.files }.filter { it !in kept }.forEach { File(folder, it).delete() }
+        StoredRecord(written, bytes)
+    }
+
+    /**
+     * Deletes document [id], as [delete] does, if [unchanged] accepts its current record bytes; checked under the library lock, so no edit can
+     * land in between. A document whose record cannot be read is kept.
+     */
+    @WorkerThread
+    fun deleteIf(id: String, unchanged: (ByteArray) -> Boolean): Boolean = synchronized(LOCK) {
+        val record = stored(id) ?: return false
+        unchanged(record.bytes) && delete(id)
+    }
+
+    /** Moves every file in [staged] that [folder] lacks into it; a file already there is the same write-once page and is left as it is. */
+    private fun moveIn(staged: File, folder: File) {
+        for (f in staged.listFiles() ?: throw IOException("Cannot list $staged")) {
+            require(isSafeName(f.name) && f.name != RECORD && f.name != RECORD_TMP) { "Unsafe staged file ${f.name}" }
+            val dest = File(folder, f.name)
+            if (!dest.exists() && !f.renameTo(dest)) throw IOException("Cannot move ${f.name} into $folder")
+        }
+    }
+
     /**
      * Deletes document [id] with all its files. The folder is first renamed to a tombstone, which is atomic, so the document disappears whole even
      * if deleting its files is interrupted; [documents] sweeps leftover tombstones. Returns false if it did not exist or could not be removed.
@@ -536,27 +627,29 @@ class ScanLibrary(
         // synced first), or by a crash while create() writes the first record, when it may be partial and then fails to parse like any damage.
         if (!record.exists() && tmp.exists()) tmp.renameTo(record)
         if (!record.isFile || record.length() > MAX_RECORD_BYTES) return null
-        return try {
-            val doc = ScanDocument.fromJson(JSONObject(record.readText()))
-            if (doc.pages.any { p -> p.files.any { !isSafeName(it) || it == RECORD || it == RECORD_TMP } }) return null
-            // A record that names another folder was copied in by hand; its folder name is what identifies it.
-            if (doc.id != folder.name) doc.copy(id = folder.name) else doc
-        } catch (e: Exception) {
+        val doc = try {
+            parseRecord(record.readBytes())
+        } catch (e: IOException) {
             null
-        } catch (e: StackOverflowError) {
-            null // absurdly nested JSON
-        }
+        } ?: return null
+        // A record that names another folder was copied in by hand; its folder name is what identifies it.
+        return if (doc.id != folder.name) doc.copy(id = folder.name) else doc
     }
 
     private fun update(doc: ScanDocument): ScanDocument = doc.copy(modified = clock()).also { write(it) }
 
     /** Writes and syncs the record beside its final name, then renames it into place, so a crash never leaves a half-written record. */
-    private fun write(doc: ScanDocument) {
-        val folder = File(root, doc.id)
+    private fun write(doc: ScanDocument): ByteArray {
+        val bytes = recordBytes(doc)
+        writeRecord(File(root, doc.id), bytes)
+        return bytes
+    }
+
+    private fun writeRecord(folder: File, bytes: ByteArray) {
         val tmp = File(folder, RECORD_TMP)
         val record = File(folder, RECORD)
         FileOutputStream(tmp).use { out ->
-            out.write(doc.toJson().toString(2).toByteArray(Charsets.UTF_8))
+            out.write(bytes)
             out.fd.sync()
         }
         if (tmp.renameTo(record)) return
@@ -564,7 +657,7 @@ class ScanLibrary(
         // tests) needs the old record removed first. Once it is gone the synced temp file is the only copy, so it is kept for read() to recover.
         if (!record.delete()) {
             tmp.delete()
-            throw IOException("Could not replace the record of ${doc.id}")
+            throw IOException("Could not replace the record in $folder")
         }
         // If even this rename fails, the new record survives as the synced temp file and read() recovers it: it counts as written, and callers
         // must not throw away the files it names.
@@ -580,7 +673,22 @@ class ScanLibrary(
         const val RECORD = "document.json"
         private const val RECORD_TMP = "document.json.tmp"
         private const val TOMBSTONE = ".trash-"
-        private const val MAX_RECORD_BYTES = 1L shl 20
+        /** The largest record the library reads; anything bigger is not one it wrote. */
+        internal const val MAX_RECORD_BYTES = 1L shl 20
+
+        /** A record's bytes as the library writes them. */
+        internal fun recordBytes(doc: ScanDocument): ByteArray = doc.toJson().toString(2).toByteArray(Charsets.UTF_8)
+
+        /** The document in record [bytes], or null if they are not a record or name a file that could point outside its folder. */
+        internal fun parseRecord(bytes: ByteArray): ScanDocument? = try {
+            ScanDocument.fromJson(JSONObject(String(bytes, Charsets.UTF_8)))
+                .takeIf { doc -> doc.pages.none { p -> p.files.any { !isSafeName(it) || it == RECORD || it == RECORD_TMP } } }
+        } catch (e: Exception) {
+            null
+        } catch (e: StackOverflowError) {
+            null // absurdly nested JSON
+        }
+        private const val MAX_CLAIMS = 10_000
 
         /** How old an unnamed file must be before [sweep] removes it; a day, as for stale PDF export work folders. */
         internal const val STALE_MILLIS = 24L * 60 * 60 * 1000
