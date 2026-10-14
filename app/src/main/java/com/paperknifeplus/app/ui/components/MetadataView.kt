@@ -30,6 +30,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import java.io.ByteArrayOutputStream
+import java.util.Calendar
+import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
@@ -39,6 +41,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 @Composable
 fun MetadataView(
@@ -382,25 +385,56 @@ internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?)
     }
 }
 
+/** A change to one of the document dates: [Keep] leaves it as it is, [Change] sets it, a null date removing it. */
+internal sealed interface DateEdit {
+    data object Keep : DateEdit
+
+    data class Change(val date: Calendar?) : DateEdit
+}
+
+/** What the Metadata tool changes besides the [PdfProperties] fields: the creation and modification dates, and removing the XMP stream. */
+internal data class MetadataExtras(val created: DateEdit = DateEdit.Keep, val modified: DateEdit = DateEdit.Keep, val removeXmp: Boolean = false)
+
 /**
- * Writes [source], opened with [password], to [output] with the fields the user changed from [original] to [edited], as the Metadata tool
- * saves. No default creator, producer or author is added, so cleared fields stay cleared. Blocking; throws on failure.
+ * Writes [source], opened with [password], to [output] with the fields the user changed from [original] to [edited] and the [extras], as
+ * the Metadata tool saves. No default creator, producer or author is added, so cleared fields stay cleared. Blocking; throws on failure.
  */
-internal fun saveProperties(context: Context, source: Uri, password: String, output: Uri, original: PdfProperties, edited: PdfProperties) =
-    rewritePdf(context, source, password, output, applyDefaults = false) { applyProperties(it, original, edited) }
+internal fun saveProperties(
+    context: Context,
+    source: Uri,
+    password: String,
+    output: Uri,
+    original: PdfProperties,
+    edited: PdfProperties,
+    extras: MetadataExtras = MetadataExtras()
+) = rewritePdf(context, source, password, output, applyDefaults = false) { applyProperties(it, original, edited, extras) }
 
 /**
  * Sets each field of [document]'s information that differs between [original] and [edited] to its [edited] value, a blank one removing the
- * entry, and makes the XMP metadata say the same: dc:title, dc:creator, dc:description, pdf:Keywords, xmp:CreatorTool or pdf:Producer is
- * rewritten, or removed for a blank field. Unchanged fields keep their Info and XMP as they are. A document without XMP gets none; XMP that
- * cannot be parsed is left as it is.
+ * entry, and each date [extras] changes, and makes the XMP metadata say the same: dc:title, dc:creator, dc:description, pdf:Keywords,
+ * xmp:CreatorTool, pdf:Producer, xmp:CreateDate or xmp:ModifyDate is rewritten, or removed for a blank field. Unchanged fields keep their Info
+ * and XMP as they are. A document without XMP gets none; XMP that cannot be parsed is left as it is; [MetadataExtras.removeXmp] drops the
+ * document's XMP stream instead.
  */
-internal fun applyProperties(document: PDDocument, original: PdfProperties, edited: PdfProperties) {
+internal fun applyProperties(document: PDDocument, original: PdfProperties, edited: PdfProperties, extras: MetadataExtras = MetadataExtras()) {
     val values = edited.asList()
     val changed = values.indices.filter { values[it] != original.asList()[it] }
-    if (changed.isEmpty()) return
     val info = document.documentInformation
     changed.forEach { INFO_SETTERS[it](info, values[it].ifBlank { null }) }
+    val xmpChanges = changed.map { XMP_PROPERTIES[it] to values[it] }.toMutableList()
+    (extras.created as? DateEdit.Change)?.let {
+        info.creationDate = it.date
+        xmpChanges += XMP_CREATE_DATE to it.date?.let(::xmpDate).orEmpty()
+    }
+    (extras.modified as? DateEdit.Change)?.let {
+        info.modificationDate = it.date
+        xmpChanges += XMP_MODIFY_DATE to it.date?.let(::xmpDate).orEmpty()
+    }
+    if (extras.removeXmp) {
+        document.documentCatalog.metadata = null
+        return
+    }
+    if (xmpChanges.isEmpty()) return
 
     val metadata = document.documentCatalog.metadata ?: return
     val xmp = try {
@@ -415,15 +449,14 @@ internal fun applyProperties(document: PDDocument, original: PdfProperties, edit
         it.setAttributeNS(RDF_NS, "${rdf.prefixFor(RDF_NS, "rdf")}:about", "")
         rdf.appendChild(it)
     }
-    for (index in changed) {
-        val property = XMP_PROPERTIES[index]
+    for ((property, value) in xmpChanges) {
         for (description in descriptions) {
             description.removeAttributeNS(property.namespace, property.name)
             description.childElements()
                 .filter { it.namespaceURI == property.namespace && it.localName == property.name }
                 .forEach { description.removeChild(it) }
         }
-        if (values[index].isNotBlank()) target.appendChild(property.element(xmp, target, values[index]))
+        if (value.isNotBlank()) target.appendChild(property.element(xmp, target, value))
     }
     metadata.importXMPMetadata(serializeXml(xmp))
 }
@@ -472,6 +505,19 @@ private val XMP_PROPERTIES = listOf(
     XmpProperty("http://ns.adobe.com/xap/1.0/", "xmp", "CreatorTool", null),
     XmpProperty("http://ns.adobe.com/pdf/1.3/", "pdf", "Producer", null)
 )
+
+private val XMP_CREATE_DATE = XmpProperty("http://ns.adobe.com/xap/1.0/", "xmp", "CreateDate", null)
+private val XMP_MODIFY_DATE = XmpProperty("http://ns.adobe.com/xap/1.0/", "xmp", "ModifyDate", null)
+
+/** [date] as an XMP (ISO 8601) date with its time zone offset, e.g. 2026-10-14T09:30:00+02:00. */
+private fun xmpDate(date: Calendar): String {
+    val offset = (date.get(Calendar.ZONE_OFFSET) + date.get(Calendar.DST_OFFSET)) / 60_000
+    val zone = if (offset == 0) "Z" else String.format(Locale.ROOT, "%s%02d:%02d", if (offset < 0) "-" else "+", abs(offset) / 60, abs(offset) % 60)
+    return String.format(
+        Locale.ROOT, "%04d-%02d-%02dT%02d:%02d:%02d%s", date.get(Calendar.YEAR), date.get(Calendar.MONTH) + 1, date.get(Calendar.DAY_OF_MONTH),
+        date.get(Calendar.HOUR_OF_DAY), date.get(Calendar.MINUTE), date.get(Calendar.SECOND), zone
+    )
+}
 
 private fun PdfProperties.asList() = listOf(title, author, subject, keywords, creator, producer)
 
