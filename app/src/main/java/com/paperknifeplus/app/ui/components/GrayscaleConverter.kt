@@ -594,6 +594,23 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         walk(form.getDictionaryObject(COSName.FIELDS) as? COSArray)
     }
 
+    /**
+     * Removes a form [widget] drawn into a fallback image from its field's /Kids, and a field left without widgets from its parent's /Kids
+     * or the form's /Fields, so the form has no field that can no longer be shown.
+     */
+    private fun detachWidget(widget: COSDictionary) {
+        val form = document.documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as? COSDictionary ?: return
+        var node = widget
+        while (true) {
+            val parent = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
+            val siblings = (parent ?: form).getDictionaryObject(if (parent != null) COSName.KIDS else COSName.FIELDS) as? COSArray
+            if (siblings != null) (siblings.size() - 1 downTo 0).filter { siblings.getObject(it) === node }.forEach { siblings.remove(it) }
+            val remaining = (parent?.getDictionaryObject(COSName.KIDS) as? COSArray)?.size() ?: 0
+            if (parent == null || remaining > 0) return
+            node = parent
+        }
+    }
+
     /** Bookmark text colours (/C, always RGB) become gray. */
     private fun convertOutline() {
         val outline = document.documentCatalog.cosObject.getDictionaryObject(COSName.OUTLINES) as? COSDictionary ?: return
@@ -660,7 +677,10 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             270 -> Matrix(0f, -h, w, 0f, x, y + h)
             else -> Matrix(w, 0f, 0f, h, x, y)
         }
-        if (unconverted.isNotEmpty()) page.annotations = page.annotations.filterNot { a -> unconverted.any { it.cosObject === a.cosObject } }
+        if (unconverted.isNotEmpty()) {
+            page.annotations = page.annotations.filterNot { a -> unconverted.any { it.cosObject === a.cosObject } }
+            unconverted.filter { it.cosObject.getCOSName(COSName.SUBTYPE) == COSName.WIDGET }.forEach { detachWidget(it.cosObject) }
+        }
         page.resources = PDResources()
         PDPageContentStream(document, page).use {
             it.saveGraphicsState()

@@ -507,6 +507,45 @@ class GrayscaleConverterTest {
     }
 
     @Test
+    fun `a widget drawn into the fallback image leaves its field, and a field left without widgets leaves the form`() {
+        val doc = PDDocument()
+        val page = addPage(doc, "0 0 10 10 re f".toByteArray())
+        val unconvertible = { form(doc, "/X cs 1 sc 0 0 10 10 re f", resources("ColorSpace" to mapOf("X" to array("Bogus")))) }
+        val convertible = form(doc, "0 0 1 rg 0 0 10 10 re f")
+        fun widget(parent: COSDictionary, appearance: COSStream, y: Int) = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.ANNOT)
+            setItem(COSName.SUBTYPE, COSName.WIDGET)
+            setItem(COSName.RECT, array(10, y, 60, y + 20))
+            setItem(COSName.PARENT, parent)
+            setItem(COSName.AP, COSDictionary().apply { setItem(COSName.N, appearance) })
+        }
+        val single = COSDictionary().apply { setItem(COSName.FT, name("Tx")); setItem(COSName.T, COSString("single")) }
+        val pair = COSDictionary().apply { setItem(COSName.FT, name("Btn")); setItem(COSName.T, COSString("pair")) }
+        val onlyWidget = widget(single, unconvertible(), 10)
+        val failing = widget(pair, unconvertible(), 40)
+        val kept = widget(pair, convertible, 70)
+        single.setItem(COSName.KIDS, array(onlyWidget))
+        pair.setItem(COSName.KIDS, array(failing, kept))
+        page.cosObject.setItem(COSName.ANNOTS, array(onlyWidget, failing, kept))
+        doc.documentCatalog.cosObject.setItem(COSName.ACRO_FORM, COSDictionary().apply { setItem(COSName.FIELDS, array(single, pair)) })
+        val rasterizer = PageRasterizer { _, w, h -> Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) } }
+
+        val (out, fallbacks) = convertAndReload(doc, rasterizer)
+        out.use {
+            assertEquals(1, fallbacks)
+            val fields = (it.documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as COSDictionary).getCOSArray(COSName.FIELDS)
+            assertEquals(1, fields.size())
+            val keptField = fields.getObject(0) as COSDictionary
+            assertEquals("pair", keptField.getString(COSName.T))
+            val kids = keptField.getCOSArray(COSName.KIDS)
+            assertEquals(1, kids.size())
+            val annotations = it.getPage(0).annotations
+            assertEquals(1, annotations.size)
+            assertTrue(kids.getObject(0) === annotations.single().cosObject)
+        }
+    }
+
+    @Test
     fun `the tool removes encryption, keeps the page and reports no image pages`() {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked.pdf")
         val output = File(context.cacheDir, "gray.pdf")
