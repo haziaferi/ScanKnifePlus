@@ -12,6 +12,8 @@ import java.io.OutputStream
  * with `/` separators, the root being "". Taken names get Android's `name (1).ext` treatment, so callers see what a SAF provider would do.
  */
 class FileFolderStore(private val root: File) : FolderStore {
+    override val location: String = root.absolutePath
+
     override val rootId: String = ""
 
     override fun isAvailable(): Boolean = root.isDirectory && root.canWrite()
@@ -45,6 +47,8 @@ class FileFolderStore(private val root: File) : FolderStore {
 
     override fun openWrite(id: String): OutputStream = FileOutputStream(fileOf(id))
 
+    override fun sizeOf(id: String): Long = fileOf(id).let { if (it.isFile) it.length() else throw IOException("No file $id") }
+
     override fun rename(id: String, name: String): FolderEntry {
         val file = fileOf(id)
         val parent = file.parentFile ?: throw IOException("Cannot rename the root")
@@ -74,7 +78,8 @@ class FileFolderStore(private val root: File) : FolderStore {
 
     private fun childId(parentId: String, name: String) = if (parentId.isEmpty()) name else "$parentId/$name"
 
-    private fun entryOf(id: String, file: File) = FolderEntry(id, file.name, file.isDirectory, if (file.isFile) file.length() else 0, file.lastModified())
+    private fun entryOf(id: String, file: File) =
+        FolderEntry(id, file.name, file.isDirectory, if (file.isFile) file.length() else 0, file.lastModified())
 
     private companion object {
         const val MAX_TRIES = 100

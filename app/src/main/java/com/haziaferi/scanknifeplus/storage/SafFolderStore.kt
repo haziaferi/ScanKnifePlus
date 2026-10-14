@@ -12,13 +12,13 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * A [FolderStore] over a SAF tree the user picked ([treeUri], with a persisted read and write grant). It uses DocumentsContract and the
- * ContentResolver directly rather than DocumentFile, which makes one call per child: a folder is listed with one projected query. Files are
- * created as `application/octet-stream`, so providers keep the name as given (with a real type they may append an extension), and the type
- * follows from the extension once they are renamed into place. Errors from the provider (a revoked grant, a removed card) come out as
- * IOException.
+ * A [FolderStore] over the SAF tree the user picked ([treeUri], with a persisted read and write grant), through DocumentsContract and the
+ * ContentResolver rather than DocumentFile, which makes one call per child. Files are created as `application/octet-stream` so providers
+ * keep the name as given (with a real type they may append an extension); their type follows from the extension once renamed into place.
  */
 class SafFolderStore(private val resolver: ContentResolver, val treeUri: Uri) : FolderStore {
+    override val location: String = treeUri.toString()
+
     override val rootId: String = DocumentsContract.getTreeDocumentId(treeUri)
 
     /** The content URI of entry [id], for opening it in another app or a viewer. */
@@ -39,7 +39,10 @@ class SafFolderStore(private val resolver: ContentResolver, val treeUri: Uri) : 
     override fun list(folderId: String): List<FolderEntry> = provider("list $folderId") {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, folderId)
         val cursor = query(children, PROJECTION) ?: throw IOException("No listing for $folderId")
-        cursor.use { c -> buildList { while (c.moveToNext()) add(entryOf(c)) } }
+        val entries = cursor.use { c -> buildList { while (c.moveToNext()) add(entryOf(c)) } }
+        // Some providers answer a folder they can no longer reach with no rows; empty only counts once the folder itself answers.
+        if (entries.isEmpty() && !entry(uri(folderId)).isFolder) throw IOException("$folderId is not a folder")
+        entries
     }
 
     override fun createFolder(parentId: String, name: String): FolderEntry = create(parentId, Document.MIME_TYPE_DIR, name)
@@ -60,9 +63,25 @@ class SafFolderStore(private val resolver: ContentResolver, val treeUri: Uri) : 
         resolver.openOutputStream(uri(id), "w") ?: throw IOException("Cannot write $id")
     }
 
+    override fun sizeOf(id: String): Long = provider("measure $id") {
+        val stat = resolver.openFileDescriptor(uri(id), "r")?.use { it.statSize } ?: throw IOException("Cannot open $id")
+        // A descriptor that is not a plain file (a pipe from a cloud provider) has no size; count the bytes instead.
+        if (stat >= 0) stat else openRead(id).use(::countBytes)
+    }
+
+    private fun countBytes(input: InputStream): Long {
+        val buffer = ByteArray(BUFFER)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) return total
+            total += n
+        }
+    }
+
     override fun rename(id: String, name: String): FolderEntry = provider("rename $id") {
-        // A provider whose document ids do not change on rename returns null.
-        val renamed = DocumentsContract.renameDocument(resolver, uri(id), name) ?: uri(id)
+        // Before API 29 a failure returns null instead of throwing; a provider whose ids do not change gets the old URI back.
+        val renamed = DocumentsContract.renameDocument(resolver, uri(id), name) ?: throw IOException("Cannot rename $id")
         entry(renamed)
     }
 
@@ -84,26 +103,24 @@ class SafFolderStore(private val resolver: ContentResolver, val treeUri: Uri) : 
         id = c.getString(0),
         name = c.getString(1) ?: "",
         isFolder = c.getString(2) == Document.MIME_TYPE_DIR,
-        size = if (c.isNull(3)) 0 else c.getLong(3),
+        size = if (c.isNull(3)) null else c.getLong(3),
         modified = if (c.isNull(4)) 0 else c.getLong(4),
     )
 
-    /** Runs [block], turning the runtime exceptions providers throw for a lost grant or a vanished folder into IOException. */
+    /**
+     * Runs [block], turning any runtime exception into IOException: a provider reports a revoked grant, a removed card or its own crash as
+     * whatever exception it likes, and every caller must see those as a failed folder operation, never as a crash.
+     */
     private inline fun <T> provider(what: String, block: () -> T): T = try {
         block()
     } catch (e: IOException) {
         throw e
-    } catch (e: SecurityException) {
-        throw IOException("Cannot $what", e)
-    } catch (e: IllegalArgumentException) {
-        throw IOException("Cannot $what", e)
-    } catch (e: IllegalStateException) {
-        throw IOException("Cannot $what", e)
-    } catch (e: UnsupportedOperationException) {
+    } catch (e: RuntimeException) {
         throw IOException("Cannot $what", e)
     }
 
     private companion object {
+        const val BUFFER = 64 * 1024
         const val OCTET_STREAM = "application/octet-stream"
         val PROJECTION = arrayOf(
             Document.COLUMN_DOCUMENT_ID,

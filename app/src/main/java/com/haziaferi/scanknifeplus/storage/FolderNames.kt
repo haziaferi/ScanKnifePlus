@@ -5,9 +5,6 @@ import java.util.GregorianCalendar
 import java.util.Locale
 import java.util.TimeZone
 
-/** A Syncthing conflict copy: [name] is the file it is a copy of, [stamp] Syncthing's `yyyyMMdd-HHmmss` time. */
-data class ConflictName(val name: String, val stamp: String)
-
 /** The names the storage layer reads and makes in the user's folder. */
 object FolderNames {
     /** The visible subfolder holding each scan's editable sources, one folder per scan. */
@@ -23,7 +20,9 @@ object FolderNames {
     const val LOST = ".lost-"
 
     // Syncthing's conflictName: the base without its extension, ".sync-conflict-", the time, "-", a 7-character device id, then the extension.
-    private val CONFLICT = Regex("""^(.+)\.sync-conflict-(\d{8}-\d{6})-[A-Z0-9]{7}(\.[^.]*)?$""")
+    private val CONFLICT = Regex("""^(.+)\.sync-conflict-\d{8}-\d{6}-[A-Z0-9]{7}(\.[^.]*)?$""")
+
+    private val LOST_NAME = Regex("""\.lost-\d{8}-\d{6}(-\d+)?(\.[^.]*)?$""")
 
     /**
      * Names never shown or read as documents: dot names (Syncthing's `.stfolder`, `.stversions`, `.stignore` and `.syncthing.*.tmp`), its
@@ -32,14 +31,11 @@ object FolderNames {
     fun isHidden(name: String): Boolean =
         name.isEmpty() || name.startsWith(".") || name.startsWith("~syncthing~") || name.endsWith(TMP) || name.endsWith(BAK)
 
-    /** What [name] is a Syncthing conflict copy of, or null if it is not one. */
-    fun conflictOf(name: String): ConflictName? =
-        CONFLICT.matchEntire(name)?.let { m -> ConflictName(m.groupValues[1] + m.groupValues[3], m.groupValues[2]) }
+    /** The name of the file [name] is a Syncthing conflict copy of, or null if it is not one. */
+    fun conflictOf(name: String): String? = CONFLICT.matchEntire(name)?.let { m -> m.groupValues[1] + m.groupValues[2] }
 
     /** True for a version kept by conflict handling. */
     fun isLost(name: String): Boolean = LOST_NAME.containsMatchIn(name)
-
-    private val LOST_NAME = Regex("""\.lost-\d{8}-\d{6}(-\d+)?(\.[^.]*)?$""")
 
     /** The name the losing version of [name] is kept under at [epochMillis]: `scan.lost-20261013-142501.pdf`. */
     fun lostName(name: String, epochMillis: Long, timeZone: TimeZone): String {

@@ -104,24 +104,43 @@ class ScanFolderTest {
     }
 
     @Test
-    fun `after a merge, a later write-back merges again rather than dropping the folder's pages`() {
+    fun `after a merge the working copy is reloaded with the merged pages, and stops merging`() {
         val doc = f.scan("Receipt", pages = 1)
         written(folder.writeBack(doc.id))
-        val remote = f.scan("Other", pages = 1)
-        val remotePage = remote.pages[0]
-        remotePage.files.forEach { f.library.file(remote.id, it).copyTo(f.file("Scan sources/Receipt/$it")) }
+        val remotePage = f.remoteAddsPage("Receipt", doc)
         f.now += 1000
-        f.file("Scan sources/Receipt/document.json").writeText(doc.copy(modified = f.now, pages = doc.pages + remotePage).toJson().toString())
+        f.library.rename(doc.id, "Renamed")
+        written(folder.writeBack(doc.id))
+
+        assertEquals(doc.pages + remotePage, f.library.document(doc.id)!!.pages)
+        remotePage.files.forEach { assertTrue(f.library.file(doc.id, it).exists()) }
+        assertFalse(folder.hasChanges(doc.id))
+        val lostAfterMerge = f.names("Scan sources/Receipt").filter { FolderNames.isLost(it) }
+
+        f.now += 1000
+        f.library.rename(doc.id, "Renamed again")
+        written(folder.writeBack(doc.id))
+
+        assertEquals(doc.pages + remotePage, record("Scan sources/Receipt/document.json").pages)
+        assertEquals("Renamed again", record("Scan sources/Receipt/document.json").name)
+        assertEquals(lostAfterMerge, f.names("Scan sources/Receipt").filter { FolderNames.isLost(it) })
+    }
+
+    @Test
+    fun `a page deleted after a merge stays deleted`() {
+        val doc = f.scan("Receipt", pages = 1)
+        written(folder.writeBack(doc.id))
+        val remotePage = f.remoteAddsPage("Receipt", doc)
         f.now += 1000
         f.library.rename(doc.id, "Renamed")
         written(folder.writeBack(doc.id))
         f.now += 1000
-        f.library.rename(doc.id, "Renamed again")
+        f.library.deletePage(doc.id, remotePage.id)
 
         written(folder.writeBack(doc.id))
 
-        assertEquals(doc.pages + remotePage, record("Scan sources/Receipt/document.json").pages)
-        remotePage.files.forEach { assertTrue(f.file("Scan sources/Receipt/$it").exists()) }
+        assertEquals(doc.pages, record("Scan sources/Receipt/document.json").pages)
+        assertEquals(doc.pages, f.library.document(doc.id)!!.pages)
     }
 
     @Test
@@ -146,7 +165,7 @@ class ScanFolderTest {
         val page = doc.pages[0].image
         f.file("Scan sources/Receipt").mkdirs()
         f.file("Scan sources/Receipt/$page").writeText("someone else's longer content")
-        f.copies.put(doc.id, Binding("Receipt", null, null))
+        f.copies.put(doc.id, Binding(f.store.location, "Receipt", null, null))
 
         assertEquals(WriteResult.Failed, folder.writeBack(doc.id))
         assertEquals("someone else's longer content", f.file("Scan sources/Receipt/$page").readText())
@@ -174,7 +193,9 @@ class ScanFolderTest {
         val ready = folder.copyIn("Receipt") as CopyInResult.Ready
 
         assertEquals(doc.pages, f.library.document(ready.id)!!.pages)
-        doc.pages.flatMap { it.files }.forEach { assertEquals(f.file("Scan sources/Receipt/$it").readText(), f.library.file(ready.id, it).readText()) }
+        doc.pages.flatMap { it.files }.forEach {
+            assertEquals(f.file("Scan sources/Receipt/$it").readText(), f.library.file(ready.id, it).readText())
+        }
         assertFalse(folder.hasChanges(ready.id))
         assertEquals(ready, folder.copyIn("Receipt"))
         assertTrue(f.libraryRoot.list()!!.none { it.startsWith(WorkingCopies.IMPORT_PREFIX) })

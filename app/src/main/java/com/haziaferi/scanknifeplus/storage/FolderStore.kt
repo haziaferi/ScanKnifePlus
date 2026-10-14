@@ -4,16 +4,21 @@ import androidx.annotation.WorkerThread
 import java.io.InputStream
 import java.io.OutputStream
 
-/** One child of a folder, as one listing returns it. [id] is the store's handle for it; [modified] is epoch ms, or 0 when unknown. */
-data class FolderEntry(val id: String, val name: String, val isFolder: Boolean, val size: Long, val modified: Long)
+/**
+ * One child of a folder, as one listing returns it. [id] is the store's handle for it; [size] is null when the provider does not report one,
+ * and [modified] is epoch ms, or 0 when unknown.
+ */
+data class FolderEntry(val id: String, val name: String, val isFolder: Boolean, val size: Long?, val modified: Long)
 
 /**
- * The user's folder as the storage layer sees it: folders and files reached by opaque ids, with SAF's rules for every implementation, so
- * code tested over [FileFolderStore] behaves the same over [SafFolderStore]. Nothing is ever replaced: [createFile] and [rename] give a
- * different name (`name (1).ext`, as Android's providers do) when the one asked for is taken, and callers check the name they got. Every
- * method blocks and throws IOException on failure; a folder that cannot be listed throws, it never lists as empty.
+ * The user's folder as the storage layer sees it: folders and files reached by opaque ids, with SAF's rules for every implementation. Nothing
+ * is ever replaced: [createFile] and [rename] give another name (`name (1).ext`, as Android's providers do) when the one asked for is taken,
+ * so callers check the name they got. Every method blocks and throws IOException on failure, and a folder that cannot be listed throws.
  */
 interface FolderStore {
+    /** Identifies the chosen folder (its tree URI, or its path), so state kept for one folder is never applied to another. */
+    val location: String
+
     /** The id of the folder the user chose. */
     val rootId: String
 
@@ -39,6 +44,10 @@ interface FolderStore {
     /** Opens a file this layer just created for writing. */
     @WorkerThread
     fun openWrite(id: String): OutputStream
+
+    /** The size of file [id] as stored, measured from the file itself rather than taken from a listing, which may not report one. */
+    @WorkerThread
+    fun sizeOf(id: String): Long
 
     /** Renames [id] without ever replacing another entry; returns it as it now is, possibly with a new id and a different name. */
     @WorkerThread

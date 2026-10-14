@@ -39,7 +39,7 @@ class FolderAccess(private val context: Context) {
 
     /**
      * Adopts [treeUri], as the folder picker returned it, as the folder; returns false (keeping the previous folder) if its grant cannot be
-     * persisted with write access or the folder cannot be written to.
+     * persisted with write access or the folder cannot be written to. Blocking (it queries the provider).
      */
     @WorkerThread
     fun adopt(treeUri: Uri): Boolean {
@@ -61,7 +61,7 @@ class FolderAccess(private val context: Context) {
         return true
     }
 
-    /** Where the folder stands now; checks the grant and queries the folder. */
+    /** Where the folder stands now; checks the grant and queries the folder. Blocking. */
     @WorkerThread
     fun state(): FolderState {
         val uri = treeUri() ?: return FolderState.NotChosen
@@ -70,7 +70,7 @@ class FolderAccess(private val context: Context) {
         return FolderState.Ready(ScanFolder(store, ScanLibrary(ScanFiles.libraryDir(context)), ScanFiles.libraryDir(context), workingCopies()), store)
     }
 
-    /** The launch sweep over private working copies ([WorkingCopies.sweep]); needs no folder. Run at launch, before any scan session. */
+    /** The launch sweep over private working copies ([WorkingCopies.sweep]); needs no folder. Blocking; run at launch, before any session. */
     @WorkerThread
     fun sweep(): Int = workingCopies().sweep(ScanLibrary(ScanFiles.libraryDir(context)), ScanFiles.libraryDir(context))
 

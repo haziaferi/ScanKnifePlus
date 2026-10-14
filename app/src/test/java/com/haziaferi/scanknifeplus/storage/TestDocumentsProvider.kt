@@ -26,7 +26,9 @@ class TestDocumentsProvider : DocumentsProvider() {
         MatrixCursor(projection ?: COLUMNS).apply { add(this, documentId) }
 
     override fun queryChildDocuments(parentDocumentId: String, projection: Array<out String>?, sortOrder: String?): Cursor {
-        val children = fileOf(parentDocumentId).listFiles() ?: throw FileNotFoundException(parentDocumentId)
+        if (crash) throw NullPointerException("provider bug")
+        val children = fileOf(parentDocumentId).listFiles()
+            ?: if (emptyForMissing) return MatrixCursor(projection ?: COLUMNS) else throw FileNotFoundException(parentDocumentId)
         return MatrixCursor(projection ?: COLUMNS).apply { children.forEach { add(this, "$parentDocumentId/${it.name}") } }
     }
 
@@ -65,7 +67,7 @@ class TestDocumentsProvider : DocumentsProvider() {
         row.add(Document.COLUMN_LAST_MODIFIED, file.lastModified())
         row.add(
             Document.COLUMN_FLAGS,
-            if (file.isDirectory && file.canWrite()) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_RENAME,
+            if (file.isDirectory) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE or Document.FLAG_SUPPORTS_RENAME,
         )
     }
 
@@ -95,9 +97,17 @@ class TestDocumentsProvider : DocumentsProvider() {
         /** The folder the provider serves; set by [install]. */
         lateinit var base: File
 
+        /** Answer a folder that is gone with no children, as some providers do, instead of an error. */
+        var emptyForMissing = false
+
+        /** Throw a provider's own bug from every listing. */
+        var crash = false
+
         /** Registers a provider serving [folder] with Robolectric's ContentResolver. */
         fun install(folder: File) {
             base = folder
+            emptyForMissing = false
+            crash = false
             val info = ProviderInfo().apply {
                 authority = AUTHORITY
                 exported = true

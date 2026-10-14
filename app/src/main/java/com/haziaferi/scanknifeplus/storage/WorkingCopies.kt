@@ -10,16 +10,16 @@ import java.security.MessageDigest
 import org.json.JSONObject
 
 /**
- * What ties a working copy in the private scan library to its scan in the user's folder: [name] is its folder under `Scan sources/` (and
- * the stem of its PDF); [base] the SHA-256 of the folder's `document.json` as the working copy last saw it, so a change made meanwhile (by
- * another device) is merged rather than overwritten; [confirmed] the SHA-256 of the working copy's own record when everything in it was last
- * confirmed written to the folder, or null if it has changes the folder lacks.
+ * What ties a working copy in the private scan library to its scan in the user's folder: [folder] is that folder's [FolderStore.location] and
+ * [name] the scan's folder under `Scan sources/` (and its PDF's stem). [base] is the SHA-256 of the folder's `document.json` as the working
+ * copy last matched it, so a change made elsewhere is merged instead of overwritten. [confirmed] is the SHA-256 of the exact working record
+ * bytes that were last written to the folder, or null if none were.
  */
-data class Binding(val name: String, val base: String?, val confirmed: String?)
+data class Binding(val folder: String, val name: String, val base: String?, val confirmed: String?)
 
 /**
- * The [Binding] of each working copy, one small JSON file per working copy in [dir] (app-private, outside the scan library so its sweep and
- * listing never see them), and the launch sweep that removes working copies the folder already holds. Blocking.
+ * The [Binding] of each working copy, one small JSON file per working copy in [dir] (app-private and outside the scan library, so its
+ * listing and sweep never see them), and the launch sweep that removes working copies the folder already holds. Every method blocks.
  */
 class WorkingCopies(private val dir: File) {
     @WorkerThread
@@ -27,25 +27,25 @@ class WorkingCopies(private val dir: File) {
         val f = fileOf(id) ?: return null
         return try {
             val json = JSONObject(f.readText())
-            Binding(json.getString("name"), json.optStringOrNull("base"), json.optStringOrNull("confirmed"))
+            Binding(json.getString("folder"), json.getString("name"), json.optStringOrNull("base"), json.optStringOrNull("confirmed"))
         } catch (e: Exception) {
             null // missing or damaged: the working copy counts as unbound, which keeps it
         }
     }
 
-    /** The id of the working copy bound to folder scan [name], if there is one. */
+    /** The id of the working copy bound to scan [name] in folder [folder], if there is one. */
     @WorkerThread
-    fun idOf(name: String): String? = synchronized(LOCK) {
-        dir.listFiles().orEmpty().map { it.name }.filter { it.endsWith(JSON) }.map { it.removeSuffix(JSON) }.firstOrNull { get(it)?.name == name }
+    fun idOf(folder: String, name: String): String? = synchronized(LOCK) {
+        ids().firstOrNull { get(it)?.let { b -> b.folder == folder && b.name == name } == true }
     }
 
-    /** Saves [binding] for working copy [id]: written beside its file, then renamed into place. Throws IOException. */
+    /** Saves [binding] for working copy [id]: written and synced beside its file, then renamed into place. Throws IOException. */
     @WorkerThread
     fun put(id: String, binding: Binding) = synchronized(LOCK) {
         val f = fileOf(id) ?: throw IOException("Unsafe working copy id $id")
         dir.mkdirs()
-        val json = JSONObject().put("name", binding.name).put("base", binding.base ?: JSONObject.NULL)
-            .put("confirmed", binding.confirmed ?: JSONObject.NULL)
+        val json = JSONObject().put("folder", binding.folder).put("name", binding.name)
+            .put("base", binding.base ?: JSONObject.NULL).put("confirmed", binding.confirmed ?: JSONObject.NULL)
         val tmp = File(dir, f.name + FolderNames.TMP)
         FileOutputStream(tmp).use { out ->
             out.write(json.toString().toByteArray(Charsets.UTF_8))
@@ -59,31 +59,26 @@ class WorkingCopies(private val dir: File) {
     fun remove(id: String) = synchronized(LOCK) { fileOf(id)?.delete() }
 
     /**
-     * The launch sweep. Removes each working copy whose record is still exactly the one confirmed written to the folder (so it holds nothing
-     * the folder lacks), with its binding; bindings whose working copy is gone; and what an interrupted write in private storage left: binding
-     * temp files and `.import-` folders in [libraryRoot]. Run it at launch, before any scan session or copy-in starts: a working copy that an
-     * open session uses but has not changed yet would also go. Never touches the user's folder. Returns how many items it removed.
+     * The launch sweep, which never touches the user's folder. It deletes each working copy whose record is still exactly the bytes confirmed
+     * written (checked under the library's lock), drops bindings whose working copy folder is gone, and removes binding temp files and
+     * `.import-` folders left in [libraryRoot]. Run it at launch before any session or copy-in starts; returns how many items it removed.
      */
     @WorkerThread
     fun sweep(library: ScanLibrary, libraryRoot: File): Int = synchronized(LOCK) {
         var removed = 0
         for (f in dir.listFiles().orEmpty()) {
-            if (f.name.endsWith(FolderNames.TMP)) {
-                if (f.delete()) removed++
-                continue
-            }
-            if (!f.name.endsWith(JSON)) continue
-            val id = f.name.removeSuffix(JSON)
+            if (f.name.endsWith(FolderNames.TMP) && f.delete()) removed++
+        }
+        for (id in ids()) {
             val binding = get(id) ?: continue
-            if (library.document(id) == null) {
-                if (f.delete()) removed++
+            if (!library.exists(id)) {
+                if (fileOf(id)?.delete() == true) removed++
                 continue
             }
             val confirmed = binding.confirmed ?: continue
-            if (recordHash(library, id) != confirmed) continue
-            if (library.delete(id)) {
+            if (library.deleteIf(id) { sha256(it) == confirmed }) {
                 removed++
-                f.delete()
+                fileOf(id)?.delete()
             }
         }
         for (staging in libraryRoot.listFiles().orEmpty()) {
@@ -93,6 +88,8 @@ class WorkingCopies(private val dir: File) {
         removed
     }
 
+    private fun ids(): List<String> = dir.listFiles().orEmpty().map { it.name }.filter { it.endsWith(JSON) }.map { it.removeSuffix(JSON) }
+
     private fun fileOf(id: String): File? = if (FolderNames.isSafe(id)) File(dir, id + JSON) else null
 
     companion object {
@@ -100,15 +97,8 @@ class WorkingCopies(private val dir: File) {
         private const val TAG = "WorkingCopies"
         private val LOCK = Any()
 
-        /** Prefix of the hidden folders a copy-in assembles a working copy in before renaming it into the library. */
+        /** Prefix of the hidden folders in the scan library where a copy-in assembles files before the library takes them in. */
         internal const val IMPORT_PREFIX = ".import-"
-
-        /** The SHA-256 of working copy [id]'s record file, or null if it cannot be read. */
-        internal fun recordHash(library: ScanLibrary, id: String): String? = try {
-            sha256(library.file(id, ScanLibrary.RECORD).readBytes())
-        } catch (e: Exception) {
-            null
-        }
 
         internal fun sha256(bytes: ByteArray): String =
             MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }

@@ -42,7 +42,7 @@ class LaunchSweepTest {
         f.library.rename(edited.id, "Edited again")
         val unwritten = f.scan("New", pages = 1)
         val failed = f.scan("Failed", pages = 1)
-        f.copies.put(failed.id, Binding("Failed", base = null, confirmed = null))
+        f.copies.put(failed.id, Binding(f.store.location, "Failed", base = null, confirmed = null))
 
         assertEquals(0, sweep())
 
@@ -79,7 +79,7 @@ class LaunchSweepTest {
 
     @Test
     fun `a binding whose working copy is gone is dropped`() {
-        f.copies.put("gone", Binding("Gone", "a", "b"))
+        f.copies.put("gone", Binding(f.store.location, "Gone", "a", "b"))
         assertEquals(1, sweep())
         assertNull(f.copies.get("gone"))
     }

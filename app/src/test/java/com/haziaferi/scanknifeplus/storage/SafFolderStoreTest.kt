@@ -48,7 +48,8 @@ class SafFolderStoreTest {
         val renamed = store.rename(tmp.id, "a.pdf")
 
         assertEquals("a.pdf", renamed.name)
-        assertEquals(5, renamed.size)
+        assertEquals(5L, renamed.size)
+        assertEquals(5L, store.sizeOf(renamed.id))
         assertEquals(listOf("a.pdf"), store.list(folder.id).map { it.name })
         assertEquals("hello", store.openRead(renamed.id).use { String(it.readBytes()) })
         assertEquals(listOf("Scan sources"), store.list(store.rootId).map { it.name })
@@ -71,6 +72,32 @@ class SafFolderStoreTest {
         f.folderRoot.deleteRecursively()
         assertThrows(IOException::class.java) { store.list(store.rootId) }
         assertFalse(store.isAvailable())
+    }
+
+    @Test
+    fun `a folder the provider answers with no children is unreadable if it is gone, empty if it is there`() {
+        TestDocumentsProvider.emptyForMissing = true
+        val sources = store.createFolder(store.rootId, "Scan sources")
+        assertTrue(store.list(sources.id).isEmpty())
+        File(f.folderRoot, "Scan sources").delete()
+        assertThrows(IOException::class.java) { store.list(sources.id) }
+        assertEquals(FolderListing.Unreadable, listingWithSourcesGone())
+    }
+
+    private fun listingWithSourcesGone(): FolderListing {
+        // The root still lists "Scan sources", but the folder itself is gone when it is listed.
+        val stale = object : FolderStore by store {
+            override fun list(folderId: String) =
+                if (folderId == store.rootId) listOf(FolderEntry("root/Scan sources", "Scan sources", true, null, 0)) else store.list(folderId)
+        }
+        return ScanFolder(stale, f.library, f.libraryRoot, f.copies).listing()
+    }
+
+    @Test
+    fun `a provider's own runtime exception comes out as IOException`() {
+        TestDocumentsProvider.crash = true
+        assertThrows(IOException::class.java) { store.list(store.rootId) }
+        assertEquals(FolderListing.Unreadable, f.folder.listing())
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
 import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.ScanDocument
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
+import com.haziaferi.scanknifeplus.scan.library.ScanPage
 import java.io.File
 import java.nio.file.Files
 import java.util.TimeZone
@@ -45,6 +46,21 @@ class StorageFixture(val folderStore: (File) -> FolderStore = ::FileFolderStore)
         val doc = library.create(name)
         repeat(pages) { library.addCapture(doc.id, ImageSource { ByteArray(0).inputStream() }, null, keepOriginal = true) }
         return library.document(doc.id)!!
+    }
+
+    /**
+     * Another device adds a page to folder scan [name], which [doc] was written as: the page's files are copied in and the record is
+     * replaced by a newer one naming it. Returns the page.
+     */
+    fun remoteAddsPage(name: String, doc: ScanDocument): ScanPage {
+        val other = scan("Other device", pages = 1)
+        val page = other.pages[0]
+        page.files.forEach { library.file(other.id, it).copyTo(file("Scan sources/$name/$it")) }
+        library.delete(other.id)
+        now += 1000
+        val current = ScanDocument.fromJson(org.json.JSONObject(file("Scan sources/$name/document.json").readText()))
+        file("Scan sources/$name/document.json").writeText(current.copy(modified = now, pages = current.pages + page).toJson().toString())
+        return page
     }
 
     fun file(path: String) = File(folderRoot, path)

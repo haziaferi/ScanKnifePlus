@@ -12,9 +12,9 @@ class FolderNamesTest {
 
     @Test
     fun `Syncthing conflict copies are recognised with the file they copy`() {
-        assertEquals(ConflictName("document.json", "20261010-101010"), FolderNames.conflictOf("document.sync-conflict-20261010-101010-ABCDEFG.json"))
-        assertEquals(ConflictName("my.scan.pdf", "20261010-101010"), FolderNames.conflictOf("my.scan.sync-conflict-20261010-101010-Z2Z2Z2Z.pdf"))
-        assertEquals(ConflictName("README", "20261010-101010"), FolderNames.conflictOf("README.sync-conflict-20261010-101010-ABCDEFG"))
+        assertEquals("document.json", FolderNames.conflictOf("document.sync-conflict-20261010-101010-ABCDEFG.json"))
+        assertEquals("my.scan.pdf", FolderNames.conflictOf("my.scan.sync-conflict-20261010-101010-Z2Z2Z2Z.pdf"))
+        assertEquals("README", FolderNames.conflictOf("README.sync-conflict-20261010-101010-ABCDEFG"))
         assertNull(FolderNames.conflictOf("document.json"))
         assertNull(FolderNames.conflictOf("document.sync-conflict-2026-ABCDEFG.json"))
     }
