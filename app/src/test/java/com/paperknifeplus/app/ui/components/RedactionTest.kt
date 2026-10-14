@@ -58,6 +58,7 @@ import java.io.File
 import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.Random
+import java.util.zip.DeflaterOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -254,6 +255,85 @@ class RedactionTest {
             textPage(doc, 100f to "abc")
             assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "abc", RedactFill.BLACK, pdfboxPages(doc)) }
             assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "  ab ", RedactFill.BLACK, pdfboxPages(doc)) }
+            // Checked once folded, as searched: three em spaces become one space, leaving "a b".
+            val em = 0x2003.toChar().toString()
+            assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "A$em$em${em}B", RedactFill.BLACK, pdfboxPages(doc)) }
+        }
+    }
+
+    @Test
+    fun `a phrase that folds to nothing redacts nothing, and a ligature matches its letters`() {
+        val ligature = 0xFB01.toChar()
+        assertEquals("file one", foldPhrase(" ${ligature}le " + 0x2003.toChar() + " ONE "))
+        val blank = listOf(0x00A0, 0x2003, 0x3000, 0x2007).map { it.toChar() }.joinToString("")
+        assertEquals("", foldPhrase(blank))
+        PDDocument().use { doc ->
+            textPage(doc, 100f to "plain words")
+            assertEquals(RedactReport(emptyList(), ScrubCounts()), redact(doc, emptyMap(), blank, RedactFill.BLACK, pdfboxPages(doc)))
+        }
+    }
+
+    @Test
+    fun `the user's default author never refills a field the scrub emptied`() {
+        PreferencesManager.setDefaultAuthor(context, "Zebracorn Corp")
+        val source = PDDocument().use { doc ->
+            textPage(doc, 100f to "By Zebracorn Corp")
+            doc.documentInformation.author = "Zebracorn Corp"
+            bytes(doc)
+        }
+        val (report, output) = redactFile(source, phrase = "zebracorn corp")
+        assertEquals(listOf(0), report.pages)
+        assertNowhere(output, "Zebracorn")
+    }
+
+    @Test
+    fun `a rewritten content stream loses the parameters of its old filter`() {
+        val content = "/Span <</ActualText (Zebracorn)>> BDC EMC 0 0 1 rg 0 0 10 10 re f"
+        val source = PDDocument().use { doc ->
+            val page = PDPage(PDRectangle(100f, 100f))
+            doc.addPage(page)
+            // PNG "Up" prediction over one row: a filter-type byte of 0 (none) before the row's bytes.
+            val predicted = ByteArrayOutputStream().also { out -> DeflaterOutputStream(out).use { it.write(byteArrayOf(0) + content.toByteArray()) } }
+            val stream = doc.document.createCOSStream().apply {
+                createRawOutputStream().use { it.write(predicted.toByteArray()) }
+                setItem(COSName.FILTER, COSName.FLATE_DECODE)
+                setItem(COSName.DECODE_PARMS, COSDictionary().apply {
+                    setInt(COSName.PREDICTOR, 12)
+                    setInt(COSName.COLUMNS, content.length)
+                })
+            }
+            page.cosObject.setItem(COSName.CONTENTS, stream)
+            assertEquals(content, String(stream.createInputStream().use { it.readBytes() }, Charsets.ISO_8859_1))
+            bytes(doc)
+        }
+        val (report, output) = redactFile(source, phrase = "Zebracorn")
+        assertEquals(1, report.scrubbed.contentText)
+        PDDocument.load(output).use { doc ->
+            val stream = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSStream
+            assertNull(stream.getDictionaryObject(COSName.DECODE_PARMS))
+            assertEquals(content.replace("(Zebracorn)", "()"), String(stream.createInputStream().use { it.readBytes() }, Charsets.ISO_8859_1))
+        }
+    }
+
+    @Test
+    fun `a stream too large to read whole is never rewritten from part of it, and is reported`() {
+        val content = "/Span <</ActualText (Zebracorn)>> BDC EMC " + "0 0 1 rg 0 0 10 10 re f ".repeat(10)
+        val source = PDDocument().use { doc ->
+            val page = PDPage(PDRectangle(100f, 100f))
+            doc.addPage(page)
+            page.setContents(PDStream(doc, content.byteInputStream()))
+            bytes(doc)
+        }
+        val limit = streamReadLimit
+        streamReadLimit = 64
+        val (report, output) = try {
+            redactFile(source, phrase = "Zebracorn")
+        } finally {
+            streamReadLimit = limit
+        }
+        assertEquals(1, report.scrubbed.skipped)
+        PDDocument.load(output).use { doc ->
+            assertEquals(content, String(doc.getPage(0).contents.use { it.readBytes() }, Charsets.ISO_8859_1))
         }
     }
 
@@ -431,6 +511,20 @@ class RedactionTest {
         (second.cosObject.getDictionaryObject(COSName.ANNOTS) as COSArray).add(freeText)
         text.value = "Agent $secret"
 
+        // XFA form data, a script stream, a form no page draws, private data and a name value.
+        form.cosObject.setItem(COSName.getPDFName("XFA"), textStream(doc, "<xdp:xdp><field>$secret</field></xdp:xdp>"))
+        doc.documentCatalog.cosObject.setItem(COSName.OPEN_ACTION, COSDictionary().apply {
+            setItem(COSName.S, COSName.getPDFName("JavaScript"))
+            setItem(COSName.JS, textStream(doc, "app.alert('$secret');"))
+        })
+        val undrawn = textStream(doc, "BT /F1 12 Tf 10 10 Td ($secret) Tj ET").apply {
+            setItem(COSName.TYPE, COSName.XOBJECT)
+            setItem(COSName.SUBTYPE, COSName.FORM)
+            setItem(COSName.BBOX, PDRectangle(0f, 0f, 100f, 20f).cosArray)
+        }
+        second.resources.cosObject.setItem(COSName.XOBJECT, COSDictionary().apply { setItem(COSName.getPDFName("Fm9"), undrawn) })
+        doc.documentCatalog.cosObject.setItem(COSName.getPDFName("ZData"), textStream(doc, "private ${secret.lowercase()} data"))
+        doc.documentCatalog.cosObject.setItem(COSName.getPDFName("ZName"), COSName.getPDFName("$secret-label"))
         doc.documentCatalog.cosObject.setItem(
             COSName.getPDFName("ZCustom"),
             COSArray().apply {
@@ -440,6 +534,9 @@ class RedactionTest {
         )
         bytes(doc)
     }
+
+    private fun textStream(doc: PDDocument, text: String): COSStream =
+        doc.document.createCOSStream().apply { createOutputStream(COSName.FLATE_DECODE).use { it.write(text.toByteArray()) } }
 
     /** Fails if [phrase] shows anywhere in [file]: its raw bytes, any string, or any decoded stream, attachment or string token in it. */
     private fun assertNowhere(file: ByteArray, phrase: String) {
@@ -464,6 +561,7 @@ class RedactionTest {
                         value.values.forEach(pending::add)
                     }
                     is COSArray -> value.forEach { it?.let(pending::add) }
+                    is COSName -> assertFalse("name ${value.name}", value.name.lowercase().contains(needle))
                     else -> {}
                 }
             }
@@ -480,7 +578,9 @@ class RedactionTest {
         val (report, output) = redactFile(leakyFixture(), phrase = secret.lowercase())
         assertEquals(listOf(0), report.pages)
         assertNowhere(output, secret)
-        val expected = ScrubCounts(info = 2, xmp = 2, outline = 1, annotations = 2, fields = 2, attachments = 4, markedContent = 2, strings = 2)
+        val expected = ScrubCounts(
+            info = 2, xmp = 2, outline = 1, annotations = 2, fields = 2, attachments = 4, contentText = 3, streams = 3, strings = 2, names = 1
+        )
         assertEquals(expected, report.scrubbed)
         PDDocument.load(output).use { doc ->
             assertEquals("Report on ", doc.documentInformation.title)

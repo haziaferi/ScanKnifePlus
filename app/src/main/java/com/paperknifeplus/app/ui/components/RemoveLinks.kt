@@ -122,7 +122,8 @@ internal suspend fun removeLinksPdf(
             if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
             val removal = removeLinks(document, pages)
             protection?.let(document::protect)
-            saveAndFlush(context, document, output)
+            // Like Metadata, this tool only takes things out, so it adds no default author.
+            saveAndFlush(context, document, output, applyDefaults = false)
             removal
         }
     }

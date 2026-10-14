@@ -29,6 +29,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.annotation.VisibleForTesting
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
@@ -56,8 +57,12 @@ private const val PHOTO_JPEG_QUALITY = 0.9f
 /** A page whose samples show more distinct colours than this (at 5 bits a channel), and little paper, is a photo. */
 private const val PHOTO_COLOURS = 4096
 
-/** At most this much of an attachment, or of all members of a zipped one, is read to look for a phrase. */
-private const val ATTACHMENT_TEXT_LIMIT = 64 * 1024 * 1024
+/**
+ * At most this much of a stream's decoded data (or of all members of a zipped attachment) is read: to look for a phrase, and to rewrite
+ * a stream without it. A larger stream is never rewritten from a partial read; it is left as it is and counted as skipped.
+ */
+@VisibleForTesting
+internal var streamReadLimit = 64 * 1024 * 1024
 
 private val THUMB = COSName.getPDFName("Thumb")
 private val EMBEDDED_FILE = COSName.getPDFName("EmbeddedFile")
@@ -66,12 +71,10 @@ private val SUBJECT = COSName.getPDFName("Subj")
 private val FILE_ATTACHMENT = COSName.getPDFName("FileAttachment")
 private val POPUP = COSName.getPDFName("Popup")
 private val FILE_NAME_KEYS = listOf(COSName.F, COSName.UF, COSName.DESC) + listOf("DOS", "Mac", "Unix").map(COSName::getPDFName)
+private val FONT_PROGRAMS = listOf(COSName.FONT_FILE, COSName.FONT_FILE2, COSName.FONT_FILE3)
 
 /** A PDF string token: a literal (one level of nested parentheses) or a hex string. */
 private const val PDF_STRING = """\((?:\\.|[^\\()]|\((?:\\.|[^\\()])*\))*\)|<[0-9A-Fa-f\s]*>"""
-
-/** Marked-content properties that carry text a reader or a screen reader shows. */
-private val MARKED_TEXT = Regex("""(/(?:ActualText|Alt|E|T)\s*)($PDF_STRING)""", RegexOption.DOT_MATCHES_ALL)
 
 private val ANY_STRING = Regex(PDF_STRING, RegexOption.DOT_MATCHES_ALL)
 
@@ -83,7 +86,11 @@ enum class RedactFill(internal val color: Int) {
     WHITE(Color.WHITE)
 }
 
-/** Where [redact] removed a phrase outside the redacted pages, counted per object changed or removed. */
+/**
+ * Where [redact] removed a phrase outside the redacted pages, counted per object changed or removed: [contentText] counts string tokens
+ * blanked in page and form content (marked-content /ActualText and /Alt, and text of forms no page draws), [streams] other streams cut
+ * (XFA form data, scripts, private data). [skipped] counts streams that mention a phrase but are too large to rewrite safely.
+ */
 internal data class ScrubCounts(
     val info: Int = 0,
     val xmp: Int = 0,
@@ -91,22 +98,21 @@ internal data class ScrubCounts(
     val annotations: Int = 0,
     val fields: Int = 0,
     val attachments: Int = 0,
-    val markedContent: Int = 0,
-    val strings: Int = 0
-) {
-    val total: Int get() = info + xmp + outline + annotations + fields + attachments + markedContent + strings
-}
+    val contentText: Int = 0,
+    val streams: Int = 0,
+    val strings: Int = 0,
+    val names: Int = 0,
+    val skipped: Int = 0
+)
 
 /** What [redact] did: the indices of the pages it turned into images, and where it scrubbed the redacted text. */
 internal data class RedactReport(val pages: List<Int>, val scrubbed: ScrubCounts)
 
 /**
- * Redacts [document] in place. Each page with [boxes] (rectangles in the page's default user space, by page index) or with a match of
- * [phrase] (case-insensitive, at least [MIN_REDACT_PHRASE] characters, else IllegalArgumentException) is rendered by [rasterizer] at 300
- * DPI with the boxes burnt in with [fill], and its content replaced by that single image: no text, vector or original image survives. The
- * image is placed as Grayscale places its fallback pages ([uprightPlacement]), so the page keeps its /Rotate. Its thumbnail goes, and
- * so do annotations and form fields a box touches. The phrase, and every line of at least [MIN_REDACT_PHRASE] characters that a drawn box
- * covered (as whole words), are then scrubbed from the rest of the file ([SecretScrubber]). Other pages are not re-rendered. Blocking.
+ * Redacts [document] in place: each page with [boxes] (user-space rectangles by page index) or a match of [phrase] becomes one image from
+ * [rasterizer] with the boxes burnt in, losing its thumbnail and the annotations under the boxes. The phrase, and text a drawn box covered
+ * (as whole words), are then scrubbed from the rest of the file ([SecretScrubber]); a phrase shorter than [MIN_REDACT_PHRASE] characters
+ * once folded ([foldPhrase]) is refused with IllegalArgumentException. Blocking.
  */
 internal fun redact(
     document: PDDocument,
@@ -115,11 +121,11 @@ internal fun redact(
     fill: RedactFill,
     rasterizer: PageRasterizer
 ): RedactReport {
-    val needle = phrase?.trim()?.takeIf { it.isNotEmpty() }
+    val needle = phrase?.let(::foldPhrase)?.takeIf { it.isNotEmpty() }
     require(needle == null || needle.length >= MIN_REDACT_PHRASE) { "A phrase to redact needs at least $MIN_REDACT_PHRASE characters" }
     // Phrase -> whether only whole words match; a phrase searched for matches anywhere, text taken from under a box only as whole words.
     val secrets = linkedMapOf<String, Boolean>()
-    needle?.let { secrets[it] = false }
+    if (needle != null) secrets[phrase.orEmpty().trim()] = false
     val changed = mutableListOf<Int>()
     for (index in 0 until document.numberOfPages) {
         val drawn = boxes[index].orEmpty()
@@ -165,22 +171,25 @@ internal suspend fun redactPdf(
                 (pages as? Closeable)?.close()
             }
             protection?.let(document::protect)
-            saveAndFlush(context, document, output)
+            // No default author: a field the scrub emptied stays empty, whatever the default (which may be the phrase itself).
+            saveAndFlush(context, document, output, applyDefaults = false)
             report
         }
     }
 }
 
+/**
+ * [phrase] folded the way page text is searched: compatibility forms (a ligature becomes its letters), lower case one character at a time,
+ * whitespace runs as one space, trimmed.
+ */
+internal fun foldPhrase(phrase: String): String =
+    Normalizer.normalize(phrase, Normalizer.Form.NFKC).map { Character.toLowerCase(it) }.joinToString("").replace(WHITESPACE, " ").trim()
+
 /** The text of one page as characters, each with the glyph that drew it (null for the word and line breaks the stripper inserts). */
 private class PageText(private val chars: String, private val owners: List<TextPosition?>) {
-    /** The glyph boxes of every case-insensitive match of [phrase], whitespace runs matching any whitespace. */
-    fun find(phrase: String, crop: PDRectangle): List<PDRectangle> {
+    /** The glyph boxes of every match of [needle], a non-empty phrase as [foldPhrase] folds it. */
+    fun find(needle: String, crop: PDRectangle): List<PDRectangle> {
         val (text, glyphs) = normalized()
-        // Folded the way the page text is (compatibility forms, lower case one character at a time), so the two compare.
-        val needle = Normalizer.normalize(phrase, Normalizer.Form.NFKC).map { Character.toLowerCase(it) }.joinToString("")
-            .replace(WHITESPACE, " ").trim()
-        // An empty needle would match at every index without end.
-        if (needle.isEmpty()) return emptyList()
         val boxes = mutableListOf<PDRectangle>()
         var from = text.indexOf(needle)
         while (from >= 0) {
@@ -417,12 +426,27 @@ private fun removeAnnotations(document: PDDocument, page: PDPage, annotations: C
 /** [value] itself, or the object it refers to. */
 private fun resolve(value: COSBase?): COSBase? = if (value is COSObject) value.`object` else value
 
-/** The decoded data of [stream], up to [ATTACHMENT_TEXT_LIMIT] bytes; empty when its filters cannot decode it (then nothing can show it). */
+/** The decoded data of [stream], up to [streamReadLimit] bytes; empty when its filters cannot decode it (then nothing can show it). */
 private fun streamBytes(stream: COSStream): ByteArray = try {
-    stream.createInputStream().use { it.readUpTo(ATTACHMENT_TEXT_LIMIT) }
+    stream.createInputStream().use { it.readUpTo(streamReadLimit) }
 } catch (e: IOException) {
     Log.w(TAG, "Cannot decode a stream", e)
     ByteArray(0)
+}
+
+/** All the decoded data of [stream], or null when it is larger than [streamReadLimit] or cannot be decoded: nothing to rewrite it from. */
+private fun completeStreamBytes(stream: COSStream): ByteArray? = try {
+    stream.createInputStream().use { input -> input.readUpTo(streamReadLimit + 1).takeIf { it.size <= streamReadLimit } }
+} catch (e: IOException) {
+    Log.w(TAG, "Cannot decode a stream", e)
+    null
+}
+
+/** Replaces the data of [stream] with [data], Flate-compressed; parameters of the old filters go with them. */
+private fun rewrite(stream: COSStream, data: ByteArray) {
+    stream.removeItem(COSName.DECODE_PARMS)
+    stream.removeItem(COSName.DL)
+    stream.createOutputStream(COSName.FLATE_DECODE).use { it.write(data) }
 }
 
 private fun InputStream.readUpTo(limit: Int): ByteArray {
@@ -491,7 +515,7 @@ internal fun attachmentTexts(body: ByteArray): List<String> {
     if (body.size >= 2 && body[0] == 'P'.code.toByte() && body[1] == 'K'.code.toByte()) {
         try {
             ZipInputStream(body.inputStream()).use { zip ->
-                var left = ATTACHMENT_TEXT_LIMIT
+                var left = streamReadLimit
                 while (left > 0) {
                     zip.nextEntry ?: break
                     val data = zip.readUpTo(left)
@@ -520,9 +544,9 @@ internal fun attachmentTexts(body: ByteArray): List<String> {
 /**
  * Removes every redacted phrase from the places redacting the pages does not reach, a port of the PC app's `scrub_secrets`: document
  * information, XMP (any /Metadata stream that mentions it is dropped), bookmark titles, embedded files (by name, description or content),
- * annotations (by text or appearance), form fields (a text field's value is cut, other fields go), marked-content /ActualText, /Alt, /E
- * and /T in page and form content, and then every string object the saved file can reach. [secrets] maps each phrase to whether it
- * matches whole words only; matching ignores case, and a whitespace run matches any whitespace.
+ * annotations (by text or appearance), form fields (a text field's value is cut, other fields go), then every string, name value and
+ * stream the saved file can reach (images and font programs aside). [secrets] maps each phrase to whether it matches whole words only;
+ * matching ignores case, and a whitespace run matches any whitespace.
  */
 private class SecretScrubber(private val document: PDDocument, secrets: Map<String, Boolean>) {
     private val patterns = secrets.map { (secret, wholeWords) ->
@@ -536,8 +560,14 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
     private var annotations = 0
     private var fields = 0
     private var attachments = 0
-    private var markedContent = 0
+    private var contentText = 0
+    private var streams = 0
     private var strings = 0
+    private var names = 0
+    private var skipped = 0
+
+    /** Font programs, which are never rewritten: a glyph name is no text a reader sees, and an edit would break the font. */
+    private val fontPrograms = identitySetOf<COSStream>()
 
     private fun hit(text: String?): Boolean = !text.isNullOrEmpty() && patterns.any { it.containsMatchIn(text) }
 
@@ -606,7 +636,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
         scrubAnnotations()
         scrubFields()
         scrubObjects()
-        return ScrubCounts(info, xmp, outline, annotations, fields, attachments, markedContent, strings)
+        return ScrubCounts(info, xmp, outline, annotations, fields, attachments, contentText, streams, strings, names, skipped)
     }
 
     private fun scrubOutline(root: COSDictionary?) {
@@ -710,8 +740,8 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
     }
 
     /**
-     * Walks every object the saved file can reach from the trailer: cuts the phrases out of each string, drops a /Metadata stream or
-     * empties an embedded file that mentions one, and blanks marked-content text that does in page and form content streams.
+     * Walks every object the saved file can reach from the trailer: cuts the phrases out of each string and name value, drops a /Metadata
+     * stream or empties an embedded file that mentions one, and cleans every other stream ([scrubStream]).
      */
     private fun scrubObjects() {
         val contents = identitySetOf<COSStream>()
@@ -731,6 +761,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
             when (value) {
                 is COSString -> if (scrub(value)) strings++
                 is COSDictionary -> {
+                    FONT_PROGRAMS.mapNotNullTo(fontPrograms) { value.getDictionaryObject(it) as? COSStream }
                     if (value is COSStream) scrubStream(value, value in contents)
                     // Embedded files are found through their file specification, as their /Type is optional.
                     if (value.containsKey(COSName.EF)) embeddedStreams(value).filter(seen::add).forEach(::scrubEmbeddedFile)
@@ -741,37 +772,75 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
                             xmp++
                             continue
                         }
-                        value.getItem(key)?.let(pending::add)
+                        val item = value.getItem(key)
+                        if (item is COSName) scrubName(item)?.let { value.setItem(key, it) } else item?.let(pending::add)
                     }
                 }
-                is COSArray -> value.forEach { it?.let(pending::add) }
+                is COSArray -> for (i in 0 until value.size()) {
+                    val item = value.get(i)
+                    if (item is COSName) scrubName(item)?.let { value.set(i, it) } else item?.let(pending::add)
+                }
                 else -> {}
             }
         }
     }
 
+    /** [name] without the phrases (a name left empty becomes /Redacted), or null when it has none. */
+    private fun scrubName(name: COSName): COSName? {
+        if (!hit(name.name)) return null
+        names++
+        return COSName.getPDFName(strip(name.name).ifEmpty { "Redacted" })
+    }
+
     /** Empties [stream], an embedded file still in the document, when it mentions a phrase. */
     private fun scrubEmbeddedFile(stream: COSStream) {
         if (!streamHits(stream)) return
-        stream.createOutputStream().close()
+        rewrite(stream, ByteArray(0))
         attachments++
     }
 
+    /**
+     * Cleans a stream the walk reached. In page and form content every string token that mentions a phrase is blanked: marked-content
+     * text, and the text of forms no page draws (a drawn one put its page among the redacted ones). Any other stream but images and font
+     * programs (XFA data, scripts, private data) has the phrases cut from its text. A stream too large to read whole is left and counted.
+     */
     private fun scrubStream(stream: COSStream, pageContent: Boolean) {
         if (stream.getCOSName(COSName.TYPE) == EMBEDDED_FILE) return scrubEmbeddedFile(stream)
-        if (!pageContent && stream.getCOSName(COSName.SUBTYPE) != COSName.FORM) return
-        val data = String(streamBytes(stream), Charsets.ISO_8859_1)
-        var blanked = 0
-        val result = MARKED_TEXT.replace(data) { match ->
-            if (hit(pdfStringText(match.groupValues[2]))) {
-                blanked++
-                match.groupValues[1] + "()"
-            } else {
-                match.value
-            }
+        if (stream.getCOSName(COSName.SUBTYPE) == COSName.IMAGE || stream in fontPrograms) return
+        val data = completeStreamBytes(stream)
+        if (data == null) {
+            if (streamHits(stream)) skipped++
+            return
         }
-        if (blanked == 0) return
-        stream.createOutputStream(COSName.FLATE_DECODE).use { it.write(result.toByteArray(Charsets.ISO_8859_1)) }
-        markedContent += blanked
+        if (pageContent || stream.getCOSName(COSName.SUBTYPE) == COSName.FORM) {
+            var blanked = 0
+            val result = ANY_STRING.replace(String(data, Charsets.ISO_8859_1)) { match ->
+                if (hit(pdfStringText(match.value))) "()".also { blanked++ } else match.value
+            }
+            if (blanked == 0) return
+            rewrite(stream, result.toByteArray(Charsets.ISO_8859_1))
+            contentText += blanked
+        } else {
+            val cut = cutFromText(data) ?: return
+            rewrite(stream, cut)
+            streams++
+        }
+    }
+
+    /**
+     * [data] with the phrases cut wherever its bytes read as text (Latin-1, then UTF-8, then UTF-16 with a byte order mark), or null when
+     * no reading mentions one. Bytes outside a match stay as they are in the Latin-1 pass, so binary data around plain text survives.
+     */
+    private fun cutFromText(data: ByteArray): ByteArray? {
+        var result = data
+        val latin = String(result, Charsets.ISO_8859_1)
+        if (hit(latin)) result = strip(latin).toByteArray(Charsets.ISO_8859_1)
+        val utf8 = String(result, Charsets.UTF_8)
+        if (hit(utf8)) result = strip(utf8).toByteArray(Charsets.UTF_8)
+        if (result.size >= 2 && result[0] == 0xFE.toByte() && result[1] == 0xFF.toByte()) {
+            val utf16 = String(result, Charsets.UTF_16)
+            if (hit(utf16)) result = strip(utf16).toByteArray(Charsets.UTF_16)
+        }
+        return if (result === data) null else result
     }
 }

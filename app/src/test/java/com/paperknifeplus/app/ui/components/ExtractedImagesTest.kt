@@ -155,15 +155,15 @@ class ExtractedImagesTest {
         assertEquals(ExtractCounts(written = 0, skipped = 1), counts)
     }
 
-    /** A page holding one fake raw JPEG per size in [sizes], so [writeImages] copies them without decoding. */
-    private fun jpegPage(doc: PDDocument, vararg sizes: Int) {
+    /** A page holding one fake raw JPEG per width and height in [sizes], so [writeImages] copies them without decoding. */
+    private fun jpegPage(doc: PDDocument, vararg sizes: Pair<Int, Int>) {
         val page = PDPage().apply { resources = PDResources() }
-        sizes.forEachIndexed { i, size ->
+        sizes.forEachIndexed { i, (width, height) ->
             val image: COSStream = doc.document.createCOSStream().apply {
                 setItem(COSName.TYPE, COSName.XOBJECT)
                 setItem(COSName.SUBTYPE, COSName.IMAGE)
-                setInt(COSName.WIDTH, size)
-                setInt(COSName.HEIGHT, size + 10)
+                setInt(COSName.WIDTH, width)
+                setInt(COSName.HEIGHT, height)
                 setInt(COSName.BITS_PER_COMPONENT, 8)
                 setItem(COSName.COLORSPACE, COSName.DEVICERGB)
                 createRawOutputStream().use { it.write(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), i.toByte(), 0xFF.toByte(), 0xD9.toByte())) }
@@ -177,10 +177,11 @@ class ExtractedImagesTest {
     @Test
     fun `images below the minimum size are left out and counted apart from unreadable ones`() {
         PDDocument().use { doc ->
-            jpegPage(doc, 10, 49, 50, 300)
+            // Too small both ways, too narrow, too short, then two large enough.
+            jpegPage(doc, 10 to 20, 49 to 300, 300 to 49, 50 to 50, 300 to 310)
             val zip = ByteArrayOutputStream()
             val counts = ZipOutputStream(zip).use { writeImages(doc, it, minSize = 50) }
-            assertEquals(ExtractCounts(written = 2, skipped = 0, filtered = 2), counts)
+            assertEquals(ExtractCounts(written = 2, skipped = 0, filtered = 3), counts)
             assertEquals(listOf("asset_1_p1.jpg", "asset_2_p1.jpg"), readZip(zip.toByteArray()).keys.toList())
         }
     }
@@ -188,7 +189,7 @@ class ExtractedImagesTest {
     @Test
     fun `without a minimum size every image is written, as before`() {
         PDDocument().use { doc ->
-            jpegPage(doc, 1, 10, 300)
+            jpegPage(doc, 1 to 1, 10 to 20, 300 to 310)
             val counts = ZipOutputStream(ByteArrayOutputStream()).use { writeImages(doc, it) }
             assertEquals(ExtractCounts(written = 3, skipped = 0, filtered = 0), counts)
         }

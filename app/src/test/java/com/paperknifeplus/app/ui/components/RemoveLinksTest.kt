@@ -132,6 +132,13 @@ class RemoveLinksTest {
     }
 
     @Test
+    fun `no default author is added`() {
+        PreferencesManager.setDefaultAuthor(context, "Default Person")
+        val (_, output) = run(null)
+        PDDocument.load(output).use { assertNull(it.documentInformation.author) }
+    }
+
+    @Test
     fun `the source's protection is kept only when asked`() {
         val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "links-locked.pdf")
         val kept = File(context.cacheDir, "links-kept.pdf").apply { delete() }

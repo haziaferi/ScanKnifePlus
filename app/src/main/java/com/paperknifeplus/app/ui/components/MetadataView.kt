@@ -419,6 +419,8 @@ internal fun saveProperties(
 internal fun applyProperties(document: PDDocument, original: PdfProperties, edited: PdfProperties, extras: MetadataExtras = MetadataExtras()) {
     val values = edited.asList()
     val changed = values.indices.filter { values[it] != original.asList()[it] }
+    // Reading the information creates an empty /Info, so a save that changes nothing returns first.
+    if (changed.isEmpty() && extras == MetadataExtras()) return
     val info = document.documentInformation
     changed.forEach { INFO_SETTERS[it](info, values[it].ifBlank { null }) }
     val xmpChanges = changed.map { XMP_PROPERTIES[it] to values[it] }.toMutableList()

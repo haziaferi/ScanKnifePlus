@@ -9,7 +9,7 @@ import java.util.UUID
  * defaults restrict nothing and use the open password as owner password, as Protect always has.
  */
 data class ProtectOptions(
-    /** A separate owner password; blank uses the open password, or a random one when anything is restricted. */
+    /** A separate owner password; empty uses the open password, or a random one when anything is restricted. */
     val ownerPassword: String = "",
     /** No printing, in low or high quality. */
     val blockPrinting: Boolean = false,
@@ -25,7 +25,7 @@ data class ProtectOptions(
 
 /**
  * The AES-256 encryption Protect applies: [userPassword] opens the file, with the permissions [options] leave. Whoever knows the owner
- * password gets every right, so restrictions need an owner password other than [userPassword]: a blank one becomes a random password (the
+ * password gets every right, so restrictions need an owner password other than [userPassword]: an empty one becomes a random password (the
  * restrictions can then never be lifted), and one equal to [userPassword] is refused with IllegalArgumentException.
  */
 internal fun protectionPolicy(userPassword: String, options: ProtectOptions): StandardProtectionPolicy {

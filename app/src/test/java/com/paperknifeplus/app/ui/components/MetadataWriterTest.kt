@@ -126,6 +126,13 @@ class MetadataWriterTest {
     }
 
     @Test
+    fun `a save that changes nothing adds no document information`() {
+        val source = TestPdfs.plain()
+        PDDocument.load(source).use { assertNull(it.document.trailer.getDictionaryObject(COSName.INFO)) }
+        save(source) { it }.use { assertNull(it.document.trailer.getDictionaryObject(COSName.INFO)) }
+    }
+
+    @Test
     fun `a file without XMP gets none`() {
         save(TestPdfs.plain()).use { doc ->
             assertNull(doc.documentCatalog.metadata)
