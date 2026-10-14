@@ -75,13 +75,12 @@ fun interface PdfMaker {
 }
 
 /**
- * The scans and tool outputs in the user's folder: finished PDFs at the top level, each scan's editable sources (what a scan library
- * document folder holds) in `Scan sources/<name>/`. The app edits a working copy in the private [library] and writes it back here; [copies]
- * ties each working copy to its scan in this folder ([FolderStore.location]) and never to a scan in another folder.
+ * The scans and tool outputs in the user's folder: PDFs at the top level, each scan's sources in `Scan sources/<name>/`. The app edits a
+ * working copy in the private [library] and writes it back here; [copies] ties each working copy to its scan in this folder only.
  *
- * In the folder, new files are written as `<name>.tmp` and renamed, a replaced file keeps its previous version as `<name>.bak`, and the losing
- * version of a sync conflict is kept as `<name>.lost-<time>`. A write-back deletes only the page files its own edit made obsolete (see
- * [writeBack]); nothing else is ever deleted. Every method blocks and they all run one at a time, across instances.
+ * New files are written as `<name>.tmp` and renamed, a replaced file keeps its previous version as `<name>.bak`, and a sync conflict's loser
+ * is kept as `<name>.lost-<time>`. Besides its own `.tmp`/`.bak` files and fully merged conflict copies, this deletes only page files an edit
+ * made obsolete (see [writeBack]). Every method blocks, and they run one at a time across instances.
  */
 class ScanFolder(
     private val store: FolderStore,
@@ -147,8 +146,10 @@ class ScanFolder(
             val missing = record.doc.pages.flatMap { it.files }.distinct().filter { f -> entries.none { it.name == f && !it.isFolder } }
             if (missing.isNotEmpty()) return CopyInResult.Incomplete(missing)
 
-            val existing = copies.idOf(store.location, name)?.takeIf { library.exists(it) }
-            if (existing != null) return refresh(existing, folder.id, entries, record, reports)
+            // A binding whose working copy is gone is dropped, so it can never lead to a second copy of the same scan.
+            val (existing, stale) = copies.idsOf(store.location, name).partition { library.exists(it) }
+            stale.forEach { copies.remove(it) }
+            if (existing.isNotEmpty()) return refresh(existing.first(), folder.id, entries, record, reports)
 
             val stored = staged(entries, record.doc.pages.flatMap { it.files }) { staging -> library.import(staging, name, record.doc) }
             copies.put(stored.document.id, Binding(store.location, name, base = record.hash, confirmed = WorkingCopies.sha256(stored.bytes)))
@@ -160,17 +161,17 @@ class ScanFolder(
     }
 
     /**
-     * Writes working copy [id] back: the page files the folder lacks, then the record, then (with [pdf]) `<name>.pdf` at the top level. A
-     * scan new to this folder gets a free name and only creates files. If the folder's record changed meanwhile, the two are merged rather
-     * than one replacing the other, and the working copy is reloaded with the merged record and pages. Page files only the replaced record
-     * named are deleted, unless the folder's record changed or a kept `.lost-` version might still need them.
+     * Writes working copy [id] back: missing page files, the record, then (with [pdf]) `<name>.pdf`; a scan new here only creates files. If
+     * the folder's record changed meanwhile the two are merged and the working copy reloaded with the result. Page files only the replaced
+     * record named are deleted unless there was a merge or a `.lost-` version may need them; the copy counts as confirmed only with its PDF.
      */
     @WorkerThread
-    fun writeBack(id: String, pdf: PdfMaker? = null): WriteResult = synchronized(LOCK) {
+    fun writeBack(id: String, pdf: PdfMaker? = null): WriteResult = writeBack(id, pdf, mayDelete = true)
+
+    private fun writeBack(id: String, pdf: PdfMaker?, mayDelete: Boolean): WriteResult = synchronized(LOCK) {
         // One read of record and bytes: what is written, and later confirmed, is exactly this version, whatever edits come after.
         val working = library.stored(id) ?: return WriteResult.Failed
         val doc = working.document
-        val workingHash = WorkingCopies.sha256(working.bytes)
         val binding = copies.get(id)?.takeIf { it.folder == store.location }
         try {
             val reports = mutableListOf<ConflictReport>()
@@ -222,25 +223,33 @@ class ScanFolder(
                 jsonBytes(merge.merged)
             }
             replaceFile(folder.id, ScanLibrary.RECORD, entries) { it.write(recordBytes) }
+            val base = WorkingCopies.sha256(recordBytes)
 
-            if (unchangedInFolder && folderRecord != null && entries.none { FolderNames.isLost(it.name) }) {
-                val keep = doc.pages.flatMapTo(HashSet()) { it.files }
-                val obsolete = folderRecord.doc.pages.flatMap { it.files }.filter { it !in keep }.toSet()
-                store.list(folder.id).filter { it.name in obsolete && !it.isFolder }.forEach { store.delete(it.id) }
+            // The binding follows the folder at once, so a later failure (the PDF, say) never makes the next write-back merge with its own
+            // output; after a merge, only once the working copy holds the merged record too.
+            val current = if (merged == null) {
+                copies.put(id, Binding(store.location, name, base, confirmed = null))
+                if (mayDelete && folderRecord != null && entries.none { FolderNames.isLost(it.name) }) {
+                    val keep = doc.pages.flatMapTo(HashSet()) { it.files }
+                    val obsolete = folderRecord.doc.pages.flatMap { it.files }.filter { it !in keep }.toSet()
+                    store.list(folder.id).filter { it.name in obsolete && !it.isFolder }.forEach { store.delete(it.id) }
+                }
+                working
+            } else {
+                // Edited during the write-back, or not reloadable: the old base keeps the next write-back merging instead of dropping pages.
+                val reloaded = reload(id, working, folder.id, merged) ?: run {
+                    copies.put(id, Binding(store.location, name, folderRecord!!.hash, confirmed = null))
+                    return WriteResult.Written(name, reports)
+                }
+                copies.put(id, Binding(store.location, name, base, confirmed = null))
+                reloaded
             }
 
-            if (pdf != null) writePdf(id, name, pdf)
-            val base = WorkingCopies.sha256(recordBytes)
-            val reloaded = merged?.let { reload(id, working, folder.id, it) }
-            copies.put(
-                id,
-                when {
-                    merged == null -> Binding(store.location, name, base, workingHash)
-                    reloaded != null -> Binding(store.location, name, base, WorkingCopies.sha256(reloaded.bytes))
-                    // Edited during the write-back, or not reloadable: the old base keeps the next write-back merging instead of dropping pages.
-                    else -> Binding(store.location, name, folderRecord!!.hash, workingHash)
-                },
-            )
+            // Built from the working copy as it now is, so after a merge the PDF shows the merged pages.
+            if (pdf != null) {
+                writePdf(id, name, pdf)
+                copies.put(id, Binding(store.location, name, base, confirmed = WorkingCopies.sha256(current.bytes)))
+            }
             WriteResult.Written(name, reports)
         } catch (e: IOException) {
             Log.w(TAG, "Writing $id back failed", e)
@@ -249,17 +258,17 @@ class ScanFolder(
     }
 
     /**
-     * Writes every working copy with changes this folder lacks to it, with its PDF: at first, every scan the app has, and after a change of
-     * folder every scan, creating files only. The list is fixed before anything is written, and private copies stay until the launch sweep
-     * finds them confirmed, so a migration that stops halfway loses nothing. Run it with no scan session open.
+     * Writes every working copy whose record this folder does not have yet (at first every scan, after a change of folder every scan) with
+     * its PDF, creating files and deleting nothing. The list is fixed first and private copies stay until the launch sweep finds them
+     * confirmed, so a migration that stops halfway loses nothing. Run it with no scan session open.
      */
     @WorkerThread
     fun migrate(pdf: PdfMaker?): Migration = synchronized(LOCK) {
-        val snapshot = library.documents().map { it.id }.filter { hasChanges(it) }
+        val snapshot = library.documents().map { it.id }.filter { id -> copies.get(id)?.takeIf { it.folder == store.location }?.base == null }
         val written = mutableListOf<String>()
         val failed = mutableListOf<String>()
         for ((i, id) in snapshot.withIndex()) {
-            when (writeBack(id, pdf)) {
+            when (writeBack(id, pdf, mayDelete = false)) {
                 is WriteResult.Written -> written += id
                 WriteResult.Failed -> failed += id
                 WriteResult.FolderUnavailable -> return Migration(written, failed + snapshot.drop(i), folderUnavailable = true)

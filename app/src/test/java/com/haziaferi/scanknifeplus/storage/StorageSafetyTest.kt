@@ -10,6 +10,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -66,7 +67,7 @@ class StorageSafetyTest {
     @Test
     fun `copy-in refreshes a working copy the folder has moved past`() {
         val doc = f.scan("Receipt", pages = 1)
-        assertTrue(folder.writeBack(doc.id) is WriteResult.Written)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
         assertEquals(CopyInResult.Ready(doc.id, emptyList()), folder.copyIn("Receipt"))
         val remotePage = f.remoteAddsPage("Receipt", doc)
 
@@ -90,6 +91,83 @@ class StorageSafetyTest {
         assertEquals("Mine", f.library.document(doc.id)!!.name)
         assertEquals(doc.pages + remotePage, f.library.document(doc.id)!!.pages)
         assertEquals("Mine", record("Scan sources/Receipt/document.json").name)
+        // Written back without its PDF, so not confirmed: the PDF still has to be rebuilt from it.
+        assertTrue(folder.hasChanges(doc.id))
+    }
+
+    @Test
+    fun `a PDF that fails after the record was written does not make the next write-back merge with its own output`() {
+        val doc = f.scan("Receipt", pages = 2)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.now += 1000
+        f.library.rename(doc.id, "Renamed")
+        assertEquals(WriteResult.Failed, folder.writeBack(doc.id) { _, _ -> false })
+        f.now += 1000
+        val dropped = doc.pages[0]
+        f.library.deletePage(doc.id, dropped.id)
+
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+
+        assertEquals(listOf(doc.pages[1]), record("Scan sources/Receipt/document.json").pages)
+        assertTrue(f.names("Scan sources/Receipt").none { FolderNames.isLost(it) })
+        dropped.files.forEach { assertFalse(it, f.file("Scan sources/Receipt/$it").exists()) }
+        assertFalse(folder.hasChanges(doc.id))
+    }
+
+    @Test
+    fun `migration never deletes in the folder, even for a scan whose pages were deleted since`() {
+        val edited = f.scan("Edited", pages = 2)
+        assertTrue(folder.writeBack(edited.id, f.pdfs) is WriteResult.Written)
+        f.now += 1000
+        f.library.deletePage(edited.id, edited.pages[0].id)
+        f.scan("New", pages = 1)
+        val before = f.folderSnapshot()
+
+        val migration = folder.migrate(f.pdfs)
+
+        assertEquals(1, migration.written.size)
+        before.forEach { (path, content) -> assertEquals(path, content, f.file(path).readText()) }
+    }
+
+    @Test
+    fun `a binding left without its working copy never leads to a second copy`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)
+        f.library.delete(doc.id)
+        f.copies.put("A-ghost", Binding(f.store.location, "Receipt", "x", "y"))
+
+        val first = folder.copyIn("Receipt") as CopyInResult.Ready
+        val second = folder.copyIn("Receipt") as CopyInResult.Ready
+
+        assertEquals(first.id, second.id)
+        assertNull(f.copies.get("A-ghost"))
+        assertEquals(listOf(first.id), f.copies.idsOf(f.store.location, "Receipt"))
+        assertEquals(1, f.library.documents().size)
+    }
+
+    @Test(timeout = 10_000)
+    fun `importing under a name the file system refuses fails instead of looping`() {
+        val staged = File(f.base, "staged").apply { mkdirs() }
+        val tooLong = "a".repeat(300)
+        try {
+            f.library.import(staged, tooLong, ScanDocument("x", null, 1, 1, emptyList()))
+            fail("imported under a name no file system takes")
+        } catch (e: java.io.IOException) {
+            // expected
+        }
+    }
+
+    @Test
+    fun `an import that fails while moving files in leaves no folder behind`() {
+        val staged = File(f.base, "staged").apply { mkdirs() }
+        File(staged, "document.json").writeText("{}") // never moved in: the record is written by the library itself
+        try {
+            f.library.import(staged, "Receipt", ScanDocument("x", null, 1, 1, emptyList()))
+            fail("imported a staged record")
+        } catch (e: IllegalArgumentException) {
+            // expected
+        }
+        assertTrue(f.libraryRoot.list()!!.isEmpty())
     }
 
     @Test

@@ -110,11 +110,12 @@ class ScanFolderTest {
         val remotePage = f.remoteAddsPage("Receipt", doc)
         f.now += 1000
         f.library.rename(doc.id, "Renamed")
-        written(folder.writeBack(doc.id))
+        written(folder.writeBack(doc.id, f.pdfs))
 
         assertEquals(doc.pages + remotePage, f.library.document(doc.id)!!.pages)
         remotePage.files.forEach { assertTrue(f.library.file(doc.id, it).exists()) }
         assertFalse(folder.hasChanges(doc.id))
+        assertEquals("pdf of Renamed with 2 pages", f.file("Receipt.pdf").readText())
         val lostAfterMerge = f.names("Scan sources/Receipt").filter { FolderNames.isLost(it) }
 
         f.now += 1000

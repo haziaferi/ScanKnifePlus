@@ -6,11 +6,9 @@ import com.haziaferi.scanknifeplus.scan.library.ScanDocument
 data class RecordMerge(val merged: ScanDocument, val loser: ScanDocument, val loserLostSomething: Boolean)
 
 /**
- * Merges two versions of one scan's `document.json`, as a Syncthing conflict leaves them. Page files are write-once with unique names, so the
- * page sets can be merged: the newer version ([ScanDocument.modified]; [first] on a tie) wins its name and page order, and pages only the
- * other version has are appended in its order, if all their files are in [present]. A page both versions have but in different states (one
- * filtered, say) keeps the winner's state. Nothing is dropped silently: if the loser's name or pages differ from the result it is reported
- * so its record can be kept beside the merged one.
+ * Merges two versions of one scan's `document.json`: the newer ([ScanDocument.modified]; [first] on a tie) keeps its name, page order and
+ * page states, and pages only the other has are appended if all their files are in [present]. The result says whether the loser holds
+ * anything the merge dropped, so its record can be kept beside the merged one.
  */
 fun mergeRecords(first: ScanDocument, second: ScanDocument, present: Set<String>): RecordMerge {
     val (winner, loser) = if (second.modified > first.modified) second to first else first to second

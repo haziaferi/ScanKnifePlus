@@ -12,8 +12,8 @@ import org.json.JSONObject
 /**
  * What ties a working copy in the private scan library to its scan in the user's folder: [folder] is that folder's [FolderStore.location] and
  * [name] the scan's folder under `Scan sources/` (and its PDF's stem). [base] is the SHA-256 of the folder's `document.json` as the working
- * copy last matched it, so a change made elsewhere is merged instead of overwritten. [confirmed] is the SHA-256 of the exact working record
- * bytes that were last written to the folder, or null if none were.
+ * copy last matched it, so a change made elsewhere is merged instead of overwritten. [confirmed] is the SHA-256 of the working record bytes
+ * whose record and PDF were last both written to the folder, or null since any write-back that did not finish with a PDF.
  */
 data class Binding(val folder: String, val name: String, val base: String?, val confirmed: String?)
 
@@ -33,10 +33,10 @@ class WorkingCopies(private val dir: File) {
         }
     }
 
-    /** The id of the working copy bound to scan [name] in folder [folder], if there is one. */
+    /** The ids of the working copies bound to scan [name] in folder [folder]; normally one at most. */
     @WorkerThread
-    fun idOf(folder: String, name: String): String? = synchronized(LOCK) {
-        ids().firstOrNull { get(it)?.let { b -> b.folder == folder && b.name == name } == true }
+    fun idsOf(folder: String, name: String): List<String> = synchronized(LOCK) {
+        ids().filter { get(it)?.let { b -> b.folder == folder && b.name == name } == true }
     }
 
     /** Saves [binding] for working copy [id]: written and synced beside its file, then renamed into place. Throws IOException. */

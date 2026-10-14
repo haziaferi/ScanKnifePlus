@@ -95,18 +95,8 @@ class ScanLibrary(
      * its folder or record cannot be written.
      */
     fun create(name: String? = null): ScanDocument = synchronized(LOCK) {
-        root.mkdirs()
         val now = clock()
-        val base = defaultName(now, timeZone)
-        var id = base
-        var n = 2
-        // mkdir is atomic, so two creations never share a folder; only a name that is taken moves on to the next suffix.
-        while (true) {
-            val dir = File(root, id)
-            if (dir.mkdir()) break
-            if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
-            id = "$base-${n++}"
-        }
+        val id = claimFolder(defaultName(now, timeZone))
         val doc = ScanDocument(id, name?.trim()?.takeIf { it.isNotEmpty() }, now, now, emptyList())
         try {
             write(doc)
@@ -460,20 +450,30 @@ class ScanLibrary(
     @WorkerThread
     fun import(staged: File, name: String, doc: ScanDocument): StoredRecord = synchronized(LOCK) {
         require(isSafeName(name) && !name.startsWith(".")) { "Unsafe name $name" }
-        root.mkdirs()
-        var id = name
-        var n = 2
-        while (!File(root, id).mkdir()) {
-            if (!root.isDirectory) throw IOException("No library at $root")
-            id = "$name-${n++}"
-        }
+        val id = claimFolder(name)
         try {
             moveIn(staged, File(root, id))
             val written = doc.copy(id = id)
             StoredRecord(written, write(written))
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             File(root, id).deleteRecursively()
             throw e
+        }
+    }
+
+    /**
+     * Creates a new, empty document folder named [base], or `<base>-2` and so on, and returns its name. mkdir is atomic, so two callers never
+     * share a folder; only a name that is taken moves on to the next suffix, and any other failure throws IOException rather than looping.
+     */
+    private fun claimFolder(base: String): String {
+        root.mkdirs()
+        var id = base
+        var n = 2
+        while (true) {
+            val dir = File(root, id)
+            if (dir.mkdir()) return id
+            if (!root.isDirectory || !dir.exists()) throw IOException("Cannot create $dir")
+            id = "$base-${n++}"
         }
     }
 
