@@ -139,7 +139,7 @@ private fun inheritedValue(page: COSDictionary, key: COSName): COSBase? {
     return null
 }
 
-private fun <T> identitySetOf(items: Collection<T> = emptyList()): MutableSet<T> =
+internal fun <T> identitySetOf(items: Collection<T> = emptyList()): MutableSet<T> =
     Collections.newSetFromMap(IdentityHashMap<T, Boolean>()).apply { addAll(items) }
 
 private fun COSArray?.dicts(): List<COSDictionary> =

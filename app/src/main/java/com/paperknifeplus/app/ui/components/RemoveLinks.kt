@@ -9,8 +9,6 @@ import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Collections
-import java.util.IdentityHashMap
 
 /** What [removeLinks] took out: link annotations, and document-level JavaScript actions and named scripts. */
 internal data class LinkRemoval(val links: Int, val scripts: Int)
@@ -65,7 +63,7 @@ internal fun removeLinks(document: PDDocument, pages: Collection<Int>? = null): 
  * [action] (an action dictionary, or an array of them, or a destination) without its JavaScript actions, those chained by /Next
  * included, and how many were removed; the kept part is null when nothing is left.
  */
-private fun withoutScripts(action: COSBase?, seen: MutableSet<COSDictionary> = newIdentitySet()): Pair<COSBase?, Int> = when (action) {
+private fun withoutScripts(action: COSBase?, seen: MutableSet<COSDictionary> = identitySetOf()): Pair<COSBase?, Int> = when (action) {
     is COSDictionary -> {
         if (!seen.add(action)) {
             action to 0
@@ -96,10 +94,8 @@ private fun withoutScripts(action: COSBase?, seen: MutableSet<COSDictionary> = n
     else -> action to 0
 }
 
-private fun newIdentitySet(): MutableSet<COSDictionary> = Collections.newSetFromMap(IdentityHashMap())
-
 /** How many name/value pairs the name tree [node] holds, through its /Kids. */
-private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = newIdentitySet()): Int {
+private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = identitySetOf()): Int {
     val dict = node as? COSDictionary ?: return 0
     if (!seen.add(dict)) return 0
     val own = ((dict.getDictionaryObject(COSName.NAMES) as? COSArray)?.size() ?: 0) / 2
@@ -109,11 +105,25 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = new
 
 /**
  * Writes [input], opened with [password], to [output] without links and document scripts as [removeLinks] does, on [pages] or all pages
- * when null. The copy is not encrypted. Returns what was removed; throws on failure.
+ * when null. The copy is as protected as the source with [keepProtection] ([sameProtection]), else not encrypted. Returns what was
+ * removed; throws on failure.
  */
-internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?, pages: Collection<Int>? = null): LinkRemoval =
-    withContext(Dispatchers.IO) {
-        var removal = LinkRemoval(0, 0)
-        rewritePdf(context, input, password.orEmpty(), output) { removal = removeLinks(it, pages) }
-        removal
+internal suspend fun removeLinksPdf(
+    context: Context,
+    input: Uri,
+    output: Uri,
+    password: String?,
+    pages: Collection<Int>? = null,
+    keepProtection: Boolean = false
+): LinkRemoval = withContext(Dispatchers.IO) {
+    context.contentResolver.requireInputStream(input).use { stream ->
+        PDDocument.load(stream, password.orEmpty()).use { document ->
+            val protection = if (keepProtection) document.sameProtection(password.orEmpty()) else null
+            if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
+            val removal = removeLinks(document, pages)
+            protection?.let(document::protect)
+            saveAndFlush(context, document, output)
+            removal
+        }
     }
+}

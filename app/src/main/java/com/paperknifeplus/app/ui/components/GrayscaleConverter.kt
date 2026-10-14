@@ -26,6 +26,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.common.function.PDFunction
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
@@ -594,23 +595,6 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         walk(form.getDictionaryObject(COSName.FIELDS) as? COSArray)
     }
 
-    /**
-     * Removes a form [widget] drawn into a fallback image from its field's /Kids, and a field left without widgets from its parent's /Kids
-     * or the form's /Fields, so the form has no field that can no longer be shown.
-     */
-    private fun detachWidget(widget: COSDictionary) {
-        val form = document.documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as? COSDictionary ?: return
-        var node = widget
-        while (true) {
-            val parent = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
-            val siblings = (parent ?: form).getDictionaryObject(if (parent != null) COSName.KIDS else COSName.FIELDS) as? COSArray
-            if (siblings != null) (siblings.size() - 1 downTo 0).filter { siblings.getObject(it) === node }.forEach { siblings.remove(it) }
-            val remaining = (parent?.getDictionaryObject(COSName.KIDS) as? COSArray)?.size() ?: 0
-            if (parent == null || remaining > 0) return
-            node = parent
-        }
-    }
-
     /** Bookmark text colours (/C, always RGB) become gray. */
     private fun convertOutline() {
         val outline = document.documentCatalog.cosObject.getDictionaryObject(COSName.OUTLINES) as? COSDictionary ?: return
@@ -669,17 +653,10 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             bitmap.recycle()
         }
 
-        // Maps the upright image onto the crop box so that the page's /Rotate shows it upright again.
-        val (x, y, w, h) = listOf(crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
-        val placement = when (rotation) {
-            90 -> Matrix(0f, h, -w, 0f, x + w, y)
-            180 -> Matrix(-w, 0f, 0f, -h, x + w, y + h)
-            270 -> Matrix(0f, -h, w, 0f, x, y + h)
-            else -> Matrix(w, 0f, 0f, h, x, y)
-        }
+        val placement = uprightPlacement(crop, rotation)
         if (unconverted.isNotEmpty()) {
             page.annotations = page.annotations.filterNot { a -> unconverted.any { it.cosObject === a.cosObject } }
-            unconverted.filter { it.cosObject.getCOSName(COSName.SUBTYPE) == COSName.WIDGET }.forEach { detachWidget(it.cosObject) }
+            unconverted.filter { it.cosObject.getCOSName(COSName.SUBTYPE) == COSName.WIDGET }.forEach { document.detachWidget(it.cosObject) }
         }
         page.resources = PDResources()
         PDPageContentStream(document, page).use {
@@ -823,6 +800,37 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
             }
             return value
         }
+    }
+}
+
+/**
+ * Removes a form [widget] from its field's /Kids, and a field left without widgets from its parent's /Kids or the form's /Fields, so the
+ * form has no field that can no longer be shown.
+ */
+internal fun PDDocument.detachWidget(widget: COSDictionary) {
+    val form = documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as? COSDictionary ?: return
+    var node = widget
+    while (true) {
+        val parent = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
+        val siblings = (parent ?: form).getDictionaryObject(if (parent != null) COSName.KIDS else COSName.FIELDS) as? COSArray
+        if (siblings != null) (siblings.size() - 1 downTo 0).filter { siblings.getObject(it) === node }.forEach { siblings.remove(it) }
+        val remaining = (parent?.getDictionaryObject(COSName.KIDS) as? COSArray)?.size() ?: 0
+        if (parent == null || remaining > 0) return
+        node = parent
+    }
+}
+
+/**
+ * The matrix that maps a unit square holding an image of a page as displayed ([rotation] applied) onto [crop] in user space, so that the
+ * page's /Rotate shows it upright again.
+ */
+internal fun uprightPlacement(crop: PDRectangle, rotation: Int): Matrix {
+    val (x, y, w, h) = listOf(crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
+    return when (rotation) {
+        90 -> Matrix(0f, h, -w, 0f, x + w, y)
+        180 -> Matrix(-w, 0f, 0f, -h, x + w, y + h)
+        270 -> Matrix(0f, -h, w, 0f, x, y + h)
+        else -> Matrix(w, 0f, 0f, h, x, y)
     }
 }
 

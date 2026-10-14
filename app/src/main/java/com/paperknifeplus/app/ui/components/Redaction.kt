@@ -25,20 +25,19 @@ import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTerminalField
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
-import com.tom_roush.pdfbox.rendering.ImageType
-import com.tom_roush.pdfbox.rendering.PDFRenderer
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
 import java.text.Normalizer
-import java.util.Collections
 import java.util.IdentityHashMap
 import java.util.zip.ZipInputStream
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 private const val TAG = "Redaction"
@@ -81,10 +80,7 @@ private val WHITESPACE = Regex("""\s+""")
 /** How a redaction box is painted on the page image. */
 enum class RedactFill(internal val color: Int) {
     BLACK(Color.BLACK),
-    WHITE(Color.WHITE),
-
-    /** Nothing painted over the removed content: the box shows the paper, which on the page image is white. */
-    NONE(Color.WHITE)
+    WHITE(Color.WHITE)
 }
 
 /** Where [redact] removed a phrase outside the redacted pages, counted per object changed or removed. */
@@ -106,18 +102,24 @@ internal data class RedactReport(val pages: List<Int>, val scrubbed: ScrubCounts
 
 /**
  * Redacts [document] in place. Each page with [boxes] (rectangles in the page's default user space, by page index) or with a match of
- * [phrase] (case-insensitive, at least [MIN_REDACT_PHRASE] characters, else IllegalArgumentException) is rendered at 300 DPI with the boxes
- * burnt in with [fill], and its content replaced by that single image: no text, vector or original image survives. Its thumbnail goes, and
+ * [phrase] (case-insensitive, at least [MIN_REDACT_PHRASE] characters, else IllegalArgumentException) is rendered by [rasterizer] at 300
+ * DPI with the boxes burnt in with [fill], and its content replaced by that single image: no text, vector or original image survives. The
+ * image is placed as Grayscale places its fallback pages ([uprightPlacement]), so the page keeps its /Rotate. Its thumbnail goes, and
  * so do annotations and form fields a box touches. The phrase, and every line of at least [MIN_REDACT_PHRASE] characters that a drawn box
  * covered (as whole words), are then scrubbed from the rest of the file ([SecretScrubber]). Other pages are not re-rendered. Blocking.
  */
-internal fun redact(document: PDDocument, boxes: Map<Int, List<PDRectangle>>, phrase: String?, fill: RedactFill): RedactReport {
+internal fun redact(
+    document: PDDocument,
+    boxes: Map<Int, List<PDRectangle>>,
+    phrase: String?,
+    fill: RedactFill,
+    rasterizer: PageRasterizer
+): RedactReport {
     val needle = phrase?.trim()?.takeIf { it.isNotEmpty() }
     require(needle == null || needle.length >= MIN_REDACT_PHRASE) { "A phrase to redact needs at least $MIN_REDACT_PHRASE characters" }
     // Phrase -> whether only whole words match; a phrase searched for matches anywhere, text taken from under a box only as whole words.
     val secrets = linkedMapOf<String, Boolean>()
     needle?.let { secrets[it] = false }
-    val renderer = PDFRenderer(document).apply { setAnnotationsFilter { false } }
     val changed = mutableListOf<Int>()
     for (index in 0 until document.numberOfPages) {
         val drawn = boxes[index].orEmpty()
@@ -128,7 +130,7 @@ internal fun redact(document: PDDocument, boxes: Map<Int, List<PDRectangle>>, ph
         val found = if (needle == null) emptyList() else texts.flatMap { it.find(needle, page.cropBox) }
         if (drawn.isEmpty() && found.isEmpty()) continue
         texts.first().linesIn(drawn, page.cropBox).filter { it.length >= MIN_REDACT_PHRASE }.forEach { secrets.putIfAbsent(it, true) }
-        burn(document, renderer, index, page, drawn + found, fill)
+        burn(document, rasterizer, index, page, drawn + found, fill)
         changed += index
     }
     val scrubbed = if (secrets.isEmpty()) ScrubCounts() else SecretScrubber(document, secrets).scrub()
@@ -136,8 +138,9 @@ internal fun redact(document: PDDocument, boxes: Map<Int, List<PDRectangle>>, ph
 }
 
 /**
- * Writes [input], opened with [password], to [output] redacted as [redact] does. The copy is not encrypted, and is buffered in temp files.
- * Returns the report; throws on failure, including IllegalArgumentException for a phrase that is too short.
+ * Writes [input], opened with [password], to [output] redacted as [redact] does, pages rendered by the platform renderer unless [rasterizer]
+ * gives another. The copy is as protected as the source with [keepProtection] ([sameProtection]), else not encrypted; it is buffered in
+ * temp files. Returns the report; throws on failure, including IllegalArgumentException for a phrase that is too short.
  */
 internal suspend fun redactPdf(
     context: Context,
@@ -146,13 +149,22 @@ internal suspend fun redactPdf(
     password: String?,
     boxes: Map<Int, List<PDRectangle>>,
     phrase: String?,
-    fill: RedactFill
+    fill: RedactFill,
+    keepProtection: Boolean = false,
+    rasterizer: (PDDocument) -> PageRasterizer = { NativePageRasterizer(context, input, if (it.isEncrypted) password.orEmpty() else null) }
 ): RedactReport = withContext(Dispatchers.IO) {
     val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
     context.contentResolver.requireInputStream(input).use { stream ->
         PDDocument.load(stream, password.orEmpty(), memory).use { document ->
-            if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-            val report = redact(document, boxes, phrase, fill)
+            val protection = if (keepProtection) document.sameProtection(password.orEmpty()) else null
+            if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
+            val pages = rasterizer(document)
+            val report = try {
+                redact(document, boxes, phrase, fill, pages)
+            } finally {
+                (pages as? Closeable)?.close()
+            }
+            protection?.let(document::protect)
             saveAndFlush(context, document, output)
             report
         }
@@ -287,10 +299,10 @@ private fun PDRectangle.intersects(other: PDRectangle): Boolean =
     lowerLeftX < other.upperRightX && other.lowerLeftX < upperRightX && lowerLeftY < other.upperRightY && other.lowerLeftY < upperRightY
 
 /**
- * Replaces page [index]'s content with an image of it, rendered without its rotation (so the image maps onto the crop box in user space)
- * and with [boxes] painted in [fill]; drops its thumbnail and the annotations [boxes] touch.
+ * Replaces page [index]'s content with an image of it as displayed, from [rasterizer], with [boxes] painted in [fill]; drops its thumbnail
+ * and the annotations [boxes] touch.
  */
-private fun burn(document: PDDocument, renderer: PDFRenderer, index: Int, page: PDPage, boxes: List<PDRectangle>, fill: RedactFill) {
+private fun burn(document: PDDocument, rasterizer: PageRasterizer, index: Int, page: PDPage, boxes: List<PDRectangle>, fill: RedactFill) {
     val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray
     val covered = annots?.let { array ->
         (0 until array.size()).mapNotNull { array.getObject(it) as? COSDictionary }.filter { annotation ->
@@ -302,30 +314,34 @@ private fun burn(document: PDDocument, renderer: PDFRenderer, index: Int, page: 
     page.cosObject.removeItem(THUMB)
 
     val crop = page.cropBox
+    val rotation = ((page.rotation % 360) + 360) % 360
+    val turned = rotation == 90 || rotation == 270
     var scale = REDACT_DPI / 72f
     val pixels = crop.width * scale * crop.height * scale
     if (pixels > MAX_REDACT_PIXELS) scale *= sqrt(MAX_REDACT_PIXELS / pixels)
-    val rotate = page.cosObject.getItem(COSName.ROTATE)
-    page.rotation = 0
-    val bitmap = try {
-        renderer.renderImage(index, scale, ImageType.RGB)
-    } finally {
-        if (rotate == null) page.cosObject.removeItem(COSName.ROTATE) else page.cosObject.setItem(COSName.ROTATE, rotate)
-    }
+    // Unrotated size in pixels; the bitmap is the page as displayed, so turned pages swap the two.
+    val width = (crop.width * scale).roundToInt().coerceAtLeast(1)
+    val height = (crop.height * scale).roundToInt().coerceAtLeast(1)
+    val bitmap = if (turned) rasterizer.render(index, height, width) else rasterizer.render(index, width, height)
     val image = try {
-        val sx = bitmap.width / crop.width
-        val sy = bitmap.height / crop.height
         val paint = Paint().apply {
             color = fill.color
             style = Paint.Style.FILL
         }
         val canvas = Canvas(bitmap)
-        // Whole pixels outward, so no partly covered pixel keeps a trace of what is under the box.
         for (box in boxes) {
-            canvas.drawRect(
-                floor((box.lowerLeftX - crop.lowerLeftX) * sx), floor((crop.upperRightY - box.upperRightY) * sy),
-                ceil((box.upperRightX - crop.lowerLeftX) * sx), ceil((crop.upperRightY - box.lowerLeftY) * sy), paint
-            )
+            // Whole pixels outward in the unrotated image, so no partly covered pixel keeps a trace of what is under the box.
+            val left = floor((box.lowerLeftX - crop.lowerLeftX) * width / crop.width)
+            val top = floor((crop.upperRightY - box.upperRightY) * height / crop.height)
+            val right = ceil((box.upperRightX - crop.lowerLeftX) * width / crop.width)
+            val bottom = ceil((crop.upperRightY - box.lowerLeftY) * height / crop.height)
+            // The same corners on the page as displayed, turned clockwise by its rotation.
+            when (rotation) {
+                90 -> canvas.drawRect(height - bottom, left, height - top, right, paint)
+                180 -> canvas.drawRect(width - right, height - bottom, width - left, height - top, paint)
+                270 -> canvas.drawRect(top, width - right, bottom, width - left, paint)
+                else -> canvas.drawRect(left, top, right, bottom, paint)
+            }
         }
         bitmap.setHasAlpha(false)
         encodePage(document, bitmap)
@@ -333,7 +349,12 @@ private fun burn(document: PDDocument, renderer: PDFRenderer, index: Int, page: 
         bitmap.recycle()
     }
     page.resources = PDResources()
-    PDPageContentStream(document, page).use { it.drawImage(image, crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height) }
+    PDPageContentStream(document, page).use {
+        it.saveGraphicsState()
+        it.transform(uprightPlacement(crop, rotation))
+        it.drawImage(image, 0f, 0f, 1f, 1f)
+        it.restoreGraphicsState()
+    }
 }
 
 /** [bitmap] stored losslessly, or as JPEG when it is clearly a photo and the JPEG is smaller. */
@@ -372,7 +393,7 @@ internal fun looksLikePhoto(bitmap: Bitmap): Boolean {
 private fun removeAnnotations(document: PDDocument, page: PDPage, annotations: Collection<COSDictionary>) {
     if (annotations.isEmpty()) return
     val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: return
-    val removed = identitySet<COSDictionary>().apply { addAll(annotations) }
+    val removed = identitySetOf(annotations)
     for (i in 0 until annots.size()) {
         val annotation = annots.getObject(i) as? COSDictionary ?: continue
         val parent = annotation.getDictionaryObject(COSName.PARENT) as? COSDictionary
@@ -383,7 +404,7 @@ private fun removeAnnotations(document: PDDocument, page: PDPage, annotations: C
         if (annotation != null && annotation in removed) annots.remove(i)
     }
     for (annotation in removed) {
-        if (annotation.getCOSName(COSName.SUBTYPE) == COSName.WIDGET) detachWidget(document, annotation)
+        if (annotation.getCOSName(COSName.SUBTYPE) == COSName.WIDGET) document.detachWidget(annotation)
         val subtype = annotation.getItem(COSName.SUBTYPE)
         val rect = annotation.getItem(COSName.RECT)
         annotation.clear()
@@ -392,22 +413,6 @@ private fun removeAnnotations(document: PDDocument, page: PDPage, annotations: C
         rect?.let { annotation.setItem(COSName.RECT, it) }
     }
 }
-
-/** Removes [widget] from the AcroForm field tree, and each parent field left without kids. */
-private fun detachWidget(document: PDDocument, widget: COSDictionary) {
-    val form = document.documentCatalog.cosObject.getDictionaryObject(COSName.ACRO_FORM) as? COSDictionary ?: return
-    var node = widget
-    while (true) {
-        val parent = node.getDictionaryObject(COSName.PARENT) as? COSDictionary
-        val siblings = (parent ?: form).getDictionaryObject(if (parent != null) COSName.KIDS else COSName.FIELDS) as? COSArray
-        if (siblings != null) (siblings.size() - 1 downTo 0).filter { siblings.getObject(it) === node }.forEach { siblings.remove(it) }
-        val remaining = (parent?.getDictionaryObject(COSName.KIDS) as? COSArray)?.size() ?: 0
-        if (parent == null || remaining > 0) return
-        node = parent
-    }
-}
-
-private fun <T> identitySet(): MutableSet<T> = Collections.newSetFromMap(IdentityHashMap())
 
 /** [value] itself, or the object it refers to. */
 private fun resolve(value: COSBase?): COSBase? = if (value is COSObject) value.`object` else value
@@ -605,7 +610,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
     }
 
     private fun scrubOutline(root: COSDictionary?) {
-        val seen = identitySet<COSDictionary>()
+        val seen = identitySetOf<COSDictionary>()
         val pending = ArrayDeque<COSDictionary>()
         (root?.getDictionaryObject(COSName.FIRST) as? COSDictionary)?.let(pending::add)
         while (pending.isNotEmpty()) {
@@ -620,7 +625,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
     /** Drops each entry of the EmbeddedFiles name tree whose name or file mentions a phrase. */
     private fun scrubEmbeddedFiles() {
         val names = document.documentCatalog.cosObject.getDictionaryObject(COSName.NAMES) as? COSDictionary ?: return
-        val seen = identitySet<COSDictionary>()
+        val seen = identitySetOf<COSDictionary>()
         val pending = ArrayDeque<COSDictionary>()
         (names.getDictionaryObject(COSName.EMBEDDED_FILES) as? COSDictionary)?.let(pending::add)
         while (pending.isNotEmpty()) {
@@ -690,7 +695,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
                 }
             } else if (hit(field.valueAsString) || hit(field.alternateFieldName)) {
                 widgets.groupBy { pageOf[it] }.forEach { (page, onPage) ->
-                    if (page != null) removeAnnotations(document, page, onPage) else onPage.forEach { detachWidget(document, it) }
+                    if (page != null) removeAnnotations(document, page, onPage) else onPage.forEach(document::detachWidget)
                 }
                 fields++
                 continue
@@ -709,7 +714,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
      * empties an embedded file that mentions one, and blanks marked-content text that does in page and form content streams.
      */
     private fun scrubObjects() {
-        val contents = identitySet<COSStream>()
+        val contents = identitySetOf<COSStream>()
         for (page in document.pages) {
             when (val value = page.cosObject.getDictionaryObject(COSName.CONTENTS)) {
                 is COSStream -> contents += value
@@ -717,7 +722,7 @@ private class SecretScrubber(private val document: PDDocument, secrets: Map<Stri
                 else -> {}
             }
         }
-        val seen = identitySet<COSBase>()
+        val seen = identitySetOf<COSBase>()
         val pending = ArrayDeque<COSBase>()
         pending += document.document.trailer
         while (pending.isNotEmpty()) {

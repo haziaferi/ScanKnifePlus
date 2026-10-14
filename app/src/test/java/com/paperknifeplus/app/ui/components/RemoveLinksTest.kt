@@ -12,6 +12,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDJavascriptNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionJavaScript
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionLaunch
@@ -23,6 +24,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -127,5 +129,17 @@ class RemoveLinksTest {
             assertEquals(LinkRemoval(0, 0), removeLinks(doc))
             assertEquals(2, (doc.documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION) as COSArray).size())
         }
+    }
+
+    @Test
+    fun `the source's protection is kept only when asked`() {
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "links-locked.pdf")
+        val kept = File(context.cacheDir, "links-kept.pdf").apply { delete() }
+        runBlocking { removeLinksPdf(context, input, Uri.fromFile(kept), TestPdfs.USER_PASSWORD, keepProtection = true) }
+        assertThrows(InvalidPasswordException::class.java) { PDDocument.load(kept).close() }
+        PDDocument.load(kept, TestPdfs.USER_PASSWORD).use { assertTrue(it.isEncrypted) }
+        val open = File(context.cacheDir, "links-open.pdf").apply { delete() }
+        runBlocking { removeLinksPdf(context, input, Uri.fromFile(open), TestPdfs.USER_PASSWORD) }
+        PDDocument.load(open).use { assertFalse(it.isEncrypted) }
     }
 }

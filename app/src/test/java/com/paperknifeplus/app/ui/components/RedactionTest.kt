@@ -24,6 +24,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification
 import com.tom_roush.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile
@@ -38,6 +39,8 @@ import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOut
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDCheckBox
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
+import com.tom_roush.pdfbox.rendering.ImageType
+import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,12 +98,24 @@ class RedactionTest {
         source: ByteArray,
         boxes: Map<Int, List<PDRectangle>> = emptyMap(),
         phrase: String? = null,
-        fill: RedactFill = RedactFill.BLACK
+        fill: RedactFill = RedactFill.BLACK,
+        password: String? = null,
+        keepProtection: Boolean = false
     ): Pair<RedactReport, ByteArray> {
         val input = TestPdfs.write(context.cacheDir, source, "redact-in.pdf")
         val output = File(context.cacheDir, "redact-out.pdf").apply { delete() }
-        val report = runBlocking { redactPdf(context, input, Uri.fromFile(output), null, boxes, phrase, fill) }
+        val report = runBlocking {
+            redactPdf(context, input, Uri.fromFile(output), password, boxes, phrase, fill, keepProtection) { pdfboxPages(it) }
+        }
         return report to output.readBytes()
+    }
+
+    /** Stands in for the platform renderer, which Robolectric lacks: pdfbox draws the page as displayed, at the size asked for. */
+    private fun pdfboxPages(doc: PDDocument) = PageRasterizer { index, width, height ->
+        val page = doc.getPage(index)
+        val shownWidth = if (page.rotation % 180 != 0) page.cropBox.height else page.cropBox.width
+        val rendered = PDFRenderer(doc).apply { setAnnotationsFilter { false } }.renderImage(index, width / shownWidth, ImageType.RGB)
+        Bitmap.createScaledBitmap(rendered, width, height, true).copy(Bitmap.Config.ARGB_8888, true)
     }
 
     private fun operators(page: PDPage): Set<String> =
@@ -118,8 +133,17 @@ class RedactionTest {
     private fun pixelAt(page: PDPage, x: Float, y: Float): Int {
         val crop = page.cropBox
         val image = pageImage(page)
-        val px = ((x - crop.lowerLeftX) / crop.width * image.width).toInt()
-        val py = ((crop.upperRightY - y) / crop.height * image.height).toInt()
+        // Where the point is on the unrotated page, then on the page as displayed, which the image shows.
+        val u = (x - crop.lowerLeftX) / crop.width
+        val v = (crop.upperRightY - y) / crop.height
+        val (dx, dy) = when (page.rotation) {
+            90 -> (1 - v) to u
+            180 -> (1 - u) to (1 - v)
+            270 -> v to (1 - u)
+            else -> u to v
+        }
+        val px = (dx * image.width).toInt().coerceIn(0, image.width - 1)
+        val py = (dy * image.height).toInt().coerceIn(0, image.height - 1)
         // The decoded samples, read directly: Robolectric's bitmap decoding of PDF images swaps red and blue.
         val samples = image.stream.createInputStream().use { it.readBytes() }
         val i = (py * image.width + px) * 3
@@ -157,7 +181,7 @@ class RedactionTest {
     }
 
     @Test
-    fun `white and no fill paint the box like paper`() {
+    fun `a white box paints like paper`() {
         val source = PDDocument().use { doc ->
             val page = PDPage(PDRectangle(200f, 200f))
             doc.addPage(page)
@@ -168,36 +192,38 @@ class RedactionTest {
             }
             bytes(doc)
         }
-        for (fill in listOf(RedactFill.WHITE, RedactFill.NONE)) {
-            val (_, output) = redactFile(source, mapOf(0 to listOf(PDRectangle(50f, 50f, 50f, 50f))), fill = fill)
-            PDDocument.load(output).use { doc ->
-                assertTrue(isWhite(pixelAt(doc.getPage(0), 75f, 75f)))
-                assertEquals(Color.BLUE, pixelAt(doc.getPage(0), 150f, 150f))
-            }
+        val (_, output) = redactFile(source, mapOf(0 to listOf(PDRectangle(50f, 50f, 50f, 50f))), fill = RedactFill.WHITE)
+        PDDocument.load(output).use { doc ->
+            assertTrue(isWhite(pixelAt(doc.getPage(0), 75f, 75f)))
+            assertEquals(Color.BLUE, pixelAt(doc.getPage(0), 150f, 150f))
         }
     }
 
     @Test
     fun `drawn boxes and phrase matches land in place on a rotated page with an offset crop box`() {
-        val source = PDDocument().use { doc ->
-            val page = textPage(doc, 300f to "Rotated secret", size = PDRectangle(400f, 400f))
-            page.cropBox = PDRectangle(20f, 250f, 300f, 100f)
-            page.rotation = 90
-            bytes(doc)
-        }
-        val (report, output) = redactFile(source, mapOf(0 to listOf(PDRectangle(200f, 260f, 50f, 20f))), phrase = "secret")
-        assertEquals(listOf(0), report.pages)
-        PDDocument.load(output).use { doc ->
-            val page = doc.getPage(0)
-            assertEquals(90, page.rotation)
-            assertEquals(PDRectangle(20f, 250f, 300f, 100f).toString(), page.cropBox.toString())
-            assertTrue(isBlack(pixelAt(page, 225f, 270f)))
-            assertTrue(isWhite(pixelAt(page, 200f, 330f)))
-            assertTrue(isBlack(pixelAt(page, (textX("Rotated ") + textX("Rotated secret")) / 2, 304f)))
-            assertTrue(isWhite(pixelAt(page, (textX("Rotated ") + textX("Rotated secret")) / 2, 320f)))
-            // The image fills the crop box in user space, so the page's own /Rotate turns it with the page.
-            val image = pageImage(page)
-            assertEquals(300f / 100f, image.width.toFloat() / image.height, 0.02f)
+        for (rotation in listOf(90, 180, 270)) {
+            val source = PDDocument().use { doc ->
+                val page = textPage(doc, 300f to "Rotated secret", size = PDRectangle(400f, 400f))
+                page.cropBox = PDRectangle(20f, 250f, 300f, 100f)
+                page.rotation = rotation
+                bytes(doc)
+            }
+            val (report, output) = redactFile(source, mapOf(0 to listOf(PDRectangle(200f, 260f, 50f, 20f))), phrase = "secret")
+            assertEquals(listOf(0), report.pages)
+            PDDocument.load(output).use { doc ->
+                val page = doc.getPage(0)
+                assertEquals(rotation, page.rotation)
+                assertEquals(PDRectangle(20f, 250f, 300f, 100f).toString(), page.cropBox.toString())
+                val middle = (textX("Rotated ") + textX("Rotated secret")) / 2
+                assertTrue("$rotation", isBlack(pixelAt(page, 225f, 270f)))
+                assertTrue("$rotation", isWhite(pixelAt(page, 200f, 330f)))
+                assertTrue("$rotation", isBlack(pixelAt(page, middle, 304f)))
+                assertTrue("$rotation", isWhite(pixelAt(page, middle, 320f)))
+                // The image shows the page as displayed; the page's own /Rotate is undone by its placement.
+                val image = pageImage(page)
+                val shown = if (rotation == 180) 300f / 100f else 100f / 300f
+                assertEquals(shown, image.width.toFloat() / image.height, 0.02f)
+            }
         }
     }
 
@@ -226,8 +252,8 @@ class RedactionTest {
     fun `a phrase under four characters is refused`() {
         PDDocument().use { doc ->
             textPage(doc, 100f to "abc")
-            assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "abc", RedactFill.BLACK) }
-            assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "  ab ", RedactFill.BLACK) }
+            assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "abc", RedactFill.BLACK, pdfboxPages(doc)) }
+            assertThrows(IllegalArgumentException::class.java) { redact(doc, emptyMap(), "  ab ", RedactFill.BLACK, pdfboxPages(doc)) }
         }
     }
 
@@ -267,6 +293,17 @@ class RedactionTest {
         val (report, output) = redactFile(source, mapOf(0 to listOf(box)))
         assertEquals(1, report.scrubbed.info)
         PDDocument.load(output).use { assertEquals(", Jonathan Examples, other", it.documentInformation.keywords) }
+    }
+
+    @Test
+    fun `the source's protection is kept only when asked`() {
+        val source = TestPdfs.userPassword(2)
+        val box = mapOf(0 to listOf(PDRectangle(60f, 690f, 120f, 40f)))
+        val (_, kept) = redactFile(source, box, password = TestPdfs.USER_PASSWORD, keepProtection = true)
+        assertThrows(InvalidPasswordException::class.java) { PDDocument.load(kept).close() }
+        PDDocument.load(kept, TestPdfs.USER_PASSWORD).use { assertEquals(setOf("q", "cm", "Do", "Q"), operators(it.getPage(0))) }
+        val (_, open) = redactFile(source, box, password = TestPdfs.USER_PASSWORD)
+        PDDocument.load(open).use { assertFalse(it.isEncrypted) }
     }
 
     @Test
