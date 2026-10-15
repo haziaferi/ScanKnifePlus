@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,7 +60,6 @@ internal fun moveMergeFile(files: List<MergeFile>, index: Int, delta: Int): List
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MergeView(
     initialUri: Uri? = null,
@@ -221,7 +219,7 @@ fun MergeView(
                                 ) { index, file ->
                                     Box(
                                         modifier = Modifier
-                                            .animateItemPlacement()
+                                            .animateItem(fadeInSpec = null, fadeOutSpec = null)
                                     ) {
                                         MergeFileListItem(
                                             file = file,
