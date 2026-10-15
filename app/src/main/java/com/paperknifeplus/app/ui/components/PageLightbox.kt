@@ -4,7 +4,6 @@ import android.net.Uri
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.*
@@ -41,7 +40,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.toSize
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PageLightbox(
     uri: Uri,
@@ -87,7 +85,7 @@ fun PageLightbox(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 pageSpacing = 16.dp,
-                beyondBoundsPageCount = 1,
+                beyondViewportPageCount = 1,
                 userScrollEnabled = !isCurrentPageZoomed && (bottomBar == null)
             ) { pageIndex ->
                 val request = remember(uri, pageIndex, password) { 
@@ -115,7 +113,7 @@ fun PageLightbox(
                     Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+                    val state = rememberTransformableState { _, zoomChange, offsetChange, _ ->
                         scale = (scale * zoomChange).coerceIn(1f, 4f)
                         offset = zoomPanClamp(offset + offsetChange, Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()), scale)
                     }

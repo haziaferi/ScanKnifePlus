@@ -111,7 +111,7 @@ fun LockedFilePrompt(
                             )
                         }
                     },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrect = false, imeAction = ImeAction.Done),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (!isLoading) submit() }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = accentColor,

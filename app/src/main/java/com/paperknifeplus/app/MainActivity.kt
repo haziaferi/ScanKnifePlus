@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -81,7 +80,7 @@ class MainActivity : ComponentActivity() {
         acceptIncoming(intent)
     }
 
-    @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -158,7 +157,7 @@ class MainActivity : ComponentActivity() {
                                 state = pagerState,
                                 modifier = Modifier.weight(1f),
                                 userScrollEnabled = currentTool == null,
-                                beyondBoundsPageCount = 0
+                                beyondViewportPageCount = 0
                             ) { page ->
                                 when (mainScreens[page]) {
                                     "home" -> HomeView(
