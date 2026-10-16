@@ -2,8 +2,10 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import androidx.activity.ComponentActivity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
@@ -12,7 +14,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHasNoClickAction
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -27,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
@@ -35,7 +38,7 @@ class HomeViewTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = createComposeRule()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     /** Reports ZIP for *.zip paths and PDF otherwise, as a document provider would. */
     class TypedProvider : ContentProvider() {
@@ -76,6 +79,15 @@ class HomeViewTest {
         rule.onNodeWithText("Scan").assertDoesNotExist()
         rule.onNodeWithText("Import photos").performClick()
         assertEquals(1, imports)
+    }
+
+    @Test
+    fun `Open PDF asks the system picker for a PDF`() {
+        home()
+        rule.onNodeWithText("Open PDF").performClick()
+        val request = shadowOf(rule.activity).nextStartedActivityForResult.intent
+        assertEquals(Intent.ACTION_GET_CONTENT, request.action)
+        assertEquals("application/pdf", request.type)
     }
 
     @Test

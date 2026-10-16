@@ -232,13 +232,10 @@ class MainActivity : ComponentActivity() {
                                     onSeeAll = { showTab(HISTORY_ROUTE) },
                                     onOpenPreview = openPreview
                                 )
-                                HISTORY_ROUTE -> HistoryView(
-                                    onItemClick = { uri, name, count ->
-                                        toolInitialPassword = null
-                                        openPreview(uri, name, count)
-                                    },
-                                    onBack = { showTab(HOME_ROUTE) }
-                                )
+                                HISTORY_ROUTE -> HistoryView(onItemClick = { uri, name, count ->
+                                    toolInitialPassword = null
+                                    openPreview(uri, name, count)
+                                })
                             }
                         }
                         if (currentTool == null) {

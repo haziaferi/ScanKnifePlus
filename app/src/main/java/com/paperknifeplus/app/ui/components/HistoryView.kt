@@ -27,7 +27,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,26 +75,16 @@ enum class HistoryFilter(@StringRes val label: Int, @StringRes val empty: Int) {
     }
 }
 
-/** This session's outputs, newest first, filtered by the chips; the list scrolls inside the screen. [onBack] returns to Home. */
+/** This session's outputs, newest first, filtered by the chips; the list scrolls inside the screen. */
 @Composable
-fun HistoryView(onItemClick: (Uri, String, Int) -> Unit, onBack: () -> Unit) {
+fun HistoryView(onItemClick: (Uri, String, Int) -> Unit) {
     val context = LocalContext.current
     var filter by rememberSaveable { mutableStateOf(HistoryFilter.ALL) }
     val items = SessionManager.history.filter(filter::matches)
 
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.history_back),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
+        // History is a tab of the bottom bar, so it has no back arrow of its own.
+        Row(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 4.dp)) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.history_title),

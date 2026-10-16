@@ -13,6 +13,7 @@
     <string name="home_scan_title">Scan a document</string>
     <string name="home_scan_subtitle">Pages, receipts or a book spread</string>
     <string name="home_import_photos">Import photos</string>
+    <string name="home_open_pdf">Open PDF</string>
     <string name="home_recent">Recent</string>
     <string name="home_see_all">See all</string>
     <string name="home_recent_empty">Your scans and tool outputs will show here.</string>
@@ -20,7 +21,6 @@
     <!-- History -->
     <string name="history_title">History</string>
     <string name="history_subtitle">Files made in this session</string>
-    <string name="history_back">Back to Home</string>
     <string name="history_filter_all">All</string>
     <string name="history_filter_scans">Scans</string>
     <string name="history_filter_tools">Tool outputs</string>
@@ -44,7 +44,7 @@
     <string name="tool_merge_desc">Combine PDFs</string>
     <string name="tool_split">Split</string>
     <string name="tool_split_desc">Extract pages</string>
-    <string name="tool_delete">Delete</string>
+    <string name="tool_delete">Delete pages</string>
     <string name="tool_delete_desc">Remove pages</string>
     <string name="tool_rearrange">Rearrange</string>
     <string name="tool_rearrange_desc">Sort pages</string>
@@ -54,7 +54,7 @@
     <string name="tool_sign_desc">Add a signature</string>
     <string name="tool_watermark">Watermark</string>
     <string name="tool_watermark_desc">Add an overlay</string>
-    <string name="tool_page_numbers">Numbers</string>
+    <string name="tool_page_numbers">Page numbers</string>
     <string name="tool_page_numbers_desc">Add page numbers</string>
     <string name="tool_bookmarks">Bookmarks</string>
     <string name="tool_bookmarks_desc">Edit bookmarks</string>
@@ -66,20 +66,20 @@
     <string name="tool_repair_desc">Fix a damaged file</string>
     <string name="tool_compare">Compare</string>
     <string name="tool_compare_desc">Visual difference</string>
-    <string name="tool_protect">Lock</string>
+    <string name="tool_protect">Protect</string>
     <string name="tool_protect_desc">Add a password</string>
     <string name="tool_unlock">Unlock</string>
     <string name="tool_unlock_desc">Remove the password</string>
     <string name="tool_metadata">Metadata</string>
     <string name="tool_metadata_desc">Edit properties</string>
-    <string name="tool_pdf2img">PDF to Img</string>
+    <string name="tool_pdf2img">PDF to images</string>
     <string name="tool_pdf2img_desc">Export pages as images</string>
-    <string name="tool_img2pdf">Img to PDF</string>
+    <string name="tool_img2pdf">Images to PDF</string>
     <string name="tool_img2pdf_desc">Build a PDF from photos</string>
     <string name="tool_pdf2zip">PDF to ZIP</string>
     <string name="tool_pdf2zip_desc">Archive pages</string>
-    <string name="tool_extract_images">Extract</string>
+    <string name="tool_extract_images">Extract images</string>
     <string name="tool_extract_images_desc">Save embedded images</string>
-    <string name="tool_pdf2text">PDF to Text</string>
+    <string name="tool_pdf2text">PDF to text</string>
     <string name="tool_pdf2text_desc">Extract text</string>
 </resources>

@@ -1,6 +1,8 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -8,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +35,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,17 +46,22 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** How many outputs Home's Recent list shows. */
 private const val RECENT_COUNT = 3
 
 /**
  * Home: header (wordmark, All tools, Settings), the scan card and the Recent list (1a, 3c, 3d). Scanning itself starts from the bottom bar's
- * Scan button, so the card carries only Import; the accent stays on Scan, the active tab and the Scan tag.
+ * Scan button, so the card carries Import photos and Open PDF (the system picker, then the reader); the accent stays on Scan, the active
+ * tab and the Scan tag.
  */
 @Composable
 fun HomeView(
@@ -62,10 +71,21 @@ fun HomeView(
     onSeeAll: () -> Unit,
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            scope.launch {
+                val name = withContext(Dispatchers.IO) { getUriDetails(context, it).name }
+                onOpenPreview(it, name, getPageCount(context, it, null))
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         HomeHeader(onAllTools = onAllTools, onSettings = onSettings)
         Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-            ScanCard(onImportPhotos)
+            ScanCard(onImportPhotos = onImportPhotos, onOpenPdf = { pickPdf.launch("application/pdf") })
             RecentList(SessionManager.history.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
         }
     }
@@ -100,9 +120,9 @@ private fun HeaderButton(icon: ImageVector, label: String, onClick: () -> Unit) 
     }
 }
 
-/** "Scan a document" with its subtitle and the Import photos button; the Scan action itself is in the bottom bar (3c). */
+/** "Scan a document" with its subtitle and the Import photos and Open PDF buttons (T2); the Scan action itself is in the bottom bar (3c). */
 @Composable
-private fun ScanCard(onImportPhotos: () -> Unit) {
+private fun ScanCard(onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp),
@@ -133,15 +153,25 @@ private fun ScanCard(onImportPhotos: () -> Unit) {
                     Text(stringResource(R.string.home_scan_subtitle), fontSize = 14.sp, color = colors.onSurfaceVariant)
                 }
             }
-            OutlinedButton(
-                onClick = onImportPhotos,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, colors.outline)
-            ) {
-                Text(stringResource(R.string.home_import_photos), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CardButton(stringResource(R.string.home_import_photos), onImportPhotos, Modifier.weight(1f))
+                CardButton(stringResource(R.string.home_open_pdf), onOpenPdf, Modifier.weight(1f))
             }
         }
+    }
+}
+
+/** An outlined card button of at least 48 dp (T2); its label wraps at large text sizes instead of clipping. */
+@Composable
+private fun CardButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
     }
 }
 

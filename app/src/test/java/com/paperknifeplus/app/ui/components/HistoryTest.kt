@@ -85,7 +85,7 @@ class HistoryTest {
             SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description, pdf, 4)
         }
         var opened: Uri? = null
-        rule.setContent { HistoryView(onItemClick = { uri, _, _ -> opened = uri }, onBack = {}) }
+        rule.setContent { HistoryView(onItemClick = { uri, _, _ -> opened = uri }) }
 
         // Types are resolved off the main thread, so the PDF row turns clickable shortly after.
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("merged.pdf") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
@@ -104,7 +104,7 @@ class HistoryTest {
             SessionManager.addEntry("scan.pdf", "Scan", "3 pages", Icons.Filled.DocumentScanner)
             SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description)
         }
-        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }, onBack = {}) }
+        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
 
         rule.onNodeWithText("All").assertIsSelected()
         rule.onNodeWithText("scan.pdf").assertExists()
@@ -122,14 +122,12 @@ class HistoryTest {
     }
 
     @Test
-    fun `an empty filter says so, and Back returns`() {
+    fun `an empty filter says so, and there is no back arrow`() {
         rule.runOnUiThread { SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description) }
-        var back = 0
-        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }, onBack = { back++ }) }
+        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
         rule.onNodeWithText("Scans").performClick()
         rule.onNodeWithText("No scans yet.").assertExists()
-        rule.onNodeWithContentDescription("Back to Home").performClick()
-        assertEquals(1, back)
+        rule.onNodeWithContentDescription("Back to Home").assertDoesNotExist()
     }
 
     @Test
@@ -139,7 +137,7 @@ class HistoryTest {
         rule.runOnUiThread { SessionManager.addEntry(long, "Compress", "Optimized", Icons.Filled.Description) }
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
-                HistoryView(onItemClick = { _, _, _ -> }, onBack = {})
+                HistoryView(onItemClick = { _, _, _ -> })
             }
         }
         val name = rule.onNodeWithText(long).fetchSemanticsNode().boundsInRoot
