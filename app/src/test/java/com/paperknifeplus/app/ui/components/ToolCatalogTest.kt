@@ -7,13 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
-import com.paperknifeplus.app.testing.mainThreadComposeRule
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -31,7 +31,7 @@ class ToolCatalogTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = mainThreadComposeRule()
+    val rule = createComposeRule()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
@@ -48,7 +48,7 @@ class ToolCatalogTest {
     @Test
     fun `every tool screen is in the catalog`() {
         val catalog = File(components, "ToolCatalog.kt").readText()
-        val screens = components.listFiles()!!.map { it.name.removeSuffix(".kt") }.filter { it.endsWith("View") && it !in SHELL_SCREENS }
+        val screens = components.listFiles()!!.map { it.name.removeSuffix(".kt") }.filter { it.endsWith("View") && it !in NOT_TOOLS }
         assertEquals(ToolCatalog.tools.size, screens.size)
         for (screen in screens) assertTrue("$screen is missing from ToolCatalog", catalog.contains("$screen("))
     }
@@ -110,7 +110,7 @@ class ToolCatalogTest {
         listOf(File("src/main/java"), File("app/src/main/java")).first { it.isDirectory }.resolve(pkg)
 
     private companion object {
-        /** The *View screens that are the shell's own, not tools. */
-        val SHELL_SCREENS = setOf("HomeView", "HistoryView", "ToolsView", "SettingsView", "AboutView")
+        /** The *View composables that are not tools: the shell's own screens and the tools' shared success screen. */
+        val NOT_TOOLS = setOf("HomeView", "HistoryView", "ToolsView", "SettingsView", "AboutView", "SuccessView")
     }
 }
