@@ -43,16 +43,22 @@ const val SCAN_ROUTE = "scan"
 
 /**
  * The document scanner: Scanner, then Review, then a PDF saved where the system file picker says (the storage folder comes with the storage
- * wiring). The camera permission is asked as the flow starts. [onSaved] gets the saved PDF, already in History; [onClose] runs when the user
+ * wiring). Given [importUris] (picked images), the flow starts in Review with them as its pages instead. The camera permission is asked as the
+ * flow starts. [onSaved] gets the saved PDF, already in History; [onClose] runs when the user
  * leaves without saving, after the keep-or-discard prompt (decision 6) when there are pages. The flow holds the screen in portrait, as the
  * camera, the live outline and the crop all assume a portrait screen; Book mode reads how the phone is held from its sensors instead.
  */
 @Composable
-fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
+fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit, importUris: List<Uri> = emptyList()) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
     val holder = remember(activity) { ViewModelProvider(activity)[ScanFlowHolder::class.java] }
-    val model = remember(holder) { holder.model ?: ScanFlowModel(context.applicationContext).also { holder.model = it } }
+    val model = remember(holder) {
+        holder.model ?: ScanFlowModel(context.applicationContext).also {
+            holder.model = it
+            it.importImages(context.contentResolver, importUris)
+        }
+    }
     val finish = {
         holder.model = null
         onClose()
@@ -122,7 +128,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
     // Re-crops start from the page's kept original, else its unfiltered copy, else the page, as ScanLibrary.recropPage does.
     val cropSource = if (cropping) selected?.let { model.fileOf(it.original ?: it.unfiltered ?: it.image) } else null
     when {
-        cropSource != null -> CropScreen(cropSource, onApply = { quad ->
+        cropSource != null -> CropScreen(cropSource, model.cropStart, onApply = { quad ->
             cropping = false
             model.crop(quad)
         }, onCancel = { cropping = false })
@@ -211,6 +217,7 @@ private fun Scanner(
             torchAvailable = cam.torchAvailable,
             torchOn = cam.torchOn,
             holdingSteady = model.holdingSteady,
+            lowLight = model.lowLight,
             count = model.count,
             latestPage = model.pages.lastOrNull()?.let { model.fileOf(it.image) },
             shutterEnabled = cam.ready && !cam.capturing && model.canShoot,
@@ -266,6 +273,7 @@ private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit,
             busy = model.busy,
             canSave = model.canSave,
             notice = noticeText(model.notice),
+            storeFailed = model.failure != null,
         ),
         actions = ReviewActions(
             onBack = onBack,
@@ -280,6 +288,8 @@ private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit,
             onAddPage = model::backToScanner,
             onDone = onDone,
             onDismissNotice = { model.notice = null },
+            onRetryStore = { model.failure?.let(model::retry) },
+            onDismissStore = { model.failure?.let(model::dismiss) },
         ),
     )
 }

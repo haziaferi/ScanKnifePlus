@@ -71,6 +71,11 @@ class ScanPaletteTest {
         add(Rule("camera.onFg", "camera.onBg", 4.5, { it.camera.onFg }, { it.camera.onBg }))
         add(Rule("camera.torchFg", "camera.torchBg", 4.5, { it.camera.torchFg }, { it.camera.torchBg }))
         add(Rule("camera.doneFg", "camera.doneBg", 7.0, { it.camera.doneFg }, { it.camera.doneBg }))
+        // The outline and the split line are drawn over whatever the camera sees: checked over a black and a mid-grey scene.
+        for ((scene, colour) in listOf("black preview" to Color(0xFF000000), "mid-grey preview" to Color(0xFF777777))) {
+            add(Rule("camera.outline", scene, 3.0, { it.camera.outline }, { colour }))
+            add(Rule("camera.split", scene, 3.0, { it.camera.split }, { colour }))
+        }
     }
 
     @Test

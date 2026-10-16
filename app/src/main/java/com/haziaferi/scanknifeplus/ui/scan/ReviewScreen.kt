@@ -103,6 +103,7 @@ internal data class ReviewUi(
     val busy: Boolean = false,
     val canSave: Boolean = pages.isNotEmpty(),
     @StringRes val notice: Int? = null,
+    val storeFailed: Boolean = false,
 ) {
     val selectedIndex: Int get() = pages.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 } ?: pages.lastIndex
 }
@@ -121,6 +122,8 @@ internal class ReviewActions(
     val onAddPage: () -> Unit = {},
     val onDone: () -> Unit = {},
     val onDismissNotice: () -> Unit = {},
+    val onRetryStore: () -> Unit = {},
+    val onDismissStore: () -> Unit = {},
 )
 
 /**
@@ -156,6 +159,7 @@ internal fun ReviewScreen(ui: ReviewUi, actions: ReviewActions) {
         }
         ui.deletedNumber?.let { UndoBar(it, actions.onUndo) }
         ui.notice?.let { NoticeBar(it, actions.onDismissNotice) }
+        if (ui.storeFailed) NoticeBar(R.string.scan_store_failed, actions.onDismissStore, actions.onRetryStore)
         Footer(ui, actions)
     }
 }
@@ -356,7 +360,7 @@ private fun UndoBar(number: Int, onUndo: () -> Unit) {
 }
 
 @Composable
-private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit) {
+private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit, onRetry: (() -> Unit)? = null) {
     val c = LocalScanPalette.current
     Row(
         Modifier
@@ -376,6 +380,15 @@ private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Text(stringResource(R.string.scan_dismiss), style = scanText(15, FontWeight.ExtraBold), color = c.warnFg)
+        }
+        onRetry?.let {
+            Box(
+                Modifier.heightIn(min = 48.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = it)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(stringResource(R.string.scan_retry), style = scanText(15, FontWeight.ExtraBold), color = c.warnFg)
+            }
         }
     }
 }

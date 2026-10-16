@@ -64,6 +64,7 @@ internal data class ScannerUi(
     val torchAvailable: Boolean = false,
     val torchOn: Boolean = false,
     val holdingSteady: Boolean = false,
+    val lowLight: Boolean = false,
     val count: Int = 0,
     val latestPage: File? = null,
     val shutterEnabled: Boolean = false,
@@ -170,12 +171,27 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(Modifier.size(10.dp).clip(CircleShape).background(k.doneBg))
+                    Box(Modifier.size(10.dp).clip(CircleShape).background(k.outline))
                     Text(
                         stringResource(if (ui.mode == CaptureMode.BOOK) R.string.scan_hold_steady_book else R.string.scan_hold_steady),
                         style = scanText(14, FontWeight.SemiBold), color = k.onCam
                     )
                 }
+            }
+            if (ui.lowLight) {
+                Text(
+                    stringResource(R.string.scan_low_light),
+                    style = scanText(14, FontWeight.SemiBold),
+                    color = k.onCam,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(k.cam.copy(alpha = 0.65f))
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
             }
             CameraMessages(ui, actions)
         }

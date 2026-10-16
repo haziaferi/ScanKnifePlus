@@ -10,6 +10,7 @@
     <string name="scan_state_off">Off</string>
     <string name="scan_hold_steady">Hold steady</string>
     <string name="scan_hold_steady_book">Hold steady · both pages in view</string>
+    <string name="scan_low_light">Low light: more light or the torch helps the scanner find the page.</string>
     <string name="scan_mode_group">Capture mode</string>
     <string name="scan_mode_single">Single page</string>
     <string name="scan_mode_multi">Multi page</string>

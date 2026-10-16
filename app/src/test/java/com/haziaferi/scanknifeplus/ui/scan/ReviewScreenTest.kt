@@ -1,5 +1,6 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import com.haziaferi.scanknifeplus.scanner.cv.Pt
+import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import com.paperknifeplus.app.ui.theme.ThemeMode
@@ -48,6 +51,8 @@ class ReviewScreenTest {
         onAddPage = { calls += "add" },
         onDone = { calls += "done" },
         onDismissNotice = { calls += "dismiss" },
+        onRetryStore = { calls += "retry" },
+        onDismissStore = { calls += "dismiss store" },
     )
 
     private fun pages(n: Int) = (1..n).map { ReviewPage("p$it", File("page$it.jpg")) }
@@ -116,6 +121,22 @@ class ReviewScreenTest {
             .performSemanticsAction(SemanticsActions.SetProgress) { it(0.6f) }
         rule.onNodeWithText("10% right of centre").performScrollTo().assertIsDisplayed()
         assertEquals(listOf("split 0.6"), calls)
+    }
+
+    @Test
+    fun `an imported image that could not be stored offers retry and dismiss in Review`() {
+        show(ReviewUi(CaptureMode.MULTI, pages(1), storeFailed = true))
+        rule.onNodeWithText("A photo couldn't be saved as a page.").assertIsDisplayed()
+        rule.onNodeWithText("Retry").performClick()
+        rule.onNodeWithText("Dismiss").performClick()
+        assertEquals(listOf("retry", "dismiss store"), calls)
+    }
+
+    @Test
+    fun `crop starts from the recorded quad, kept inside the photo, or from the whole photo`() {
+        val quad = Quad(Pt(0.1, -0.2), Pt(0.9, 0.1), Pt(1.3, 0.9), Pt(0.2, 0.8))
+        assertEquals(listOf(Offset(0.1f, 0f), Offset(0.9f, 0.1f), Offset(1f, 0.9f), Offset(0.2f, 0.8f)), startCorners(quad))
+        assertEquals(listOf(Offset(0f, 0f), Offset(1f, 0f), Offset(1f, 1f), Offset(0f, 1f)), startCorners(null))
     }
 
     @Test

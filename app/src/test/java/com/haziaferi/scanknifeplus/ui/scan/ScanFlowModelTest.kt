@@ -15,6 +15,8 @@ import com.haziaferi.scanknifeplus.scan.library.BookCaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scan.session.ScanSession
+import com.haziaferi.scanknifeplus.scanner.cv.BookPage
+import com.haziaferi.scanknifeplus.scanner.cv.BookSplit
 import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
@@ -407,6 +409,46 @@ class ScanFlowModelTest {
         m.save(Uri.fromFile(dest), PdfPageSize.LEGAL, "secret") {}
         assertNull("the options are used once", m.pendingSave)
         assertEquals(listOf<String?>("secret"), written)
+    }
+
+    @Test
+    fun `crop starts from the page's detected quad, a book page's half of the spread, and a re-crop's quad`() {
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        m.shoot("page")
+        waitUntil("the page") { m.pages.size == 1 }
+        assertEquals(QUAD, m.cropStart)
+        m.crop(FULL)
+        assertEquals(FULL, m.cropStart)
+
+        val b = model()
+        b.chooseMode(CaptureMode.BOOK)
+        b.shoot("spread", turns = 1)
+        waitUntil("the spread") { b.pages.size == 2 }
+        b.select(b.pages[0].id)
+        assertEquals(BookSplit.page(QUAD, BookPage.LEFT, 0.5, 1), b.cropStart)
+    }
+
+    @Test
+    fun `picked images open Review as a multi page scan with one page each`() {
+        val m = model()
+        val picked = listOf("one", "two").map { text -> Uri.fromFile(root.resolve("$text.jpg").apply { writeText(text) }) }
+        m.importImages(context.contentResolver, picked)
+        assertEquals(ScanPhase.REVIEW, m.phase)
+        assertEquals(CaptureMode.MULTI, m.mode)
+        waitUntil("the imported pages") { m.pages.size == 2 }
+        assertEquals(listOf("one", "two"), m.texts())
+    }
+
+    @Test
+    fun `images picked before the session has started are imported once it has`() {
+        io.held = true
+        val m = model()
+        val picked = listOf(Uri.fromFile(root.resolve("early.jpg").apply { writeText("early") }))
+        m.importImages(context.contentResolver, picked)
+        io.release()
+        waitUntil("the imported page") { m.pages.size == 1 }
+        assertEquals(listOf("early"), m.texts())
     }
 
     @Test

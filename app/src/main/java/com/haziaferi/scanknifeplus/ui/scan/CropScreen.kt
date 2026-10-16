@@ -58,14 +58,14 @@ import java.io.File
 import kotlin.math.roundToInt
 
 /**
- * Crop: the page's kept original ([source]) with four corners to drag onto the page's edges, starting from the whole photo. Apply hands the
- * corners to [onApply] in fractions of the original's upright size, the form ScanLibrary.recropPage takes.
+ * Crop: the page's kept original ([source]) with four corners to drag onto the page's edges, starting from [start] (the page's recorded crop)
+ * or the whole photo. Apply hands the corners to [onApply] in fractions of the original's upright size, the form ScanLibrary.recropPage takes.
  */
 @Composable
-internal fun CropScreen(source: File, onApply: (Quad) -> Unit, onCancel: () -> Unit) {
+internal fun CropScreen(source: File, start: Quad?, onApply: (Quad) -> Unit, onCancel: () -> Unit) {
     val c = LocalScanPalette.current
     var imageSize by remember { mutableStateOf<Size?>(null) }
-    var corners by remember { mutableStateOf(FULL) }
+    var corners by remember(start) { mutableStateOf(startCorners(start)) }
     Column(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.statusBars)) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -170,5 +170,9 @@ private fun fitted(image: Size, box: Size): Rect? {
     val h = image.height * scale
     return Rect(Offset((box.width - w) / 2, (box.height - h) / 2), Size(w, h))
 }
+
+/** The corners Crop starts with: [start]'s, kept inside the photo, or the whole photo. */
+internal fun startCorners(start: Quad?): List<Offset> =
+    start?.points?.map { Offset(it.x.toFloat().coerceIn(0f, 1f), it.y.toFloat().coerceIn(0f, 1f)) } ?: FULL
 
 private val FULL = listOf(Offset(0f, 0f), Offset(1f, 0f), Offset(1f, 1f), Offset(0f, 1f))

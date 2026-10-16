@@ -228,9 +228,9 @@ private fun QuadOverlay(quad: Quad?, bookTurns: Int?) {
             p.drop(1).forEach { lineTo(it.x, it.y) }
             close()
         }
-        drawPath(path, k.doneBg.copy(alpha = 0.14f))
+        drawPath(path, k.outline.copy(alpha = 0.14f))
         drawPath(path, k.cam.copy(alpha = 0.6f), style = Stroke(5.dp.toPx(), join = StrokeJoin.Round))
-        drawPath(path, k.doneBg, style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
+        drawPath(path, k.outline, style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
         if (bookTurns != null) {
             // The left page's edge along the split, as BookSplit cuts it; its quad is in image corner order, turned by bookTurns.
             val page = BookSplit.page(quad, BookPage.LEFT, BookSplit.DEFAULT_SPLIT, bookTurns).points
@@ -238,7 +238,7 @@ private fun QuadOverlay(quad: Quad?, bookTurns: Int?) {
             val bottom = page[(2 - bookTurns).mod(4)].at()
             val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))
             drawLine(k.cam.copy(alpha = 0.6f), top, bottom, 4.5f.dp.toPx(), pathEffect = dash)
-            drawLine(k.torchBg, top, bottom, 2.5f.dp.toPx(), pathEffect = dash)
+            drawLine(k.split, top, bottom, 2.5f.dp.toPx(), pathEffect = dash)
         }
     }
 }

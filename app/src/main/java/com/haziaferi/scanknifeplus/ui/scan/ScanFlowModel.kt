@@ -1,5 +1,6 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
@@ -26,6 +27,7 @@ import com.haziaferi.scanknifeplus.scan.session.ScanSession
 import com.haziaferi.scanknifeplus.scan.session.ScanSessionState
 import com.haziaferi.scanknifeplus.scan.session.ShotFailure
 import com.haziaferi.scanknifeplus.scanner.cv.BookPage
+import com.haziaferi.scanknifeplus.scanner.cv.BookSplit
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import java.io.File
@@ -89,6 +91,8 @@ internal class ScanFlowModel(
 
         override fun onHoldingSteadyChanged(steady: Boolean) = onMain { holdingSteady = steady }
 
+        override fun onLowLightChanged(lowLight: Boolean) = onMain { this@ScanFlowModel.lowLight = lowLight }
+
         override fun onAutoCapture(request: CaptureRequest) = onMain {
             if (phase == ScanPhase.SCANNER && !closed) shoot(request) else pipeline.endCapture()
         }
@@ -105,6 +109,13 @@ internal class ScanFlowModel(
         private set
     var holdingSteady by mutableStateOf(false)
         private set
+
+    /** Whether the scene is too dark for reliable detection (scanner-core's LowLightDetector, through the pipeline). */
+    var lowLight by mutableStateOf(false)
+        private set
+
+    // Picked images handed in before the session finished starting; imported as soon as it has.
+    private var pendingImport: Pair<ContentResolver, List<Uri>>? = null
     var sessionState by mutableStateOf(ScanSessionState())
         private set
     var document by mutableStateOf<ScanDocument?>(null)
@@ -146,6 +157,8 @@ internal class ScanFlowModel(
                 val kept = synchronized(sessionLock) { if (closed) false else true.also { session = s } }
                 if (kept) s else null.also { s.cancel() }
             } ?: return@launch
+            pendingImport?.let { (resolver, uris) -> started.import(resolver, uris) }
+            pendingImport = null
             started.state.collect { onSessionState(it) }
         }
     }
@@ -189,6 +202,12 @@ internal class ScanFlowModel(
     val backNeedsPrompt: Boolean get() = mode == CaptureMode.SINGLE && edited && pages.isNotEmpty()
 
     val failure: ShotFailure? get() = sessionState.failures.firstOrNull()
+
+    /**
+     * Where Crop starts for the selected page: its recorded quad, else for a Book mode page its half of the spread, else (null) the whole photo.
+     * In fractions of the page's original, which is what Crop shows.
+     */
+    val cropStart: Quad? get() = selected?.let { p -> p.quad ?: p.book?.let { BookSplit.page(it.spread, it.side, it.split, it.turns) } }
 
     /** The file name the save picker suggests: the document's name, made safe (`scanknife-scan-YYYY-MM-DD-HHmmss.pdf` unless renamed). */
     val pdfName: String? get() = document?.let(export::fileName)
@@ -249,6 +268,18 @@ internal class ScanFlowModel(
         val s = synchronized(sessionLock) { session } ?: return false
         if (notice == ScanNotice.SHOT_FAILED) notice = null
         return if (shotMode == CaptureMode.BOOK) s.captureBook(shot, quad, quarterTurns = quarterTurns) else s.capture(shot, quad)
+    }
+
+    /**
+     * Starts the flow from picked images [uris] (read through [resolver]) instead of the camera: each becomes a whole-image page, as OpenScan
+     * imports them, and the flow opens Review as a Multi page scan.
+     */
+    fun importImages(resolver: ContentResolver, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        mode = CaptureMode.MULTI
+        phase = ScanPhase.REVIEW
+        val s = synchronized(sessionLock) { session }
+        if (s == null) pendingImport = resolver to uris else s.import(resolver, uris)
     }
 
     fun retry(failure: ShotFailure) {

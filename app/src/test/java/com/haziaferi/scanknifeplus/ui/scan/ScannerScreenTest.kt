@@ -106,6 +106,20 @@ class ScannerScreenTest {
     }
 
     @Test
+    fun `a dark scene shows the low-light hint over the preview, and the shutter still works`() {
+        show(ScannerUi(lowLight = true, shutterEnabled = true))
+        rule.onNodeWithText("Low light: more light or the torch helps the scanner find the page.").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Take photo and review it").assertIsEnabled().performClick()
+        assertEquals(listOf("shutter"), calls)
+    }
+
+    @Test
+    fun `no low-light hint in a bright scene`() {
+        show(ScannerUi(lowLight = false))
+        rule.onNodeWithText("Low light: more light or the torch helps the scanner find the page.").assertDoesNotExist()
+    }
+
+    @Test
     fun `book mode words the cue for both pages`() {
         show(ScannerUi(mode = CaptureMode.BOOK, liveDetection = true, autoCapture = true, holdingSteady = true))
         rule.onNodeWithText("Hold steady · both pages in view").assertIsDisplayed()
