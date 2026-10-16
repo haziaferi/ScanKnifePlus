@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The window background is the dark Compose background, so the first frame in dark mode is not white. -->
+    <!-- The window background is the default palette's (Still Water) OLED background, so the first frame in dark mode is not light. -->
     <style name="Theme.PaperKnifePlus" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#FF000000</item>
+        <item name="android:windowBackground">#FF0D1110</item>
     </style>
 </resources>

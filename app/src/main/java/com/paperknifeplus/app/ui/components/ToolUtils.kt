@@ -15,6 +15,8 @@ import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.paperknifeplus.app.data.image.PdDocumentPool
+import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.ThemeMode
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
@@ -68,9 +70,20 @@ object PreferencesManager {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
         prefs.edit().putInt("theme_mode", mode).apply()
     }
+    /** The stored [ThemeMode.stored] value: 0 System, 1 Light, 2 OLED. */
     fun getTheme(context: Context): Int {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        return prefs.getInt("theme_mode", 0) // 0: System, 1: Light, 2: Dark
+        return prefs.getInt("theme_mode", ThemeMode.SYSTEM.stored)
+    }
+
+    fun setPalette(context: Context, palette: AppPalette) {
+        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("palette", palette.storageName).apply()
+    }
+    /** The chosen palette; Still Water when none was chosen or the stored name is unknown. */
+    fun getPalette(context: Context): AppPalette {
+        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
+        return AppPalette.fromStorageName(prefs.getString("palette", null))
     }
 }
 

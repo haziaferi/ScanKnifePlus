@@ -2,6 +2,8 @@ package com.paperknifeplus.app
 
 import android.content.ContentResolver
 import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -27,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,6 +39,7 @@ import com.paperknifeplus.app.ui.components.*
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,6 +88,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // themes.xml can only hold the default palette; the stored one paints the first frame, so Rose and Graphite do not flash Still Water.
+        val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        val startOled = ThemeMode.fromStored(PreferencesManager.getTheme(applicationContext)).isOled(systemDark)
+        window.setBackgroundDrawable(ColorDrawable(PreferencesManager.getPalette(applicationContext).tokens(startOled).bg.toArgb()))
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
         // Only on a fresh start: after recreation getIntent() still holds the last 'Open with' intent, and handling it again would reopen a
         // reader the user may have closed; an open reader comes back from saved state instead.
@@ -95,16 +103,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themePreference by remember { mutableIntStateOf(PreferencesManager.getTheme(applicationContext)) }
-            val systemDark = isSystemInDarkTheme()
-            val isDarkMode = remember(themePreference, systemDark) {
-                when(themePreference) {
-                    1 -> false
-                    2 -> true
-                    else -> systemDark
-                }
-            }
+            var palette by remember { mutableStateOf(PreferencesManager.getPalette(applicationContext)) }
+            val themeMode = ThemeMode.fromStored(themePreference)
+            val isDarkMode = themeMode.isOled(isSystemInDarkTheme())
 
-            PaperKnifePlusTheme(darkTheme = isDarkMode) {
+            PaperKnifePlusTheme(palette = palette, themeMode = themeMode) {
                 val sheetState = rememberModalBottomSheetState()
                 var showToolPicker by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
@@ -163,7 +166,7 @@ class MainActivity : ComponentActivity() {
                                     "home" -> HomeView(
                                         isDarkMode = isDarkMode,
                                         onThemeToggle = {
-                                            themePreference = if (isDarkMode) 1 else 2
+                                            themePreference = if (isDarkMode) ThemeMode.LIGHT.stored else ThemeMode.OLED.stored
                                             PreferencesManager.setTheme(applicationContext, themePreference)
                                         },
                                         onToolClick = {
@@ -190,6 +193,11 @@ class MainActivity : ComponentActivity() {
                                         onThemeChange = { theme ->
                                             themePreference = theme
                                             PreferencesManager.setTheme(applicationContext, theme)
+                                        },
+                                        palette = palette,
+                                        onPaletteChange = {
+                                            palette = it
+                                            PreferencesManager.setPalette(applicationContext, it)
                                         },
                                         onOpenAbout = { currentTool = "about" }
                                     )
