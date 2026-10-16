@@ -20,8 +20,10 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.ui.components.PreferencesManager
 import com.paperknifeplus.app.ui.components.SessionManager
 import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.ThemeMode
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -166,6 +168,25 @@ class MainActivityTest {
     @Config(qualifiers = "night")
     fun `the window background is the default palette's OLED background in night mode`() =
         assertWindowBackground(AppPalette.STILL_WATER.oled.bg.toArgb())
+
+    @Test
+    fun `the window background is the stored palette's Light background`() {
+        PreferencesManager.setPalette(context, AppPalette.ROSE)
+        PreferencesManager.setTheme(context, ThemeMode.LIGHT.stored)
+        assertDecorBackground(AppPalette.ROSE.light.bg.toArgb())
+    }
+
+    @Test
+    fun `the window background is the stored palette's OLED background`() {
+        PreferencesManager.setPalette(context, AppPalette.GRAPHITE_SCHOLASTIC)
+        PreferencesManager.setTheme(context, ThemeMode.OLED.stored)
+        assertDecorBackground(AppPalette.GRAPHITE_SCHOLASTIC.oled.bg.toArgb())
+    }
+
+    private fun assertDecorBackground(color: Int) {
+        controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        assertEquals(color, (controller!!.get().window.decorView.background as ColorDrawable).color)
+    }
 
     /** The app's theme sets the colour itself (the platform default is a color resource). */
     private fun assertWindowBackground(color: Int) {
