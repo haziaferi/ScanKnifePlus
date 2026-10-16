@@ -33,7 +33,9 @@ import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.PaperPink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,6 +63,8 @@ fun clearAppCache(context: Context): Boolean = try {
 fun SettingsView(
     isDarkMode: Boolean,
     onThemeChange: (Int) -> Unit,
+    palette: AppPalette,
+    onPaletteChange: (AppPalette) -> Unit,
     onOpenAbout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -113,9 +117,21 @@ fun SettingsView(
                             currentTheme = 1
                             onThemeChange(1)
                         }
-                        ThemeOption("Dark", Icons.Outlined.DarkMode, currentTheme == 2, Modifier.weight(1f)) {
+                        ThemeOption("OLED", Icons.Outlined.DarkMode, currentTheme == 2, Modifier.weight(1f)) {
                             currentTheme = 2
                             onThemeChange(2)
+                        }
+                    }
+                    Text(
+                        "COLOUR PALETTE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = LocalScanPalette.current.ac, letterSpacing = 1.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AppPalette.entries.forEach { option ->
+                            ThemeOption(option.label, paletteIcon(option), option == palette, Modifier.weight(1f)) { onPaletteChange(option) }
                         }
                     }
                 }
@@ -211,9 +227,15 @@ fun ThemeOption(label: String, icon: ImageVector, selected: Boolean, modifier: M
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (selected) PaperPink else Color.Gray)
             Spacer(Modifier.height(8.dp))
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (selected) PaperPink else Color.Gray)
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (selected) PaperPink else Color.Gray, textAlign = TextAlign.Center)
         }
     }
+}
+
+private fun paletteIcon(palette: AppPalette): ImageVector = when (palette) {
+    AppPalette.STILL_WATER -> Icons.Outlined.WaterDrop
+    AppPalette.ROSE -> Icons.Outlined.LocalFlorist
+    AppPalette.GRAPHITE_SCHOLASTIC -> Icons.Outlined.School
 }
 
 @Composable

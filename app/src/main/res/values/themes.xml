@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The window background is the light Compose background, so the first frame matches the app. -->
+    <!-- The window background is the default palette's (Still Water) Light background, so the first frame matches the app. -->
     <style name="Theme.PaperKnifePlus" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#FFFAFAFA</item>
+        <item name="android:windowBackground">#FFEAEEED</item>
     </style>
 </resources>

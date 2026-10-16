@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.TypedValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.hasText
@@ -22,7 +21,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.components.SessionManager
-import com.paperknifeplus.app.ui.theme.PaperSurfaceLight
+import com.paperknifeplus.app.ui.theme.AppPalette
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -161,13 +160,14 @@ class MainActivityTest {
     }
 
     @Test
-    fun `the window background is the light theme's background`() = assertWindowBackground(PaperSurfaceLight.toArgb())
+    fun `the window background is the default palette's Light background`() = assertWindowBackground(AppPalette.STILL_WATER.light.bg.toArgb())
 
     @Test
     @Config(qualifiers = "night")
-    fun `the window background is the dark theme's background in night mode`() = assertWindowBackground(Color.Black.toArgb())
+    fun `the window background is the default palette's OLED background in night mode`() =
+        assertWindowBackground(AppPalette.STILL_WATER.oled.bg.toArgb())
 
-    /** The app's theme sets the colour itself (the platform default is a color resource, which would also be #FAFAFA in light mode). */
+    /** The app's theme sets the colour itself (the platform default is a color resource). */
     private fun assertWindowBackground(color: Int) {
         controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         val activity = controller!!.get()
