@@ -17,7 +17,10 @@ import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import com.paperknifeplus.app.ui.theme.ThemeMode
 import java.io.File
+import com.paperknifeplus.app.ui.theme.AppPalette
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -129,6 +132,17 @@ class ReviewScreenTest {
         rule.onNodeWithText("That change couldn't be made. Try again.").assertIsDisplayed()
         rule.onNodeWithText("Dismiss").performClick()
         assertEquals(listOf("dismiss"), calls)
+    }
+
+    @Test
+    fun `in OLED the thumbnails are dimmed and framed in the surface colour, in Light they are not`() {
+        val oled = AppPalette.DEFAULT.oled
+        val light = AppPalette.DEFAULT.light
+        assertNotNull(thumbnailFilter(oled = true))
+        assertNull(thumbnailFilter(oled = false))
+        assertEquals(oled.sf2, thumbnailFrame(selected = false, oled = true, c = oled))
+        assertNull(thumbnailFrame(selected = false, oled = false, c = light))
+        assertEquals(oled.ring, thumbnailFrame(selected = true, oled = true, c = oled))
     }
 
     @Test

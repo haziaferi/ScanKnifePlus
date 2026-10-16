@@ -82,6 +82,7 @@ import coil.compose.AsyncImage
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.ScanPalette
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -168,14 +169,21 @@ private fun Header(ui: ReviewUi, onBack: () -> Unit) {
         CaptureMode.MULTI -> stringResource(R.string.scan_review_multi, pluralStringResource(R.plurals.scan_pages, n, n))
         CaptureMode.BOOK -> {
             val spreads = (n + 1) / 2
-            stringResource(R.string.scan_review_book, pluralStringResource(R.plurals.scan_spreads, spreads, spreads), pluralStringResource(R.plurals.scan_pages, n, n))
+            stringResource(
+                R.string.scan_review_book,
+                pluralStringResource(R.plurals.scan_spreads, spreads, spreads),
+                pluralStringResource(R.plurals.scan_pages, n, n)
+            )
         }
     }
     Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedIconButton(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.scan_back_to_scanner), enabled = true, onClick = onBack)
         Spacer(Modifier.width(4.dp))
         Column(Modifier.weight(1f)) {
-            Text(stringResource(R.string.scan_review_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx, modifier = Modifier.semantics { heading() })
+            Text(
+                stringResource(R.string.scan_review_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx,
+                modifier = Modifier.semantics { heading() }
+            )
             Text(subtitle, style = scanText(13, FontWeight.Medium), color = c.mu)
         }
     }
@@ -201,13 +209,19 @@ private fun EmptyText(@StringRes text: Int) {
 @Composable
 private fun MoveRow(ui: ReviewUi, onMove: (Int) -> Unit) {
     val i = ui.selectedIndex
-    Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Text(
             stringResource(R.string.scan_page_of, i + 1, ui.pages.size), style = scanText(14, FontWeight.Bold), color = LocalScanPalette.current.tx,
             modifier = Modifier.weight(1f)
         )
-        OutlinedIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, stringResource(R.string.scan_move_earlier), i > 0 && !ui.busy) { onMove(-1) }
-        OutlinedIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.scan_move_later), i < ui.pages.lastIndex && !ui.busy) { onMove(1) }
+        val earlier = stringResource(R.string.scan_move_earlier)
+        val later = stringResource(R.string.scan_move_later)
+        OutlinedIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, earlier, i > 0 && !ui.busy) { onMove(-1) }
+        OutlinedIconButton(Icons.AutoMirrored.Outlined.KeyboardArrowRight, later, i < ui.pages.lastIndex && !ui.busy) { onMove(1) }
     }
 }
 
@@ -248,7 +262,9 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
             valueRange = SPLIT_MIN..SPLIT_MAX,
             steps = ((SPLIT_MAX - SPLIT_MIN) * 100).roundToInt() - 1,
             enabled = !busy,
-            colors = SliderDefaults.colors(thumbColor = c.acf, activeTrackColor = c.acf, inactiveTrackColor = c.sf2, activeTickColor = c.acf, inactiveTickColor = c.bd),
+            colors = SliderDefaults.colors(
+                thumbColor = c.acf, activeTrackColor = c.acf, inactiveTrackColor = c.sf2, activeTickColor = c.acf, inactiveTickColor = c.bd
+            ),
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { stateDescription = label }
         )
         Text(stringResource(R.string.scan_split_hint), style = scanText(13, FontWeight.Medium), color = c.mu)
@@ -322,7 +338,10 @@ private fun UndoBar(number: Int, onUndo: () -> Unit) {
             .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(stringResource(R.string.scan_page_n_deleted, number), style = scanText(14, FontWeight.SemiBold), color = c.selFg, modifier = Modifier.weight(1f))
+        Text(
+            stringResource(R.string.scan_page_n_deleted, number), style = scanText(14, FontWeight.SemiBold), color = c.selFg,
+            modifier = Modifier.weight(1f)
+        )
         Box(
             Modifier.heightIn(min = 48.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onUndo)
                 .padding(horizontal = 16.dp),
@@ -375,7 +394,8 @@ private fun Footer(ui: ReviewUi, actions: ReviewActions) {
                 Spacer(Modifier.weight(1f))
             } else {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ui.pages.forEachIndexed { i, page -> Thumbnail(page, i + 1, page.id == ui.pages.getOrNull(ui.selectedIndex)?.id) { actions.onSelect(page.id) } }
+                    val selectedId = ui.pages.getOrNull(ui.selectedIndex)?.id
+                    ui.pages.forEachIndexed { i, page -> Thumbnail(page, i + 1, page.id == selectedId) { actions.onSelect(page.id) } }
                     AddPageButton(actions.onAddPage)
                 }
             }
@@ -389,11 +409,7 @@ private fun Footer(ui: ReviewUi, actions: ReviewActions) {
 private fun Thumbnail(page: ReviewPage, number: Int, selected: Boolean, onClick: () -> Unit) {
     val c = LocalScanPalette.current
     val dim = LocalIsDarkTheme.current
-    val frame = when {
-        selected -> c.ring
-        dim -> c.sf2
-        else -> null
-    }
+    val frame = thumbnailFrame(selected, dim, c)
     val label = stringResource(R.string.scan_page_label, number)
     val state = stringResource(if (selected) R.string.scan_state_selected else R.string.scan_state_not_selected)
     Box(
@@ -412,7 +428,7 @@ private fun Thumbnail(page: ReviewPage, number: Int, selected: Boolean, onClick:
     ) {
         AsyncImage(
             model = page.image, contentDescription = null, contentScale = ContentScale.Crop,
-            colorFilter = if (dim) ColorFilter.colorMatrix(ColorMatrix().apply { setToScale(DIM, DIM, DIM, 1f) }) else null,
+            colorFilter = thumbnailFilter(dim),
             modifier = Modifier.fillMaxSize().padding(3.dp)
         )
         Text(
@@ -421,6 +437,17 @@ private fun Thumbnail(page: ReviewPage, number: Int, selected: Boolean, onClick:
         )
     }
 }
+
+/** The frame of a strip thumbnail: the focus ring when selected, else the surface colour in OLED (3g), else none. */
+internal fun thumbnailFrame(selected: Boolean, oled: Boolean, c: ScanPalette): Color? = when {
+    selected -> c.ring
+    oled -> c.sf2
+    else -> null
+}
+
+/** In OLED the thumbnails' pages are drawn at [DIM] of their luminance, so the strip does not outweigh Done (3g). */
+internal fun thumbnailFilter(oled: Boolean): ColorFilter? =
+    if (oled) ColorFilter.colorMatrix(ColorMatrix().apply { setToScale(DIM, DIM, DIM, 1f) }) else null
 
 @Composable
 private fun AddPageButton(onClick: () -> Unit) {

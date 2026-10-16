@@ -4,7 +4,10 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
+import android.provider.Settings
 import android.view.OrientationEventListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -24,6 +27,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -31,7 +35,6 @@ import com.haziaferi.scanknifeplus.scan.CameraPermission
 import com.haziaferi.scanknifeplus.scan.camera.CameraError
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraState
 import com.haziaferi.scanknifeplus.scan.export.SavedPdf
-import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.PlusJakartaSans
 
@@ -55,11 +58,16 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
         onClose()
     }
 
-    HoldPortrait(activity)
+    HoldPortrait(activity, holder)
     FollowDeviceTurns(context, model)
 
     var granted by remember { mutableStateOf(CameraPermission.isGranted(context)) }
-    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
+    // Denied with "don't ask again" (or twice): the system no longer shows the request, so only the app's settings can grant it.
+    var blocked by rememberSaveable { mutableStateOf(false) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        granted = it
+        blocked = !it && !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+    }
     var asked by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!granted && !asked) {
@@ -77,13 +85,15 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
     var filtering by remember { mutableStateOf(false) }
     var saveOptions by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    // Not saveable: saved state can be written to disk, and the password must not be.
-    var pendingSave by remember { mutableStateOf<Pair<PdfPageSize, String>?>(null) }
+    var retakePrompt by remember { mutableStateOf(false) }
+    // The options wait in the model, which outlives an activity recreated while the picker is open; saved state could reach the disk.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME)) { uri ->
-        val options = pendingSave
-        pendingSave = null
-        if (uri != null && options != null) {
-            model.save(uri, options.first, options.second) { saved ->
+        val options = model.pendingSave
+        model.pendingSave = null
+        when {
+            uri == null -> {}
+            options == null -> model.dropTarget(uri)
+            else -> model.save(uri, options.first, options.second) { saved ->
                 holder.model = null
                 onSaved(saved)
             }
@@ -95,10 +105,15 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
             if (model.hasPages) leaving = true else model.leave(keep = false, onDone = finish)
         }
     }
+    val back = {
+        if (!model.busy) {
+            if (model.backNeedsPrompt) retakePrompt = true else model.backToScanner()
+        }
+    }
     BackHandler {
         when {
             cropping -> cropping = false
-            model.phase == ScanPhase.REVIEW -> if (!model.busy) model.backToScanner()
+            model.phase == ScanPhase.REVIEW -> back()
             else -> requestLeave()
         }
     }
@@ -111,8 +126,15 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
             cropping = false
             model.crop(quad)
         }, onCancel = { cropping = false })
-        model.phase == ScanPhase.SCANNER -> Scanner(model, granted, onAllowCamera = { permission.launch(Manifest.permission.CAMERA) }, onClose = requestLeave)
-        else -> Review(model, onCrop = {
+        model.phase == ScanPhase.SCANNER -> Scanner(
+            model, granted, blocked,
+            onAllowCamera = { permission.launch(Manifest.permission.CAMERA) },
+            onOpenSettings = {
+                context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+            },
+            onClose = requestLeave
+        )
+        else -> Review(model, onBack = back, onCrop = {
             model.commitDelete()
             cropping = true
         }, onFilter = { filtering = true }, onDone = {
@@ -132,7 +154,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
             saveOptions = false
             val name = model.pdfName
             if (name != null) {
-                pendingSave = size to password
+                model.pendingSave = size to password
                 picker.launch(name)
             }
         }, onDismiss = { saveOptions = false })
@@ -151,10 +173,32 @@ fun ScanFlow(onClose: () -> Unit, onSaved: (SavedPdf) -> Unit) {
             onStay = { leaving = false }
         )
     }
+    if (retakePrompt) {
+        // Back from an edited Single page: keep it and leave, or discard it for a retake.
+        LeaveDialog(
+            count = model.pages.size,
+            onKeep = {
+                retakePrompt = false
+                model.leave(keep = true, onDone = finish)
+            },
+            onDiscard = {
+                retakePrompt = false
+                model.backToScanner()
+            },
+            onStay = { retakePrompt = false }
+        )
+    }
 }
 
 @Composable
-private fun Scanner(model: ScanFlowModel, granted: Boolean, onAllowCamera: () -> Unit, onClose: () -> Unit) {
+private fun Scanner(
+    model: ScanFlowModel,
+    granted: Boolean,
+    blocked: Boolean,
+    onAllowCamera: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onClose: () -> Unit,
+) {
     val cam = model.camera
     val state = model.sessionState
     LightStatusBarIcons()
@@ -167,10 +211,11 @@ private fun Scanner(model: ScanFlowModel, granted: Boolean, onAllowCamera: () ->
             torchAvailable = cam.torchAvailable,
             torchOn = cam.torchOn,
             holdingSteady = model.holdingSteady,
-            count = state.count,
+            count = model.count,
             latestPage = model.pages.lastOrNull()?.let { model.fileOf(it.image) },
-            shutterEnabled = cam.ready && !cam.capturing,
+            shutterEnabled = cam.ready && !cam.capturing && model.canShoot,
             permissionGranted = granted,
+            permissionBlocked = blocked,
             cameraProblem = cameraProblem(cam),
             storeFailed = model.failure != null,
             shotFailed = model.notice == ScanNotice.SHOT_FAILED,
@@ -183,6 +228,7 @@ private fun Scanner(model: ScanFlowModel, granted: Boolean, onAllowCamera: () ->
             onShutter = model::shutter,
             onReview = model::review,
             onAllowCamera = onAllowCamera,
+            onOpenSettings = onOpenSettings,
             onRetryStore = { model.failure?.let(model::retry) },
             onDismissStore = { model.failure?.let(model::dismiss) },
             onDismissShot = { model.notice = null },
@@ -195,14 +241,14 @@ private fun Scanner(model: ScanFlowModel, granted: Boolean, onAllowCamera: () ->
                 sensorRotationDegrees = cam.sensorRotationDegrees,
                 book = model.mode == CaptureMode.BOOK,
                 quarterTurns = model.deviceQuarterTurns,
-                count = state.count,
+                count = model.count,
             )
         }
     }
 }
 
 @Composable
-private fun Review(model: ScanFlowModel, onCrop: () -> Unit, onFilter: () -> Unit, onDone: () -> Unit) {
+private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit, onFilter: () -> Unit, onDone: () -> Unit) {
     val pages = model.pages.mapNotNull { page -> model.fileOf(page.image)?.let { ReviewPage(page.id, it) } }
     val spread = model.spread?.let { s ->
         val left = pages.firstOrNull { it.id == s.left.id }
@@ -222,7 +268,7 @@ private fun Review(model: ScanFlowModel, onCrop: () -> Unit, onFilter: () -> Uni
             notice = noticeText(model.notice),
         ),
         actions = ReviewActions(
-            onBack = model::backToScanner,
+            onBack = onBack,
             onSelect = model::select,
             onMove = model::move,
             onSplit = { model.resplit(it.toDouble()) },
@@ -253,13 +299,21 @@ private fun noticeText(notice: ScanNotice?): Int? = when (notice) {
     ScanNotice.SHOT_FAILED, null -> null
 }
 
-/** Holds the activity in portrait while the flow shows, then gives back the orientation it had. */
+/**
+ * Holds the activity in portrait while the flow shows, then gives back the orientation it had before the first lock. That orientation is kept
+ * in [holder], since the lock itself can recreate the activity, and is not given back while the activity is only being recreated.
+ */
 @Composable
-private fun HoldPortrait(activity: Activity) {
+internal fun HoldPortrait(activity: Activity, holder: ScanFlowHolder) {
     DisposableEffect(activity) {
-        val before = activity.requestedOrientation
+        if (holder.orientationBefore == null) holder.orientationBefore = activity.requestedOrientation
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        onDispose { activity.requestedOrientation = before }
+        onDispose {
+            if (!activity.isChangingConfigurations) {
+                holder.orientationBefore?.let { activity.requestedOrientation = it }
+                holder.orientationBefore = null
+            }
+        }
     }
 }
 

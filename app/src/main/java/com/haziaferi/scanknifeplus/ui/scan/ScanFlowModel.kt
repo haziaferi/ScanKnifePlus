@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,14 +69,20 @@ internal class ScanFlowModel(
     private val prefs: ScanPreferences = ScanPreferences(context),
     main: CoroutineContext = Dispatchers.Main.immediate,
     private val io: CoroutineContext = Dispatchers.IO,
+    takePicture: (suspend (File) -> File?)? = null,
 ) {
+    private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + main)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val edits = Mutex()
+
+    // Guards session and closed between close() on the main thread and the session starting on io.
+    private val sessionLock = Any()
     private var session: ScanSession? = null
     private var closed = false
 
     val controller = ScanCameraController(context)
+    private val takePicture: suspend (File) -> File? = takePicture ?: controller::takePicture
 
     val pipeline: LiveScanPipeline = LiveScanPipeline(object : LiveScanPipeline.Listener {
         override fun onSmoothedQuadChanged(quad: Quad?) = onMain { this@ScanFlowModel.quad = quad }
@@ -105,6 +112,19 @@ internal class ScanFlowModel(
     var selectedId by mutableStateOf<String?>(null)
     var deleted by mutableStateOf<DeletedPage?>(null)
         private set
+
+    /** Pages whose delete is committed but not yet written; they stay hidden until the library has removed them. */
+    private var deleting by mutableStateOf(emptySet<String>())
+
+    /** Whether a shot is between the shutter and the session's queue. */
+    private var shooting by mutableStateOf(false)
+
+    /** Whether the Single page has been rotated, cropped or filtered, so a retake would throw that work away. */
+    var edited by mutableStateOf(false)
+        private set
+
+    /** The save options chosen before the system file picker opened; kept here so they outlive a recreated activity. Never written to disk. */
+    var pendingSave: Pair<PdfPageSize, String>? = null
     var busy by mutableStateOf(false)
         private set
     var notice by mutableStateOf<ScanNotice?>(null)
@@ -120,12 +140,12 @@ internal class ScanFlowModel(
         }
         pipeline.setAutoCaptureEnabled(autoCapture)
         scope.launch {
-            val started = withContext(io) { startSession() }
-            if (started == null || closed) {
-                started?.let { withContext(io) { it.cancel() } }
-                return@launch
-            }
-            session = started
+            // Registered on io under the lock, so a session that finishes starting after close() is still ended, as ScanSession requires.
+            val started = withContext(io) {
+                val s = startSession() ?: return@withContext null
+                val kept = synchronized(sessionLock) { if (closed) false else true.also { session = s } }
+                if (kept) s else null.also { s.cancel() }
+            } ?: return@launch
             started.state.collect { onSessionState(it) }
         }
     }
@@ -136,7 +156,8 @@ internal class ScanFlowModel(
      */
     val pages: List<ScanPage> get() {
         val kept = sessionState.pages.toSet()
-        return document?.pages.orEmpty().filter { it.id in kept && it.id != deleted?.page?.id }
+        val hidden = deleting + listOfNotNull(deleted?.page?.id)
+        return document?.pages.orEmpty().filter { it.id in kept && it.id !in hidden }
     }
 
     /** The page Review shows large: the selected one, else the last. */
@@ -151,8 +172,21 @@ internal class ScanFlowModel(
     /** Whether Done can save a PDF: every shot is stored and at least one page is left. */
     val canSave: Boolean get() = sessionState.pending == 0 && pages.isNotEmpty() && !busy
 
-    /** The capture mode can change only before the first shot, so one session never mixes Review layouts. */
-    val canChangeMode: Boolean get() = sessionState.count == 0
+    /** The pages the Scanner counts: the visible ones plus those still being stored. */
+    val count: Int get() = pages.size + sessionState.pending
+
+    /**
+     * The capture mode can change only before the first shot, so one session never mixes Review layouts; a shot on its way or a failed
+     * one waiting for a retry counts.
+     */
+    val canChangeMode: Boolean get() = sessionState.count == 0 && sessionState.failures.isEmpty() && !shooting
+
+    /** Single page takes one shot at a time: the next waits until that page is retaken or its failure dismissed. */
+    val canShoot: Boolean
+        get() = !shooting && (mode != CaptureMode.SINGLE || (sessionState.count == 0 && sessionState.failures.isEmpty()))
+
+    /** Back from Single page Review would retake an edited page, so it asks first (decision 6). */
+    val backNeedsPrompt: Boolean get() = mode == CaptureMode.SINGLE && edited && pages.isNotEmpty()
 
     val failure: ShotFailure? get() = sessionState.failures.firstOrNull()
 
@@ -175,45 +209,54 @@ internal class ScanFlowModel(
 
     /** The manual shutter; ignored while a capture is under way. */
     fun shutter() {
+        if (!canShoot) return
         val request = pipeline.beginCapture() ?: return
         shoot(request)
     }
 
     private fun shoot(request: CaptureRequest) {
+        if (!canShoot) {
+            pipeline.endCapture()
+            return
+        }
+        // The mode and the hold as the shutter fires, not as they are once the still is written.
+        val shotMode = mode
+        val turns = deviceQuarterTurns
+        shooting = true
         scope.launch {
             try {
-                val dir = session?.shotDir ?: return@launch
-                val shot = controller.takePicture(dir)
+                val dir = synchronized(sessionLock) { session }?.shotDir ?: return@launch
+                val shot = takePicture(dir)
                 if (shot == null) {
                     notice = ScanNotice.SHOT_FAILED
                     return@launch
                 }
                 pipeline.notifyCaptured()
-                add(shot, request.quad, deviceQuarterTurns)
+                add(shot, request.quad, turns, shotMode)
             } finally {
+                shooting = false
                 pipeline.endCapture()
             }
         }
     }
 
     /**
-     * Queues camera shot [shot] cropped to [quad] in the current mode: a Book mode shot becomes two pages, turned upright by [quarterTurns]. A
-     * Single page shot opens Review. False if the session is not running.
+     * Queues camera shot [shot] cropped to [quad] as a [shotMode] shot: a Book mode shot becomes two pages, turned upright by [quarterTurns].
+     * A Single page shot opens Review once its page is stored; one that fails stays on the Scanner with retry and dismiss (7b). False if the
+     * session is not running.
      */
-    fun add(shot: File, quad: Quad?, quarterTurns: Int): Boolean {
-        val s = session ?: return false
+    fun add(shot: File, quad: Quad?, quarterTurns: Int, shotMode: CaptureMode = mode): Boolean {
+        val s = synchronized(sessionLock) { session } ?: return false
         if (notice == ScanNotice.SHOT_FAILED) notice = null
-        val queued = if (mode == CaptureMode.BOOK) s.captureBook(shot, quad, quarterTurns = quarterTurns) else s.capture(shot, quad)
-        if (queued && mode == CaptureMode.SINGLE) phase = ScanPhase.REVIEW
-        return queued
+        return if (shotMode == CaptureMode.BOOK) s.captureBook(shot, quad, quarterTurns = quarterTurns) else s.capture(shot, quad)
     }
 
     fun retry(failure: ShotFailure) {
-        session?.retry(failure)
+        synchronized(sessionLock) { session }?.retry(failure)
     }
 
     fun dismiss(failure: ShotFailure) {
-        session?.dismiss(failure)
+        synchronized(sessionLock) { session }?.dismiss(failure)
     }
 
     /** Opens Review (Done on the Scanner). */
@@ -228,7 +271,8 @@ internal class ScanFlowModel(
     fun backToScanner() {
         if (mode == CaptureMode.SINGLE) {
             deleted = null
-            session?.undoLast()
+            edited = false
+            synchronized(sessionLock) { session }?.undoLast()
         } else {
             commitDelete()
         }
@@ -252,8 +296,9 @@ internal class ScanFlowModel(
 
     /** Moves the selected page [delta] places (-1 earlier, +1 later) among the pages. */
     fun move(delta: Int) {
-        val all = document?.pages ?: return
+        // Indices come from the record as it is when the move runs, after any committed delete has been written.
         edit { id, page ->
+            val all = library.document(id)?.pages ?: return@edit null
             val from = all.indexOfFirst { it.id == page.id }
             val to = from + delta
             if (from < 0 || to !in all.indices) null else library.movePage(id, from, to)
@@ -287,10 +332,15 @@ internal class ScanFlowModel(
         val d = deleted ?: return
         deleted = null
         val id = document?.id ?: return
+        deleting = deleting + d.page.id
         scope.launch {
-            edits.withLock {
-                val doc = withContext(io) { library.deletePage(id, d.page.id, keepDocument = true) }
-                if (doc != null) document = doc
+            try {
+                edits.withLock {
+                    val doc = withContext(io) { library.deletePage(id, d.page.id, keepDocument = true) }
+                    if (doc != null) document = doc
+                }
+            } finally {
+                deleting = deleting - d.page.id
             }
         }
     }
@@ -300,6 +350,7 @@ internal class ScanFlowModel(
      * the session keeping its pages, and hands the result to [onSaved]. A failure leaves Review as it was, with [ScanNotice.SAVE_FAILED].
      */
     fun save(dest: Uri, size: PdfPageSize, password: String, onSaved: (SavedPdf) -> Unit) {
+        pendingSave = null
         commitDelete()
         busy = true
         scope.launch {
@@ -318,6 +369,19 @@ internal class ScanFlowModel(
         }
     }
 
+    /** Deletes [dest], a document the save picker created for options that were lost (the app was killed meanwhile), so no empty PDF stays. */
+    fun dropTarget(dest: Uri) {
+        scope.launch {
+            withContext(io) {
+                try {
+                    if (DocumentsContract.isDocumentUri(appContext, dest)) DocumentsContract.deleteDocument(appContext.contentResolver, dest)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not remove the unused $dest", e)
+                }
+            }
+        }
+    }
+
     /** Leaves the flow without saving a PDF (decision 6): [keep] keeps the pages in the scan library, otherwise they are discarded. */
     fun leave(keep: Boolean, onDone: () -> Unit) {
         if (keep) commitDelete() else deleted = null
@@ -330,7 +394,7 @@ internal class ScanFlowModel(
 
     /** Ends the session ([ScanSession.finish] or [ScanSession.cancel]) once pending edits are written, and releases the camera. */
     private suspend fun end(keep: Boolean) {
-        val s = session
+        val s = synchronized(sessionLock) { session }
         edits.withLock {
             if (s != null) withContext(io) { if (keep) s.finish() else s.cancel() }
         }
@@ -339,8 +403,10 @@ internal class ScanFlowModel(
 
     /** Releases the camera and detection and stops the flow's work; a session still running is left to [abandon] or [end]. */
     fun close() {
-        if (closed) return
-        closed = true
+        synchronized(sessionLock) {
+            if (closed) return
+            closed = true
+        }
         mainHandler.removeCallbacksAndMessages(null)
         controller.release()
         pipeline.dispose()
@@ -349,7 +415,7 @@ internal class ScanFlowModel(
 
     /** For a flow dropped without leaving it (the activity finished): keeps what was scanned, on a background thread, and closes. */
     fun abandon() {
-        val s = session
+        val s = synchronized(sessionLock) { session }
         close()
         if (s != null) Thread({ s.finish() }, "scan-abandon").start()
     }
@@ -369,7 +435,12 @@ internal class ScanFlowModel(
                         null
                     }
                 }
-                if (doc != null) document = doc else notice = ScanNotice.EDIT_FAILED
+                if (doc != null) {
+                    document = doc
+                    edited = true
+                } else {
+                    notice = ScanNotice.EDIT_FAILED
+                }
             }
             busy = false
         }
@@ -381,8 +452,11 @@ internal class ScanFlowModel(
         val id = state.documentId ?: return
         val doc = edits.withLock { withContext(io) { library.document(id) } } ?: return
         document = doc
-        // A new shot is what the user wants to see first.
-        state.pages.lastOrNull { it !in before }?.let { selectedId = it }
+        // A new shot is what the user wants to see first; a Single page shot opens Review once it is stored.
+        state.pages.lastOrNull { it !in before }?.let {
+            selectedId = it
+            if (mode == CaptureMode.SINGLE) phase = ScanPhase.REVIEW
+        }
     }
 
     private fun spreadOf(page: ScanPage): Spread? {
@@ -413,6 +487,9 @@ internal class ScanFlowModel(
 /** Keeps the flow's [model] across configuration changes; a flow the activity drops without leaving it keeps its pages ([ScanFlowModel.abandon]). */
 internal class ScanFlowHolder : ViewModel() {
     var model: ScanFlowModel? = null
+
+    /** The activity's requested orientation before the flow held it in portrait; null while the flow does not show. */
+    var orientationBefore: Int? = null
 
     override fun onCleared() {
         model?.abandon()

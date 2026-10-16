@@ -22,7 +22,15 @@ import com.haziaferi.scanknifeplus.scanner.filter.Filter
 import java.io.File
 import java.nio.file.Files
 import java.util.Collections
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,7 +42,8 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * The scan flow's logic over a real session and library with fake image codecs: a shot's text becomes its page's text, a book shot's pages get
- * " left" and " right", and every edit writes a marker into the new file, so each test can read back which page is where.
+ * " left" and " right", and every edit writes a marker into the new file, so each test can read back which page is where. A shot whose text
+ * contains "bad" cannot be stored, one with "flaky" cannot be stored the first time only. Library work runs on [io], which a test can hold.
  */
 @RunWith(RobolectricTestRunner::class)
 class ScanFlowModelTest {
@@ -44,8 +53,12 @@ class ScanFlowModelTest {
     private val written = Collections.synchronizedList(mutableListOf<String?>())
     private var now = 1_791_590_400_000L
 
+    private val flaked = Collections.synchronizedSet(mutableSetOf<String>())
+    private val io = HeldDispatcher()
+
     private val writer = CaptureWriter { source, _, page, original ->
         val text = source.open().use { it.readBytes().decodeToString() }
+        if ("bad" in text || ("flaky" in text && flaked.add(text))) return@CaptureWriter null
         page.writeText(text)
         original?.writeText("original $text")
         StoredCapture(page, original, cropped = true, pageWidth = 1, pageHeight = 1)
@@ -79,14 +92,34 @@ class ScanFlowModelTest {
     )
     private val models = mutableListOf<ScanFlowModel>()
 
-    private fun model(): ScanFlowModel = ScanFlowModel(
+    private fun model(
+        io: CoroutineContext = this.io,
+        startSession: () -> ScanSession? = { ScanSession(library, root.resolve("staging/s${sessions++}")) },
+        takePicture: (suspend (File) -> File?)? = null,
+    ): ScanFlowModel = ScanFlowModel(
         context,
         library = library,
-        startSession = { ScanSession(library, root.resolve("staging/s${sessions++}")) },
+        startSession = startSession,
         export = export,
         main = Dispatchers.Unconfined,
-        io = Dispatchers.Unconfined,
+        io = io,
+        takePicture = takePicture,
     ).also { models += it }
+
+    /** Runs its work at once, like Unconfined, except while [held]; [release] then runs what waited, in order. */
+    private class HeldDispatcher : CoroutineDispatcher() {
+        @Volatile var held = false
+        private val queue = ConcurrentLinkedQueue<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            if (held) queue += block else block.run()
+        }
+
+        fun release() {
+            held = false
+            while (true) (queue.poll() ?: break).run()
+        }
+    }
 
     @After
     fun cleanUp() {
@@ -110,15 +143,17 @@ class ScanFlowModelTest {
 
     private fun ScanFlowModel.texts(): List<String> = pages.map { fileOf(it.image)!!.readText() }
 
-    private fun ScanFlowModel.storedTexts(): List<String> = library.document(document!!.id)!!.pages.map { library.file(document!!.id, it.image).readText() }
+    private fun ScanFlowModel.storedTexts(): List<String> {
+        val id = document!!.id
+        return library.document(id)!!.pages.map { library.file(id, it.image).readText() }
+    }
 
     @Test
     fun `a single page shot opens Review of that page, and going back takes it back for a retake`() {
         val m = model()
         assertTrue(m.canChangeMode)
         assertTrue(m.shoot("one"))
-        assertEquals(ScanPhase.REVIEW, m.phase)
-        waitUntil("the page") { m.pages.size == 1 }
+        waitUntil("the page in Review") { m.phase == ScanPhase.REVIEW && m.pages.size == 1 }
         assertEquals("one", m.fileOf(m.selected!!.image)!!.readText())
         assertFalse("the mode is fixed once a shot is in", m.canChangeMode)
         m.chooseMode(CaptureMode.BOOK)
@@ -246,6 +281,132 @@ class ScanFlowModelTest {
         assertEquals(1, result!!.pages)
         assertEquals(listOf(result), saved)
         assertEquals("the session ended keeping the document", listOf("b"), m.storedTexts())
+    }
+
+    @Test
+    fun `a single page shot that cannot be stored stays on the Scanner for retry, and blocks the shutter and the mode until then`() {
+        val m = model()
+        m.shoot("flaky")
+        waitUntil("the failure") { m.failure != null }
+        assertEquals(ScanPhase.SCANNER, m.phase)
+        assertFalse(m.canShoot)
+        assertFalse("a retried shot must not land in another layout", m.canChangeMode)
+
+        m.retry(m.failure!!)
+        waitUntil("the retried page in Review") { m.phase == ScanPhase.REVIEW && m.pages.size == 1 }
+    }
+
+    @Test
+    fun `a failed shot waiting for a retry keeps the mode fixed`() {
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        m.shoot("bad")
+        waitUntil("the failure") { m.failure != null }
+        assertEquals(0, m.sessionState.count)
+        assertFalse(m.canChangeMode)
+        m.dismiss(m.failure!!)
+        waitUntil("the dismissal") { m.failure == null }
+        assertTrue(m.canChangeMode)
+    }
+
+    @Test
+    fun `back from an edited single page asks before the retake throws the edit away`() {
+        val m = model()
+        m.shoot("page")
+        waitUntil("the page in Review") { m.phase == ScanPhase.REVIEW && m.pages.size == 1 }
+        assertFalse(m.backNeedsPrompt)
+        m.rotate()
+        assertTrue(m.backNeedsPrompt)
+        m.backToScanner()
+        assertFalse(m.backNeedsPrompt)
+    }
+
+    @Test
+    fun `the mode and the hold are read at the shutter, not when the still arrives`() {
+        val still = CompletableDeferred<Unit>()
+        val m = model(takePicture = { dir ->
+            still.await()
+            File(dir, "shot.jpg").apply { writeText("spread") }
+        })
+        m.chooseMode(CaptureMode.BOOK)
+        m.deviceQuarterTurns = 1
+        m.shutter()
+        m.deviceQuarterTurns = 3
+        m.chooseMode(CaptureMode.MULTI)
+        assertEquals("the mode is fixed while the shot is on its way", CaptureMode.BOOK, m.mode)
+        still.complete(Unit)
+        waitUntil("the spread") { m.pages.size == 2 }
+        assertEquals(listOf(1), turnsSeen)
+    }
+
+    @Test
+    fun `a move after a delete moves the selected page among the pages that are left`() {
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        listOf("a", "b", "c", "d").forEach { m.shoot(it) }
+        waitUntil("four pages") { m.pages.size == 4 }
+        m.select(m.pages[0].id)
+        m.delete()
+        assertEquals("b", m.fileOf(m.selected!!.image)!!.readText())
+        m.move(1)
+        assertEquals(listOf("c", "b", "d"), m.storedTexts())
+        m.move(-1)
+        assertEquals(listOf("b", "c", "d"), m.storedTexts())
+        assertNull(m.notice)
+    }
+
+    @Test
+    fun `a committed delete stays hidden until the library has removed the page, and later numbers do not count it`() {
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        listOf("a", "b", "c").forEach { m.shoot(it) }
+        waitUntil("three pages") { m.pages.size == 3 }
+        m.select(m.pages[0].id)
+        m.delete()
+        io.held = true
+        m.select(m.pages[0].id)
+        assertEquals(listOf("b", "c"), m.texts())
+        assertEquals(2, m.count)
+        m.delete()
+        assertEquals(1, m.deleted!!.number)
+        io.release()
+        assertEquals(listOf("b", "c"), m.storedTexts())
+        assertEquals(listOf("c"), m.texts())
+    }
+
+    @Test
+    fun `a session that finishes starting after the flow closed is still ended`() {
+        val starting = CountDownLatch(1)
+        val proceed = CountDownLatch(1)
+        var started: ScanSession? = null
+        val thread = Executors.newSingleThreadExecutor()
+        try {
+            val m = model(io = thread.asCoroutineDispatcher(), startSession = {
+                starting.countDown()
+                proceed.await(10, TimeUnit.SECONDS)
+                ScanSession(library, root.resolve("staging/late")).also { started = it }
+            })
+            assertTrue(starting.await(10, TimeUnit.SECONDS))
+            m.close()
+            proceed.countDown()
+            waitUntil("the late session to end") { started?.state?.value?.finished == true }
+            assertFalse(root.resolve("staging/late").exists())
+        } finally {
+            thread.shutdown()
+        }
+    }
+
+    @Test
+    fun `the save options wait in the flow's model while the picker is open`() {
+        val m = model()
+        m.pendingSave = PdfPageSize.LEGAL to "secret"
+        assertEquals(PdfPageSize.LEGAL to "secret", m.pendingSave)
+        m.shoot("a")
+        waitUntil("the page") { m.pages.size == 1 && m.canSave }
+        val dest = root.resolve("out.pdf").apply { createNewFile() }
+        m.save(Uri.fromFile(dest), PdfPageSize.LEGAL, "secret") {}
+        assertNull("the options are used once", m.pendingSave)
+        assertEquals(listOf<String?>("secret"), written)
     }
 
     @Test

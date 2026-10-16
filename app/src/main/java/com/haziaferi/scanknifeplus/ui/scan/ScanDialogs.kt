@@ -98,7 +98,11 @@ internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> 
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.scan_page_size), style = scanText(14, FontWeight.Bold))
-                FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    Modifier.selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     for (option in PdfPageSize.entries) SizeChip(sizeLabel(option), option == size) { size = option }
                 }
                 OutlinedTextField(

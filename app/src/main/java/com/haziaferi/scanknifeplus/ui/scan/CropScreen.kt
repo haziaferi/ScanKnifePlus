@@ -68,7 +68,10 @@ internal fun CropScreen(source: File, onApply: (Quad) -> Unit, onCancel: () -> U
     var corners by remember { mutableStateOf(FULL) }
     Column(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.statusBars)) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.scan_crop_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx, modifier = Modifier.semantics { heading() })
+            Text(
+                stringResource(R.string.scan_crop_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx,
+                modifier = Modifier.semantics { heading() }
+            )
             Text(stringResource(R.string.scan_crop_hint), style = scanText(13, FontWeight.Medium), color = c.mu)
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(24.dp)) {
@@ -91,13 +94,17 @@ internal fun CropScreen(source: File, onApply: (Quad) -> Unit, onCancel: () -> U
                     drawPath(path, c.bg.copy(alpha = 0.7f), style = Stroke(5.dp.toPx()))
                     drawPath(path, c.ring, style = Stroke(3.dp.toPx()))
                 }
-                val names = listOf(R.string.scan_corner_top_left, R.string.scan_corner_top_right, R.string.scan_corner_bottom_right, R.string.scan_corner_bottom_left)
+                val names = listOf(
+                    R.string.scan_corner_top_left, R.string.scan_corner_top_right, R.string.scan_corner_bottom_right, R.string.scan_corner_bottom_left
+                )
                 corners.forEachIndexed { i, f ->
                     val name = stringResource(names[i])
                     val half = with(density) { 24.dp.toPx() }
                     Box(
                         Modifier
-                            .offset { IntOffset((rect.left + f.x * rect.width - half).roundToInt(), (rect.top + f.y * rect.height - half).roundToInt()) }
+                            .offset {
+                                IntOffset((rect.left + f.x * rect.width - half).roundToInt(), (rect.top + f.y * rect.height - half).roundToInt())
+                            }
                             .size(48.dp)
                             .semantics { contentDescription = name }
                             .pointerInput(i) {
@@ -140,7 +147,13 @@ internal fun FlowButton(label: String, filled: Boolean, enabled: Boolean, onClic
         Modifier
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(24.dp))
-            .then(if (filled) Modifier.background(c.acf.copy(alpha = if (enabled) 1f else 0.5f)) else Modifier.border(1.dp, c.bd, RoundedCornerShape(24.dp)))
+            .then(
+                if (filled) {
+                    Modifier.background(c.acf.copy(alpha = if (enabled) 1f else 0.5f))
+                } else {
+                    Modifier.border(1.dp, c.bd, RoundedCornerShape(24.dp))
+                }
+            )
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center

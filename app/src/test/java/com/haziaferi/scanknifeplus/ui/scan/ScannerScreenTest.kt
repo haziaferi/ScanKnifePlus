@@ -7,7 +7,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -37,6 +39,7 @@ class ScannerScreenTest {
         onShutter = { calls += "shutter" },
         onReview = { calls += "review" },
         onAllowCamera = { calls += "allow" },
+        onOpenSettings = { calls += "settings" },
         onRetryStore = { calls += "retry" },
         onDismissStore = { calls += "dismiss store" },
         onDismissShot = { calls += "dismiss shot" },
@@ -122,7 +125,11 @@ class ScannerScreenTest {
         rule.onNodeWithText("A photo couldn't be saved as a page.").assertIsDisplayed()
         rule.onNodeWithText("Retry").performClick()
         rule.onNodeWithText("The photo couldn't be taken. Try again.").assertIsDisplayed()
-        assertEquals(listOf("retry"), calls)
+        val dismiss = rule.onAllNodesWithText("Dismiss")
+        dismiss.assertCountEquals(2)
+        dismiss[0].performClick()
+        dismiss[1].performClick()
+        assertEquals(listOf("retry", "dismiss store", "dismiss shot"), calls)
     }
 
     @Test
@@ -131,6 +138,14 @@ class ScannerScreenTest {
         rule.onNodeWithText("Camera access needed").assertIsDisplayed()
         rule.onNodeWithText("Allow camera").performClick()
         assertEquals(listOf("allow"), calls)
+    }
+
+    @Test
+    fun `a permanently denied permission offers the app's settings instead of a request that cannot show`() {
+        show(ScannerUi(permissionGranted = false, permissionBlocked = true))
+        rule.onNodeWithText("Allow camera").assertDoesNotExist()
+        rule.onNodeWithText("Open settings").performClick()
+        assertEquals(listOf("settings"), calls)
     }
 
     @Test

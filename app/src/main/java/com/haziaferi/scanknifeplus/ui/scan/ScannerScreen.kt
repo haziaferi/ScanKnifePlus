@@ -1,5 +1,6 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,6 +68,7 @@ internal data class ScannerUi(
     val latestPage: File? = null,
     val shutterEnabled: Boolean = false,
     val permissionGranted: Boolean = true,
+    val permissionBlocked: Boolean = false,
     val cameraProblem: Int? = null,
     val storeFailed: Boolean = false,
     val shotFailed: Boolean = false,
@@ -81,6 +83,7 @@ internal class ScannerActions(
     val onShutter: () -> Unit = {},
     val onReview: () -> Unit = {},
     val onAllowCamera: () -> Unit = {},
+    val onOpenSettings: () -> Unit = {},
     val onRetryStore: () -> Unit = {},
     val onDismissStore: () -> Unit = {},
     val onDismissShot: () -> Unit = {},
@@ -96,7 +99,11 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
     val k = LocalScanPalette.current.camera
     val single = ui.mode == CaptureMode.SINGLE
     Box(Modifier.fillMaxSize().background(k.cam)) {
-        if (ui.permissionGranted) preview() else PermissionPrompt(actions.onAllowCamera)
+        when {
+            ui.permissionGranted -> preview()
+            ui.permissionBlocked -> PermissionPrompt(R.string.scan_permission_blocked, R.string.scan_permission_settings, actions.onOpenSettings)
+            else -> PermissionPrompt(R.string.scan_permission_body, R.string.scan_permission_allow, actions.onAllowCamera)
+        }
 
         Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -268,7 +275,9 @@ private fun PageStack(ui: ScannerUi, onReview: () -> Unit, modifier: Modifier) {
                 .background(k.onCam)
                 .border(2.dp, k.onCam, RoundedCornerShape(4.dp))
         ) {
-            ui.latestPage?.let { AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+            ui.latestPage?.let {
+                AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
         }
         Box(
             Modifier
@@ -353,25 +362,28 @@ private fun BannerButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BoxScope.PermissionPrompt(onAllow: () -> Unit) {
+private fun BoxScope.PermissionPrompt(@StringRes body: Int, @StringRes button: Int, onClick: () -> Unit) {
     val k = LocalScanPalette.current.camera
     Column(
         Modifier.align(Alignment.Center).padding(horizontal = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(stringResource(R.string.scan_permission_title), style = scanText(18, FontWeight.ExtraBold), color = k.onCam, textAlign = TextAlign.Center)
-        Text(stringResource(R.string.scan_permission_body), style = scanText(15, FontWeight.Medium), color = k.onCam, textAlign = TextAlign.Center)
+        Text(
+            stringResource(R.string.scan_permission_title), style = scanText(18, FontWeight.ExtraBold), color = k.onCam,
+            textAlign = TextAlign.Center
+        )
+        Text(stringResource(body), style = scanText(15, FontWeight.Medium), color = k.onCam, textAlign = TextAlign.Center)
         Box(
             Modifier
                 .heightIn(min = 56.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(k.doneBg)
-                .clickable(role = Role.Button, onClick = onAllow)
+                .clickable(role = Role.Button, onClick = onClick)
                 .padding(horizontal = 24.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(stringResource(R.string.scan_permission_allow), style = scanText(16, FontWeight.Bold), color = k.doneFg)
+            Text(stringResource(button), style = scanText(16, FontWeight.Bold), color = k.doneFg)
         }
     }
 }

@@ -25,6 +25,8 @@
     <string name="scan_permission_title">Camera access needed</string>
     <string name="scan_permission_body">ScanKnife+ needs the camera to scan documents. Photos stay on this phone.</string>
     <string name="scan_permission_allow">Allow camera</string>
+    <string name="scan_permission_blocked">The camera is turned off for ScanKnife+. Allow it under Permissions in the app\'s settings.</string>
+    <string name="scan_permission_settings">Open settings</string>
     <string name="scan_camera_in_use">Another app is using the camera. Close it and the scanner carries on.</string>
     <string name="scan_camera_waiting">Waiting for the camera…</string>
     <string name="scan_camera_unavailable">The camera couldn\'t start. Close the scanner and try again.</string>
