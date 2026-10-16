@@ -35,6 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.haziaferi.scanknifeplus.ui.scan.SCAN_ROUTE
+import com.haziaferi.scanknifeplus.ui.scan.ScanFlow
 import com.paperknifeplus.app.ui.components.*
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
@@ -249,6 +251,7 @@ class MainActivity : ComponentActivity() {
                             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                                 when (currentTool) {
                                     "about" -> AboutView(onBack = closeTool)
+                                    SCAN_ROUTE -> ScanFlow(onClose = closeTool, onSaved = { closeTool() })
                                     "merge" -> MergeView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)
                                     "split" -> SplitView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)
                                     "delete" -> DeleteView(initialUri = toolInitialUri, initialPassword = toolInitialPassword, onBack = closeTool, onOpenPreview = openPreview)
