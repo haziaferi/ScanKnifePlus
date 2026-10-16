@@ -28,12 +28,11 @@ class ScanFlowDeviceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private lateinit var scenario: ActivityScenario<ComponentActivity>
     private lateinit var model: ScanFlowModel
-    private var closed = 0
 
     @Before
     fun open() {
         scenario = ActivityScenario.launch(ComponentActivity::class.java)
-        scenario.onActivity { it.setContent { PaperKnifePlusTheme { ScanFlow(onClose = { closed++ }, onSaved = {}) } } }
+        scenario.onActivity { it.setContent { PaperKnifePlusTheme { ScanFlow(onClose = {}, onSaved = {}) } } }
         model = waitFor("the flow") {
             var flow: ScanFlowModel? = null
             scenario.onActivity { flow = ViewModelProvider(it)[ScanFlowHolder::class.java].model }
@@ -44,8 +43,9 @@ class ScanFlowDeviceTest {
 
     @After
     fun discard() {
-        main { model.leave(keep = false) {} }
-        waitFor("the session to end") { main { closed > 0 }.takeIf { it } }
+        var left = false
+        main { model.leave(keep = false) { left = true } }
+        waitFor("the session to end") { main { left }.takeIf { it } }
         scenario.close()
     }
 
