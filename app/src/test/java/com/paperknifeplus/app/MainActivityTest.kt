@@ -13,10 +13,18 @@ import android.provider.OpenableColumns
 import android.util.TypedValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
@@ -91,6 +99,9 @@ class MainActivityTest {
 
     private fun shows(text: String) = rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty()
 
+    /** The open screen's lazy list: Home scrolls without ScrollToIndex and the pager scrolls sideways. */
+    private val verticalList = hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange)
+
     private fun waitFor(text: String) = rule.waitUntil(10_000) { shows(text) }
 
     @Test
@@ -150,15 +161,78 @@ class MainActivityTest {
     }
 
     @Test
-    @Config(qualifiers = "w400dp-h2000dp") // Tall enough for the Home grid to compose its Compress card.
     fun `an open tool survives recreation`() {
         launch()
-        rule.onAllNodesWithText("Compress").onFirst().performClick()
+        rule.onNode(hasContentDescription("All tools")).performClick()
+        openCompress()
         waitFor("OPTIMIZE PDF SIZE")
 
         controller = controller!!.recreate()
         rule.waitForIdle()
         assertTrue(shows("OPTIMIZE PDF SIZE"))
+    }
+
+    @Test
+    fun `the bottom bar switches tabs and Scan opens the scan route`() {
+        launch()
+        rule.onNode(hasText("Home") and isSelectable()).assertIsSelected()
+        rule.onNode(hasText("History") and isSelectable()).performClick()
+        waitFor("Tool outputs")
+        rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+        rule.onNode(hasText("Home") and isSelectable()).assertIsNotSelected()
+
+        rule.onNode(hasText("Scan") and hasClickAction()).performClick()
+        rule.waitUntil(10_000) { !shows("Home") }
+
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Home")
+        rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+    }
+
+    @Test
+    fun `Settings opens from the header and About goes back to it`() {
+        launch()
+        rule.onNode(hasContentDescription("Settings")).performClick()
+        waitFor("APPEARANCE")
+        rule.onNode(verticalList).performScrollToNode(hasText("About ScanKnife+"))
+        rule.onNode(hasText("About ScanKnife+")).performClick()
+        rule.waitUntil(10_000) { !shows("APPEARANCE") }
+        rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
+        waitFor("APPEARANCE")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+    }
+
+    @Test
+    fun `All tools offers the last-viewed file as a removable chip`() {
+        launch(view(pdf("viewed.pdf")))
+        waitFor("viewed.pdf")
+        rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
+        rule.waitUntil(10_000) { !shows("PDF VIEWER") }
+
+        // Kept, the chip's file opens in the tool.
+        rule.onNode(hasContentDescription("All tools")).performClick()
+        waitFor("Opens with")
+        assertTrue(shows("viewed.pdf"))
+        openCompress()
+        waitFor("OPTIMIZATION LEVEL")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+
+        // Removed, the tool opens without it.
+        rule.onNode(hasContentDescription("All tools")).performClick()
+        waitFor("Opens with")
+        rule.onNode(hasContentDescription("Remove viewed.pdf")).performClick()
+        rule.waitUntil(10_000) { !shows("Opens with") }
+        openCompress()
+        waitFor("Tap to enter file")
+        rule.waitForIdle()
+        assertFalse(shows("OPTIMIZATION LEVEL"))
+    }
+
+    private fun openCompress() {
+        rule.onNode(verticalList).performScrollToNode(hasText("Compress"))
+        rule.onNode(hasText("Compress")).performClick()
     }
 
     @Test
@@ -203,7 +277,7 @@ class MainActivityTest {
     fun `a closed Open with file does not reopen after recreation`() {
         launch(view(pdf("handed.pdf")))
         waitFor("handed.pdf")
-        rule.onAllNodes(androidx.compose.ui.test.hasContentDescription("Back")).onFirst().performClick()
+        rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
         rule.waitUntil(10_000) { !shows("PDF VIEWER") }
 
         controller = controller!!.recreate()

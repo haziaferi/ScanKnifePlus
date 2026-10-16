@@ -5,13 +5,21 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.After
@@ -25,6 +33,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 class HistoryTest {
@@ -69,7 +78,7 @@ class HistoryTest {
     }
 
     @Test
-    fun `OPEN is disabled for ZIP and file-less entries, and Share needs a file`() {
+    fun `only PDF rows open, and Share needs a file`() {
         rule.runOnUiThread {
             SessionManager.addEntry("text.txt", "To Text", "5 chars", Icons.Filled.Description)
             SessionManager.addEntry("pages.zip", "PDF to ZIP", "3 pages", Icons.Filled.FolderZip, zip)
@@ -78,16 +87,63 @@ class HistoryTest {
         var opened: Uri? = null
         rule.setContent { HistoryView(onItemClick = { uri, _, _ -> opened = uri }) }
 
-        // Newest first: merged.pdf, pages.zip, text.txt. Types are resolved off the main thread, so OPEN turns on shortly after.
-        fun enabled() = rule.onAllNodes(hasText("OPEN")).fetchSemanticsNodes().sortedBy { it.boundsInRoot.top }
-            .map { !it.config.contains(SemanticsProperties.Disabled) }
-        rule.waitUntil(10_000) { enabled() == listOf(true, false, false) }
-        assertEquals(2, rule.onAllNodes(hasContentDescription("Share")).fetchSemanticsNodes().size)
+        // Types are resolved off the main thread, so the PDF row turns clickable shortly after.
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("merged.pdf") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("pages.zip").assertHasNoClickAction()
+        rule.onNodeWithText("text.txt").assertHasNoClickAction()
+        assertEquals(2, rule.onAllNodes(hasContentDescription("Share", substring = true)).fetchSemanticsNodes().size)
+        rule.onNodeWithContentDescription("Share text.txt").assertDoesNotExist()
 
-        rule.onNodeWithText("pages.zip").performClick()
-        assertNull(opened)
         rule.onNodeWithText("merged.pdf").performClick()
         assertEquals(pdf, opened)
+    }
+
+    @Test
+    fun `the filter chips split scans from tool outputs`() {
+        rule.runOnUiThread {
+            SessionManager.addEntry("scan.pdf", "Scan", "3 pages", Icons.Filled.DocumentScanner)
+            SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description)
+        }
+        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
+
+        rule.onNodeWithText("All").assertIsSelected()
+        rule.onNodeWithText("scan.pdf").assertExists()
+        rule.onNodeWithText("merged.pdf").assertExists()
+
+        rule.onNodeWithText("Scans").performClick()
+        rule.onNodeWithText("Scans").assertIsSelected()
+        rule.onNodeWithText("All").assertIsNotSelected()
+        rule.onNodeWithText("scan.pdf").assertExists()
+        rule.onNodeWithText("merged.pdf").assertDoesNotExist()
+
+        rule.onNodeWithText("Tool outputs").performClick()
+        rule.onNodeWithText("scan.pdf").assertDoesNotExist()
+        rule.onNodeWithText("merged.pdf").assertExists()
+    }
+
+    @Test
+    fun `an empty filter says so, and there is no back arrow`() {
+        rule.runOnUiThread { SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description) }
+        rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
+        rule.onNodeWithText("Scans").performClick()
+        rule.onNodeWithText("No scans yet.").assertExists()
+        rule.onNodeWithContentDescription("Back to Home").assertDoesNotExist()
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so long names wrap.
+    fun `at 2x text a row keeps its tag clear of the name`() {
+        val long = "Insurance letters compressed for the accountant.pdf"
+        rule.runOnUiThread { SessionManager.addEntry(long, "Compress", "Optimized", Icons.Filled.Description) }
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+                HistoryView(onItemClick = { _, _, _ -> })
+            }
+        }
+        val name = rule.onNodeWithText(long).fetchSemanticsNode().boundsInRoot
+        val tag = rule.onNodeWithText("Compress").fetchSemanticsNode().boundsInRoot
+        assertTrue("name overlaps the tag", name.right <= tag.left)
+        assertTrue("the name wraps instead of clipping", name.height > tag.height)
     }
 
     @Test

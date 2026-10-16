@@ -38,9 +38,6 @@ import com.haziaferi.scanknifeplus.scan.export.SavedPdf
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.PlusJakartaSans
 
-/** The route name MainActivity shows [ScanFlow] for. */
-const val SCAN_ROUTE = "scan"
-
 /**
  * The document scanner: Scanner, then Review, then a PDF saved where the system file picker says (the storage folder comes with the storage
  * wiring). Given [importUris] (picked images), the flow starts in Review with them as its pages instead. The camera permission is asked as the

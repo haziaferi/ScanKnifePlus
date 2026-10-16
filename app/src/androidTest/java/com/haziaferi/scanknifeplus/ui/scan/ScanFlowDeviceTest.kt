@@ -39,10 +39,13 @@ class ScanFlowDeviceTest {
             flow
         }!!
         waitFor("the camera to open") { main { model.camera.ready }.takeIf { it } }
+        // Only the shutter takes shots here: an auto-capture of whatever the phone sees would add pages the counts do not expect.
+        main { if (model.autoCapture) model.toggleAutoCapture() }
     }
 
     @After
     fun discard() {
+        main { if (!model.autoCapture) model.toggleAutoCapture() }
         var left = false
         main { model.leave(keep = false) { left = true } }
         waitFor("the session to end") { main { left }.takeIf { it } }
