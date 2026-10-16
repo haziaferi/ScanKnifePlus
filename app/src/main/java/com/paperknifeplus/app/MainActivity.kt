@@ -86,10 +86,10 @@ import kotlinx.coroutines.withContext
 const val HOME_ROUTE = "home"
 const val HISTORY_ROUTE = "history"
 
-/** The scan flow's route, opened by the bottom bar's Scan button. */
+/** The scan flow's route, opened by the bottom bar's Scan button: the one full-screen route that is neither the shell's nor a [ToolCatalog] id. */
 const val SCAN_ROUTE = "scan"
 
-/** Full-screen routes of the shell itself; every other route is a [ToolCatalog] id. */
+/** Full-screen routes of the shell itself; apart from these and [SCAN_ROUTE], every route is a [ToolCatalog] id. */
 private const val SETTINGS_ROUTE = "settings"
 private const val ABOUT_ROUTE = "about"
 private const val PREVIEW_ROUTE = "ultra_preview"
@@ -242,7 +242,11 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         if (currentTool == null) {
-                            MainBottomBar(currentScreen = mainScreens[pagerState.currentPage], onNavigate = showTab, onScan = { currentTool = SCAN_ROUTE })
+                            MainBottomBar(
+                                currentScreen = mainScreens[pagerState.currentPage],
+                                onNavigate = showTab,
+                                onScan = { currentTool = SCAN_ROUTE }
+                            )
                         }
                     }
 
@@ -283,7 +287,8 @@ class MainActivity : ComponentActivity() {
                                         palette = it
                                         PreferencesManager.setPalette(applicationContext, it)
                                     },
-                                    onOpenAbout = { currentTool = ABOUT_ROUTE }
+                                    onOpenAbout = { currentTool = ABOUT_ROUTE },
+                                    onBack = closeTool
                                 )
                                 ABOUT_ROUTE -> AboutView(onBack = { currentTool = SETTINGS_ROUTE })
                                 PREVIEW_ROUTE -> previewData?.let { (uri, name, count) ->
@@ -315,7 +320,7 @@ class MainActivity : ComponentActivity() {
 
 /** Home | Scan | History (3c): Scan is the bar's filled rank-1 action; the active tab is the only other accent (3d). */
 @Composable
-fun MainBottomBar(currentScreen: String, onNavigate: (String) -> Unit, onScan: () -> Unit) {
+internal fun MainBottomBar(currentScreen: String, onNavigate: (String) -> Unit, onScan: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface) {
         Column {
             HorizontalDivider(color = MaterialTheme.colorScheme.outline)

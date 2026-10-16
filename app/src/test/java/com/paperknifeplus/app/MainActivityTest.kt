@@ -164,8 +164,7 @@ class MainActivityTest {
     fun `an open tool survives recreation`() {
         launch()
         rule.onNode(hasContentDescription("All tools")).performClick()
-        rule.onNode(verticalList).performScrollToNode(hasText("Compress"))
-        rule.onNode(hasText("Compress")).performClick()
+        openCompress()
         waitFor("OPTIMIZE PDF SIZE")
 
         controller = controller!!.recreate()
@@ -211,11 +210,29 @@ class MainActivityTest {
         rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
         rule.waitUntil(10_000) { !shows("PDF VIEWER") }
 
+        // Kept, the chip's file opens in the tool.
         rule.onNode(hasContentDescription("All tools")).performClick()
         waitFor("Opens with")
         assertTrue(shows("viewed.pdf"))
+        openCompress()
+        waitFor("OPTIMIZATION LEVEL")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+
+        // Removed, the tool opens without it.
+        rule.onNode(hasContentDescription("All tools")).performClick()
+        waitFor("Opens with")
         rule.onNode(hasContentDescription("Remove viewed.pdf")).performClick()
         rule.waitUntil(10_000) { !shows("Opens with") }
+        openCompress()
+        waitFor("Tap to enter file")
+        rule.waitForIdle()
+        assertFalse(shows("OPTIMIZATION LEVEL"))
+    }
+
+    private fun openCompress() {
+        rule.onNode(verticalList).performScrollToNode(hasText("Compress"))
+        rule.onNode(hasText("Compress")).performClick()
     }
 
     @Test

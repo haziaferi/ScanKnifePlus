@@ -68,7 +68,12 @@ private fun FileChip(fileName: String, onRemove: () -> Unit) {
             modifier = Modifier.heightIn(min = 40.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
-                Icon(Icons.Outlined.Description, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp))
+                Icon(
+                    Icons.Outlined.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(18.dp)
+                )
                 Text(
                     fileName,
                     fontSize = 14.sp,

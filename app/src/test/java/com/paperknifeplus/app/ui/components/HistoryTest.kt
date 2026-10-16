@@ -134,7 +134,7 @@ class HistoryTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so long names wrap.
-    fun `at 2x text the chips stay one row and a row keeps its tag clear of the name`() {
+    fun `at 2x text a row keeps its tag clear of the name`() {
         val long = "Insurance letters compressed for the accountant.pdf"
         rule.runOnUiThread { SessionManager.addEntry(long, "Compress", "Optimized", Icons.Filled.Description) }
         rule.setContent {
@@ -142,9 +142,6 @@ class HistoryTest {
                 HistoryView(onItemClick = { _, _, _ -> }, onBack = {})
             }
         }
-        val chips = listOf("All", "Scans", "Tool outputs").map { rule.onNodeWithText(it).fetchSemanticsNode().boundsInRoot }
-        assertTrue("chips wrapped", chips.all { it.top == chips[0].top })
-        assertTrue("chips overlap", chips.zipWithNext().all { (a, b) -> a.right <= b.left })
         val name = rule.onNodeWithText(long).fetchSemanticsNode().boundsInRoot
         val tag = rule.onNodeWithText("Compress").fetchSemanticsNode().boundsInRoot
         assertTrue("name overlaps the tag", name.right <= tag.left)

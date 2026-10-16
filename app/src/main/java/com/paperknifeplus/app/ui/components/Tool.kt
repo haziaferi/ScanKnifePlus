@@ -10,10 +10,13 @@ import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.ScanPalette
 import java.util.UUID
 
-/** The [ActivityEntry.tool] label of scans (written by ScanExport). */
+/** The [ActivityEntry.tool] label of scans; ScanExport writes it. */
 const val SCAN_ENTRY_TOOL = "Scan"
 
-/** One History entry. [id] is unique (it keys the History list). [tool] is the label the producing screen gave, [SCAN_ENTRY_TOOL] for scans. */
+/**
+ * One History entry. [id] is unique: it keys History's lazy list, so a row keeps its state when newer entries shift the list. [tool] is
+ * the label the producing screen gave, [SCAN_ENTRY_TOOL] for scans.
+ */
 data class ActivityEntry(
     val id: String,
     val name: String,

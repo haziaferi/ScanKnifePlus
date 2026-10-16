@@ -71,8 +71,9 @@ fun HomeView(
     }
 }
 
+/** The wordmark with the All tools and Settings buttons (3c). */
 @Composable
-fun HomeHeader(onAllTools: () -> Unit, onSettings: () -> Unit) {
+private fun HomeHeader(onAllTools: () -> Unit, onSettings: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -109,7 +110,10 @@ private fun ScanCard(onImportPhotos: () -> Unit) {
         color = colors.surface,
         border = BorderStroke(1.dp, colors.outline)
     ) {
-        Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(
                     modifier = Modifier.size(52.dp).background(colors.surfaceVariant, RoundedCornerShape(16.dp)),
@@ -143,7 +147,7 @@ private fun ScanCard(onImportPhotos: () -> Unit) {
 
 /** The newest outputs; a PDF opens in the reader, any other file opens History, where it can be shared. */
 @Composable
-fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
+internal fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     Row(
@@ -197,5 +201,18 @@ fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpenPreview:
                 )
             }
         }
+    }
+}
+
+/** The surface card that holds the Recent rows. */
+@Composable
+private fun EntryList(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column { content() }
     }
 }

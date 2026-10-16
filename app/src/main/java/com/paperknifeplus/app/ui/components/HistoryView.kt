@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,19 +20,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -91,7 +90,11 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit, onBack: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.history_back), tint = MaterialTheme.colorScheme.onBackground)
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.history_back),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -107,26 +110,28 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit, onBack: () -> Unit) {
 
         FilterChips(selected = filter, onSelect = { filter = it })
 
-        Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-            if (items.isEmpty()) {
-                Text(
-                    stringResource(filter.empty),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)
-                )
-            } else {
-                EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp)) {
-                    items.forEachIndexed { index, item ->
-                        if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-                        // The provider is asked for the type once per entry, off the main thread.
-                        var mime by remember(item.uri) { mutableStateOf<String?>(null) }
-                        LaunchedEffect(item.uri) {
-                            val uri = item.uri
-                            if (uri != null) mime = withContext(Dispatchers.IO) { historyEntryMime(context.contentResolver, uri) }
-                        }
-                        val chooserTitle = stringResource(R.string.history_share_chooser)
-                        val failed = stringResource(R.string.history_share_failed)
+        if (items.isEmpty()) {
+            Text(
+                stringResource(filter.empty),
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 16.dp)
+            ) {
+                itemsIndexed(items, key = { _, item -> item.id }) { index, item ->
+                    // Keyed by id, so each row resolves its type once, off the main thread, and keeps it when newer entries shift the list.
+                    var mime by remember(item.uri) { mutableStateOf<String?>(null) }
+                    LaunchedEffect(item.uri) {
+                        val uri = item.uri
+                        if (uri != null) mime = withContext(Dispatchers.IO) { historyEntryMime(context.contentResolver, uri) }
+                    }
+                    val chooserTitle = stringResource(R.string.history_share_chooser)
+                    val failed = stringResource(R.string.history_share_failed)
+                    CardSlice(first = index == 0, last = index == items.lastIndex) {
                         EntryRow(
                             entry = item,
                             onClick = if (canOpenInReader(mime)) {
@@ -149,6 +154,26 @@ fun HistoryView(onItemClick: (Uri, String, Int) -> Unit, onBack: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * One lazy-list row drawn as a slice of a card like Home's Recent list: an outline frame around a surface fill, rounded at the card's outer
+ * corners; only the [first] row has a top edge, so each bottom edge doubles as the divider.
+ */
+@Composable
+private fun CardSlice(first: Boolean, last: Boolean, content: @Composable () -> Unit) {
+    fun shape(r: Int) = RoundedCornerShape(
+        topStart = if (first) r.dp else 0.dp, topEnd = if (first) r.dp else 0.dp,
+        bottomStart = if (last) r.dp else 0.dp, bottomEnd = if (last) r.dp else 0.dp
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.outline, shape(18))
+            .padding(start = 1.dp, end = 1.dp, top = if (first) 1.dp else 0.dp, bottom = 1.dp)
+            .clip(shape(17))
+            .background(MaterialTheme.colorScheme.surface)
+    ) { content() }
 }
 
 /** One horizontally scrolling row of filter chips; the selected chip is tonal (3e) and also marked by semantics, not colour alone. */
@@ -185,19 +210,6 @@ private fun FilterChips(selected: HistoryFilter, onSelect: (HistoryFilter) -> Un
                 )
             }
         }
-    }
-}
-
-/** The surface card that holds entry rows, shared by History and Home's Recent list. */
-@Composable
-internal fun EntryList(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    ) {
-        Column { content() }
     }
 }
 

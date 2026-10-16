@@ -16,7 +16,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -95,14 +94,16 @@ class ToolCatalogTest {
     }
 
     @Test
-    fun `every catalog tool opens its screen`() {
+    fun `every catalog tool opens its own screen`() {
         PDFBoxResourceLoader.init(context)
+        assertEquals(ToolCatalog.tools.map { it.id }.toSet(), SCREEN_TEXT.keys)
         var id by mutableStateOf(ToolCatalog.tools.first().id)
         rule.setContent { key(id) { ToolCatalog.byId(id)!!.screen(ToolLaunch(null, null, onBack = {}, onOpenPreview = { _, _, _ -> })) } }
         for (tool in ToolCatalog.tools) {
             id = tool.id
             rule.waitForIdle()
-            assertNotNull(tool.id, rule.onAllNodes(hasText("", substring = true)).fetchSemanticsNodes().firstOrNull())
+            val text = SCREEN_TEXT.getValue(tool.id)
+            assertTrue("${tool.id} does not show $text", rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty())
         }
     }
 
@@ -110,6 +111,17 @@ class ToolCatalogTest {
         listOf(File("src/main/java"), File("app/src/main/java")).first { it.isDirectory }.resolve(pkg)
 
     private companion object {
+        /** A text only that tool's empty screen shows. */
+        val SCREEN_TEXT = mapOf(
+            "merge" to "JOIN MULTIPLE DOCUMENTS", "split" to "EXTRACT PAGES FROM PDF", "delete" to "DELETE PAGES INSTANTLY",
+            "rearrange" to "MOVE PAGES TO NEW SLOTS", "rotate" to "FIX DOCUMENT ORIENTATION", "sign" to "SECURE SIGNATURE",
+            "watermark" to "CUSTOM OVERLAY", "page-numbers" to "CUSTOM PAGINATION", "bookmarks" to "EDIT DOCUMENT NAVIGATION",
+            "compress" to "OPTIMIZE PDF SIZE", "grayscale" to "CONVERT PDF TO B&W", "repair" to "RECOVER CORRUPT DOCUMENTS",
+            "compare" to "VISUAL DIFFERENCE TOOL", "protect" to "ENCRYPT YOUR DOCUMENT", "unlock" to "REMOVE PDF RESTRICTIONS",
+            "metadata" to "EDIT DOCUMENT PROPERTIES", "pdf2img" to "NATIVE EXPORT ENGINE", "img2pdf" to "JPG, PNG, OR WEBP",
+            "pdf2zip" to "PAGES TO ARCHIVE", "extract-images" to "EXTRACT ASSETS FROM PDFS", "pdf2text" to "EXTRACT RAW CONTENT"
+        )
+
         /** The *View composables that are not tools: the shell's own screens and the tools' shared success screen. */
         val NOT_TOOLS = setOf("HomeView", "HistoryView", "ToolsView", "SettingsView", "AboutView", "SuccessView")
     }
