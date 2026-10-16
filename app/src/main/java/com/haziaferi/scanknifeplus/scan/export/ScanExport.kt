@@ -16,6 +16,7 @@ import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scanner.export.ExportNames
 import com.haziaferi.scanknifeplus.scanner.export.ExportQuality
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
+import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
 import com.paperknifeplus.app.ui.components.SessionManager
 import com.paperknifeplus.app.ui.components.getUriDetails
 import java.io.File
@@ -133,7 +134,7 @@ class ScanExport(
             val name = getUriDetails(context, saved.uri).name
             val label = if (saved.pages == 1) "1 page" else "${saved.pages} pages"
             Handler(Looper.getMainLooper()).post {
-                SessionManager.addEntry(name, "Scan", label, Icons.Filled.DocumentScanner, saved.uri, saved.pages)
+                SessionManager.addEntry(name, SCAN_ENTRY_TOOL, label, Icons.Filled.DocumentScanner, saved.uri, saved.pages)
             }
         }
     }

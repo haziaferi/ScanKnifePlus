@@ -3,6 +3,7 @@ package com.paperknifeplus.app.ui.components
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -26,7 +27,10 @@ class SettingsViewTest {
     fun `the About group opens About under the app name and the footer shows the app name`() {
         var opened = 0
         rule.setContent {
-            SettingsView(isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = { opened++ })
+            SettingsView(
+                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = { opened++ },
+                onBack = {}
+            )
         }
         val list = rule.onNode(hasScrollAction())
 
@@ -47,7 +51,7 @@ class SettingsViewTest {
         rule.setContent {
             SettingsView(
                 isDarkMode = false, onThemeChange = { themes += it }, palette = AppPalette.STILL_WATER, onPaletteChange = { chosen += it },
-                onOpenAbout = {}
+                onOpenAbout = {}, onBack = {}
             )
         }
         rule.onNodeWithText("Dark").assertDoesNotExist()
@@ -59,5 +63,18 @@ class SettingsViewTest {
         rule.onNodeWithText("Graphite Scholastic").performClick()
         rule.onNodeWithText("Still Water").performClick()
         assertEquals(listOf(AppPalette.ROSE, AppPalette.GRAPHITE_SCHOLASTIC, AppPalette.STILL_WATER), chosen)
+    }
+
+    @Test
+    fun `the top bar's back button leaves Settings`() {
+        var back = 0
+        rule.setContent {
+            SettingsView(
+                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {},
+                onBack = { back++ }
+            )
+        }
+        rule.onNodeWithContentDescription("Back to Home").performClick()
+        assertEquals(1, back)
     }
 }
