@@ -43,6 +43,7 @@ fun BookmarksView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var outputPageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
@@ -81,7 +82,9 @@ fun BookmarksView(
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockPassword = ""
         unlockError = false
         isFileLoading = true
@@ -165,79 +168,78 @@ fun BookmarksView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_bookmarks),
-                    subtitle = stringResource(R.string.bookmarks_edit_document_navigation),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = ::reset
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_bookmarks), stringResource(R.string.bookmarks_edit_document_navigation), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(false, stringResource(R.string.bookmarks_reading_outlines))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                        ToolEmptyState(
                             icon = Icons.Filled.BookmarkBorder,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.bookmarks_manage_pdf_bookmarks),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.bookmarks_manage_pdf_bookmarks),
+                            task = stringResource(R.string.tool_bookmarks_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(Modifier.fillMaxSize()) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                ToolStatusText(stringResource(R.string.bookmarks_bookmarks, bookmarks.size))
-                                Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
-                                    Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.action_add), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                }
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-nav", "pdf")) },
+                            scroll = false,
+                            secondary = ToolAction(stringResource(R.string.bookmarks_extract_pages), enabled = bookmarks.isNotEmpty()) {
+                                extractLauncher.launch(outputFileName(pdfBaseName(fileName) + "-extract", "pdf"))
                             }
-
-                            if (bookmarks.isEmpty()) {
-                                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    Text(stringResource(R.string.bookmarks_no_bookmarks_found), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                        ) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = ::reset,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    ToolStatusText(stringResource(R.string.bookmarks_bookmarks, bookmarks.size))
+                                    Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.action_add), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
-                            } else {
-                                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    itemsIndexed(bookmarks) { index, bm ->
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                                        ) {
-                                            Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Filled.Bookmark, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
-                                                Spacer(Modifier.width(16.dp))
-                                                Column(Modifier.weight(1f)) {
-                                                    Text(bm.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                    Text(bm.pageIndex?.let { stringResource(R.string.tool_page_n, it + 1) } ?: stringResource(R.string.bookmarks_no_page), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                }
-                                                IconButton(onClick = { bookmarks = bookmarks.withoutBranch(index) }) {
-                                                    Icon(Icons.Filled.Delete, stringResource(R.string.action_delete_named, bm.title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+
+                                if (bookmarks.isEmpty()) {
+                                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text(stringResource(R.string.bookmarks_no_bookmarks_found), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                                    }
+                                } else {
+                                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        itemsIndexed(bookmarks) { index, bm ->
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = MaterialTheme.colorScheme.surface,
+                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                            ) {
+                                                Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Filled.Bookmark, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+                                                    Spacer(Modifier.width(16.dp))
+                                                    Column(Modifier.weight(1f)) {
+                                                        Text(bm.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                        Text(bm.pageIndex?.let { stringResource(R.string.tool_page_n, it + 1) } ?: stringResource(R.string.bookmarks_no_page), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                    IconButton(onClick = { bookmarks = bookmarks.withoutBranch(index) }) {
+                                                        Icon(Icons.Filled.Delete, stringResource(R.string.action_delete_named, bm.title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            
-                            Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-nav", "pdf")) }, modifier = Modifier.weight(1f))
-                                ToolSecondaryButton(
-                                    stringResource(R.string.bookmarks_extract_pages),
-                                    onClick = { extractLauncher.launch(outputFileName(pdfBaseName(fileName) + "-extract", "pdf")) },
-                                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
-                                    enabled = bookmarks.isNotEmpty()
-                                )
                             }
                         }
                     }
@@ -255,10 +257,10 @@ fun BookmarksView(
                         SuccessView(
                             message = stringResource(R.string.bookmarks_task_complete),
                             subMessage = stringResource(R.string.bookmarks_document_updated_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = ::reset,
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, outputPageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, outputPageCount) } }
                         )
                     }
                 }

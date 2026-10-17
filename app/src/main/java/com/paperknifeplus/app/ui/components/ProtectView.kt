@@ -42,6 +42,8 @@ fun ProtectView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var protectPassword by remember { mutableStateOf("") }
+    // The password the saved output was encrypted with, so its result card can draw the first page; kept in memory only.
+    var savedPassword by remember { mutableStateOf<String?>(null) }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
@@ -93,6 +95,7 @@ fun ProtectView(
                 protectPdf(context, source, uri, unlockPassword.ifEmpty { null }, protectPassword)
                 processingTime = formatElapsed(startTime)
                 outputUri = uri
+                savedPassword = protectPassword
                 fileName = withContext(Dispatchers.IO) { getUriDetails(context, uri).name }
                 outputs.saved(uri, fileName, toolText(context, R.string.protect_encrypted), Icons.Outlined.Lock, pageCount)
                 currentState = ToolState.SUCCESS
@@ -111,96 +114,67 @@ fun ProtectView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_protect),
-                    subtitle = stringResource(R.string.protect_encrypt_your_document),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = {
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_protect), stringResource(R.string.protect_encrypt_your_document), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                        ToolEmptyState(
                             icon = Icons.Outlined.Security,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.protect_protect_any_pdf_document),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.protect_protect_any_pdf_document),
+                            task = stringResource(R.string.tool_protect_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.protect_save),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-protected", "pdf")) },
+                            actionEnabled = protectPassword.isNotBlank()
                         ) {
-                            Spacer(Modifier.height(12.dp))
-                            
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth(0.7f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = if (unlockPassword.isEmpty()) null else unlockPassword,
-                                    accentColor = accentColor
-                                )
-                            }
-                            
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-                            
-                            Spacer(Modifier.height(24.dp))
-                            ToolSectionLabel(stringResource(R.string.protect_set_protection))
-                            Spacer(Modifier.height(8.dp))
-                            
-                            OutlinedTextField(
-                                value = protectPassword,
-                                onValueChange = { protectPassword = it },
-                                label = { Text(stringResource(R.string.protect_new_password), fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = TextFieldDefaults.colors(
-                                    focusedIndicatorColor = accentColor,
-                                    cursorColor = accentColor,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent
-                                )
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
                             )
-                            
-                            Spacer(Modifier.height(12.dp))
-                            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
-                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(
-                                        stringResource(R.string.protect_no_recovery, stringResource(R.string.app_name)),
-                                        fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold
+                            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 16.dp)) {
+                                ToolSectionLabel(stringResource(R.string.protect_set_protection))
+                                Spacer(Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = protectPassword,
+                                    onValueChange = { protectPassword = it },
+                                    label = { Text(stringResource(R.string.protect_new_password), fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedIndicatorColor = accentColor,
+                                        cursorColor = accentColor,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedContainerColor = Color.Transparent
                                     )
+                                )
+
+                                Spacer(Modifier.height(12.dp))
+                                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Text(
+                                            stringResource(R.string.protect_no_recovery, stringResource(R.string.app_name)),
+                                            fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
-                            
-                            Spacer(Modifier.height(24.dp))
-                            Button(
-                                onClick = { 
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-protected", "pdf")
-                                    saveLauncher.launch(defaultName) 
-                                }, 
-                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), 
-                                enabled = protectPassword.isNotBlank(), 
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Text(stringResource(R.string.protect_save), fontWeight = FontWeight.Black)
-                            }
-                            Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -217,15 +191,15 @@ fun ProtectView(
                         SuccessView(
                             message = stringResource(R.string.protect_protect_complete),
                             subMessage = stringResource(R.string.protect_document_encrypted_with_password),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName, password = savedPassword) },
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 selectedUri = null
                                 unlockPassword = ""
                                 protectPassword = ""
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

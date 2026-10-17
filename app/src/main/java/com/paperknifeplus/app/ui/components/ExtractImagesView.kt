@@ -6,14 +6,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -51,6 +48,7 @@ fun ExtractImagesView(
     var unlockError by remember { mutableStateOf(false) }
     var extractedCount by remember { mutableIntStateOf(0) }
     var resultSummary by remember { mutableStateOf("") }
+    var outputUri by remember { mutableStateOf<Uri?>(null) }
     val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
@@ -108,6 +106,7 @@ fun ExtractImagesView(
                     processingTime = timeStr
                     fileName = outputName
                     resultSummary = counts.summary
+                    outputUri = uri
                     outputs.saved(uri, fileName, toolText(context, R.string.extract_images_assets, extractedCount), Icons.Filled.Collections)
                     currentState = ToolState.SUCCESS
                 }
@@ -127,62 +126,52 @@ fun ExtractImagesView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_extract_images),
-                    subtitle = stringResource(R.string.extract_images_extract_assets_from_pdfs),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(
+                currentState,
+                stringResource(R.string.tool_extract_images),
+                stringResource(R.string.extract_images_extract_assets_from_pdfs),
+                processingTime,
+                onBack
+            )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.PhotoLibrary,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.extract_images_extract_assets_from_pdf),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.extract_images_extract_assets_from_pdf),
+                            task = stringResource(R.string.tool_extract_images_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.extract_images_extract_images_zip),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-assets", "zip")) }
                         ) {
-                            Spacer(Modifier.height(16.dp))
-
-                            Box(modifier = Modifier.fillMaxWidth(0.6f).aspectRatio(0.707f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor
-                                )
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-
-                            Spacer(Modifier.height(24.dp))
-                            ToolSectionLabel(stringResource(R.string.extract_images_ready_to_strip_assets))
-                            Text(stringResource(R.string.extract_images_strip_and_save_all_raw), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                            Spacer(Modifier.height(32.dp))
-
-                            ToolPrimaryButton(stringResource(R.string.extract_images_extract_images_zip), onClick = {
-                                    val safeName = outputFileName(pdfBaseName(fileName) + "-assets", "zip")
-                                    saveLauncher.launch(safeName)
-                                }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(100.dp))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            ToolSectionLabel(
+                                stringResource(R.string.extract_images_ready_to_strip_assets),
+                                Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)
+                            )
+                            Text(
+                                stringResource(R.string.extract_images_strip_and_save_all_raw),
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
+                            )
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -199,15 +188,15 @@ fun ExtractImagesView(
                         SuccessView(
                             message = stringResource(R.string.extract_images_extraction_complete),
                             subMessage = resultSummary,
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName, ZIP_MIME) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null
+                                outputUri = null
                                 unlockPassword = ""
                                 extractedCount = 0
                                 currentState = ToolState.SELECTING
-                            },
-                            showPreviewButton = false,
+                            }
                         )
                     }
                 }

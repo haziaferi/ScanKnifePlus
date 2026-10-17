@@ -49,6 +49,7 @@ fun PdfToTextView(
     var extractedText by remember { mutableStateOf("") }
     var textChunks by remember { mutableStateOf<List<String>>(emptyList()) }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var isFileLoading by remember { mutableStateOf(false) }
@@ -59,7 +60,9 @@ fun PdfToTextView(
         selectedUri = uri
         unlockPassword = ""
         unlockError = false
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         isFileLoading = true
         scope.launch {
             when (inspectPdf(context, uri)) {
@@ -128,52 +131,42 @@ fun PdfToTextView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_pdf2text),
-                    subtitle = stringResource(R.string.pdf2text_extract_raw_content),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
-                )
+            // The extracted text has its own header, with copy and save.
+            if (currentState != ToolState.SUCCESS) {
+                ToolScreenBar(currentState, stringResource(R.string.tool_pdf2text), stringResource(R.string.pdf2text_extract_raw_content), "", onBack)
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.Description,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.pdf2text_extract_text_data),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.pdf2text_extract_text_data),
+                            task = stringResource(R.string.tool_pdf2text_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Spacer(Modifier.height(16.dp))
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth(0.85f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor
-                                )
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            ToolFileInfo(fileName, stringResource(R.string.pdf2text_scan_pdf_text_layers_and))
-
-                            Spacer(Modifier.height(24.dp))
-                            ToolPrimaryButton(stringResource(R.string.pdf2text_extract_text), onClick = { startExtraction() }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(32.dp))
+                        ToolConfigLayout(action = stringResource(R.string.pdf2text_extract_text), onAction = { startExtraction() }) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Text(
+                                stringResource(R.string.pdf2text_scan_pdf_text_layers_and),
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                            )
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -187,7 +180,7 @@ fun PdfToTextView(
                         )
                     }
                     ToolState.SUCCESS -> {
-                        Column(Modifier.fillMaxSize()) {
+                        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

@@ -89,6 +89,7 @@ fun SignView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
@@ -148,7 +149,9 @@ fun SignView(
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -202,6 +205,7 @@ fun SignView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
+                    fileName = outputName
                     outputs.saved(uri, outputName, toolText(context, R.string.sign_document_signed_locally), Icons.Filled.Draw, pageCount)
                     currentState = ToolState.SUCCESS
                 }
@@ -294,15 +298,7 @@ fun SignView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_sign),
-                    subtitle = stringResource(R.string.sign_secure_signature),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_sign), stringResource(R.string.sign_secure_signature), processingTime, onBack)
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -311,21 +307,31 @@ fun SignView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Filled.Draw,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.sign_sign_any_pdf_document),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.sign_sign_any_pdf_document),
+                            task = stringResource(R.string.tool_sign_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        val hasSigned = placedSignatures.isNotEmpty()
+                        ToolConfigLayout(
+                            action = if (hasSigned) stringResource(R.string.action_save_pdf) else stringResource(R.string.sign_select_a_page_to_sign),
+                            onAction = { if (hasSigned) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf")) },
+                            actionEnabled = hasSigned,
+                            scroll = false
                         ) {
-                            Spacer(Modifier.height(12.dp))
-                            Box(modifier = Modifier.weight(1f)) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+                            )
+                            Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 UnifiedPdfPreview(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
@@ -338,14 +344,6 @@ fun SignView(
                                     onToggleSelection = { index -> lightboxPage = index }
                                 )
                             }
-
-                            val hasSigned = placedSignatures.isNotEmpty()
-                            ToolPrimaryButton(
-                                if (hasSigned) stringResource(R.string.action_save_pdf) else stringResource(R.string.sign_select_a_page_to_sign),
-                                onClick = { if (hasSigned) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                                enabled = hasSigned
-                            )
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -362,14 +360,14 @@ fun SignView(
                         SuccessView(
                             message = stringResource(R.string.sign_sign_complete),
                             subMessage = stringResource(R.string.sign_signature_placed_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null
                                 placedSignatures = emptyList()
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

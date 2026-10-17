@@ -48,6 +48,7 @@ fun PageNumbersView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
@@ -67,7 +68,9 @@ fun PageNumbersView(
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -129,15 +132,7 @@ fun PageNumbersView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_page_numbers),
-                    subtitle = stringResource(R.string.page_numbers_custom_pagination),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_page_numbers), stringResource(R.string.page_numbers_custom_pagination), processingTime, onBack)
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -146,73 +141,82 @@ fun PageNumbersView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Filled.FormatListNumbered,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.page_numbers_add_page_numbers),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.page_numbers_add_page_numbers),
+                            task = stringResource(R.string.tool_page_numbers_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) },
+                            scroll = false
                         ) {
-                            Spacer(Modifier.height(12.dp))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Spacer(Modifier.height(12.dp))
 
-                            Box(modifier = Modifier.weight(1f)) {
-                                val numberOverlay: @Composable (BoxScope.(Int) -> Unit) = { index ->
-                                    if (showPreviewOverlay) {
-                                        val text = expandPageTokens(format, index + 1, pageCount, previewDate)
-                                        Box(Modifier.fillMaxSize(), contentAlignment = when {
-                                            position.contains("Bottom") && position.contains("Left") -> Alignment.BottomStart
-                                            position.contains("Bottom") && position.contains("Center") -> Alignment.BottomCenter
-                                            position.contains("Bottom") && position.contains("Right") -> Alignment.BottomEnd
-                                            position.contains("Top") && position.contains("Left") -> Alignment.TopStart
-                                            position.contains("Top") && position.contains("Center") -> Alignment.TopCenter
-                                            position.contains("Top") && position.contains("Right") -> Alignment.TopEnd
-                                            else -> Alignment.BottomEnd
-                                        }) {
-                                            Text(
-                                                text = text,
-                                                color = numberColor,
-                                                fontSize = (fontSize / 2).sp,
-                                                fontWeight = FontWeight.Black,
-                                                modifier = Modifier.padding(6.dp)
-                                            )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    val numberOverlay: @Composable (BoxScope.(Int) -> Unit) = { index ->
+                                        if (showPreviewOverlay) {
+                                            val text = expandPageTokens(format, index + 1, pageCount, previewDate)
+                                            Box(Modifier.fillMaxSize(), contentAlignment = when {
+                                                position.contains("Bottom") && position.contains("Left") -> Alignment.BottomStart
+                                                position.contains("Bottom") && position.contains("Center") -> Alignment.BottomCenter
+                                                position.contains("Bottom") && position.contains("Right") -> Alignment.BottomEnd
+                                                position.contains("Top") && position.contains("Left") -> Alignment.TopStart
+                                                position.contains("Top") && position.contains("Center") -> Alignment.TopCenter
+                                                position.contains("Top") && position.contains("Right") -> Alignment.TopEnd
+                                                else -> Alignment.BottomEnd
+                                            }) {
+                                                Text(
+                                                    text = text,
+                                                    color = numberColor,
+                                                    fontSize = (fontSize / 2).sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    modifier = Modifier.padding(6.dp)
+                                                )
+                                            }
                                         }
+                                    }
+
+                                    UnifiedPdfPreview(
+                                        uri = selectedUri!!,
+                                        pageCount = pageCount,
+                                        mode = PreviewMode.GRID,
+                                        password = unlockPassword.ifEmpty { null },
+                                        accentColor = accentColor,
+                                        showIndexNumbers = false,
+                                        disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
+                                        itemOverlay = numberOverlay
+                                    )
+                                }
+
+                                Spacer(Modifier.height(8.dp))
+
+                                Surface(
+                                    onClick = { showSettingsSheet = true },
+                                    color = accentColor.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
+                                ) {
+                                    Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.page_numbers_numbering_options), tint = accentColor, modifier = Modifier.size(24.dp))
                                     }
                                 }
 
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.GRID,
-                                    password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor,
-                                    showIndexNumbers = false,
-                                    disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
-                                    itemOverlay = numberOverlay
-                                )
+                                Spacer(Modifier.height(8.dp))
                             }
-
-                            Spacer(Modifier.height(8.dp))
-
-                            Surface(
-                                onClick = { showSettingsSheet = true },
-                                color = accentColor.copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
-                            ) {
-                                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.page_numbers_numbering_options), tint = accentColor, modifier = Modifier.size(24.dp))
-                                }
-                            }
-
-                            Spacer(Modifier.height(8.dp))
-
-                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -229,15 +233,13 @@ fun PageNumbersView(
                         SuccessView(
                             message = stringResource(R.string.page_numbers_numbering_complete),
                             subMessage = stringResource(R.string.page_numbers_page_numbers_added_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = {
-                                outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
-                            },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

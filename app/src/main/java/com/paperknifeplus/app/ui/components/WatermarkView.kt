@@ -77,6 +77,7 @@ fun WatermarkView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
@@ -126,7 +127,9 @@ fun WatermarkView(
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -179,6 +182,7 @@ fun WatermarkView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
+                    fileName = outputName
                     outputs.saved(uri, outputName, toolText(context, R.string.watermark_branding_applied_locally), Icons.Filled.TextFields, pageCount)
                     currentState = ToolState.SUCCESS
                 }
@@ -265,15 +269,7 @@ fun WatermarkView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_watermark),
-                    subtitle = stringResource(R.string.watermark_custom_overlay),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedWatermarks = emptyList() }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_watermark), stringResource(R.string.watermark_custom_overlay), processingTime, onBack)
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -282,21 +278,31 @@ fun WatermarkView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Filled.TextFields,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.watermark_watermark_pages),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.watermark_watermark_pages),
+                            task = stringResource(R.string.tool_watermark_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        val hasWatermark = placedWatermarks.isNotEmpty()
+                        ToolConfigLayout(
+                            action = if (hasWatermark) stringResource(R.string.action_save_pdf) else stringResource(R.string.watermark_select_a_page_to_watermark),
+                            onAction = { if (hasWatermark) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf")) },
+                            actionEnabled = hasWatermark,
+                            scroll = false
                         ) {
-                            Spacer(Modifier.height(12.dp))
-                            Box(modifier = Modifier.weight(1f)) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedWatermarks = emptyList() },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+                            )
+                            Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 UnifiedPdfPreview(
                                     uri = selectedUri!!,
                                     pageCount = pageCount,
@@ -308,17 +314,6 @@ fun WatermarkView(
                                     itemOverlay = { WatermarkOverlay(it, onMeasured = null) },
                                     onToggleSelection = { index -> lightboxPage = index }
                                 )
-                            }
-
-                            val hasWatermark = placedWatermarks.isNotEmpty()
-                            Button(
-                                onClick = { if (hasWatermark) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp),
-                                enabled = hasWatermark,
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
-                            ) {
-                                Text(if (hasWatermark) stringResource(R.string.action_save_pdf) else stringResource(R.string.watermark_select_a_page_to_watermark), fontWeight = FontWeight.Black)
                             }
                         }
                     }
@@ -336,14 +331,14 @@ fun WatermarkView(
                         SuccessView(
                             message = stringResource(R.string.watermark_watermark_complete),
                             subMessage = stringResource(R.string.watermark_watermarks_applied_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null
                                 placedWatermarks = emptyList()
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

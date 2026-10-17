@@ -1,6 +1,5 @@
 package com.paperknifeplus.app.ui.components
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -35,6 +34,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -168,6 +170,8 @@ fun UltraPreview(
     var showJumpDialog by remember { mutableStateOf(false) }
     var jumpPageInput by remember { mutableStateOf("") }
     var showToolPicker by remember { mutableStateOf(false) }
+    // A link tapped in the PDF waits here until the user confirms it (decision 27d), as every other web link in the app does.
+    var pendingLink by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
     var targetScale by remember { mutableFloatStateOf(1f) }
@@ -319,21 +323,20 @@ fun UltraPreview(
                                 pageBox = pageBoxes.getOrNull(index),
                                 links = linksByPage[index].orEmpty(),
                                 onLinkClick = { url ->
-                                    val opened = safeLinkUri(url)?.let { safe ->
-                                        try {
-                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe)))
-                                            true
-                                        } catch (e: ActivityNotFoundException) {
-                                            false
-                                        }
-                                    } ?: false
-                                    if (!opened) Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
+                                    val safe = safeLinkUri(url)
+                                    if (safe != null) {
+                                        pendingLink = safe
+                                    } else {
+                                        Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
                         }
                     }
                 }
             }
+
+            pendingLink?.let { WebLinkPrompt(it, onDismiss = { pendingLink = null }) }
 
             if (!isInitializing && fileToUnlock == null) {
                 var isDragging by remember { mutableStateOf(false) }
@@ -603,7 +606,8 @@ fun PdfPageReaderItem(
                     modifier = Modifier
                         .offset(x = maxWidth * area.left, y = maxHeight * area.top)
                         .size(width = maxWidth * area.width, height = maxHeight * area.height)
-                        .clickable { onLinkClick(link.url) }
+                        .clickable(onClickLabel = link.url, role = Role.Button) { onLinkClick(link.url) }
+                        .semantics { contentDescription = link.url }
                 )
             }
         }

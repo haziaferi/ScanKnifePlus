@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -122,64 +121,43 @@ fun UnlockView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_unlock),
-                    subtitle = stringResource(R.string.unlock_remove_pdf_restrictions),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = {
-                        dropDecryptedCopy()
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_unlock), stringResource(R.string.unlock_remove_pdf_restrictions), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                        ToolEmptyState(
                             icon = Icons.Outlined.LockOpen,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.unlock_remove_password_protection),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.unlock_remove_password_protection),
+                            task = stringResource(R.string.tool_unlock_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-unlocked", "pdf")) }
                         ) {
-                            Spacer(Modifier.height(12.dp))
-                            
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth(0.75f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = null, 
-                                    accentColor = accentColor
-                                )
-                            }
-                            
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-                            
-                            Spacer(Modifier.height(20.dp))
-                            ToolSectionLabel(stringResource(R.string.unlock_document_unlocked))
-                            Text(stringResource(R.string.unlock_ready_to_save_without_restrictions), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                            
-                            Spacer(Modifier.height(32.dp))
-                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { 
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-unlocked", "pdf")
-                                    saveLauncher.launch(defaultName) 
-                                }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(32.dp))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = null,
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            ToolSectionLabel(stringResource(R.string.unlock_document_unlocked), Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
+                            Text(
+                                stringResource(R.string.unlock_ready_to_save_without_restrictions),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
+                            )
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -196,15 +174,15 @@ fun UnlockView(
                         SuccessView(
                             message = stringResource(R.string.unlock_file_unlocked),
                             subMessage = stringResource(R.string.unlock_password_protection_removed),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 dropDecryptedCopy()
                                 selectedUri = null
                                 password = ""
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

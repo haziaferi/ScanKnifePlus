@@ -246,6 +246,7 @@ class MainActivityTest {
         waitFor("Appearance")
         rule.onNode(verticalList).performScrollToNode(hasText("Folder"))
         rule.onNode(hasText("Folder")).performClick()
+        rule.onNode(hasText("Choose folder") and hasClickAction()).performClick()
         waitFor("Choose where your documents live")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Appearance")
@@ -304,7 +305,7 @@ class MainActivityTest {
         rule.onNode(hasContentDescription("Remove viewed.pdf")).performClick()
         rule.waitUntil(10_000) { !shows("Opens with") }
         openCompress()
-        waitFor("Tap to choose a PDF")
+        waitFor("Choose PDF")
         rule.waitForIdle()
         assertFalse(shows("Optimization level"))
     }
@@ -343,10 +344,11 @@ class MainActivityTest {
             val window = controller!!.get().window
             rule.onNode(hasContentDescription("Settings")).performClick()
             waitFor("Appearance")
-            rule.onNode(verticalList).performScrollToNode(hasText("Rose"))
+            rule.onNode(hasText("Colour palette") and hasClickAction()).performClick()
             rule.onNode(hasText("Rose") and hasClickAction()).performClick()
             rule.waitForIdle()
             assertEquals(AppPalette.ROSE.light.bg.toArgb(), (window.decorView.background as ColorDrawable).color)
+            rule.onNode(hasText("Theme") and hasClickAction()).performClick()
             rule.onNode(hasText("OLED") and hasClickAction()).performClick()
             rule.waitForIdle()
             assertEquals(AppPalette.ROSE.oled.bg.toArgb(), (window.decorView.background as ColorDrawable).color)

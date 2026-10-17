@@ -1,6 +1,10 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.res.AssetManager
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -22,26 +26,29 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -102,11 +109,20 @@ fun AboutView(onBack: () -> Unit, loadNotices: suspend () -> List<NoticeSection>
     }
 }
 
+internal const val PAPERKNIFE_URL = "https://github.com/potatameister/PaperKnifePlus"
+internal const val OPENSCAN_URL = "https://github.com/ethereal-developers/OpenScan"
+internal const val SOURCE_URL = "https://github.com/haziaferi/ScanKnifePlus"
+
+/**
+ * The About page (5b): the app and its version, three short facts, the credits, the non-affiliation note, then Legal (libraries, licence and
+ * the source code). Every web link asks before it opens the browser (decision 27d).
+ */
 @Composable
 fun AboutMain(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     val appName = stringResource(R.string.app_name)
     val colors = MaterialTheme.colorScheme
+    var link by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -118,69 +134,161 @@ fun AboutMain(onNavigate: (String) -> Unit) {
                 Logo(modifier = Modifier.size(64.dp), partColor = LocalScanPalette.current.tx)
                 Spacer(Modifier.height(16.dp))
                 Text(appName, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = colors.onBackground)
-                Text(stringResource(R.string.about_tagline), fontSize = 14.sp, color = colors.onSurfaceVariant)
+                Text(stringResource(R.string.about_tagline), fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                Text(
+                    stringResource(R.string.settings_version, appName, appVersionName(context)),
+                    fontSize = 13.sp,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
             }
         }
 
         item {
             AboutCard {
-                Column(Modifier.padding(20.dp)) {
-                    AboutHeading(stringResource(R.string.about_how_title))
-                    Spacer(Modifier.height(12.dp))
-                    Text(stringResource(R.string.about_how_body, appName), fontSize = 14.sp, lineHeight = 21.sp, color = colors.onSurface)
-                    Spacer(Modifier.height(20.dp))
+                Column {
+                    AboutFact(Icons.Outlined.CloudOff, stringResource(R.string.about_fact_offline), stringResource(R.string.about_fact_offline_body))
                     HorizontalDivider(color = colors.outline)
-                    Spacer(Modifier.height(20.dp))
-                    BulletBlock(Icons.Filled.Security, stringResource(R.string.about_privacy_title), stringResource(R.string.about_privacy_body))
-                    Spacer(Modifier.height(16.dp))
-                    BulletBlock(Icons.Filled.Code, stringResource(R.string.about_open_title), stringResource(R.string.about_open_body))
+                    AboutFact(Icons.Outlined.Shield, stringResource(R.string.about_fact_tracking), stringResource(R.string.about_fact_tracking_body))
+                    HorizontalDivider(color = colors.outline)
+                    AboutFact(Icons.Filled.Code, stringResource(R.string.about_fact_open), stringResource(R.string.about_fact_open_body))
                 }
             }
         }
 
-        item { SectionHeader(Icons.Filled.Favorite, stringResource(R.string.about_credits)) }
+        item { GroupHeading(stringResource(R.string.about_credits)) }
         item {
-            LibraryRow(
-                Icons.Filled.Description, "PaperKnife+", "GPL-3.0-or-later",
-                "$appName is a fork of PaperKnife+ and keeps its PDF tools.\nBy potatameister; contributors are listed on the project's GitHub page.\n" +
-                    "https://github.com/potatameister/PaperKnifePlus"
-            )
+            AboutCard {
+                Column {
+                    CreditRow(Icons.Filled.Description, "PaperKnife+", "GPL-3.0-or-later", stringResource(R.string.about_credit_paperknife, appName)) {
+                        link = PAPERKNIFE_URL
+                    }
+                    HorizontalDivider(color = colors.outline)
+                    CreditRow(Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause", stringResource(R.string.about_credit_openscan)) { link = OPENSCAN_URL }
+                }
+            }
         }
         item {
-            LibraryRow(
-                Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
-                "The document scanner is ported from OpenScan to Kotlin.\nBy Vijay T S and Vikram H (Ethereal Developers); contributors are listed on " +
-                    "the project's GitHub page.\nhttps://github.com/ethereal-developers/OpenScan"
-            )
-        }
-        item {
-            Text(
-                "$appName is an independent fork and is not affiliated with or endorsed by the PaperKnife+ or OpenScan projects or their authors.",
-                fontSize = 13.sp, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp)
-            )
+            Text(stringResource(R.string.about_not_affiliated, appName), fontSize = 13.sp, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
         }
 
-        item { SectionHeader(Icons.Filled.Gavel, stringResource(R.string.about_legal)) }
+        item { GroupHeading(stringResource(R.string.about_legal)) }
         item {
             AboutCard {
                 Column {
                     AboutMenuItem(Icons.Filled.Code, stringResource(R.string.about_libraries), stringResource(R.string.about_libraries_body)) { onNavigate("libraries") }
                     HorizontalDivider(color = colors.outline)
                     AboutMenuItem(Icons.Filled.Description, stringResource(R.string.about_license), stringResource(R.string.about_license_body)) { onNavigate("license") }
+                    HorizontalDivider(color = colors.outline)
+                    AboutMenuItem(Icons.AutoMirrored.Outlined.OpenInNew, stringResource(R.string.about_source_code), stringResource(R.string.about_source_code_url)) {
+                        link = SOURCE_URL
+                    }
                 }
             }
         }
+    }
 
-        item {
-            Text(
-                stringResource(R.string.settings_version, appName, appVersionName(context)),
-                fontSize = 12.sp,
-                color = colors.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
+    link?.let { url -> WebLinkPrompt(url, onDismiss = { link = null }) }
+}
+
+/** Asks before [url] opens in the browser (decision 27d), showing the whole address; Open starts the browser, Cancel stays. */
+@Composable
+internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.link_confirm_title), fontWeight = FontWeight.ExtraBold) },
+        text = { Text(url) },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(stringResource(R.string.history_open), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    )
+}
+
+/** A group heading (16 sp, as Settings'). */
+@Composable
+private fun GroupHeading(title: String) {
+    Text(
+        title,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.padding(start = 4.dp, top = 8.dp).semantics { heading() }
+    )
+}
+
+/** One of the About page's facts: icon tile, [title] over [body], at least 60 dp. */
+@Composable
+private fun AboutFact(icon: ImageVector, title: String, body: String) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        IconTile(icon)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
+            Text(body, fontSize = 13.sp, color = colors.onSurfaceVariant)
         }
     }
+}
+
+/** A credited project as one button that opens its repository: icon tile, [name], its [license] tag, [description] and an arrow. */
+@Composable
+private fun CreditRow(icon: ImageVector, name: String, license: String, description: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        IconTile(icon)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
+            LicenseTag(license)
+            Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun IconTile(icon: ImageVector) {
+    val colors = MaterialTheme.colorScheme
+    Box(Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = colors.onSurface, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** A licence name in brackets on the tool tag colours. */
+@Composable
+private fun LicenseTag(license: String) {
+    val palette = LocalScanPalette.current
+    Text(
+        "[$license]",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        color = palette.toolFg,
+        modifier = Modifier.background(palette.toolBg, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp)
+    )
 }
 
 @Composable
@@ -294,23 +402,6 @@ private fun AboutCard(content: @Composable () -> Unit) {
     ) { content() }
 }
 
-@Composable
-private fun AboutHeading(text: String) {
-    Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.semantics { heading() })
-}
-
-/** An icon and a bold [title] over [body], inside the How it works card. */
-@Composable
-private fun BulletBlock(icon: ImageVector, title: String, body: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.size(8.dp))
-        AboutHeading(title)
-    }
-    Spacer(Modifier.height(8.dp))
-    Text(body, fontSize = 14.sp, lineHeight = 21.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
 /** A section heading (16 sp, as Home's "Recent in your folder") with its icon. */
 @Composable
 private fun SectionHeader(icon: ImageVector, title: String) {
@@ -325,27 +416,13 @@ private fun SectionHeader(icon: ImageVector, title: String) {
 @Composable
 private fun LibraryRow(icon: ImageVector, name: String, license: String, description: String) {
     val colors = MaterialTheme.colorScheme
-    val palette = LocalScanPalette.current
     AboutCard {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-            Box(
-                modifier = Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = colors.onSurface, modifier = Modifier.size(20.dp))
-            }
+            IconTile(icon)
             Spacer(Modifier.size(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
-                if (license.isNotEmpty()) {
-                    Text(
-                        "[$license]",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.toolFg,
-                        modifier = Modifier.background(palette.toolBg, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
+                if (license.isNotEmpty()) LicenseTag(license)
                 Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
             }
         }
@@ -401,9 +478,7 @@ private fun AboutMenuItem(icon: ImageVector, title: String, subtitle: String, on
         modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, modifier = Modifier.size(20.dp), tint = colors.onSurface)
-        }
+        IconTile(icon)
         Spacer(Modifier.size(16.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)

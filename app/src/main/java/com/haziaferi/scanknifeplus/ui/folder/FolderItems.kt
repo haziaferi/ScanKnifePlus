@@ -51,5 +51,9 @@ fun folderItems(listing: FolderListing.Listed, uriOf: (String) -> Uri): List<Fol
     return (withOriginals + withoutPdf).sortedByDescending { it.modified }
 }
 
+/** The empty tool screens' recent list: the first [limit] of [items] (newest first) that are PDFs to open, conflict copies left out. */
+fun folderPdfs(items: List<FolderItem>, limit: Int = 4): List<FolderItem> =
+    items.filter { it.kind != FolderKind.CONFLICT && it.uri != null && it.mime == "application/pdf" }.take(limit)
+
 /** History's view of the folder named [name]: [items] is null while it is read, and [unreadable] when it cannot be listed or must be chosen again. */
 data class HistoryFolder(val name: String?, val items: List<FolderItem>?, val unreadable: Boolean = false)

@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
@@ -48,6 +47,7 @@ fun DeleteView(
     var pagesToDeleteSet by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
@@ -94,7 +94,9 @@ fun DeleteView(
         selectedUri = uri
         sourceUri = uri
         unlockPassword = ""
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -163,9 +165,7 @@ fun DeleteView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(title = stringResource(R.string.tool_delete), subtitle = stringResource(R.string.delete_remove_pages_from_pdf), showChange = false, onBack = onBack)
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_delete), stringResource(R.string.delete_remove_pages_from_pdf), processingTime, onBack)
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -174,121 +174,121 @@ fun DeleteView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") }, 
+                        ToolEmptyState(
                             icon = Icons.Filled.Delete,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.delete_delete_pages_instantly),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.delete_delete_pages_instantly),
+                            task = stringResource(R.string.tool_delete_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    ToolStatusText(stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount))
-                                }
-                                
-                                TextButton(onClick = { showRangeInput = !showRangeInput }) {
-                                    Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
-                                }
-                            }
-
-                            // Hidden while the range field is open, to save space.
-                            AnimatedVisibility(visible = !showRangeInput) {
+                        ToolConfigLayout(
+                            action = stringResource(R.string.delete_delete_pages, pagesToDeleteSet.size),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-cleaned", "pdf")) },
+                            actionEnabled = pagesToDeleteSet.isNotEmpty() && pagesToDeleteSet.size < pageCount,
+                            scroll = false
+                        ) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = null,
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Button(
-                                        onClick = { 
-                                            val all = (0 until pageCount).toSet()
-                                            pagesToDeleteSet = all
-                                            rangeText = PageRanges.format(all)
-                                        },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(stringResource(R.string.action_select_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
-                                    }
-                                    Button(
-                                        onClick = { 
-                                            pagesToDeleteSet = emptySet()
-                                            rangeText = ""
-                                        },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
-                                        contentPadding = PaddingValues(0.dp)
-                                    ) {
-                                        Text(stringResource(R.string.action_clear_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                    ToolStatusText(stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount))
+
+                                    TextButton(onClick = { showRangeInput = !showRangeInput }) {
+                                        Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                                     }
                                 }
-                            }
 
-                            if (showRangeInput) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Column(Modifier.padding(16.dp)) {
-                                        OutlinedTextField(
-                                            value = rangeText,
-                                            onValueChange = { 
-                                                rangeText = it
-                                                pagesToDeleteSet = PageRanges.parse(it, pageCount)
+                                // Hidden while the range field is open, to save space.
+                                AnimatedVisibility(visible = !showRangeInput) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                val all = (0 until pageCount).toSet()
+                                                pagesToDeleteSet = all
+                                                rangeText = PageRanges.format(all)
                                             },
-                                            label = { Text(stringResource(R.string.delete_example_2_4_6_9)) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = accentColor,
-                                                cursorColor = accentColor
-                                            )
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(stringResource(R.string.delete_tip_pages_selected_in_grid), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text(stringResource(R.string.action_select_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                        }
+                                        Button(
+                                            onClick = {
+                                                pagesToDeleteSet = emptySet()
+                                                rangeText = ""
+                                            },
+                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text(stringResource(R.string.action_clear_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                        }
                                     }
                                 }
-                            }
 
-                            Box(modifier = Modifier.weight(1f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.GRID,
-                                    password = null, 
-                                    accentColor = accentColor,
-                                    selectedPages = pagesToDeleteSet,
-                                    onToggleSelection = { index ->
-                                        val newSet = if (pagesToDeleteSet.contains(index)) pagesToDeleteSet - index else pagesToDeleteSet + index
-                                        pagesToDeleteSet = newSet
-                                        rangeText = PageRanges.format(newSet)
+                                if (showRangeInput) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(16.dp)
+                                    ) {
+                                        Column(Modifier.padding(16.dp)) {
+                                            OutlinedTextField(
+                                                value = rangeText,
+                                                onValueChange = {
+                                                    rangeText = it
+                                                    pagesToDeleteSet = PageRanges.parse(it, pageCount)
+                                                },
+                                                label = { Text(stringResource(R.string.delete_example_2_4_6_9)) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = accentColor,
+                                                    cursorColor = accentColor
+                                                )
+                                            )
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(stringResource(R.string.delete_tip_pages_selected_in_grid), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
-                                )
-                            }
-                            
-                            Button(
-                                onClick = { 
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-cleaned", "pdf")
-                                    saveLauncher.launch(defaultName) 
-                                }, 
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp), 
-                                enabled = pagesToDeleteSet.isNotEmpty() && pagesToDeleteSet.size < pageCount,
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Text(stringResource(R.string.delete_delete_pages, pagesToDeleteSet.size), fontWeight = FontWeight.Black)
+                                }
+
+                                Box(modifier = Modifier.weight(1f)) {
+                                    UnifiedPdfPreview(
+                                        uri = selectedUri!!,
+                                        pageCount = pageCount,
+                                        mode = PreviewMode.GRID,
+                                        password = null,
+                                        accentColor = accentColor,
+                                        selectedPages = pagesToDeleteSet,
+                                        onToggleSelection = { index ->
+                                            val newSet = if (pagesToDeleteSet.contains(index)) pagesToDeleteSet - index else pagesToDeleteSet + index
+                                            pagesToDeleteSet = newSet
+                                            rangeText = PageRanges.format(newSet)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -306,16 +306,16 @@ fun DeleteView(
                         SuccessView(
                             message = stringResource(R.string.delete_delete_complete),
                             subMessage = stringResource(R.string.delete_selected_pages_were_removed),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
-                            onProcessMore = { 
+                            onProcessMore = {
                                 dropDecryptedCopy()
                                 selectedUri = null
                                 outputUri = null
                                 unlockPassword = ""
-                                currentState = ToolState.SELECTING 
+                                currentState = ToolState.SELECTING
                             },
-                            onPreview = {
+                            onOpen = {
                                 outputUri?.let { uri ->
                                     scope.launch {
                                         val count = getPageCount(context, uri, null)
