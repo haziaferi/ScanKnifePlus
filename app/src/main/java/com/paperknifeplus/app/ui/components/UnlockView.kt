@@ -13,9 +13,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -64,12 +65,12 @@ fun UnlockView(
         scope.launch {
             when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
                 PdfAccess.Encrypted -> fileToUnlock = fileName
-                PdfAccess.Open -> Toast.makeText(context, "File is not encrypted", Toast.LENGTH_SHORT).show()
+                PdfAccess.Open -> Toast.makeText(context, toolText(context, R.string.unlock_file_is_not_encrypted), Toast.LENGTH_SHORT).show()
             }
             isFileLoading = false
         }
@@ -102,7 +103,7 @@ fun UnlockView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = name
-                    outputs.saved(uri, fileName, "Decrypted", Icons.Outlined.LockOpen, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.unlock_decrypted), Icons.Outlined.LockOpen, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -112,7 +113,7 @@ fun UnlockView(
                 Log.w("UnlockView", "Unlock failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.SELECTING
                 }
             }
@@ -123,8 +124,8 @@ fun UnlockView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Unlock",
-                    subtitle = "REMOVE PDF RESTRICTIONS",
+                    title = stringResource(R.string.tool_unlock),
+                    subtitle = stringResource(R.string.unlock_remove_pdf_restrictions),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = {
@@ -138,15 +139,15 @@ fun UnlockView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
                             icon = Icons.Outlined.LockOpen,
-                            title = "Tap to select locked file",
-                            subtitle = "REMOVE PASSWORD PROTECTION",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.unlock_remove_password_protection),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -167,14 +168,14 @@ fun UnlockView(
                                 )
                             }
                             
-                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
                             
                             Spacer(Modifier.height(20.dp))
-                            ToolSectionLabel("DOCUMENT UNLOCKED")
-                            Text("Ready to save without restrictions.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            ToolSectionLabel(stringResource(R.string.unlock_document_unlocked))
+                            Text(stringResource(R.string.unlock_ready_to_save_without_restrictions), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             
                             Spacer(Modifier.height(32.dp))
-                            ToolPrimaryButton("SAVE UNRESTRICTED PDF", onClick = { 
+                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { 
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-unlocked", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, modifier = Modifier.fillMaxWidth())
@@ -185,7 +186,7 @@ fun UnlockView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = password,
-                            text = "Decrypting document...",
+                            text = stringResource(R.string.unlock_decrypting_document),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -193,8 +194,8 @@ fun UnlockView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "File Unlocked",
-                            subMessage = "Password protection removed",
+                            message = stringResource(R.string.unlock_file_unlocked),
+                            subMessage = stringResource(R.string.unlock_password_protection_removed),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { 

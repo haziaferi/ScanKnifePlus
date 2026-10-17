@@ -555,6 +555,6 @@ class GrayscaleConverterTest {
             assertFalse(it.isEncrypted)
             assertEquals(2, it.numberOfPages)
         }
-        assertEquals("Colors removed; 2 pages could only be converted as images", grayscaleSummary(2))
+        assertEquals("Colors removed; 2 pages could only be converted as images", grayscaleSummary(ApplicationProvider.getApplicationContext(), 2))
     }
 }

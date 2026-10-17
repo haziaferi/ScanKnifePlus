@@ -9,7 +9,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.selection.toggleable
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
@@ -30,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -38,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +85,7 @@ fun ImageToPdfView(
                         processingTime = timeStr
                         outputUri = saveUri
                         outputPages = pages
-                        outputs.saved(saveUri, outputName, "$pages images", Icons.Filled.Description, pages)
+                        outputs.saved(saveUri, outputName, toolText(context, R.string.img2pdf_images, pages), Icons.Filled.Description, pages)
                         currentState = ToolState.SUCCESS
                     }
                 } catch (e: CancellationException) {
@@ -95,7 +95,7 @@ fun ImageToPdfView(
                     Log.w("ImageToPdfView", "Conversion failed", e)
                     deleteCreatedDocument(context, saveUri)
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                         currentState = ToolState.CONFIGURING
                     }
                 }
@@ -107,12 +107,12 @@ fun ImageToPdfView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Image to PDF",
-                    subtitle = "PHOTO TO DOCUMENT CONVERTER",
+                    title = stringResource(R.string.tool_img2pdf),
+                    subtitle = stringResource(R.string.img2pdf_photo_to_document_converter),
                     showChange = selectedUris.isNotEmpty() && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { pickLauncher.launch("image/*") },
-                    changeLabel = "Add"
+                    changeLabel = stringResource(R.string.action_add)
                 )
             }
         }
@@ -124,8 +124,8 @@ fun ImageToPdfView(
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("image/*") },
                             icon = Icons.Outlined.PictureAsPdf,
-                            title = "Tap to select images",
-                            subtitle = "JPG, PNG, OR WEBP",
+                            title = stringResource(R.string.tool_pick_images),
+                            subtitle = stringResource(R.string.img2pdf_jpg_png_or_webp),
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -133,21 +133,21 @@ fun ImageToPdfView(
                         
                         Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                ToolSectionLabel("REORDER ASSETS")
-                                ToolStatusText("${selectedUris.size} IMAGES SELECTED")
+                                ToolSectionLabel(stringResource(R.string.img2pdf_reorder_assets))
+                                ToolStatusText(stringResource(R.string.img2pdf_images_selected, selectedUris.size))
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 FilterChip(
                                     selected = pageSize == "Fit",
                                     onClick = { pageSize = "Fit" },
-                                    label = { Text("ORIGINAL", fontSize = 12.sp) },
+                                    label = { Text(stringResource(R.string.img2pdf_original), fontSize = 12.sp) },
                                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 FilterChip(
                                     selected = pageSize == "A4",
                                     onClick = { pageSize = "A4" },
-                                    label = { Text("A4 PAPER", fontSize = 12.sp) },
+                                    label = { Text(stringResource(R.string.img2pdf_a4_paper), fontSize = 12.sp) },
                                     colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                                 )
                             }
@@ -169,7 +169,7 @@ fun ImageToPdfView(
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
                                         .border(BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent), RoundedCornerShape(16.dp))
                                         .toggleable(value = isSelected, role = Role.Checkbox) { selectedIndex = if (it) index else null }
-                                        .semantics { contentDescription = "Image ${index + 1}"; stateDescription = if (isSelected) "Selected" else "Not selected" }
+                                        .semantics { contentDescription = toolText(context, R.string.tool_image_n, index + 1); stateDescription = if (isSelected) toolText(context, R.string.state_selected) else toolText(context, R.string.state_not_selected) }
                                 ) {
                                     Image(
                                         painter = rememberAsyncImagePainter(model = uri, imageLoader = PdfImageLoader.get(context)),
@@ -201,7 +201,7 @@ fun ImageToPdfView(
                                         onClick = { selectedUris = selectedUris.filterIndexed { i, _ -> i != index }; if (isSelected) selectedIndex = null },
                                         modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(48.dp)
                                     ) {
-                                        Icon(Icons.Filled.Close, "Remove image ${index + 1}", tint = pageBadgeText, modifier = Modifier.background(pageBadge, CircleShape).padding(6.dp).size(16.dp))
+                                        Icon(Icons.Filled.Close, stringResource(R.string.action_remove_image, index + 1), tint = pageBadgeText, modifier = Modifier.background(pageBadge, CircleShape).padding(6.dp).size(16.dp))
                                     }
                                 }
                             }
@@ -231,10 +231,10 @@ fun ImageToPdfView(
                                         },
                                         enabled = selectedIndex!! > 0
                                     ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBackIos, "Move back", tint = if (selectedIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
 
-                                    Text("POSITION: ${selectedIndex!! + 1}", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.img2pdf_position, selectedIndex!! + 1), fontSize = 12.sp, fontWeight = FontWeight.Black)
 
                                     IconButton(
                                         onClick = {
@@ -249,7 +249,7 @@ fun ImageToPdfView(
                                         },
                                         enabled = selectedIndex!! < selectedUris.size - 1
                                     ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, "Move forward", tint = if (selectedIndex!! < selectedUris.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedIndex!! < selectedUris.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -260,13 +260,13 @@ fun ImageToPdfView(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp),
                             shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text("Create PDF from ${selectedUris.size} Images", fontWeight = FontWeight.Black)
+                            Text(stringResource(R.string.img2pdf_create_pdf_from_images, selectedUris.size), fontWeight = FontWeight.Black)
                         }
                     }
                 }
                 ToolState.PROCESSING -> {
                     ProcessingStateView(
-                        text = "Packaging high-res document...",
+                        text = stringResource(R.string.img2pdf_packaging_high_res_document),
                         current = progressCount,
                         total = selectedUris.size,
                         showWarning = showLoadingWarning
@@ -274,12 +274,12 @@ fun ImageToPdfView(
                 }
                 ToolState.SUCCESS -> {
                     SuccessView(
-                        message = "PDF Created",
-                        subMessage = "Images merged into document",
+                        message = stringResource(R.string.img2pdf_pdf_created),
+                        subMessage = stringResource(R.string.img2pdf_images_merged_into_document),
                         processingTime = processingTime,
                         onDone = onBack,
                         onProcessMore = { selectedUris = emptyList(); currentState = ToolState.CONFIGURING },
-                        onPreview = { outputUri?.let { uri -> onOpenPreview(uri, "Created PDF", outputPages) } },
+                        onPreview = { outputUri?.let { uri -> onOpenPreview(uri, toolText(context, R.string.img2pdf_pdf_created), outputPages) } },
                     )
                 }
                 ToolState.SELECTING -> {}

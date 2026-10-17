@@ -95,8 +95,8 @@ class SplitViewTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-split.pdf")
         startSplit(uri, TestPdfs.USER_PASSWORD)
 
-        waitForPages("0 / 2 PAGES SELECTED")
-        rule.onNodeWithText("Password Required").assertDoesNotExist()
+        waitForPages("0 / 2 pages selected")
+        rule.onNodeWithText("Password required").assertDoesNotExist()
         rule.waitUntil(10_000) { thumbnailCached(uri, TestPdfs.USER_PASSWORD) }
     }
 
@@ -105,11 +105,11 @@ class SplitViewTest {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-change.pdf")
         val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-change.pdf")
         startSplit(locked, TestPdfs.USER_PASSWORD, picked = plain)
-        waitForPages("0 / 2 PAGES SELECTED")
+        waitForPages("0 / 2 pages selected")
 
         rule.onNodeWithText("Change").performClick()
-        rule.onNodeWithText("Tap to enter file").performClick()
-        waitForPages("0 / 1 PAGES SELECTED")
+        rule.onNodeWithText("Tap to choose a PDF").performClick()
+        waitForPages("0 / 1 pages selected")
         rule.waitUntil(10_000) { thumbnailCached(plain, null) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD))
     }

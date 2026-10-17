@@ -21,13 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
-import org.w3c.dom.Document
-import org.w3c.dom.Element
 import java.io.ByteArrayOutputStream
 import java.util.Calendar
 import java.util.Locale
@@ -36,11 +36,13 @@ import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
+import org.w3c.dom.Document
+import org.w3c.dom.Element
 
 @Composable
 fun MetadataView(
@@ -87,7 +89,7 @@ fun MetadataView(
         val count = getPageCount(context, uri, password)
         val properties = loadMetadata(context, uri, password)
         if (properties == null) {
-            Toast.makeText(context, "Could not read file properties", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, toolText(context, R.string.metadata_could_not_read_file_properties), Toast.LENGTH_LONG).show()
             backToSelection()
             return
         }
@@ -113,7 +115,7 @@ fun MetadataView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     backToSelection()
                 }
                 PdfAccess.Encrypted -> fileToUnlock = fileName
@@ -147,7 +149,7 @@ fun MetadataView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Edited properties", Icons.Filled.Fingerprint, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.metadata_edited_properties), Icons.Filled.Fingerprint, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -157,7 +159,7 @@ fun MetadataView(
                 Log.w("MetadataView", "Saving properties failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -168,8 +170,8 @@ fun MetadataView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Metadata",
-                    subtitle = "EDIT DOCUMENT PROPERTIES",
+                    title = stringResource(R.string.tool_metadata),
+                    subtitle = stringResource(R.string.metadata_edit_document_properties),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -179,15 +181,15 @@ fun MetadataView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Reading file properties...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.metadata_reading_file_properties))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Outlined.Fingerprint,
-                            title = "Tap to enter file",
-                            subtitle = "EDIT PDF PROPERTIES",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.metadata_edit_pdf_properties),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -208,32 +210,32 @@ fun MetadataView(
                                 )
                             }
 
-                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(24.dp))
 
-                            MetadataGroup("CORE METADATA") {
-                                MetadataEditField("Title", title, accentColor) { title = it }
-                                MetadataEditField("Author", author, accentColor) { author = it }
+                            MetadataGroup(stringResource(R.string.metadata_core_metadata)) {
+                                MetadataEditField(stringResource(R.string.tool_field_title), title, accentColor) { title = it }
+                                MetadataEditField(stringResource(R.string.metadata_author), author, accentColor) { author = it }
                             }
 
                             Spacer(Modifier.height(16.dp))
 
-                            MetadataGroup("ADDITIONAL TAGS") {
-                                MetadataEditField("Subject", subject, accentColor) { subject = it }
-                                MetadataEditField("Keywords", keywords, accentColor) { keywords = it }
+                            MetadataGroup(stringResource(R.string.metadata_additional_tags)) {
+                                MetadataEditField(stringResource(R.string.metadata_subject), subject, accentColor) { subject = it }
+                                MetadataEditField(stringResource(R.string.metadata_keywords), keywords, accentColor) { keywords = it }
                             }
 
                             Spacer(Modifier.height(16.dp))
 
-                            MetadataGroup("SOURCE ENGINE") {
-                                MetadataEditField("Creator", creator, accentColor) { creator = it }
-                                MetadataEditField("Producer", producer, accentColor) { producer = it }
+                            MetadataGroup(stringResource(R.string.metadata_source_engine)) {
+                                MetadataEditField(stringResource(R.string.metadata_creator), creator, accentColor) { creator = it }
+                                MetadataEditField(stringResource(R.string.metadata_producer), producer, accentColor) { producer = it }
                             }
 
                             Spacer(Modifier.height(32.dp))
 
-                            ToolPrimaryButton("SAVE PROPERTIES", onClick = {
+                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-meta", "pdf")
                                     saveLauncher.launch(defaultName)
                                 }, modifier = Modifier.fillMaxWidth())
@@ -244,7 +246,7 @@ fun MetadataView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Updating document metadata...",
+                            text = stringResource(R.string.metadata_updating_document_metadata),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -252,8 +254,8 @@ fun MetadataView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Properties Updated",
-                            subMessage = "Document metadata saved",
+                            message = stringResource(R.string.metadata_properties_updated),
+                            subMessage = stringResource(R.string.metadata_document_metadata_saved),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {

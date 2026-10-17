@@ -15,10 +15,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,7 +69,7 @@ fun RotateView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -107,7 +109,7 @@ fun RotateView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Fixed orientation", Icons.AutoMirrored.Filled.RotateRight, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.rotate_fixed_orientation), Icons.AutoMirrored.Filled.RotateRight, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -117,7 +119,7 @@ fun RotateView(
                 Log.w("RotateView", "Rotation failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -128,8 +130,8 @@ fun RotateView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Rotate",
-                    subtitle = "FIX DOCUMENT ORIENTATION",
+                    title = stringResource(R.string.tool_rotate),
+                    subtitle = stringResource(R.string.rotate_fix_document_orientation),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -139,15 +141,15 @@ fun RotateView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.AutoMirrored.Filled.RotateRight,
-                            title = "Tap to enter file",
-                            subtitle = "ROTATE ANY PDF DOCUMENT",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.rotate_rotate_any_pdf_document),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -161,7 +163,7 @@ fun RotateView(
                                 Column {
                                     Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     val changed = pageRotations.values.count { it != 0 }
-                                    ToolStatusText("$changed / $pageCount PAGES MODIFIED")
+                                    ToolStatusText(stringResource(R.string.rotate_pages_modified, changed, pageCount))
                                 }
 
                                 TextButton(onClick = {
@@ -169,7 +171,7 @@ fun RotateView(
                                 }) {
                                     Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("ROTATE ALL 90°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    Text(stringResource(R.string.rotate_rotate_all_90), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                 }
                             }
 
@@ -186,7 +188,7 @@ fun RotateView(
                                     Icon(Icons.Filled.Info, null, tint = accentColor, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        "Tap page to rotate",
+                                        stringResource(R.string.rotate_tap_page),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = accentColor
@@ -210,14 +212,14 @@ fun RotateView(
                                 )
                             }
 
-                            ToolPrimaryButton("SAVE ROTATED PDF", onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
+                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Applying rotations to document...",
+                            text = stringResource(R.string.rotate_applying_rotations_to_document),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -225,8 +227,8 @@ fun RotateView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Rotate Complete",
-                            subMessage = "Orientation updated successfully",
+                            message = stringResource(R.string.rotate_rotate_complete),
+                            subMessage = stringResource(R.string.rotate_orientation_updated_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {

@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -14,9 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,7 +68,7 @@ fun GrayscaleView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -105,7 +107,7 @@ fun GrayscaleView(
                     fallbackPages = imagePages
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Converted to B&W", Icons.Outlined.Palette, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.grayscale_converted_to_b_w), Icons.Outlined.Palette, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -115,7 +117,7 @@ fun GrayscaleView(
                 Log.w("GrayscaleView", "Grayscale conversion failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -126,8 +128,8 @@ fun GrayscaleView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Grayscale",
-                    subtitle = "CONVERT PDF TO B&W",
+                    title = stringResource(R.string.tool_grayscale),
+                    subtitle = stringResource(R.string.grayscale_convert_pdf_to_b_w),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -137,15 +139,15 @@ fun GrayscaleView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Reading document layers...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.grayscale_reading_document_layers))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Outlined.Palette,
-                            title = "Tap to enter file",
-                            subtitle = "GRAYSCALE ANY PDF DOCUMENT",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.grayscale_grayscale_any_pdf_document),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -180,8 +182,8 @@ fun GrayscaleView(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column(Modifier.weight(1f)) {
-                                        ToolSectionLabel("PREVIEW")
-                                        Text("Instant black and white preview", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        ToolSectionLabel(stringResource(R.string.grayscale_preview))
+                                        Text(stringResource(R.string.grayscale_instant_black_and_white_preview), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Switch(
                                         checked = isLivePreview,
@@ -193,7 +195,7 @@ fun GrayscaleView(
 
                             Spacer(Modifier.height(24.dp))
 
-                            ToolPrimaryButton("CONVERT & SAVE PDF", onClick = {
+                            ToolPrimaryButton(stringResource(R.string.grayscale_convert_and_save_pdf), onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")
                                     saveLauncher.launch(defaultName)
                                 }, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
@@ -204,7 +206,7 @@ fun GrayscaleView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Applying grayscale filter...",
+                            text = stringResource(R.string.grayscale_applying_grayscale_filter),
                             current = progressPage,
                             total = pageCount,
                             showWarning = showLoadingWarning
@@ -212,8 +214,8 @@ fun GrayscaleView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Grayscale Complete",
-                            subMessage = grayscaleSummary(fallbackPages),
+                            message = stringResource(R.string.grayscale_grayscale_complete),
+                            subMessage = grayscaleSummary(context, fallbackPages),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { dropDecryptedCopy(); selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
@@ -259,8 +261,8 @@ fun GrayscaleView(
 }
 
 /** The result line; pages that had to be stored as images lose their text layer, so the user is told how many there were. */
-internal fun grayscaleSummary(imagePages: Int): String = when (imagePages) {
-    0 -> "Colors removed from all elements"
-    1 -> "Colors removed; 1 page could only be converted as an image"
-    else -> "Colors removed; $imagePages pages could only be converted as images"
+internal fun grayscaleSummary(context: Context, imagePages: Int): String = when (imagePages) {
+    0 -> context.getString(R.string.grayscale_colors_removed_from_all_elements)
+    1 -> context.getString(R.string.grayscale_colors_removed_1_page_could)
+    else -> context.getString(R.string.grayscale_colors_removed_pages_could_only, imagePages)
 }

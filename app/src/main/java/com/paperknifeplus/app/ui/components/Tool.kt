@@ -187,9 +187,14 @@ class ToolOutputs(private val toolId: String, private val folder: OutputFolder, 
 @StringRes
 internal fun copyMessage(result: OutputCopy): Int? = when (result) {
     OutputCopy.COPIED, OutputCopy.NO_FOLDER -> null
-    OutputCopy.CHOOSE_AGAIN -> R.string.tool_copy_unreachable
-    OutputCopy.FAILED -> R.string.tool_copy_failed
+    OutputCopy.CHOOSE_AGAIN, OutputCopy.FAILED -> R.string.tool_copy_failed
 }
+
+/**
+ * [id] formatted with [args], for text outside composition: toasts, History summaries and semantics set in callbacks. Inside composition
+ * screens use stringResource, which follows configuration changes.
+ */
+fun toolText(context: Context, @StringRes id: Int, vararg args: Any?): String = context.getString(id, *args)
 
 /** The [ToolOutputs] of the tool whose [ToolCatalog] id is [toolId], copying into [LocalOutputFolder]. */
 @Composable

@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -26,6 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,7 +73,7 @@ fun PageNumbersView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -110,7 +110,7 @@ fun PageNumbersView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Numbering applied", Icons.Filled.FormatListNumbered, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.page_numbers_numbering_applied), Icons.Filled.FormatListNumbered, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -120,7 +120,7 @@ fun PageNumbersView(
                 Log.w("PageNumbersView", "Numbering failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -131,8 +131,8 @@ fun PageNumbersView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Page Numbers",
-                    subtitle = "CUSTOM PAGINATION",
+                    title = stringResource(R.string.tool_page_numbers),
+                    subtitle = stringResource(R.string.page_numbers_custom_pagination),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -142,15 +142,15 @@ fun PageNumbersView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(false, "Preparing document...")
+                LoadingStateView(false, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Filled.FormatListNumbered,
-                            title = "Tap to enter file",
-                            subtitle = "ADD PAGE NUMBERS",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.page_numbers_add_page_numbers),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -206,20 +206,20 @@ fun PageNumbersView(
                                 modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
                             ) {
                                 Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.KeyboardArrowUp, "Numbering options", tint = accentColor, modifier = Modifier.size(24.dp))
+                                    Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.page_numbers_numbering_options), tint = accentColor, modifier = Modifier.size(24.dp))
                                 }
                             }
 
                             Spacer(Modifier.height(8.dp))
 
-                            ToolPrimaryButton("SAVE DOCUMENT", onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp))
+                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Applying numbering...",
+                            text = stringResource(R.string.page_numbers_applying_numbering),
                             current = 0,
                             total = 0,
                             showWarning = false
@@ -227,8 +227,8 @@ fun PageNumbersView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Numbering Complete",
-                            subMessage = "Page numbers added successfully",
+                            message = stringResource(R.string.page_numbers_numbering_complete),
+                            subMessage = stringResource(R.string.page_numbers_page_numbers_added_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {
@@ -284,11 +284,11 @@ fun PageNumbersView(
                             .navigationBarsPadding(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        ToolSectionLabel("PAGE NUMBER SETTINGS")
+                        ToolSectionLabel(stringResource(R.string.page_numbers_page_number_settings))
                         Spacer(Modifier.height(24.dp))
 
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("LIVE PREVIEW", fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.page_numbers_live_preview), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                             Switch(checked = showPreviewOverlay, onCheckedChange = { showPreviewOverlay = it }, colors = SwitchDefaults.colors(checkedTrackColor = accentColor))
                         }
 
@@ -298,7 +298,7 @@ fun PageNumbersView(
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
-                                label = { Text("Format ({n})", fontSize = 12.sp) },
+                                label = { Text(stringResource(R.string.page_numbers_format_n), fontSize = 12.sp) },
                                 modifier = Modifier.weight(1.5f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
@@ -314,14 +314,14 @@ fun PageNumbersView(
                                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                                     Box(Modifier.size(20.dp).clip(CircleShape).background(numberColor).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("COLOR", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.page_numbers_color), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
 
                         Spacer(Modifier.height(24.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("FONT SIZE: ${fontSize.toInt()} PT", fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.page_numbers_font_size_pt, fontSize.toInt()), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                             Slider(
                                 value = fontSize,
                                 onValueChange = { fontSize = it },
@@ -343,8 +343,8 @@ fun PageNumbersView(
                                 Icon(Icons.Filled.Place, null, tint = accentColor, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(16.dp))
                                 Column {
-                                    ToolSectionLabel("POSITION")
-                                    Text(position.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                    ToolSectionLabel(stringResource(R.string.page_numbers_position))
+                                    Text(positionLabel(position), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                                 }
                                 Spacer(Modifier.weight(1f))
                                 Icon(Icons.Filled.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -357,10 +357,10 @@ fun PageNumbersView(
             if (showPositionSheet) {
                 ModalBottomSheet(onDismissRequest = { showPositionSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
-                        Text("SELECT POSITION", modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
+                        Text(stringResource(R.string.page_numbers_select_position), modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                         listOf("Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right").forEach { pos ->
                             ListItem(
-                                headlineContent = { Text(pos, fontWeight = if (position == pos) FontWeight.Bold else FontWeight.Normal) },
+                                headlineContent = { Text(positionLabel(pos), fontWeight = if (position == pos) FontWeight.Bold else FontWeight.Normal) },
                                 leadingContent = { RadioButton(selected = position == pos, onClick = null) },
                                 modifier = Modifier.selectable(selected = position == pos, role = Role.RadioButton) { position = pos; showPositionSheet = false }
                             )
@@ -372,7 +372,7 @@ fun PageNumbersView(
             if (showColorSheet) {
                 ModalBottomSheet(onDismissRequest = { showColorSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
-                        Text("SELECT COLOR", modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
+                        Text(stringResource(R.string.page_numbers_select_color), modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                         DocumentInk.pageNumbers.forEach { ink ->
                             val col = ink.color
                             ListItem(
@@ -388,3 +388,16 @@ fun PageNumbersView(
         }
     }
 }
+
+/** The words for a stored position ("Top Left" and so on, which the page placement reads). */
+@Composable
+private fun positionLabel(position: String): String = stringResource(
+    when (position) {
+        "Top Left" -> R.string.page_numbers_top_left
+        "Top Center" -> R.string.page_numbers_top_center
+        "Top Right" -> R.string.page_numbers_top_right
+        "Bottom Left" -> R.string.page_numbers_bottom_left
+        "Bottom Center" -> R.string.page_numbers_bottom_center
+        else -> R.string.page_numbers_bottom_right
+    }
+)

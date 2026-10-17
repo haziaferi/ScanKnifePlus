@@ -25,11 +25,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import kotlinx.coroutines.CancellationException
@@ -122,7 +124,7 @@ fun MergeView(
                         PdfAccess.Open -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = false, pageCount = getPageCount(context, uri, null))
                     }
                 }
-                if (unreadable > 0) Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                if (unreadable > 0) Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                 if (newFiles.isNotEmpty()) {
                     selectedFiles = selectedFiles + newFiles
                     currentState = ToolState.CONFIGURING
@@ -155,7 +157,7 @@ fun MergeView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     mergedUri = uri
-                    outputs.saved(uri, outputName, "${files.size} files joined", Icons.Filled.Layers, finalCount)
+                    outputs.saved(uri, outputName, toolText(context, R.string.merge_files_joined, files.size), Icons.Filled.Layers, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -165,7 +167,7 @@ fun MergeView(
                 Log.w("MergeView", "Merge failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Merge failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -176,8 +178,8 @@ fun MergeView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Merge",
-                    subtitle = "JOIN MULTIPLE DOCUMENTS",
+                    title = stringResource(R.string.tool_merge),
+                    subtitle = stringResource(R.string.merge_join_multiple_documents),
                     showChange = selectedFiles.isNotEmpty() && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { updateFiles(emptyList()); currentState = ToolState.SELECTING }
@@ -187,15 +189,15 @@ fun MergeView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(false, "Reading files...")
+                LoadingStateView(false, stringResource(R.string.merge_reading_files))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Filled.Layers,
-                            title = "Tap to choose files",
-                            subtitle = "SELECT MULTIPLE PDFS",
+                            title = stringResource(R.string.tool_pick_pdfs),
+                            subtitle = stringResource(R.string.merge_select_multiple_pdfs),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -245,7 +247,7 @@ fun MergeView(
                                         Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Filled.Add, null, tint = accentColor)
                                             Spacer(Modifier.width(8.dp))
-                                            Text("ADD MORE FILES", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                            Text(stringResource(R.string.action_add_more), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                         }
                                     }
                                 }
@@ -263,7 +265,7 @@ fun MergeView(
                                     disabledContainerColor = accentColor.copy(alpha = 0.3f)
                                 )
                             ) {
-                                Text(if (allReady) "MERGE ${selectedFiles.size} FILES" else "UNLOCK ALL FILES FIRST", fontWeight = FontWeight.Black)
+                                Text(if (allReady) stringResource(R.string.merge_merge_files, selectedFiles.size) else stringResource(R.string.merge_unlock_all_files_first), fontWeight = FontWeight.Black)
                             }
                         }
                     }
@@ -272,7 +274,7 @@ fun MergeView(
                         ProcessingStateView(
                             uri = selectedFiles.firstOrNull()?.decryptedUri ?: selectedFiles.firstOrNull()?.uri,
                             password = if (selectedFiles.firstOrNull()?.decryptedUri != null) null else selectedFiles.firstOrNull()?.password,
-                            text = "Merging documents...",
+                            text = stringResource(R.string.merge_merging_documents),
                             current = progressCount,
                             total = selectedFiles.size,
                             showWarning = false
@@ -280,12 +282,12 @@ fun MergeView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Merge Complete",
-                            subMessage = "Successfully joined ${selectedFiles.size} documents",
+                            message = stringResource(R.string.merge_merge_complete),
+                            subMessage = stringResource(R.string.merge_successfully_joined_documents, selectedFiles.size),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { updateFiles(emptyList()); mergedUri = null; currentState = ToolState.SELECTING },
-                            onPreview = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, "Merged PDF", getPageCount(context, uri, null)) } } },
+                            onPreview = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, toolText(context, R.string.merge_merged_pdf), getPageCount(context, uri, null)) } } },
                         )
                     }
                 }
@@ -379,33 +381,33 @@ fun MergeFileListItem(
                 Text(file.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(file.size, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (file.isLocked && !file.isUnlocked) {
-                    ToolStatusText("LOCKED")
+                    ToolStatusText(stringResource(R.string.merge_locked))
                 }
             }
 
             if (file.isLocked && !file.isUnlocked) {
                 IconButton(onClick = onUnlock) {
-                    Icon(Icons.Filled.LockOpen, "Unlock ${file.name}", tint = accentColor)
+                    Icon(Icons.Filled.LockOpen, stringResource(R.string.action_unlock_file, file.name), tint = accentColor)
                 }
             }
 
             Column {
                 IconButton(onClick = onMoveUp, enabled = !isFirst) {
                     Icon(
-                        Icons.Filled.KeyboardArrowUp, "Move ${file.name} up",
+                        Icons.Filled.KeyboardArrowUp, stringResource(R.string.merge_move_up, file.name),
                         tint = if (isFirst) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
                     )
                 }
                 IconButton(onClick = onMoveDown, enabled = !isLast) {
                     Icon(
-                        Icons.Filled.KeyboardArrowDown, "Move ${file.name} down",
+                        Icons.Filled.KeyboardArrowDown, stringResource(R.string.merge_move_down, file.name),
                         tint = if (isLast) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f) else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
             IconButton(onClick = onDelete, modifier = Modifier.padding(end = 8.dp)) {
-                Icon(Icons.Filled.DeleteOutline, "Remove ${file.name}", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Filled.DeleteOutline, stringResource(R.string.action_remove, file.name), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

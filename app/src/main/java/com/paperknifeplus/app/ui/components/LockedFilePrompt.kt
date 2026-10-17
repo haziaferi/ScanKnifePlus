@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.paperknifeplus.app.R
 
 /**
  * Asks for the password of [fileName]. The field is masked (with a show toggle) and kept out of the keyboard's learning. [isError] shows
@@ -33,7 +35,7 @@ fun LockedFilePrompt(
     fileName: String,
     onDismiss: () -> Unit,
     onUnlocked: (String) -> Unit,
-    accentColor: Color = Color(0xFF6366F1),
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     isLoading: Boolean = false,
     isError: Boolean = false
 ) {
@@ -74,7 +76,7 @@ fun LockedFilePrompt(
                 Spacer(Modifier.height(20.dp))
 
                 Text(
-                    "Password Required",
+                    stringResource(R.string.password_required),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.onSurface
@@ -83,7 +85,7 @@ fun LockedFilePrompt(
                 Text(
                     fileName,
                     fontSize = 12.sp,
-                    color = Color.Gray,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -96,7 +98,7 @@ fun LockedFilePrompt(
                         password = it
                         edited = true
                     },
-                    label = { Text("PDF Password") },
+                    label = { Text(stringResource(R.string.password_pdf_password)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     singleLine = true,
@@ -107,7 +109,7 @@ fun LockedFilePrompt(
                         IconButton(onClick = { visible = !visible }) {
                             Icon(
                                 if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                                contentDescription = if (visible) "Hide password" else "Show password"
+                                contentDescription = if (visible) stringResource(R.string.password_hide_password) else stringResource(R.string.password_show_password)
                             )
                         }
                     },
@@ -122,9 +124,9 @@ fun LockedFilePrompt(
 
                 if (showError) {
                     Text(
-                        "Incorrect password, try again.",
+                        stringResource(R.string.password_wrong),
                         color = MaterialTheme.colorScheme.error,
-                        fontSize = 11.sp,
+                        fontSize = 13.sp,
                         modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, top = 4.dp)
                     )
                 }
@@ -136,12 +138,12 @@ fun LockedFilePrompt(
                     modifier = Modifier.fillMaxWidth().height(56.dp),
                     enabled = !isLoading,
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = MaterialTheme.colorScheme.onPrimary)
                 ) {
                     if (isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
                     } else {
-                        Text("UNLOCK FILE", fontWeight = FontWeight.Black, color = Color.White)
+                        Text(stringResource(R.string.action_unlock), fontWeight = FontWeight.Black)
                     }
                 }
 
@@ -150,7 +152,7 @@ fun LockedFilePrompt(
                     enabled = !isLoading,
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
-                    Text("CANCEL", color = Color.Gray, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                 }
             }
         }

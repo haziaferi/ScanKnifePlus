@@ -262,9 +262,9 @@ class PageNumbersViewTest {
                 PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("SAVE DOCUMENT")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("SAVE DOCUMENT").performClick()
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Numbering Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Save PDF").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Numbering complete")).fetchSemanticsNodes().isNotEmpty() }
 
         assertEquals("page-numbers", SessionManager.history.first().toolId)
         PDDocument.load(output).use { doc ->

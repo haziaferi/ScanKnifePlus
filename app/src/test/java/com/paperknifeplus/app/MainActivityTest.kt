@@ -167,12 +167,12 @@ class MainActivityTest {
     fun `a new Open with file replaces the previous one's unlock prompt`() {
         TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "locked.pdf")
         launch(view(Uri.parse("content://$AUTHORITY/locked.pdf")))
-        rule.waitUntil(10_000) { shows("UNLOCK FILE") }
+        rule.waitUntil(10_000) { shows("Unlock") }
 
         controller!!.newIntent(view(pdf("open.pdf")))
         waitFor("open.pdf")
         rule.waitForIdle()
-        assertFalse(shows("UNLOCK FILE"))
+        assertFalse(shows("Unlock"))
     }
 
     @Test
@@ -180,7 +180,7 @@ class MainActivityTest {
         val private = File(context.filesDir, "scans/x.pdf").apply { parentFile!!.mkdirs(); writeBytes(TestPdfs.plain()) }
         launch(view(Uri.fromFile(private)))
         rule.waitForIdle()
-        assertFalse(shows("PDF VIEWER"))
+        assertFalse(shows("PDF viewer"))
     }
 
     @Test
@@ -188,11 +188,11 @@ class MainActivityTest {
         launch()
         rule.onNode(hasContentDescription("All tools")).performClick()
         openCompress()
-        waitFor("OPTIMIZE PDF SIZE")
+        waitFor("Optimize PDF size")
 
         controller = controller!!.recreate()
         rule.waitForIdle()
-        assertTrue(shows("OPTIMIZE PDF SIZE"))
+        assertTrue(shows("Optimize PDF size"))
     }
 
     @Test
@@ -287,14 +287,14 @@ class MainActivityTest {
         launch(view(pdf("viewed.pdf")))
         waitFor("viewed.pdf")
         rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
-        rule.waitUntil(10_000) { !shows("PDF VIEWER") }
+        rule.waitUntil(10_000) { !shows("PDF viewer") }
 
         // Kept, the chip's file opens in the tool.
         rule.onNode(hasContentDescription("All tools")).performClick()
         waitFor("Opens with")
         assertTrue(shows("viewed.pdf"))
         openCompress()
-        waitFor("OPTIMIZATION LEVEL")
+        waitFor("Optimization level")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Scan a document")
 
@@ -304,9 +304,9 @@ class MainActivityTest {
         rule.onNode(hasContentDescription("Remove viewed.pdf")).performClick()
         rule.waitUntil(10_000) { !shows("Opens with") }
         openCompress()
-        waitFor("Tap to enter file")
+        waitFor("Tap to choose a PDF")
         rule.waitForIdle()
-        assertFalse(shows("OPTIMIZATION LEVEL"))
+        assertFalse(shows("Optimization level"))
     }
 
     private fun openCompress() {
@@ -377,11 +377,11 @@ class MainActivityTest {
         launch(view(pdf("handed.pdf")))
         waitFor("handed.pdf")
         rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
-        rule.waitUntil(10_000) { !shows("PDF VIEWER") }
+        rule.waitUntil(10_000) { !shows("PDF viewer") }
 
         controller = controller!!.recreate()
         rule.waitForIdle()
-        assertFalse(shows("PDF VIEWER"))
+        assertFalse(shows("PDF viewer"))
     }
 
     @Test

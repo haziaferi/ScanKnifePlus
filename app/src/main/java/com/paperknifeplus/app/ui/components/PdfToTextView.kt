@@ -19,17 +19,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import java.io.InputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.InputStream
 
 @Composable
 fun PdfToTextView(
@@ -62,7 +64,7 @@ fun PdfToTextView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -87,7 +89,7 @@ fun PdfToTextView(
                 try {
                     context.contentResolver.requireOutputStream(saveUri).use { it.write(text.toByteArray()) }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Saved as TXT", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, toolText(context, R.string.pdf2text_saved_as_txt), Toast.LENGTH_SHORT).show()
                         outputs.copy(saveUri)
                     }
                 } catch (e: CancellationException) {
@@ -96,7 +98,7 @@ fun PdfToTextView(
                 } catch (e: Exception) {
                     Log.w("PdfToTextView", "Saving the text failed", e)
                     deleteCreatedDocument(context, saveUri)
-                    withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
+                    withContext(Dispatchers.Main) { Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show() }
                 }
             }
         }
@@ -110,11 +112,11 @@ fun PdfToTextView(
                 .onSuccess { (text, chunks) ->
                     extractedText = text
                     textChunks = chunks
-                    outputs.record(fileName, "${text.length} chars", Icons.Outlined.Description)
+                    outputs.record(fileName, toolText(context, R.string.pdf2text_chars, text.length), Icons.Outlined.Description)
                     currentState = ToolState.SUCCESS
                 }
                 .onFailure { e ->
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
         }
@@ -128,8 +130,8 @@ fun PdfToTextView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "PDF to Text",
-                    subtitle = "EXTRACT RAW CONTENT",
+                    title = stringResource(R.string.tool_pdf2text),
+                    subtitle = stringResource(R.string.pdf2text_extract_raw_content),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
@@ -139,15 +141,15 @@ fun PdfToTextView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Outlined.Description,
-                            title = "Tap to select PDF",
-                            subtitle = "EXTRACT TEXT DATA",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.pdf2text_extract_text_data),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -167,10 +169,10 @@ fun PdfToTextView(
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
-                            ToolFileInfo(fileName, "Scan PDF text layers and output a plain .txt file.")
+                            ToolFileInfo(fileName, stringResource(R.string.pdf2text_scan_pdf_text_layers_and))
 
                             Spacer(Modifier.height(24.dp))
-                            ToolPrimaryButton("EXTRACT TEXT", onClick = { startExtraction() }, modifier = Modifier.fillMaxWidth())
+                            ToolPrimaryButton(stringResource(R.string.pdf2text_extract_text), onClick = { startExtraction() }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(32.dp))
                         }
                     }
@@ -178,7 +180,7 @@ fun PdfToTextView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Reading text layers...",
+                            text = stringResource(R.string.pdf2text_reading_text_layers),
                             current = 0,
                             total = pageCount,
                             showWarning = showLoadingWarning
@@ -195,21 +197,21 @@ fun PdfToTextView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(Modifier.weight(1f)) {
-                                    ToolSectionLabel("EXTRACTED CONTENT")
-                                    Text("${extractedText.length} CHARACTERS FOUND", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    ToolSectionLabel(stringResource(R.string.pdf2text_extracted_content))
+                                    Text(stringResource(R.string.pdf2text_characters_found, extractedText.length), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Row {
                                     IconButton(onClick = {
                                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         val clip = android.content.ClipData.newPlainText("PDF Text", extractedText)
                                         clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, toolText(context, R.string.pdf2text_copied_to_clipboard), Toast.LENGTH_SHORT).show()
                                     }, modifier = Modifier.size(48.dp)) {
-                                        Icon(Icons.Filled.ContentCopy, "Copy text", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
+                                        Icon(Icons.Filled.ContentCopy, stringResource(R.string.pdf2text_copy_text), tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                     Spacer(Modifier.width(8.dp))
                                     IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.size(48.dp)) {
-                                        Icon(Icons.Filled.Save, "Save as TXT", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
+                                        Icon(Icons.Filled.Save, stringResource(R.string.pdf2text_save_as_txt), tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                 }
                             }
@@ -224,7 +226,7 @@ fun PdfToTextView(
                                     if (extractedText.isBlank()) {
                                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Filled.FindInPage, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("No text detected. The document might be a high-res scan.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                            Text(stringResource(R.string.pdf2text_no_text_detected_the_document), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                                         }
                                     } else {
                                         // One item per block of lines, so a long text is laid out only where it is on screen.
@@ -243,7 +245,7 @@ fun PdfToTextView(
                                 }
                             }
 
-                            ToolPrimaryButton("DONE", onClick = onBack, modifier = Modifier.fillMaxWidth().padding(24.dp))
+                            ToolPrimaryButton(stringResource(R.string.action_done), onClick = onBack, modifier = Modifier.fillMaxWidth().padding(24.dp))
                         }
                     }
                 }

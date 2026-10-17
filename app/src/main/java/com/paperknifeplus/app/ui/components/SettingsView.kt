@@ -222,7 +222,7 @@ fun SettingsView(
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(stringResource(R.string.settings_cancel), color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         )

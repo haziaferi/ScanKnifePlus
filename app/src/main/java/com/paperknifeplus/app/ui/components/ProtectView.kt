@@ -61,7 +61,7 @@ fun ProtectView(
         scope.launch {
             when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -94,7 +94,7 @@ fun ProtectView(
                 processingTime = formatElapsed(startTime)
                 outputUri = uri
                 fileName = withContext(Dispatchers.IO) { getUriDetails(context, uri).name }
-                outputs.saved(uri, fileName, "Encrypted", Icons.Outlined.Lock, pageCount)
+                outputs.saved(uri, fileName, toolText(context, R.string.protect_encrypted), Icons.Outlined.Lock, pageCount)
                 currentState = ToolState.SUCCESS
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
@@ -103,7 +103,7 @@ fun ProtectView(
                 // Includes IllegalArgumentException from SASLprep for passwords with prohibited characters.
                 Log.w("ProtectView", "Protect failed", e)
                 deleteCreatedDocument(context, uri)
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                 currentState = ToolState.CONFIGURING
             }
         }
@@ -113,8 +113,8 @@ fun ProtectView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Protect",
-                    subtitle = "ENCRYPT YOUR DOCUMENT",
+                    title = stringResource(R.string.tool_protect),
+                    subtitle = stringResource(R.string.protect_encrypt_your_document),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = {
@@ -127,15 +127,15 @@ fun ProtectView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
                             icon = Icons.Outlined.Security,
-                            title = "Tap to enter file",
-                            subtitle = "PROTECT ANY PDF DOCUMENT",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.protect_protect_any_pdf_document),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -156,16 +156,16 @@ fun ProtectView(
                                 )
                             }
                             
-                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
                             
                             Spacer(Modifier.height(24.dp))
-                            ToolSectionLabel("SET PROTECTION")
+                            ToolSectionLabel(stringResource(R.string.protect_set_protection))
                             Spacer(Modifier.height(8.dp))
                             
                             OutlinedTextField(
                                 value = protectPassword,
                                 onValueChange = { protectPassword = it },
-                                label = { Text("New Password", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                label = { Text(stringResource(R.string.protect_new_password), fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = TextFieldDefaults.colors(
@@ -182,7 +182,7 @@ fun ProtectView(
                                     Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                     Spacer(Modifier.width(10.dp))
                                     Text(
-                                        "${stringResource(R.string.app_name)} cannot recover lost passwords.",
+                                        stringResource(R.string.protect_no_recovery, stringResource(R.string.app_name)),
                                         fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -198,7 +198,7 @@ fun ProtectView(
                                 enabled = protectPassword.isNotBlank(), 
                                 shape = RoundedCornerShape(20.dp)
                             ) {
-                                Text("PROTECT & SAVE", fontWeight = FontWeight.Black)
+                                Text(stringResource(R.string.protect_save), fontWeight = FontWeight.Black)
                             }
                             Spacer(Modifier.height(32.dp))
                         }
@@ -207,7 +207,7 @@ fun ProtectView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Applying encryption policy...",
+                            text = stringResource(R.string.protect_applying_encryption_policy),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -215,8 +215,8 @@ fun ProtectView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Protect Complete",
-                            subMessage = "Document encrypted with password",
+                            message = stringResource(R.string.protect_protect_complete),
+                            subMessage = stringResource(R.string.protect_document_encrypted_with_password),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { 

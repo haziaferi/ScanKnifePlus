@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,7 +59,7 @@ fun RepairView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -96,7 +95,7 @@ fun RepairView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Restored", Icons.Outlined.Build, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.repair_restored), Icons.Outlined.Build, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -106,7 +105,7 @@ fun RepairView(
                 Log.w("RepairView", "Repair failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -117,8 +116,8 @@ fun RepairView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Repair",
-                    subtitle = "RECOVER CORRUPT DOCUMENTS",
+                    title = stringResource(R.string.tool_repair),
+                    subtitle = stringResource(R.string.repair_recover_corrupt_documents),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -128,15 +127,15 @@ fun RepairView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Analyzing structure...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.repair_analyzing_structure))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Outlined.Build,
-                            title = "Tap to enter file",
-                            subtitle = "REPAIR BROKEN PDF STRUCTURE",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.repair_repair_broken_pdf_structure),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -157,13 +156,13 @@ fun RepairView(
                                 )
                             }
 
-                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(32.dp))
 
-                            ToolSectionLabel("READY TO REPAIR")
+                            ToolSectionLabel(stringResource(R.string.repair_ready_to_repair))
                             Text(
-                                "${stringResource(R.string.app_name)} will rebuild the PDF index and cross-reference table to restore accessibility.",
+                                stringResource(R.string.repair_note, stringResource(R.string.app_name)),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
@@ -172,7 +171,7 @@ fun RepairView(
 
                             Spacer(Modifier.height(32.dp))
 
-                            ToolPrimaryButton("REPAIR & SAVE PDF", onClick = {
+                            ToolPrimaryButton(stringResource(R.string.repair_repair_and_save_pdf), onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-repaired", "pdf")
                                     saveLauncher.launch(defaultName)
                                 }, modifier = Modifier.fillMaxWidth())
@@ -183,7 +182,7 @@ fun RepairView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Rebuilding XRef tables...",
+                            text = stringResource(R.string.repair_rebuilding_xref_tables),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -191,8 +190,8 @@ fun RepairView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Repair Complete",
-                            subMessage = "Structure rebuilt successfully",
+                            message = stringResource(R.string.repair_repair_complete),
+                            subMessage = stringResource(R.string.repair_structure_rebuilt_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {

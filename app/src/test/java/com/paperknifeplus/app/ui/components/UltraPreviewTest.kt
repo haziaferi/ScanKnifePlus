@@ -188,8 +188,8 @@ class ToolHandOffTest {
     fun `Merge unlocks a file handed over with its password`() {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-merge.pdf")
         show(locked) { MergeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("ADD MORE FILES")
-        rule.onNodeWithText("LOCKED").assertDoesNotExist()
+        waitFor("Add more")
+        rule.onNodeWithText("Locked").assertDoesNotExist()
     }
 
     @Test
@@ -197,10 +197,10 @@ class ToolHandOffTest {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-compress.pdf")
         val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-compress.pdf")
         show(plain) { CompressView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("2 PAGES")
+        waitFor("2 pages")
         rule.onNodeWithText("Change").performClick()
-        rule.onNodeWithText("Tap to enter file").performClick()
-        waitFor("1 PAGES")
+        rule.onNodeWithText("Tap to choose a PDF").performClick()
+        waitFor("1 pages")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 1.2f) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 1.2f))
     }
@@ -210,10 +210,10 @@ class ToolHandOffTest {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
         val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-rearrange.pdf")
         show(plain) { RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("2 PAGES")
+        waitFor("2 pages")
         rule.onNodeWithText("Change").performClick()
-        rule.onNodeWithText("Tap to enter file").performClick()
-        waitFor("1 PAGES")
+        rule.onNodeWithText("Tap to choose a PDF").performClick()
+        waitFor("1 pages")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
     }

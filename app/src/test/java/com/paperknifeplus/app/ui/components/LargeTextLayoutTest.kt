@@ -112,6 +112,6 @@ class LargeTextLayoutTest {
                 CompareFileCard("REVISED (B)", "", isSelected = false, modifier = Modifier.weight(1f)) {}
             }
         }
-        for (shown in listOf("ORIGINAL (A)", "a-long-contract-name-2026.pdf", "REVISED (B)", "Select File")) assertNotClipped(shown)
+        for (shown in listOf("ORIGINAL (A)", "a-long-contract-name-2026.pdf", "REVISED (B)", "Select file")) assertNotClipped(shown)
     }
 }

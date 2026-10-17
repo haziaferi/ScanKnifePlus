@@ -153,13 +153,13 @@ class ToolCatalogTest {
     private companion object {
         /** A text only that tool's empty screen shows. */
         val SCREEN_TEXT = mapOf(
-            "merge" to "JOIN MULTIPLE DOCUMENTS", "split" to "EXTRACT PAGES FROM PDF", "delete" to "DELETE PAGES INSTANTLY",
-            "rearrange" to "MOVE PAGES TO NEW SLOTS", "rotate" to "FIX DOCUMENT ORIENTATION", "sign" to "SECURE SIGNATURE",
-            "watermark" to "CUSTOM OVERLAY", "page-numbers" to "CUSTOM PAGINATION", "bookmarks" to "EDIT DOCUMENT NAVIGATION",
-            "compress" to "OPTIMIZE PDF SIZE", "grayscale" to "CONVERT PDF TO B&W", "repair" to "RECOVER CORRUPT DOCUMENTS",
-            "compare" to "VISUAL DIFFERENCE TOOL", "protect" to "ENCRYPT YOUR DOCUMENT", "unlock" to "REMOVE PDF RESTRICTIONS",
-            "metadata" to "EDIT DOCUMENT PROPERTIES", "pdf2img" to "NATIVE EXPORT ENGINE", "img2pdf" to "JPG, PNG, OR WEBP",
-            "pdf2zip" to "PAGES TO ARCHIVE", "extract-images" to "EXTRACT ASSETS FROM PDFS", "pdf2text" to "EXTRACT RAW CONTENT"
+            "merge" to "Join multiple documents", "split" to "Extract pages from PDF", "delete" to "Delete pages instantly",
+            "rearrange" to "Move pages to new slots", "rotate" to "Fix document orientation", "sign" to "Secure signature",
+            "watermark" to "Custom overlay", "page-numbers" to "Custom pagination", "bookmarks" to "Edit document navigation",
+            "compress" to "Optimize PDF size", "grayscale" to "Convert PDF to B&W", "repair" to "Recover corrupt documents",
+            "compare" to "Visual difference tool", "protect" to "Encrypt your document", "unlock" to "Remove PDF restrictions",
+            "metadata" to "Edit document properties", "pdf2img" to "Native export engine", "img2pdf" to "JPG, PNG or WebP",
+            "pdf2zip" to "Pages to archive", "extract-images" to "Extract assets from PDFs", "pdf2text" to "Extract raw content"
         )
 
         /** The *View composables that are not tools: the shell's own screens and the tools' shared success screen. */

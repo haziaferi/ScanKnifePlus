@@ -26,14 +26,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.R
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import kotlinx.coroutines.launch
 import kotlin.math.max
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,7 +76,7 @@ fun CompareView(
         unlockError = false
         scope.launch {
             when (inspectPdf(context, uri)) {
-                PdfAccess.Unreadable -> Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                PdfAccess.Unreadable -> Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                 PdfAccess.Encrypted -> fileToUnlock = uri to target
                 PdfAccess.Open -> setFile(target, uri, "")
             }
@@ -99,8 +99,8 @@ fun CompareView(
     Scaffold(
         topBar = {
             ToolTopBar(
-                title = "Compare",
-                subtitle = if (isComparing) "SYNCHRONIZED VIEW" else "VISUAL DIFFERENCE TOOL",
+                title = stringResource(R.string.tool_compare),
+                subtitle = if (isComparing) stringResource(R.string.compare_synchronized_view) else stringResource(R.string.compare_visual_difference_tool),
                 showChange = isComparing || fileA != null || fileB != null,
                 onBack = { if (isComparing) isComparing = false else onBack() },
                 onChange = {
@@ -110,22 +110,22 @@ fun CompareView(
                         fileA = null; fileB = null; nameA = ""; nameB = ""; passA = ""; passB = ""
                     }
                 },
-                changeLabel = if (isComparing) stringResource(R.string.tool_change) else "Reset"
+                changeLabel = if (isComparing) stringResource(R.string.tool_change) else stringResource(R.string.action_reset)
             )
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(false, "Analyzing document...")
+                LoadingStateView(false, stringResource(R.string.compare_analyzing_document))
             } else if (!isComparing) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
                     Spacer(Modifier.height(24.dp))
-                    ToolSectionLabel("SELECT DOCUMENTS")
+                    ToolSectionLabel(stringResource(R.string.compare_select_documents))
                     Spacer(Modifier.height(16.dp))
                     
                     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        CompareFileCard("ORIGINAL (A)", nameA, fileA != null, Modifier.weight(1f).fillMaxHeight()) { pickALauncher.launch("application/pdf") }
-                        CompareFileCard("REVISED (B)", nameB, fileB != null, Modifier.weight(1f).fillMaxHeight()) { pickBLauncher.launch("application/pdf") }
+                        CompareFileCard(stringResource(R.string.compare_original_a), nameA, fileA != null, Modifier.weight(1f).fillMaxHeight()) { pickALauncher.launch("application/pdf") }
+                        CompareFileCard(stringResource(R.string.compare_revised_b), nameB, fileB != null, Modifier.weight(1f).fillMaxHeight()) { pickBLauncher.launch("application/pdf") }
                     }
                     
                     Spacer(Modifier.height(32.dp))
@@ -137,12 +137,12 @@ fun CompareView(
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                             Icon(Icons.Filled.Compare, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(16.dp))
-                            Text("Pick two files to begin comparison.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.compare_pick_two_files_to_begin), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                         }
                     }
                     
                     ToolPrimaryButton(
-                        "START COMPARISON",
+                        stringResource(R.string.compare_start),
                         onClick = { isComparing = true },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                         enabled = fileA != null && fileB != null
@@ -220,8 +220,8 @@ fun ComparisonViewer(uriA: Uri, uriB: Uri, nameA: String, nameB: String, passA: 
         ) {
             items(maxPages) { index ->
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                    Cell(uriA, passA, index, pageCountA, "END OF FILE A")
-                    Cell(uriB, passB, index, pageCountB, "END OF FILE B")
+                    Cell(uriA, passA, index, pageCountA, stringResource(R.string.compare_end_of_file_a))
+                    Cell(uriB, passB, index, pageCountB, stringResource(R.string.compare_end_of_file_b))
                 }
                 if (index < maxPages - 1) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline, modifier = Modifier.padding(horizontal = 16.dp))
@@ -256,7 +256,7 @@ private fun ComparePage(uri: Uri, index: Int, password: String?, imageLoader: Im
         val maxWidthPx = (constraints.maxWidth * 1.5f).toInt()
         val request = remember(uri, index, password, maxWidthPx) { PdfPageRequest(uri, index, password, scale = 2.0f, maxWidthPx = maxWidthPx) }
         val painter = rememberAsyncImagePainter(model = request, imageLoader = imageLoader)
-        Image(painter = painter, contentDescription = "Page ${index + 1}", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        Image(painter = painter, contentDescription = stringResource(R.string.tool_page_n, index + 1), modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         if (painter.state is AsyncImagePainter.State.Loading) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         } else if (painter.state is AsyncImagePainter.State.Error && password != null) {
@@ -288,7 +288,7 @@ fun CompareFileCard(label: String, name: String, isSelected: Boolean, modifier: 
             Spacer(Modifier.height(12.dp))
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = content, textAlign = TextAlign.Center)
             Spacer(Modifier.height(4.dp))
-            Text(if (isSelected) name else "Select File", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = content, textAlign = TextAlign.Center)
+            Text(if (isSelected) name else stringResource(R.string.compare_select_file), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = content, textAlign = TextAlign.Center)
         }
     }
 }

@@ -23,6 +23,7 @@ import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import java.io.File
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -32,7 +33,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowToast
-import java.io.File
 
 /** User answer 5: a tool output saved with the picker goes into History and is copied into the folder, which never undoes the save. */
 @RunWith(RobolectricTestRunner::class)
@@ -93,7 +93,7 @@ class ToolOutputsTest {
     fun `a folder to choose again says so once and keeps the History entry`() {
         rule.runOnUiThread { outputs(FakeFolder(OutputCopy.CHOOSE_AGAIN)).saved(Uri.parse("content://picker/a.pdf"), "a.pdf", "", Icons.Filled.Description) }
         assertEquals(1, SessionManager.history.size)
-        assertEquals(context.getString(R.string.tool_copy_unreachable), ShadowToast.getTextOfLatestToast())
+        assertEquals(context.getString(R.string.tool_copy_failed), ShadowToast.getTextOfLatestToast())
         assertEquals(1, ShadowToast.shownToastCount())
     }
 
@@ -127,9 +127,9 @@ class ToolOutputsTest {
                 RepairView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("REPAIR & SAVE PDF")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("REPAIR & SAVE PDF").performScrollTo().performClick()
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Repair and save PDF").performScrollTo().performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair complete")).fetchSemanticsNodes().isNotEmpty() }
         rule.waitForIdle()
 
         assertEquals(listOf(Uri.fromFile(output)), folder.copied)

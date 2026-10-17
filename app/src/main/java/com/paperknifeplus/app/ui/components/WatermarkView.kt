@@ -10,13 +10,14 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image as ComposeImage
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -33,19 +34,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import kotlin.math.ceil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.compose.foundation.Image as ComposeImage
-import kotlin.math.ceil
 
 data class PlacedWatermark(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -130,7 +132,7 @@ fun WatermarkView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -177,7 +179,7 @@ fun WatermarkView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
-                    outputs.saved(uri, outputName, "Branding applied locally", Icons.Filled.TextFields, pageCount)
+                    outputs.saved(uri, outputName, toolText(context, R.string.watermark_branding_applied_locally), Icons.Filled.TextFields, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -187,7 +189,7 @@ fun WatermarkView(
                 Log.w("WatermarkView", "Watermarking failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -265,8 +267,8 @@ fun WatermarkView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Watermark",
-                    subtitle = "CUSTOM OVERLAY",
+                    title = stringResource(R.string.tool_watermark),
+                    subtitle = stringResource(R.string.watermark_custom_overlay),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedWatermarks = emptyList() }
@@ -276,15 +278,15 @@ fun WatermarkView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(false, "Reading document...")
+                LoadingStateView(false, stringResource(R.string.watermark_reading_document))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Filled.TextFields,
-                            title = "Tap to enter file",
-                            subtitle = "WATERMARK PAGES",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.watermark_watermark_pages),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -316,7 +318,7 @@ fun WatermarkView(
                                 shape = RoundedCornerShape(20.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor)
                             ) {
-                                Text(if (hasWatermark) "SAVE WATERMARKED PDF" else "SELECT A PAGE TO WATERMARK", fontWeight = FontWeight.Black)
+                                Text(if (hasWatermark) stringResource(R.string.action_save_pdf) else stringResource(R.string.watermark_select_a_page_to_watermark), fontWeight = FontWeight.Black)
                             }
                         }
                     }
@@ -324,7 +326,7 @@ fun WatermarkView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Applying watermarks...",
+                            text = stringResource(R.string.watermark_applying_watermarks),
                             current = 0,
                             total = 0,
                             showWarning = false
@@ -332,8 +334,8 @@ fun WatermarkView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Watermark Complete",
-                            subMessage = "Watermarks applied successfully",
+                            message = stringResource(R.string.watermark_watermark_complete),
+                            subMessage = stringResource(R.string.watermark_watermarks_applied_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {
@@ -395,12 +397,12 @@ fun WatermarkView(
                     Column(Modifier.padding(12.dp)) {
                         if (isFocusMode) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Opacity", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 8.dp))
+                                Text(stringResource(R.string.watermark_opacity), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 8.dp))
                                 Slider(value = activeOpacity, onValueChange = { activeOpacity = it }, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor))
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { isFocusMode = false; activeWatermarkBitmap = null }, modifier = Modifier.weight(0.8f)) {
-                                    Text("CANCEL", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                                 }
                                 Row(Modifier.weight(2.5f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
@@ -412,7 +414,7 @@ fun WatermarkView(
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(16.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    ) { Text("APPLY TO ALL", fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_apply_to_all), fontSize = 14.sp, fontWeight = FontWeight.Black) }
                                     Button(
                                         onClick = {
                                             activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = currentPage, shownOn = currentPage) }
@@ -421,7 +423,7 @@ fun WatermarkView(
                                         },
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(16.dp)
-                                    ) { Text("APPLY", fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_apply), fontSize = 14.sp, fontWeight = FontWeight.Black) }
                                 }
                             }
                         } else {
@@ -435,7 +437,7 @@ fun WatermarkView(
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("ADD WATERMARK", fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.watermark_add_watermark), fontWeight = FontWeight.Black)
                                 }
                             } else {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -444,7 +446,7 @@ fun WatermarkView(
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                                    ) { Text("ADD MORE", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_add_more), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black) }
                                     Button(
                                         onClick = {
                                             lightboxPage = null
@@ -452,7 +454,7 @@ fun WatermarkView(
                                         },
                                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(16.dp)
-                                    ) { Text("SAVE", fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black) }
                                 }
                             }
                         }
@@ -465,10 +467,10 @@ fun WatermarkView(
     if (showWatermarkOptions) {
         AlertDialog(
             onDismissRequest = { showWatermarkOptions = false },
-            title = { Text("Select Watermark", fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.watermark_select_watermark), fontWeight = FontWeight.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolSectionLabel("TEMPLATES")
+                    ToolSectionLabel(stringResource(R.string.watermark_templates))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("DRAFT", "CONFIDENTIAL", "APPROVED").forEach { template ->
                             Surface(
@@ -486,10 +488,10 @@ fun WatermarkView(
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    SignOptionCard("Text Watermark", Icons.Filled.Title, accentColor, Modifier.fillMaxWidth()) {
+                    SignOptionCard(stringResource(R.string.watermark_text_watermark), Icons.Filled.Title, accentColor, Modifier.fillMaxWidth()) {
                         showTextInput = true; showWatermarkOptions = false
                     }
-                    SignOptionCard("Upload Image", Icons.Filled.CloudUpload, MaterialTheme.colorScheme.onSurface, Modifier.fillMaxWidth()) {
+                    SignOptionCard(stringResource(R.string.watermark_upload_image), Icons.Filled.CloudUpload, MaterialTheme.colorScheme.onSurface, Modifier.fillMaxWidth()) {
                         imgLauncher.launch("image/*"); showWatermarkOptions = false
                     }
                 }
@@ -503,7 +505,7 @@ fun WatermarkView(
         var selectedColor by remember { mutableStateOf(DocumentInk.Black) }
         AlertDialog(
             onDismissRequest = { showTextInput = false },
-            title = { Text("Text Watermark", fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.watermark_text_watermark), fontWeight = FontWeight.Black) },
             text = {
                 Column {
                     LazyRow(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
@@ -512,7 +514,7 @@ fun WatermarkView(
                     OutlinedTextField(
                         value = text,
                         onValueChange = { text = it },
-                        label = { Text("Enter watermark text") },
+                        label = { Text(stringResource(R.string.watermark_enter_watermark_text)) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -524,7 +526,7 @@ fun WatermarkView(
                         startPlacing(createTextBitmap(text, selectedColor), opacity = 1f)
                         showTextInput = false
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor)) { Text("CONTINUE") }
+                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor)) { Text(stringResource(R.string.action_continue)) }
             }
         )
     }

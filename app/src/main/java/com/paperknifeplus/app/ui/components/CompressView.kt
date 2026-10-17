@@ -6,8 +6,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,7 +17,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -71,7 +73,7 @@ fun CompressView(
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -110,7 +112,7 @@ fun CompressView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    outputs.saved(uri, fileName, "Optimized", Icons.Filled.FlashOn, finalCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.compress_optimized), Icons.Filled.FlashOn, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -120,7 +122,7 @@ fun CompressView(
                 Log.w("CompressView", "Compression failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -131,8 +133,8 @@ fun CompressView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Compress",
-                    subtitle = "OPTIMIZE PDF SIZE",
+                    title = stringResource(R.string.tool_compress),
+                    subtitle = stringResource(R.string.compress_optimize_pdf_size),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -142,15 +144,15 @@ fun CompressView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(showLoadingWarning, "Analyzing file structure...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.compress_analyzing_file_structure))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
                             icon = Icons.Outlined.Bolt,
-                            title = "Tap to enter file",
-                            subtitle = "OPTIMIZE ANY PDF DOCUMENT",
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.compress_optimize_any_pdf_document),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -171,21 +173,27 @@ fun CompressView(
                                 )
                             }
 
-                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(24.dp))
-                            ToolSectionLabel("OPTIMIZATION LEVEL", Modifier.fillMaxWidth())
+                            ToolSectionLabel(stringResource(R.string.compress_optimization_level), Modifier.fillMaxWidth())
                             Spacer(Modifier.height(12.dp))
 
                             Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("Basic", "Recommended", "Extreme").forEach { level ->
                                     ToolOptionRow(
                                         selected = compressionLevel == level,
-                                        title = level,
+                                        title = stringResource(
+                                            when (level) {
+                                                "Extreme" -> R.string.compress_level_extreme
+                                                "Recommended" -> R.string.compress_level_recommended
+                                                else -> R.string.compress_level_basic
+                                            }
+                                        ),
                                         description = when (level) {
-                                            "Extreme" -> "Max reduction, lower image quality"
-                                            "Recommended" -> "Great balance of size and quality"
-                                            else -> "Maintains high visual fidelity"
+                                            "Extreme" -> stringResource(R.string.compress_max_reduction)
+                                            "Recommended" -> stringResource(R.string.compress_great_balance)
+                                            else -> stringResource(R.string.compress_maintains_high_visual_fidelity)
                                         },
                                         onClick = { compressionLevel = level }
                                     )
@@ -193,7 +201,7 @@ fun CompressView(
                             }
 
                             Spacer(Modifier.height(32.dp))
-                            ToolPrimaryButton("COMPRESS & SAVE PDF", onClick = {
+                            ToolPrimaryButton(stringResource(R.string.compress_compress_and_save_pdf), onClick = {
                                 val defaultName = outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")
                                 saveLauncher.launch(defaultName)
                             }, modifier = Modifier.fillMaxWidth())
@@ -204,7 +212,7 @@ fun CompressView(
                         ProcessingStateView(
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Optimizing document size...",
+                            text = stringResource(R.string.compress_optimizing_document_size),
                             current = progressPage,
                             total = pageCount,
                             showWarning = showLoadingWarning
@@ -212,7 +220,7 @@ fun CompressView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Compression Complete",
+                            message = stringResource(R.string.compress_compression_complete),
                             subMessage = "", // No saved-size line: providers often still report 0 B right after the write.
                             processingTime = processingTime,
                             onDone = onBack,

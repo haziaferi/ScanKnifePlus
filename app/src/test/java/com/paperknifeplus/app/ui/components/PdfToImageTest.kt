@@ -53,19 +53,19 @@ class PdfToImageTest {
     fun `opened with a file, every page is selected and the format is JPG`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three-images.pdf")
         rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNode(hasText("Convert 3 Pages to JPG")).assertExists()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasText("Convert 3 pages to JPG")).assertExists()
     }
 
     @Test
     fun `each page tile is a checkbox that says whether the page is exported`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three-tiles.pdf")
         rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 Pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
         val tile = rule.onNode(isToggleable() and hasContentDescription("Page 1"))
         tile.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)).assertIsOn()
         tile.performClick()
         tile.assertIsOff()
-        rule.onNode(hasText("Convert 2 Pages to JPG")).assertExists()
+        rule.onNode(hasText("Convert 2 pages to JPG")).assertExists()
     }
 }

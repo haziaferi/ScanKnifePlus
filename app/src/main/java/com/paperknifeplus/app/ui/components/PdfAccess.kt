@@ -6,10 +6,10 @@ import android.util.Log
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 /** What opening a PDF without a password showed, as [inspectPdf] reports it. */
 sealed interface PdfAccess {
@@ -24,9 +24,6 @@ sealed interface PdfAccess {
 }
 
 private const val TAG = "PdfAccess"
-
-/** What the tool screens toast for a [PdfAccess.Unreadable] file before returning to file selection. */
-const val UNREADABLE_PDF_MESSAGE = "Error: Cannot read this PDF"
 
 /**
  * Opens [uri] once without a password to classify it. A file with only an owner password (permission restrictions, no open password) is
