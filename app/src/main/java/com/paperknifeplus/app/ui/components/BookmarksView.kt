@@ -16,12 +16,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -36,8 +36,8 @@ fun BookmarksView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF43F5E)
+    val outputs = rememberToolOutputs("bookmarks")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -72,7 +72,7 @@ fun BookmarksView(
         }
         OutlineLoad.WrongPassword -> false
         OutlineLoad.Unreadable -> {
-            Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+            Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
             fileToUnlock = null
             reset()
             true
@@ -89,7 +89,7 @@ fun BookmarksView(
             val access = inspectPdf(context, uri)
             // Files that open without a password (owner-password-only ones too) are read directly; the others ask for one.
             if (access == PdfAccess.Unreadable) {
-                Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                 selectedUri = null
                 currentState = ToolState.SELECTING
             } else if (!extractBookmarks(uri, null)) {
@@ -104,7 +104,7 @@ fun BookmarksView(
     }
 
     /** Runs [write] on the freshly loaded source into [saveUri], then records the result as [summary]. */
-    fun save(saveUri: Uri, failurePrefix: String, summary: (Int) -> String, write: (source: PDDocument, saveUri: Uri) -> Unit) {
+    fun save(saveUri: Uri, summary: (Int) -> String, write: (source: PDDocument, saveUri: Uri) -> Unit) {
         val source = selectedUri ?: return
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
@@ -124,7 +124,7 @@ fun BookmarksView(
                     outputUri = saveUri
                     fileName = outputName
                     outputPageCount = finalCount
-                    SessionManager.addEntry(outputName, "Bookmarks", summary(finalCount), Icons.Filled.BookmarkBorder, saveUri, finalCount)
+                    outputs.saved(saveUri, outputName, summary(finalCount), Icons.Filled.BookmarkBorder, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -134,7 +134,7 @@ fun BookmarksView(
                 Log.w("BookmarksView", "Saving failed", e)
                 deleteCreatedDocument(context, saveUri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "$failurePrefix${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -143,7 +143,7 @@ fun BookmarksView(
 
     val extractLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted()
-        if (uri != null) save(uri, "Extraction failed: ", { "$it pages extracted" }) { document, saveUri ->
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { document, saveUri ->
             PDDocument().use { target ->
                 target.appendPagesFrom(pages.filter { it < document.numberOfPages }.map { document.getPage(it) })
                 saveAndFlush(context, target, saveUri)
@@ -153,7 +153,7 @@ fun BookmarksView(
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val edited = bookmarks
-        if (uri != null) save(uri, "Error: ", { "${edited.size} bookmarks" }) { document, saveUri ->
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { document, saveUri ->
             applyOutline(document, edited)
             saveAndFlush(context, document, saveUri)
         }
@@ -167,9 +167,8 @@ fun BookmarksView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Bookmarks",
-                    subtitle = "EDIT DOCUMENT NAVIGATION",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_bookmarks),
+                    subtitle = stringResource(R.string.bookmarks_edit_document_navigation),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = ::reset
@@ -179,34 +178,32 @@ fun BookmarksView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, false, "Reading outlines...")
+                LoadingStateView(false, stringResource(R.string.bookmarks_reading_outlines))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
-                            isDark = isDark,
                             icon = Icons.Filled.BookmarkBorder,
-                            title = "Tap to enter file",
-                            subtitle = "MANAGE PDF BOOKMARKS",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.bookmarks_manage_pdf_bookmarks),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                     ToolState.CONFIGURING -> {
                         Column(Modifier.fillMaxSize()) {
                             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("${bookmarks.size} BOOKMARKS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                                Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)) {
-                                    Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
+                                ToolStatusText(stringResource(R.string.bookmarks_bookmarks, bookmarks.size))
+                                Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("ADD", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.action_add), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
 
                             if (bookmarks.isEmpty()) {
                                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    Text("No bookmarks found", color = Color.Gray, fontSize = 14.sp)
+                                    Text(stringResource(R.string.bookmarks_no_bookmarks_found), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                                 }
                             } else {
                                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -214,17 +211,18 @@ fun BookmarksView(
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(16.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                         ) {
-                                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Filled.Bookmark, null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                            Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Filled.Bookmark, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                                                 Spacer(Modifier.width(16.dp))
                                                 Column(Modifier.weight(1f)) {
                                                     Text(bm.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                    Text("Page ${bm.pageIndex?.let { it + 1 } ?: "-"}", fontSize = 10.sp, color = Color.Gray)
+                                                    Text(bm.pageIndex?.let { stringResource(R.string.tool_page_n, it + 1) } ?: stringResource(R.string.bookmarks_no_page), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                                 IconButton(onClick = { bookmarks = bookmarks.withoutBranch(index) }) {
-                                                    Icon(Icons.Filled.Delete, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                                                    Icon(Icons.Filled.Delete, stringResource(R.string.action_delete_named, bm.title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                                                 }
                                             }
                                         }
@@ -233,32 +231,21 @@ fun BookmarksView(
                             }
                             
                             Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Button(
-                                    onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-nav", "pdf")) },
-                                    modifier = Modifier.weight(1f).height(60.dp),
-                                    shape = RoundedCornerShape(20.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                                ) {
-                                    Text("SAVE PDF", fontWeight = FontWeight.Black)
-                                }
-                                OutlinedButton(
+                                ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-nav", "pdf")) }, modifier = Modifier.weight(1f))
+                                ToolSecondaryButton(
+                                    stringResource(R.string.bookmarks_extract_pages),
                                     onClick = { extractLauncher.launch(outputFileName(pdfBaseName(fileName) + "-extract", "pdf")) },
-                                    modifier = Modifier.weight(1f).height(60.dp),
-                                    enabled = bookmarks.isNotEmpty(),
-                                    shape = RoundedCornerShape(20.dp),
-                                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.3f))
-                                ) {
-                                    Text("EXTRACT PAGES", fontWeight = FontWeight.Black, color = accentColor)
-                                }
+                                    modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                                    enabled = bookmarks.isNotEmpty()
+                                )
                             }
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Updating document...",
+                            text = stringResource(R.string.bookmarks_updating_document),
                             current = 0,
                             total = 0,
                             showWarning = false
@@ -266,13 +253,12 @@ fun BookmarksView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Task Complete",
-                            subMessage = "Document updated successfully",
+                            message = stringResource(R.string.bookmarks_task_complete),
+                            subMessage = stringResource(R.string.bookmarks_document_updated_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = ::reset,
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, outputPageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -309,11 +295,11 @@ fun BookmarksView(
         var pageNum by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("Add Bookmark", fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.bookmarks_add_bookmark), fontWeight = FontWeight.Black) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = pageNum, onValueChange = { if (it.all { c -> c.isDigit() }) pageNum = it }, label = { Text("Page (1-$pageCount)") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text(stringResource(R.string.tool_field_title)) }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = pageNum, onValueChange = { if (it.all { c -> c.isDigit() }) pageNum = it }, label = { Text(stringResource(R.string.bookmarks_page_range, pageCount)) }, modifier = Modifier.fillMaxWidth())
                 }
             },
             confirmButton = {
@@ -323,7 +309,7 @@ fun BookmarksView(
                         bookmarks = bookmarks + Bookmark(title, p)
                         showAddDialog = false
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)) { Text("ADD") }
+                }) { Text(stringResource(R.string.action_add)) }
             }
         )
     }

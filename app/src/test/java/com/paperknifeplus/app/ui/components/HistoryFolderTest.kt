@@ -138,8 +138,8 @@ class HistoryFolderTest {
     @Test
     fun `without a folder History lists this session, searchable, with no Conflicts filter`() {
         rule.runOnUiThread {
-            SessionManager.addEntry("scan.pdf", "Scan", "3 pages", Icons.Filled.Description)
-            SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description)
+            SessionManager.addEntry("scan.pdf", SCAN_ENTRY_TOOL, "3 pages", Icons.Filled.Description)
+            SessionManager.addEntry("merged.pdf", "merge", "2 files", Icons.Filled.Description)
         }
         history(null)
         rule.onNodeWithText("Files made in this session").assertExists()

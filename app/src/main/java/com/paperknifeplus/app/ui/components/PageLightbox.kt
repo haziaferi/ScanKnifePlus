@@ -1,13 +1,14 @@
 package com.paperknifeplus.app.ui.components
 
-import android.net.Uri
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,24 +21,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.memory.MemoryCache
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.toSize
+import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,7 +82,7 @@ fun PageLightbox(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .background(LocalScanPalette.current.camera.cam)
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -163,7 +166,7 @@ fun PageLightbox(
                         }
 
                         if (painter.state is AsyncImagePainter.State.Loading) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(48.dp))
+                            CircularProgressIndicator(color = LocalScanPalette.current.camera.onCam, modifier = Modifier.size(48.dp))
                         }
                     }
                 }
@@ -178,9 +181,9 @@ fun PageLightbox(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier.background(Color.White.copy(0.1f), CircleShape)
+                            modifier = Modifier.background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)
                         ) {
-                            Icon(Icons.Filled.Close, null, tint = Color.White)
+                            Icon(Icons.Filled.Close, stringResource(R.string.action_close), tint = LocalScanPalette.current.camera.onCam)
                         }
                     }
                     
@@ -192,23 +195,24 @@ fun PageLightbox(
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(intent, "Share PDF"))
+                                context.startActivity(Intent.createChooser(intent, toolText(context, R.string.action_share)))
                             } catch (e: Exception) {
-                                Toast.makeText(context, "Cannot share this file", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, toolText(context, R.string.tool_share_failed), Toast.LENGTH_SHORT).show()
                             }
-                        }, modifier = Modifier.background(Color.White.copy(0.1f), CircleShape)) {
-                            Icon(Icons.Filled.Share, null, tint = Color.White)
+                        }, modifier = Modifier.background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)) {
+                            Icon(Icons.Filled.Share, stringResource(R.string.action_share), tint = LocalScanPalette.current.camera.onCam)
                         }
                         Spacer(Modifier.width(8.dp))
                         Surface(
                             onClick = { showJumpDialog = true },
-                            color = Color.White.copy(0.1f), 
-                            shape = RoundedCornerShape(12.dp)
+                            color = LocalScanPalette.current.camera.ctrlOffBg,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text(
-                                "${pagerState.currentPage + 1} / $totalCount",
-                                color = Color.White,
-                                fontSize = 12.sp,
+                                stringResource(R.string.lightbox_page_of, pagerState.currentPage + 1, totalCount),
+                                color = LocalScanPalette.current.camera.onCam,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Black,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
@@ -235,17 +239,18 @@ fun PageLightbox(
                     Button(
                         onClick = { onToggleSelection(pagerState.currentPage) },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSelected) Color(0xFF10B981) else Color.White.copy(0.1f),
-                            contentColor = Color.White
+                            containerColor = if (isSelected) LocalScanPalette.current.camera.doneBg else LocalScanPalette.current.camera.ctrlOffBg,
+                            contentColor = if (isSelected) LocalScanPalette.current.camera.doneFg else LocalScanPalette.current.camera.onCam
                         ),
                         shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.heightIn(min = 48.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         if (isSelected) {
                             Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (isSelected) "SELECTED" else "SELECT", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        Text(if (isSelected) stringResource(R.string.state_selected) else stringResource(R.string.action_select), fontSize = 14.sp, fontWeight = FontWeight.Black)
                     }
                 }
             }
@@ -260,7 +265,7 @@ fun PageLightbox(
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(bottom = 24.dp)
-                        .background(Color.Black.copy(0.5f), RoundedCornerShape(24.dp))
+                        .background(LocalScanPalette.current.camera.ctrlOffBg, RoundedCornerShape(24.dp))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -269,14 +274,14 @@ fun PageLightbox(
                         onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
                         enabled = pagerState.currentPage > 0
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = if (pagerState.currentPage > 0) Color.White else Color.White.copy(0.3f))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.lightbox_previous), tint = if (pagerState.currentPage > 0) LocalScanPalette.current.camera.onCam else LocalScanPalette.current.camera.onCam.copy(alpha = 0.38f))
                     }
 
                     IconButton(
                         onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
                         enabled = pagerState.currentPage < totalCount - 1
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = if (pagerState.currentPage < totalCount - 1) Color.White else Color.White.copy(0.3f))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.lightbox_next), tint = if (pagerState.currentPage < totalCount - 1) LocalScanPalette.current.camera.onCam else LocalScanPalette.current.camera.onCam.copy(alpha = 0.38f))
                     }
                 }
             }

@@ -14,12 +14,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,8 +35,8 @@ fun SplitView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF43F5E)
+    val outputs = rememberToolOutputs("split")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -74,7 +75,7 @@ fun SplitView(
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -115,7 +116,7 @@ fun SplitView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = getUriDetails(context, uri).name
-                    SessionManager.addEntry(fileName, "Split", "${pages.size} pages extracted", Icons.Filled.ContentCut, uri, finalCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.split_pages_extracted, pages.size), Icons.Filled.ContentCut, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -125,7 +126,7 @@ fun SplitView(
                 Log.w("SplitView", "Split failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -136,9 +137,8 @@ fun SplitView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Split",
-                    subtitle = "EXTRACT PAGES FROM PDF",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_split),
+                    subtitle = stringResource(R.string.split_extract_pages_from_pdf),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = {
@@ -153,17 +153,15 @@ fun SplitView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
-                            isDark = isDark,
                             icon = Icons.Filled.ContentCut,
-                            title = "Tap to enter file",
-                            subtitle = "SPLIT PDF INTO PARTS",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.split_split_pdf_into_parts),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -175,14 +173,14 @@ fun SplitView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
-                                    Text("${selectedPages.size} / $pageCount PAGES SELECTED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    ToolStatusText(stringResource(R.string.split_pages_selected, selectedPages.size, pageCount))
                                 }
                                 
                                 TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                     Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                     Spacer(Modifier.width(8.dp))
-                                    Text(if (showRangeInput) "HIDE RANGE" else "ENTER RANGE", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor)
+                                    Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                                 }
                             }
 
@@ -197,24 +195,24 @@ fun SplitView(
                                             selectedPages = all
                                             rangeText = PageRanges.format(all)
                                         },
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.1f), contentColor = accentColor),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text("SELECT ALL", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_select_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
                                     Button(
                                         onClick = { 
                                             selectedPages = emptySet()
                                             rangeText = ""
                                         },
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Gray.copy(alpha = 0.1f), contentColor = Color.Gray),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text("CLEAR ALL", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_clear_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
                             }
@@ -232,7 +230,7 @@ fun SplitView(
                                                 rangeText = it
                                                 selectedPages = PageRanges.parse(it, pageCount)
                                             },
-                                            label = { Text("Example: 1-5, 8, 11-13") },
+                                            label = { Text(stringResource(R.string.split_example_1_5_8_11)) },
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(12.dp),
                                             singleLine = true,
@@ -242,7 +240,7 @@ fun SplitView(
                                             )
                                         )
                                         Spacer(Modifier.height(8.dp))
-                                        Text("Tip: Use commas for lists and dashes for spans.", fontSize = 10.sp, color = Color.Gray)
+                                        Text(stringResource(R.string.split_tip_use_commas_for_lists), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -265,24 +263,23 @@ fun SplitView(
                             
                             Button(
                                 onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-split", "pdf")) }, 
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp), 
                                 enabled = selectedPages.isNotEmpty(),
                                 shape = RoundedCornerShape(20.dp), 
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = accentColor,
-                                    contentColor = Color.White
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
                                 )
                             ) {
-                                Text("EXTRACT ${selectedPages.size} PAGES", fontWeight = FontWeight.Black)
+                                Text(stringResource(R.string.split_extract_pages, selectedPages.size), fontWeight = FontWeight.Black)
                             }
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Extracting specified pages...",
+                            text = stringResource(R.string.split_extracting_specified_pages),
                             current = progressCount,
                             total = selectedPages.size,
                             showWarning = showLoadingWarning
@@ -290,8 +287,8 @@ fun SplitView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Split Complete",
-                            subMessage = "Selected pages saved successfully",
+                            message = stringResource(R.string.split_split_complete),
+                            subMessage = stringResource(R.string.split_selected_pages_saved_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = { 
@@ -309,7 +306,6 @@ fun SplitView(
                                     }
                                 }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }

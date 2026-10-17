@@ -6,6 +6,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
@@ -25,7 +26,12 @@ import com.haziaferi.scanknifeplus.storage.ConflictReport
 import com.haziaferi.scanknifeplus.storage.FolderAccess
 import com.haziaferi.scanknifeplus.storage.FolderListing
 import com.haziaferi.scanknifeplus.storage.FolderState
+import com.haziaferi.scanknifeplus.storage.FolderStore
 import com.haziaferi.scanknifeplus.storage.PdfMaker
+import com.haziaferi.scanknifeplus.storage.ScanFolder
+import com.haziaferi.scanknifeplus.storage.WriteResult
+import java.io.File
+import java.io.IOException
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +61,20 @@ sealed interface FolderNotice {
 
     /** The copy into the folder stopped because the folder could no longer be reached; [left] scans were not copied. */
     data class CopyStopped(val left: Int) : FolderNotice
+}
+
+/** How the copy of a tool output into the folder went ([AppFolder.copyOutput]). */
+enum class OutputCopy {
+    COPIED,
+
+    /** No folder is chosen: outputs are only saved with the picker. */
+    NO_FOLDER,
+
+    /** The folder cannot be reached: it has to be chosen again. */
+    CHOOSE_AGAIN,
+
+    /** The folder is there but the copy failed. */
+    FAILED
 }
 
 /** Whether Folder setup has been answered ("Not now", or a folder chosen), so it no longer opens by itself at launch. */
@@ -223,6 +243,82 @@ class AppFolder(
     /** Copies the scans on this phone that the folder does not have yet into it, in the background, except those in [skip]; see [choose]. */
     fun copyScansIn(skip: Set<String> = emptySet()) {
         scope.launch { copyScans(skip) }
+    }
+
+    /**
+     * Copies a tool output the user saved with the picker at [uri] to the folder's top level under the name the picker gave it (`-2` and so
+     * on when that is taken), creating a file only, then lists the folder again so History shows it; [onResult] tells how it went. A file the
+     * picker saved inside the folder is not copied. Runs on this object's scope, so leaving the tool does not stop it. The saved output is
+     * only read, never changed.
+     */
+    fun copyOutput(uri: Uri, onResult: (OutputCopy) -> Unit) {
+        scope.launch {
+            awaitSwept()
+            val result = withContext(io) {
+                when (val s = access.state()) {
+                    FolderState.NotChosen -> OutputCopy.NO_FOLDER
+                    FolderState.ChooseAgain -> OutputCopy.CHOOSE_AGAIN
+                    // Saved with the picker straight into the folder: it is there already, and a copy would only add a -2 twin.
+                    is FolderState.Ready -> {
+                        val tree = access.treeUri()
+                        if (tree != null && isInTree(tree, s.store, uri)) OutputCopy.COPIED else copyInto(s.folder, uri)
+                    }
+                }
+            }
+            if (result != OutputCopy.NO_FOLDER) load(resolve = false)
+            onResult(result)
+        }
+    }
+
+    @WorkerThread
+    private fun copyInto(folder: ScanFolder, uri: Uri): OutputCopy {
+        val name = displayName(uri) ?: return OutputCopy.FAILED
+        return try {
+            when (folder.copyOutput(name) { resolver.openInputStream(uri) ?: throw IOException("Cannot read $uri") }) {
+                is WriteResult.Written -> OutputCopy.COPIED
+                WriteResult.FolderUnavailable -> OutputCopy.CHOOSE_AGAIN
+                is WriteResult.Incomplete, WriteResult.Failed -> OutputCopy.FAILED
+            }
+        } catch (e: Exception) {
+            // The output's provider may refuse the read with anything from SecurityException to IllegalStateException.
+            Log.w(TAG, "Copying the output $uri failed", e)
+            OutputCopy.FAILED
+        }
+    }
+
+    /**
+     * Whether [uri] is a document inside the folder [tree], read through [store]: at any depth where the provider can say so (API 29+, or
+     * the phone's storage), else at the top level, where the picker puts a file saved into the folder. Blocking; false when it cannot tell.
+     */
+    @WorkerThread
+    private fun isInTree(tree: Uri, store: FolderStore, uri: Uri): Boolean {
+        if (uri.authority != tree.authority) return false
+        return try {
+            val root = DocumentsContract.getTreeDocumentId(tree)
+            val doc = DocumentsContract.getDocumentId(uri)
+            when {
+                doc == root -> true
+                // The phone's storage names documents by path, so its ids answer this without a call to the provider.
+                tree.authority == EXTERNAL_STORAGE -> doc.startsWith(if (root.endsWith(":")) root else "$root/")
+                Build.VERSION.SDK_INT >= 29 -> DocumentsContract.isChildDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, root), uri)
+                else -> store.list(store.rootId).any { it.id == doc }
+            }
+        } catch (e: Exception) {
+            Log.i(TAG, "Cannot tell whether $uri is in the folder", e)
+            false
+        }
+    }
+
+    /** The name the picker gave the file at [uri]; null when its provider does not say. Blocking. */
+    @WorkerThread
+    private fun displayName(uri: Uri): String? {
+        if (uri.scheme == ContentResolver.SCHEME_FILE) return uri.path?.let { File(it).name }
+        return try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        } catch (e: Exception) {
+            Log.w(TAG, "No name for $uri", e)
+            null
+        }
     }
 
     /** Reports sync conflicts settled while writing to the folder. */

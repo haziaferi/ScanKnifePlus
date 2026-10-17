@@ -1,36 +1,72 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.res.AssetManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.activity.compose.BackHandler
 import com.paperknifeplus.app.R
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** About: the app, how it works and its credits; Open Source Libraries and the licence are sub-pages that Back returns from. */
 @Composable
 fun AboutView(onBack: () -> Unit, loadNotices: suspend () -> List<NoticeSection> = assetNoticeLoader()) {
     var currentSubPage by remember { mutableStateOf("main") }
@@ -42,38 +78,22 @@ fun AboutView(onBack: () -> Unit, loadNotices: suspend () -> List<NoticeSection>
 
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = handleBack,
-                    modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), CircleShape)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
-                }
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = when(currentSubPage) {
-                            "libraries" -> "Open Source"
-                            "license" -> "License"
-                            else -> "About"
-                        },
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = (-0.5).sp
-                    )
-                    Text("SECURE PDF ENGINE", fontSize = 8.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.sp)
-                }
-            }
+            ToolTopBar(
+                title = stringResource(
+                    when (currentSubPage) {
+                        "libraries" -> R.string.about_libraries_title
+                        "license" -> R.string.about_license_title
+                        else -> R.string.about_title
+                    }
+                ),
+                subtitle = null,
+                showChange = false,
+                onBack = handleBack
+            )
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            when(currentSubPage) {
+            when (currentSubPage) {
                 "main" -> AboutMain(onNavigate = { currentSubPage = it })
                 "libraries" -> LibrariesPage(loadNotices)
                 "license" -> LicensePage()
@@ -85,143 +105,117 @@ fun AboutView(onBack: () -> Unit, loadNotices: suspend () -> List<NoticeSection>
 @Composable
 fun AboutMain(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
-    val isDark = LocalIsDarkTheme.current
     val appName = stringResource(R.string.app_name)
+    val colors = MaterialTheme.colorScheme
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Logo(modifier = Modifier.size(64.dp), partColor = if (isDark) Color.White else Color.Black)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Logo(modifier = Modifier.size(64.dp), partColor = LocalScanPalette.current.tx)
                 Spacer(Modifier.height(16.dp))
-                Text(appName, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                Text("NATIVE PDF WORKSHOP", fontSize = 9.sp, color = PaperPink, fontWeight = FontWeight.Black, letterSpacing = 1.5.sp)
+                Text(appName, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = colors.onBackground)
+                Text(stringResource(R.string.about_tagline), fontSize = 14.sp, color = colors.onSurfaceVariant)
             }
         }
 
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                shape = RoundedCornerShape(24.dp)
-            ) {
+            AboutCard {
                 Column(Modifier.padding(20.dp)) {
-                    Text("How it works", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    AboutHeading(stringResource(R.string.about_how_title))
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        "$appName is built on a simple but powerful idea: your documents belong to you, and they should never have to leave your device to be modified.\n\nTraditional PDF tools often require you to upload your files to their servers. This means your private contracts, bank statements, or personal letters are being sent over the internet and processed on a computer you don't control. Even if they promise to delete the data, the risk remains.\n\nWe took a different path. We built a 'Native Engine' that brings the workshop to your phone. When you open a PDF in $appName, our app reads the file's structure directly from your storage. When you sign a document, merge files, or extract images, all the heavy lifting is done by your phone's processor. It's like having a professional printing press and a secure vault built right into your pocket.\n\nThis approach doesn't just protect your privacy; it makes the app incredibly fast and reliable. Because there's no uploading or downloading, tools work instantly. You can edit a document on a plane, in a remote area without a signal, or in a high-security environment with zero connectivity. Your data starts on your device and ends on your device—exactly where it belongs.",
-                        fontSize = 13.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                    )
-
+                    Text(stringResource(R.string.about_how_body, appName), fontSize = 14.sp, lineHeight = 21.sp, color = colors.onSurface)
                     Spacer(Modifier.height(20.dp))
-                    HorizontalDivider(color = Color.Gray.copy(alpha = 0.1f))
+                    HorizontalDivider(color = colors.outline)
                     Spacer(Modifier.height(20.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Security, null, tint = PaperPink, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("PRIVACY BY DESIGN", fontWeight = FontWeight.Black, fontSize = 11.sp, color = PaperPink, letterSpacing = 1.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "• 100% local processing — files never leave your device\n• No servers, no cloud, no uploads\n• No tracking, no analytics, no telemetry\n• Works completely offline\n• Your files, your processor, your device",
-                        fontSize = 12.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-
+                    BulletBlock(Icons.Filled.Security, stringResource(R.string.about_privacy_title), stringResource(R.string.about_privacy_body))
                     Spacer(Modifier.height(16.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Code, null, tint = PaperPink, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("FULLY OPEN SOURCE", fontWeight = FontWeight.Black, fontSize = 11.sp, color = PaperPink, letterSpacing = 1.sp)
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "• All code available on GitHub\n• Anyone can audit the source\n• No hidden tracking or data collection\n• Community-driven development\n• Security researchers can verify claims",
-                        fontSize = 12.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                    BulletBlock(Icons.Filled.Code, stringResource(R.string.about_open_title), stringResource(R.string.about_open_body))
                 }
             }
         }
 
-        item { LibrarySectionHeader(Icons.Filled.Favorite, "CREDITS", PaperPink, first = true) }
+        item { SectionHeader(Icons.Filled.Favorite, stringResource(R.string.about_credits)) }
         item {
             LibraryRow(
                 Icons.Filled.Description, "PaperKnife+", "GPL-3.0-or-later",
                 "$appName is a fork of PaperKnife+ and keeps its PDF tools.\nBy potatameister; contributors are listed on the project's GitHub page.\n" +
-                    "https://github.com/potatameister/PaperKnifePlus", PaperPink
+                    "https://github.com/potatameister/PaperKnifePlus"
             )
         }
         item {
             LibraryRow(
                 Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
                 "The document scanner is ported from OpenScan to Kotlin.\nBy Vijay T S and Vikram H (Ethereal Developers); contributors are listed on " +
-                    "the project's GitHub page.\nhttps://github.com/ethereal-developers/OpenScan", PaperPink
+                    "the project's GitHub page.\nhttps://github.com/ethereal-developers/OpenScan"
             )
         }
         item {
             Text(
                 "$appName is an independent fork and is not affiliated with or endorsed by the PaperKnife+ or OpenScan projects or their authors.",
-                fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(horizontal = 4.dp)
+                fontSize = 13.sp, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp)
             )
         }
 
+        item { SectionHeader(Icons.Filled.Gavel, stringResource(R.string.about_legal)) }
         item {
-            AboutSection("LEGAL") {
-                AboutMenuItem(Icons.Filled.Code, "Open Source Libraries", "The tech powering our engine") { onNavigate("libraries") }
-                AboutMenuItem(Icons.Filled.Description, "GPL v3", "Read the legal terms") { onNavigate("license") }
+            AboutCard {
+                Column {
+                    AboutMenuItem(Icons.Filled.Code, stringResource(R.string.about_libraries), stringResource(R.string.about_libraries_body)) { onNavigate("libraries") }
+                    HorizontalDivider(color = colors.outline)
+                    AboutMenuItem(Icons.Filled.Description, stringResource(R.string.about_license), stringResource(R.string.about_license_body)) { onNavigate("license") }
+                }
             }
         }
 
         item {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("$appName V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-            }
+            Text(
+                stringResource(R.string.settings_version, appName, appVersionName(context)),
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-
-        item { Spacer(Modifier.height(100.dp)) }
     }
 }
 
 @Composable
 fun LibrariesPage(loadNotices: suspend () -> List<NoticeSection> = assetNoticeLoader()) {
-    val violet = Color(0xFF8B5CF6)
-    val green = Color(0xFF10B981)
     var notices by remember(loadNotices) { mutableStateOf(emptyList<NoticeSection>()) }
     LaunchedEffect(loadNotices) {
         notices = loadNotices()
     }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { LibrarySectionHeader(Icons.Filled.Settings, "CORE ENGINE", PaperPink, first = true) }
-        item { LibraryRow(Icons.Filled.Description, "PDFBox-Android", "Apache 2.0", "The native heart of our engine", PaperPink) }
-        item { LibraryRow(Icons.Filled.Bolt, "Kotlin Coroutines", "Apache 2.0", "Powering our multi-threaded rendering engine", PaperPink) }
+        item { SectionHeader(Icons.Filled.Settings, stringResource(R.string.about_core_engine)) }
+        item { LibraryRow(Icons.Filled.Description, "PDFBox-Android", "Apache 2.0", "The native heart of our engine") }
+        item { LibraryRow(Icons.Filled.Bolt, "Kotlin Coroutines", "Apache 2.0", "Powering our multi-threaded rendering engine") }
         item {
             LibraryRow(
                 Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
-                "Document scanner, ported from OpenScan. Copyright (c) 2021, Vijay T S and Vikram H", PaperPink
+                "Document scanner, ported from OpenScan. Copyright (c) 2021, Vijay T S and Vikram H"
             )
         }
 
-        item { LibrarySectionHeader(Icons.Filled.Palette, "UI & DESIGN", violet) }
-        item { LibraryRow(Icons.Filled.TouchApp, "Jetpack Compose", "Apache 2.0", "Modern UI toolkit for native Android", violet) }
-        item { LibraryRow(Icons.Filled.Style, "Material 3", "Apache 2.0", "Modern design system implementation", violet) }
+        item { SectionHeader(Icons.Filled.Palette, stringResource(R.string.about_ui_design)) }
+        item { LibraryRow(Icons.Filled.TouchApp, "Jetpack Compose", "Apache 2.0", "Modern UI toolkit for native Android") }
+        item { LibraryRow(Icons.Filled.Style, "Material 3", "Apache 2.0", "Modern design system implementation") }
 
-        item { LibrarySectionHeader(Icons.Filled.Image, "MEDIA", green) }
-        item { LibraryRow(Icons.Filled.PhotoLibrary, "Coil", "Apache 2.0", "High-performance image loading engine", green) }
-        item { LibraryRow(Icons.Filled.PhotoCamera, "CameraX", "Apache 2.0", "Camera capture for the document scanner", green) }
+        item { SectionHeader(Icons.Filled.Image, stringResource(R.string.about_media)) }
+        item { LibraryRow(Icons.Filled.PhotoLibrary, "Coil", "Apache 2.0", "High-performance image loading engine") }
+        item { LibraryRow(Icons.Filled.PhotoCamera, "CameraX", "Apache 2.0", "Camera capture for the document scanner") }
 
-        item { LibrarySectionHeader(Icons.Filled.Gavel, "NOTICES", Color.Gray) }
+        item { SectionHeader(Icons.Filled.Gavel, stringResource(R.string.about_notices)) }
         items(notices) { notice ->
-            LibraryRow(Icons.Filled.Gavel, notice.title, "", notice.body, Color.Gray)
+            LibraryRow(Icons.Filled.Gavel, notice.title, "", notice.body)
         }
-
-        item { Spacer(Modifier.height(100.dp)) }
     }
 }
 
@@ -289,43 +283,70 @@ internal fun plainMarkdownLine(line: String): String {
     return parts.mapIndexed { i, part -> if (i % 2 == 1) part else plain(part) }.joinToString("")
 }
 
+/** A card on the background, as the prototype's: surface, outline, 18 dp corners. */
 @Composable
-private fun LibrarySectionHeader(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, color: Color, first: Boolean = false) {
-    Column {
-        if (!first) Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(title, fontSize = 10.sp, fontWeight = FontWeight.Black, color = color, letterSpacing = 1.2.sp)
-        }
-    }
+private fun AboutCard(content: @Composable () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = Modifier.fillMaxWidth()
+    ) { content() }
 }
 
 @Composable
-private fun LibraryRow(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String, license: String, description: String, color: Color) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+private fun AboutHeading(text: String) {
+    Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.semantics { heading() })
+}
+
+/** An icon and a bold [title] over [body], inside the How it works card. */
+@Composable
+private fun BulletBlock(icon: ImageVector, title: String, body: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.size(8.dp))
+        AboutHeading(title)
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(body, fontSize = 14.sp, lineHeight = 21.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** A section heading (16 sp, as Home's "Recent in your folder") with its icon. */
+@Composable
+private fun SectionHeader(icon: ImageVector, title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 8.dp)) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.size(8.dp))
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.semantics { heading() })
+    }
+}
+
+/** One credited project or library: icon tile, [name] and its [license] tag, then [description]; text wraps rather than clips. */
+@Composable
+private fun LibraryRow(icon: ImageVector, name: String, license: String, description: String) {
+    val colors = MaterialTheme.colorScheme
+    val palette = LocalScanPalette.current
+    AboutCard {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
             Box(
-                modifier = Modifier.size(36.dp).background(color.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
+                modifier = Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+                Icon(icon, null, tint = colors.onSurface, modifier = Modifier.size(20.dp))
             }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(name, fontWeight = FontWeight.Black, fontSize = 14.sp)
-                    if (license.isNotEmpty()) {
-                        Spacer(Modifier.width(8.dp))
-                        Text("[$license]", fontSize = 9.sp, color = color, fontWeight = FontWeight.Bold)
-                    }
+            Spacer(Modifier.size(12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
+                if (license.isNotEmpty()) {
+                    Text(
+                        "[$license]",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = palette.toolFg,
+                        modifier = Modifier.background(palette.toolBg, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(description, fontSize = 11.sp, color = Color.Gray)
+                Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
             }
         }
     }
@@ -335,14 +356,10 @@ private fun LibraryRow(icon: androidx.compose.ui.graphics.vector.ImageVector, na
 fun LicensePage() {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp)
     ) {
         item {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            AboutCard {
                 Text(
                     """
                     GNU GENERAL PUBLIC LICENSE
@@ -366,45 +383,32 @@ fun LicensePage() {
                     License along with this program. If not, see
                     https://www.gnu.org/licenses/.
                     """.trimIndent(),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
                     modifier = Modifier.padding(20.dp),
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
-        item { Spacer(Modifier.height(100.dp)) }
     }
 }
 
+/** A row of at least 60 dp that opens a sub-page: icon tile, [title] over [subtitle], and an arrow. */
 @Composable
-fun AboutSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column {
-        Text(title, fontSize = 10.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(0.2f),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, Color.Gray.copy(0.1f))
-        ) {
-            Column { content() }
-        }
-    }
-}
-
-@Composable
-fun AboutMenuItem(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun AboutMenuItem(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(modifier = Modifier.size(36.dp).background(PaperPink.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
-            Icon(icon, null, modifier = Modifier.size(18.dp), tint = PaperPink)
+        Box(modifier = Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, modifier = Modifier.size(20.dp), tint = colors.onSurface)
         }
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.size(16.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(subtitle, fontSize = 11.sp, color = Color.Gray)
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
+            Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
         }
-        Icon(Icons.Filled.ChevronRight, null, modifier = Modifier.size(16.dp), tint = Color.Gray.copy(0.5f))
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(20.dp), tint = colors.onSurfaceVariant)
     }
 }

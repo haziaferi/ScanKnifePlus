@@ -117,7 +117,7 @@ class HomeViewTest {
             FolderItem("3", "a.pdf", FolderKind.TOOL, 10, 2, Uri.parse("content://folder/a.pdf")),
             FolderItem("4", "old.pdf", FolderKind.TOOL, 10, 1, Uri.parse("content://folder/old.pdf")),
         )
-        rule.runOnUiThread { SessionManager.addEntry("session.pdf", "Merge", "2 files", Icons.Filled.Layers) }
+        rule.runOnUiThread { SessionManager.addEntry("session.pdf", "merge", "2 files", Icons.Filled.Layers) }
         val opened = mutableListOf<Uri>()
         var seeAll = 0
         home(folder = FolderStatus.Ready("Documents/Scans"), recentFolder = items, onOpen = { opened += it }, onSeeAll = { seeAll++ })
@@ -142,10 +142,10 @@ class HomeViewTest {
     @Test
     fun `Recent shows the newest three outputs with their type tags`() {
         rule.runOnUiThread {
-            SessionManager.addEntry("old.pdf", "Merge", "2 files joined", Icons.Filled.Layers)
-            SessionManager.addEntry("signed.pdf", "Sign", "Document signed locally", Icons.Filled.Description)
-            SessionManager.addEntry("scan.pdf", "Scan", "3 pages", Icons.Filled.DocumentScanner)
-            SessionManager.addEntry("small.pdf", "Compress", "Optimized", Icons.Filled.Description)
+            SessionManager.addEntry("old.pdf", "merge", "2 files joined", Icons.Filled.Layers)
+            SessionManager.addEntry("signed.pdf", "sign", "Document signed locally", Icons.Filled.Description)
+            SessionManager.addEntry("scan.pdf", SCAN_ENTRY_TOOL, "3 pages", Icons.Filled.DocumentScanner)
+            SessionManager.addEntry("small.pdf", "compress", "Optimized", Icons.Filled.Description)
         }
         var seeAll = 0
         home(onSeeAll = { seeAll++ })
@@ -167,9 +167,9 @@ class HomeViewTest {
         val pdf = Uri.parse("content://com.paperknifeplus.app.test.typed/merged.pdf")
         val zip = Uri.parse("content://com.paperknifeplus.app.test.typed/pages.zip")
         val history = listOf(
-            ActivityEntry("1", "pages.zip", "PDF to ZIP", "3 pages", Icons.Filled.FolderZip, zip, 3),
-            ActivityEntry("2", "merged.pdf", "Merge", "2 files", Icons.Filled.Layers, pdf, 4),
-            ActivityEntry("3", "text.txt", "To Text", "5 chars", Icons.Filled.Description),
+            ActivityEntry("1", "pages.zip", "pdf2zip", "3 pages", Icons.Filled.FolderZip, zip, 3),
+            ActivityEntry("2", "merged.pdf", "merge", "2 files", Icons.Filled.Layers, pdf, 4),
+            ActivityEntry("3", "text.txt", "pdf2text", "5 chars", Icons.Filled.Description),
         )
         var opened: Uri? = null
         var historyOpened = 0
@@ -190,7 +190,7 @@ class HomeViewTest {
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so long names wrap.
     fun `at 2x text a recent row grows and keeps its name clear of the tag`() {
         val long = "scanknife-scan-2026-10-15-143205-with-a-long-name.pdf"
-        val history = listOf(ActivityEntry("1", long, "Scan", "3 pages", Icons.Filled.DocumentScanner))
+        val history = listOf(ActivityEntry("1", long, SCAN_ENTRY_TOOL, "3 pages", Icons.Filled.DocumentScanner))
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
                 RecentList(history, onSeeAll = {}, onOpenPreview = { _, _, _ -> })

@@ -262,11 +262,11 @@ class PageNumbersViewTest {
                 PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("SAVE DOCUMENT")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("SAVE DOCUMENT").performClick()
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Numbering Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Save PDF").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Numbering complete")).fetchSemanticsNodes().isNotEmpty() }
 
-        assertEquals("Page Numbers", SessionManager.history.first().tool)
+        assertEquals("page-numbers", SessionManager.history.first().toolId)
         PDDocument.load(output).use { doc ->
             // The page is A4 turned 90 degrees clockwise: its displayed bottom-right is the user-space top-right, and upright text runs up.
             val first = textPositions(doc).first()

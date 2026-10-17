@@ -101,9 +101,9 @@ class RearrangeViewTest {
                 RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("SAVE NEW ORDER")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("SAVE NEW ORDER").performClick()
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Save PDF").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange complete")).fetchSemanticsNodes().isNotEmpty() }
 
         PDDocument.load(output).use { doc ->
             assertEquals(2, doc.numberOfPages)
@@ -124,12 +124,12 @@ class RearrangeViewTest {
                 RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("UNLOCK FILE")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Unlock")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
-        rule.onNodeWithText("UNLOCK FILE").performClick()
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("SAVE NEW ORDER")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("SAVE NEW ORDER").performClick()
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange Complete")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Save PDF").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rearrange complete")).fetchSemanticsNodes().isNotEmpty() }
 
         assertThrows(InvalidPasswordException::class.java) { PDDocument.load(output).close() }
         PDDocument.load(output, TestPdfs.USER_PASSWORD).use { doc ->

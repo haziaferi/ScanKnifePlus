@@ -28,13 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,24 +44,24 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import coil.memory.MemoryCache
 import coil.request.ImageRequest
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import com.paperknifeplus.app.ui.theme.PaperPink
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.InputStream
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "UltraPreview"
 
@@ -214,7 +214,7 @@ fun UltraPreview(
             if (password == null) {
                 when (inspectPdf(context, uri)) {
                     PdfAccess.Unreadable -> {
-                        Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                         onDismiss()
                         return@launch
                     }
@@ -241,7 +241,7 @@ fun UltraPreview(
 
             val document = loadReaderDocument(context, source.displayUri)
             if (document == null) {
-                Toast.makeText(context, "Failed to load document", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, toolText(context, R.string.reader_failed_to_load_document), Toast.LENGTH_SHORT).show()
             } else {
                 activePageCount = document.pages.size
                 pageBoxes = document.pages
@@ -256,7 +256,7 @@ fun UltraPreview(
     }
 
     Scaffold(
-        containerColor = Color.Black
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(
             modifier = Modifier
@@ -264,7 +264,7 @@ fun UltraPreview(
                 .padding(padding)
         ) {
             if (isInitializing) {
-                LoadingStateView(PaperPink, false, "Loading Document View...")
+                LoadingStateView(showWarning = false, text = stringResource(R.string.reader_loading_document_view))
             } else if (fileToUnlock == null) {
                 Box(
                     modifier = Modifier
@@ -327,7 +327,7 @@ fun UltraPreview(
                                             false
                                         }
                                     } ?: false
-                                    if (!opened) Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
+                                    if (!opened) Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
@@ -385,7 +385,7 @@ fun UltraPreview(
                         }
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxHeight().width(6.dp).align(Alignment.Center).background(Color.Gray.copy(alpha = 0.15f), CircleShape)
+                        modifier = Modifier.fillMaxHeight().width(6.dp).align(Alignment.Center).background(MaterialTheme.colorScheme.outline, CircleShape)
                     )
 
                     if (trackHeight > 0 && activePageCount > 1) {
@@ -402,7 +402,7 @@ fun UltraPreview(
                                 .graphicsLayer {
                                     translationY = scrollPercentage * (trackHeight - thumbHeightPx)
                                 }
-                                .background(PaperPink, CircleShape)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
                                 .align(Alignment.TopCenter)
                                 .draggable(
                                     orientation = Orientation.Vertical,
@@ -432,16 +432,16 @@ fun UltraPreview(
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
                         shape = RoundedCornerShape(24.dp),
                         tonalElevation = 12.dp,
-                        border = BorderStroke(1.dp, Color.Gray.copy(0.1f))
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("$currentPage", fontWeight = FontWeight.Black, fontSize = 14.sp, color = PaperPink)
-                            Text(" / $activePageCount PAGES", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.Gray, modifier = Modifier.padding(start = 4.dp))
+                            Text("$currentPage", fontWeight = FontWeight.Black, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.reader_of_pages, activePageCount), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
                             Spacer(Modifier.width(16.dp))
-                            Box(Modifier.height(16.dp).width(1.dp).background(Color.Gray.copy(alpha = 0.2f)))
+                            Box(Modifier.height(16.dp).width(1.dp).background(MaterialTheme.colorScheme.outline))
                             Spacer(Modifier.width(16.dp))
                             Icon(Icons.Filled.UnfoldMore, null, modifier = Modifier.size(16.dp).alpha(0.5f), tint = MaterialTheme.colorScheme.onSurface)
                         }
@@ -461,12 +461,12 @@ fun UltraPreview(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.tool_back), modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
 
                     Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                         Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
-                        Text("PDF VIEWER", fontSize = 8.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.sp)
+                        Text(stringResource(R.string.reader_pdf_viewer), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     IconButton(onClick = {
@@ -476,19 +476,19 @@ fun UltraPreview(
                                 putExtra(Intent.EXTRA_STREAM, uri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share PDF"))
+                            context.startActivity(Intent.createChooser(intent, toolText(context, R.string.action_share)))
                         } catch (e: Exception) {
-                            Toast.makeText(context, "Cannot share file", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, toolText(context, R.string.tool_share_failed), Toast.LENGTH_SHORT).show()
                         }
                     }) {
-                        Icon(Icons.Filled.Share, null, tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Filled.Share, stringResource(R.string.action_share), tint = MaterialTheme.colorScheme.onSurface)
                     }
 
                     IconButton(onClick = { showToolPicker = true }) {
-                        Icon(Icons.Filled.Add, null, tint = PaperPink, modifier = Modifier.size(22.dp))
+                        Icon(Icons.Filled.Add, stringResource(R.string.reader_tools), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     }
                 }
-                HorizontalDivider(color = Color.Gray.copy(alpha = 0.1f))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
             }
         }
 
@@ -497,7 +497,7 @@ fun UltraPreview(
                 onDismissRequest = { showToolPicker = false },
                 sheetState = sheetState,
                 containerColor = MaterialTheme.colorScheme.surface,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Gray.copy(0.2f)) },
+                dragHandle = { BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outline) },
                 shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             ) {
                 ToolPickerContent(
@@ -521,7 +521,7 @@ fun UltraPreview(
                         fileToUnlock = null
                         initializeReader(pass)
                     },
-                    accentColor = PaperPink,
+                    accentColor = MaterialTheme.colorScheme.primary,
                     isLoading = isDecrypting,
                     isError = unlockError
                 )
@@ -565,7 +565,7 @@ fun PdfPageReaderItem(
             .aspectRatio(pageBox?.displayAspect ?: FALLBACK_PAGE_ASPECT)
             .padding(vertical = 4.dp)
             .shadow(4.dp)
-            .background(Color.White)
+            .background(DocumentInk.Paper)
     ) {
         val lowResPainter = rememberAsyncImagePainter(lowResRequest, imageLoader)
         val highResPainter = rememberAsyncImagePainter(highResRequest, imageLoader)
@@ -584,7 +584,7 @@ fun PdfPageReaderItem(
         ) {
             Image(
                 painter = highResPainter,
-                contentDescription = "Page ${index + 1}",
+                contentDescription = stringResource(R.string.tool_page_n, index + 1),
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
@@ -592,7 +592,7 @@ fun PdfPageReaderItem(
 
         if (lowResPainter.state is AsyncImagePainter.State.Loading && highResPainter.state is AsyncImagePainter.State.Loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = PaperPink, modifier = Modifier.size(32.dp))
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
             }
         }
 

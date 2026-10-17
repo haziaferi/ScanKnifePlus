@@ -21,7 +21,7 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -42,22 +42,22 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import coil.compose.rememberAsyncImagePainter
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.paperknifeplus.app.ui.theme.PaperPink
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
+import java.io.File
+import kotlin.math.ceil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import kotlin.math.ceil
 
 /** The aspect ratio Sign and Watermark assume for a page whose box could not be read: A4 portrait. */
 internal const val FALLBACK_PAGE_ASPECT = 0.707f
@@ -81,8 +81,8 @@ fun SignView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = PaperPink
+    val outputs = rememberToolOutputs("sign")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
@@ -155,7 +155,7 @@ fun SignView(
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -202,7 +202,7 @@ fun SignView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
-                    SessionManager.addEntry(outputName, "Sign", "Document signed locally", Icons.Filled.Draw, uri, pageCount)
+                    outputs.saved(uri, outputName, toolText(context, R.string.sign_document_signed_locally), Icons.Filled.Draw, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -212,7 +212,7 @@ fun SignView(
                 Log.w("SignView", "Signing failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -296,9 +296,8 @@ fun SignView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Sign PDF",
-                    subtitle = "SECURE SIGNATURE",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_sign),
+                    subtitle = stringResource(R.string.sign_secure_signature),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() }
@@ -308,17 +307,15 @@ fun SignView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, false, "Preparing document...")
+                LoadingStateView(false, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Filled.Draw,
-                            title = "Tap to enter file",
-                            subtitle = "SIGN ANY PDF DOCUMENT",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.sign_sign_any_pdf_document),
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -343,26 +340,19 @@ fun SignView(
                             }
 
                             val hasSigned = placedSignatures.isNotEmpty()
-                            Button(
+                            ToolPrimaryButton(
+                                if (hasSigned) stringResource(R.string.action_save_pdf) else stringResource(R.string.sign_select_a_page_to_sign),
                                 onClick = { if (hasSigned) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp),
-                                enabled = hasSigned,
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (hasSigned) accentColor else Color.Gray.copy(0.3f),
-                                    contentColor = if (hasSigned) Color.White else Color.Gray
-                                )
-                            ) {
-                                Text(if (hasSigned) "SAVE SIGNED PDF" else "SELECT A PAGE TO SIGN", fontWeight = FontWeight.Black)
-                            }
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                enabled = hasSigned
+                            )
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Synthesizing PDF...",
+                            text = stringResource(R.string.sign_synthesizing_pdf),
                             current = 0,
                             total = 0,
                             showWarning = false
@@ -370,8 +360,8 @@ fun SignView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Sign Complete",
-                            subMessage = "Signature placed successfully",
+                            message = stringResource(R.string.sign_sign_complete),
+                            subMessage = stringResource(R.string.sign_signature_placed_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {
@@ -380,7 +370,6 @@ fun SignView(
                                 currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -428,13 +417,13 @@ fun SignView(
                 Surface(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color.Black.copy(0.85f),
-                    border = BorderStroke(1.dp, Color.White.copy(0.1f))
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (isFocusMode) {
                             TextButton(onClick = { isFocusMode = false; activeSignatureBitmap = null }, modifier = Modifier.weight(1f)) {
-                                Text("CANCEL", color = Color.LightGray, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                             }
                             Button(
                                 onClick = {
@@ -452,11 +441,10 @@ fun SignView(
                                     isFocusMode = false
                                     activeSignatureBitmap = null
                                 },
-                                modifier = Modifier.weight(1.5f).height(50.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                                modifier = Modifier.weight(1.5f).heightIn(min = 48.dp),
+                                shape = RoundedCornerShape(16.dp)
                             ) {
-                                Text("APPLY", fontWeight = FontWeight.Black)
+                                Text(stringResource(R.string.action_apply), fontWeight = FontWeight.Black)
                             }
                         } else {
                             val hasAppliedOnThisPage = placedSignatures.any { it.pageIndex == currentPage }
@@ -464,34 +452,32 @@ fun SignView(
                             if (!hasAppliedOnThisPage) {
                                 Button(
                                     onClick = { showSignOptions = true },
-                                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("ADD SIGN", fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.sign_add_sign), fontWeight = FontWeight.Black)
                                 }
                             } else {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     OutlinedButton(
                                         onClick = { lightboxPage = null },
-                                        modifier = Modifier.weight(1f).height(50.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(16.dp),
-                                        border = BorderStroke(1.dp, Color.White.copy(0.3f))
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                     ) {
-                                        Text("SIGN MORE", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_add_more), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black)
                                     }
                                     Button(
                                         onClick = {
                                             lightboxPage = null
                                             saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf"))
                                         },
-                                        modifier = Modifier.weight(1f).height(50.dp),
-                                        shape = RoundedCornerShape(16.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        shape = RoundedCornerShape(16.dp)
                                     ) {
-                                        Text("SAVE", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
                             }
@@ -505,27 +491,27 @@ fun SignView(
     if (showSignOptions) {
         AlertDialog(
             onDismissRequest = { showSignOptions = false },
-            title = { Text("Add Signature", fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.sign_add_signature), fontWeight = FontWeight.Black) },
             text = {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SignOptionCard("Draw", Icons.Filled.Gesture, accentColor, Modifier.weight(1f)) { showSignaturePad = true; showSignOptions = false }
-                        SignOptionCard("Upload", Icons.Filled.CloudUpload, Color.Gray, Modifier.weight(1f)) { pngLauncher.launch("image/png"); showSignOptions = false }
+                        SignOptionCard(stringResource(R.string.sign_draw), Icons.Filled.Gesture, accentColor, Modifier.weight(1f)) { showSignaturePad = true; showSignOptions = false }
+                        SignOptionCard(stringResource(R.string.sign_upload), Icons.Filled.CloudUpload, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f)) { pngLauncher.launch("image/png"); showSignOptions = false }
                     }
 
                     if (savedSignatures.isNotEmpty()) {
                         Spacer(Modifier.height(24.dp))
-                        Text("SAVED SIGNATURES", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.sp)
+                        ToolSectionLabel(stringResource(R.string.sign_saved_signatures))
                         Spacer(Modifier.height(12.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(savedSignatures) { file ->
-                                Box {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Surface(
-                                        modifier = Modifier.size(100.dp, 60.dp).clickable {
+                                        modifier = Modifier.size(100.dp, 60.dp).clickable(onClickLabel = stringResource(R.string.sign_use_this_signature)) {
                                             showSignOptions = false
                                             scope.launch { startPlacing(withContext(Dispatchers.IO) { BitmapFactory.decodeFile(file.absolutePath) }) }
                                         },
-                                        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, Color.Gray.copy(0.2f))
+                                        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                     ) { ComposeImage(painter = rememberAsyncImagePainter(file, imageLoader), contentDescription = null, modifier = Modifier.padding(8.dp)) }
 
                                     IconButton(
@@ -533,13 +519,12 @@ fun SignView(
                                             selectedSignatureFile = file
                                             exportSignatureLauncher.launch(outputFileName("signature_${System.currentTimeMillis()}", "png"))
                                         },
-                                        modifier = Modifier.align(Alignment.BottomEnd).size(22.dp)
                                     ) {
                                         Icon(
                                             Icons.Outlined.FileDownload,
-                                            contentDescription = "Export signature",
-                                            tint = accentColor.copy(alpha = 0.7f),
-                                            modifier = Modifier.size(14.dp)
+                                            contentDescription = stringResource(R.string.sign_export_signature),
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
@@ -562,7 +547,7 @@ fun SignView(
                 showSignOptions = false
             },
             accentColor = accentColor,
-            initialColor = Color.Black
+            initialColor = DocumentInk.Black
         )
     }
 }
@@ -589,13 +574,13 @@ internal suspend fun readPickedImage(context: Context, uri: Uri): Result<Bitmap?
 internal suspend fun exportSignature(context: Context, file: File, uri: Uri): String = withContext(Dispatchers.IO) {
     try {
         context.contentResolver.requireOutputStream(uri).use { it.write(file.readBytes()) }
-        "Signature exported"
+        context.getString(R.string.sign_exported)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Log.w("SignView", "Signature export failed", e)
         deleteCreatedDocument(context, uri)
-        "Export failed: ${e.message}"
+        context.getString(R.string.tool_error, e.message)
     }
 }
 
@@ -688,18 +673,11 @@ fun SignaturePadDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Draw Signature", fontWeight = FontWeight.Black) },
+        title = { Text(stringResource(R.string.sign_draw_signature), fontWeight = FontWeight.Black) },
         text = {
             Column {
-                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(Color.Black, Color.Blue, Color(0xFFC00000), Color(0xFF0070C0), PaperPink).forEach { color ->
-                        Surface(
-                            onClick = { strokeColor = color },
-                            modifier = Modifier.size(32.dp).border(2.dp, if (strokeColor == color) accentColor else Color.Transparent, CircleShape),
-                            shape = CircleShape,
-                            color = color
-                        ) {}
-                    }
+                Row(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
+                    DocumentInk.signature.forEach { ink -> InkSwatch(ink, selected = strokeColor == ink.color) { strokeColor = ink.color } }
                 }
 
                 Box(
@@ -707,8 +685,8 @@ fun SignaturePadDialog(
                         .fillMaxWidth()
                         .height(300.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White)
-                        .border(1.dp, Color.Gray.copy(0.2f), RoundedCornerShape(16.dp))
+                        .background(DocumentInk.Paper)
+                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(16.dp))
                         .pointerInput(Unit) {
                             detectDragGestures(
                                 onDragStart = { offset ->
@@ -740,9 +718,9 @@ fun SignaturePadDialog(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = shouldSaveSignature, onCheckedChange = { shouldSaveSignature = it }, colors = CheckboxDefaults.colors(checkedColor = accentColor))
-                    Text("Save signature", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.sign_save_signature), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { strokes.clear() }) { Text("CLEAR", color = Color.Gray, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = { strokes.clear() }) { Text(stringResource(R.string.action_clear), color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold) }
                 }
             }
         },
@@ -752,7 +730,7 @@ fun SignaturePadDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                 shape = RoundedCornerShape(12.dp),
                 enabled = strokes.isNotEmpty()
-            ) { Text("ADOPT", fontWeight = FontWeight.Black) }
+            ) { Text(stringResource(R.string.sign_adopt), fontWeight = FontWeight.Black) }
         }
     )
 }
@@ -761,12 +739,12 @@ fun SignaturePadDialog(
 fun SignOptionCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, modifier: Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = modifier.height(100.dp),
+        modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         color = color.copy(alpha = 0.05f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.1f))
     ) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 100.dp).padding(12.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = color, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(8.dp))
             Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = color)

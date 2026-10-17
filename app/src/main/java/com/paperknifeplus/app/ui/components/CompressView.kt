@@ -5,10 +5,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,12 +16,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,8 +34,8 @@ fun CompressView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF59E0B)
+    val outputs = rememberToolOutputs("compress")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -76,7 +73,7 @@ fun CompressView(
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -115,7 +112,7 @@ fun CompressView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Compress", "Optimized", Icons.Filled.FlashOn, uri, finalCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.compress_optimized), Icons.Filled.FlashOn, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -125,7 +122,7 @@ fun CompressView(
                 Log.w("CompressView", "Compression failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -136,9 +133,8 @@ fun CompressView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Compress",
-                    subtitle = "OPTIMIZE PDF SIZE",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_compress),
+                    subtitle = stringResource(R.string.compress_optimize_pdf_size),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -148,17 +144,15 @@ fun CompressView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Analyzing file structure...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.compress_analyzing_file_structure))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.Bolt,
-                            title = "Tap to enter file",
-                            subtitle = "OPTIMIZE ANY PDF DOCUMENT",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.compress_optimize_any_pdf_document),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -179,64 +173,46 @@ fun CompressView(
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(24.dp))
-                            Text("OPTIMIZATION LEVEL", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
+                            ToolSectionLabel(stringResource(R.string.compress_optimization_level), Modifier.fillMaxWidth())
                             Spacer(Modifier.height(12.dp))
 
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 listOf("Basic", "Recommended", "Extreme").forEach { level ->
-                                    val isSelected = compressionLevel == level
-                                    Surface(
-                                        onClick = { compressionLevel = level },
-                                        color = if (isSelected) accentColor.copy(alpha = 0.1f) else Color.Transparent,
-                                        shape = RoundedCornerShape(16.dp),
-                                        border = BorderStroke(1.dp, if (isSelected) accentColor else Color.Gray.copy(0.1f)),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            RadioButton(selected = isSelected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = accentColor))
-                                            Spacer(Modifier.width(12.dp))
-                                            Column {
-                                                Text(level, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                Text(
-                                                    text = when(level) {
-                                                        "Extreme" -> "Max reduction, lower image quality"
-                                                        "Recommended" -> "Great balance of size and quality"
-                                                        else -> "Maintains high visual fidelity"
-                                                    },
-                                                    fontSize = 10.sp, color = Color.Gray
-                                                )
+                                    ToolOptionRow(
+                                        selected = compressionLevel == level,
+                                        title = stringResource(
+                                            when (level) {
+                                                "Extreme" -> R.string.compress_level_extreme
+                                                "Recommended" -> R.string.compress_level_recommended
+                                                else -> R.string.compress_level_basic
                                             }
-                                        }
-                                    }
+                                        ),
+                                        description = when (level) {
+                                            "Extreme" -> stringResource(R.string.compress_max_reduction)
+                                            "Recommended" -> stringResource(R.string.compress_great_balance)
+                                            else -> stringResource(R.string.compress_maintains_high_visual_fidelity)
+                                        },
+                                        onClick = { compressionLevel = level }
+                                    )
                                 }
                             }
 
                             Spacer(Modifier.height(32.dp))
-                            Button(
-                                onClick = {
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")
-                                    saveLauncher.launch(defaultName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("COMPRESS & SAVE PDF", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                            ToolPrimaryButton(stringResource(R.string.compress_compress_and_save_pdf), onClick = {
+                                val defaultName = outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")
+                                saveLauncher.launch(defaultName)
+                            }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Optimizing document size...",
+                            text = stringResource(R.string.compress_optimizing_document_size),
                             current = progressPage,
                             total = pageCount,
                             showWarning = showLoadingWarning
@@ -244,7 +220,7 @@ fun CompressView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Compression Complete",
+                            message = stringResource(R.string.compress_compression_complete),
                             subMessage = "", // No saved-size line: providers often still report 0 B right after the write.
                             processingTime = processingTime,
                             onDone = onBack,
@@ -258,7 +234,6 @@ fun CompressView(
                             onPreview = {
                                 outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }

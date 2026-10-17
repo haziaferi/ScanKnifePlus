@@ -13,14 +13,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.paperknifeplus.app.ui.theme.PaperPink
+import com.paperknifeplus.app.R
 
 /** Desaturates a page image, for previews of the Grayscale tool. */
 val GrayscaleColorFilter: ColorFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
@@ -35,22 +35,22 @@ fun JumpToPageDialog(initialInput: String, pageCount: Int, onJump: (Int) -> Unit
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Go to Page", fontWeight = FontWeight.Black) },
+        title = { Text(stringResource(R.string.page_dialog_go_to_page), fontWeight = FontWeight.Black) },
         text = {
             OutlinedTextField(
                 value = input,
                 onValueChange = { if (it.all { char -> char.isDigit() }) input = it },
-                label = { Text("Page Number (1-$pageCount)") },
+                label = { Text(stringResource(R.string.page_dialog_page_range, pageCount)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { go() })
             )
         },
         confirmButton = {
-            TextButton(onClick = go) { Text("GO", fontWeight = FontWeight.Black, color = PaperPink) }
+            TextButton(onClick = go) { Text(stringResource(R.string.action_go), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("CANCEL", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface) }
         },
         shape = RoundedCornerShape(28.dp),
         containerColor = MaterialTheme.colorScheme.surface,

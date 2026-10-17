@@ -29,14 +29,14 @@ class CompareViewTest {
     @Before
     fun setUp() = PDFBoxResourceLoader.init(context)
 
-    private fun emptyCards() = rule.onAllNodes(hasText("Select File")).fetchSemanticsNodes().size
+    private fun emptyCards() = rule.onAllNodes(hasText("Select file")).fetchSemanticsNodes().size
 
     @Test
     fun `a locked file whose prompt is cancelled is not kept as file A`() {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "locked-compare.pdf")
         rule.setContent { CompareView(initialUri = locked, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("UNLOCK FILE")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("CANCEL").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Unlock")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Cancel").performClick()
         rule.waitForIdle()
         assertEquals(2, emptyCards())
     }

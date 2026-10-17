@@ -58,13 +58,13 @@ class LockedFilePromptTest {
         rule.setContent { LockedFilePrompt(fileName = "a.pdf", onDismiss = {}, onUnlocked = { isError = true }, isError = isError) }
         rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
 
-        rule.onNodeWithText("UNLOCK FILE").performClick()
+        rule.onNodeWithText("Unlock").performClick()
         rule.onNodeWithText("Incorrect password, try again.").assertExists()
 
         rule.onNode(hasSetTextAction()).performTextInput("x")
         rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
 
-        rule.onNodeWithText("UNLOCK FILE").performClick()
+        rule.onNodeWithText("Unlock").performClick()
         rule.onNodeWithText("Incorrect password, try again.").assertExists()
     }
 }

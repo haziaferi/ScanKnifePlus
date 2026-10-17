@@ -57,7 +57,7 @@ class HistoryTest {
     @After
     fun tearDown() = rule.runOnUiThread { SessionManager.clearHistory() }
 
-    private fun entry(uri: Uri?) = ActivityEntry("id", "x", "Tool", "1 page", Icons.Filled.Description, uri, 1)
+    private fun entry(uri: Uri?) = ActivityEntry("id", "x", "merge", "1 page", Icons.Filled.Description, uri, 1)
 
     @Test
     fun `sharing carries the output's own type and a read grant`() {
@@ -82,9 +82,9 @@ class HistoryTest {
     @Test
     fun `only PDF rows open, and Share needs a file`() {
         rule.runOnUiThread {
-            SessionManager.addEntry("text.txt", "To Text", "5 chars", Icons.Filled.Description)
-            SessionManager.addEntry("pages.zip", "PDF to ZIP", "3 pages", Icons.Filled.FolderZip, zip)
-            SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description, pdf, 4)
+            SessionManager.addEntry("text.txt", "pdf2text", "5 chars", Icons.Filled.Description)
+            SessionManager.addEntry("pages.zip", "pdf2zip", "3 pages", Icons.Filled.FolderZip, zip)
+            SessionManager.addEntry("merged.pdf", "merge", "2 files", Icons.Filled.Description, pdf, 4)
         }
         var opened: Uri? = null
         rule.setContent { HistoryView(onItemClick = { uri, _, _ -> opened = uri }) }
@@ -103,8 +103,8 @@ class HistoryTest {
     @Test
     fun `the filter chips split scans from tool outputs`() {
         rule.runOnUiThread {
-            SessionManager.addEntry("scan.pdf", "Scan", "3 pages", Icons.Filled.DocumentScanner)
-            SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description)
+            SessionManager.addEntry("scan.pdf", SCAN_ENTRY_TOOL, "3 pages", Icons.Filled.DocumentScanner)
+            SessionManager.addEntry("merged.pdf", "merge", "2 files", Icons.Filled.Description)
         }
         rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
 
@@ -125,7 +125,7 @@ class HistoryTest {
 
     @Test
     fun `an empty filter says so, and there is no back arrow`() {
-        rule.runOnUiThread { SessionManager.addEntry("merged.pdf", "Merge", "2 files", Icons.Filled.Description) }
+        rule.runOnUiThread { SessionManager.addEntry("merged.pdf", "merge", "2 files", Icons.Filled.Description) }
         rule.setContent { HistoryView(onItemClick = { _, _, _ -> }) }
         rule.onNodeWithText("Scans").performClick()
         rule.onNodeWithText("No scans yet.").assertExists()
@@ -136,7 +136,7 @@ class HistoryTest {
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so long names wrap.
     fun `at 2x text a row keeps its tag clear of the name`() {
         val long = "Insurance letters compressed for the accountant.pdf"
-        rule.runOnUiThread { SessionManager.addEntry(long, "Compress", "Optimized", Icons.Filled.Description) }
+        rule.runOnUiThread { SessionManager.addEntry(long, "compress", "Optimized", Icons.Filled.Description) }
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
                 HistoryView(onItemClick = { _, _, _ -> })
@@ -152,7 +152,7 @@ class HistoryTest {
     @Test
     fun `entries get unique ids`() {
         rule.runOnUiThread {
-            repeat(50) { SessionManager.addEntry("f$it.pdf", "Tool", "", Icons.Filled.Description) }
+            repeat(50) { SessionManager.addEntry("f$it.pdf", "merge", "", Icons.Filled.Description) }
             assertEquals(50, SessionManager.history.map { it.id }.toSet().size)
         }
     }

@@ -8,9 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,11 +22,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,8 +50,8 @@ fun PdfToImageView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF14B8A6)
+    val outputs = rememberToolOutputs("pdf2img")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -83,7 +88,7 @@ fun PdfToImageView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -113,7 +118,7 @@ fun PdfToImageView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "PDF to Image", "${selectedPages.size} images", Icons.Outlined.BurstMode, uri)
+                    outputs.saved(uri, fileName, toolText(context, R.string.pdf2img_images, selectedPages.size), Icons.Outlined.BurstMode)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -123,7 +128,7 @@ fun PdfToImageView(
                 Log.w("PdfToImageView", "Export failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -138,9 +143,8 @@ fun PdfToImageView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "PDF to Image",
-                    subtitle = "NATIVE EXPORT ENGINE",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_pdf2img),
+                    subtitle = stringResource(R.string.pdf2img_native_export_engine),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
@@ -153,11 +157,9 @@ fun PdfToImageView(
                 ToolState.SELECTING -> {
                     SelectionGrid(
                         onSelect = { pickLauncher.launch("application/pdf") },
-                        isDark = isDark,
                         icon = Icons.Outlined.BurstMode,
-                        title = "Tap to select PDF",
-                        subtitle = "CONVERT DOCUMENT TO IMAGES",
-                        accentColor = accentColor,
+                        title = stringResource(R.string.tool_pick_pdf),
+                        subtitle = stringResource(R.string.pdf2img_convert_document_to_images),
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -171,24 +173,26 @@ fun PdfToImageView(
                             shape = RoundedCornerShape(24.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                Text("EXPORT CONFIGURATION", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.2.sp)
+                                ToolSectionLabel(stringResource(R.string.pdf2img_export_configuration))
                                 Spacer(Modifier.height(12.dp))
 
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("FORMAT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                        ToolSectionLabel(stringResource(R.string.pdf2img_format))
                                         Spacer(Modifier.height(8.dp))
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             IMAGE_FORMATS.forEach { f ->
                                                 val isSel = format == f
                                                 Surface(
+                                                    selected = isSel,
                                                     onClick = { format = f },
-                                                    modifier = Modifier.weight(1f).height(32.dp),
+                                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                                     shape = RoundedCornerShape(8.dp),
-                                                    color = if (isSel) accentColor else Color.Gray.copy(0.1f)
+                                                    color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                    border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
                                                 ) {
                                                     Box(contentAlignment = Alignment.Center) {
-                                                        Text(f, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (isSel) Color.White else Color.Gray)
+                                                        Text(f, fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                                                     }
                                                 }
                                             }
@@ -196,19 +200,28 @@ fun PdfToImageView(
                                     }
 
                                     Column(Modifier.weight(1f)) {
-                                        Text("QUALITY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                        ToolSectionLabel(stringResource(R.string.pdf2img_quality))
                                         Spacer(Modifier.height(8.dp))
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             listOf("Standard", "HD", "Ultra HD").forEach { q ->
                                                 val isSel = quality == q
                                                 Surface(
+                                                    selected = isSel,
                                                     onClick = { quality = q },
-                                                    modifier = Modifier.weight(1f).height(32.dp),
+                                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                                     shape = RoundedCornerShape(8.dp),
-                                                    color = if (isSel) accentColor else Color.Gray.copy(0.1f)
+                                                    color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                    border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
                                                 ) {
                                                     Box(contentAlignment = Alignment.Center) {
-                                                        Text(q.replace(" HD", "+"), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (isSel) Color.White else Color.Gray)
+                                                        Text(
+                                                            stringResource(
+                                                                when (q) {
+                                                                    "Ultra HD" -> R.string.pdf2img_quality_ultra
+                                                                    "HD" -> R.string.pdf2img_quality_hd
+                                                                    else -> R.string.pdf2img_quality_standard
+                                                                }
+                                                            ), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                                                     }
                                                 }
                                             }
@@ -219,7 +232,7 @@ fun PdfToImageView(
                         }
 
                         Spacer(Modifier.height(16.dp))
-                        Text("SELECT PAGES TO EXPORT", fontSize = 9.sp, fontWeight = FontWeight.Black, color = Color.Gray, letterSpacing = 1.sp, modifier = Modifier.padding(start = 4.dp))
+                        ToolSectionLabel(stringResource(R.string.pdf2img_select_pages_to_export), Modifier.padding(start = 4.dp))
                         Spacer(Modifier.height(8.dp))
 
                         Box(modifier = Modifier.weight(1f)) {
@@ -248,7 +261,8 @@ fun PdfToImageView(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .background(if (isSelected) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                                .clickable { selectedPages = if (isSelected) selectedPages - index else selectedPages + index }
+                                                .toggleable(value = isSelected, role = Role.Checkbox) { selectedPages = if (it) selectedPages + index else selectedPages - index }
+                                                .semantics { contentDescription = toolText(context, R.string.tool_page_n, index + 1); stateDescription = if (isSelected) toolText(context, R.string.state_selected) else toolText(context, R.string.state_not_selected) }
                                         )
 
                                         Surface(
@@ -256,15 +270,11 @@ fun PdfToImageView(
                                                 .align(Alignment.TopEnd)
                                                 .padding(8.dp)
                                                 .size(24.dp),
-                                            color = if (isSelected) accentColor else Color.Black.copy(0.3f),
+                                            color = if (isSelected) accentColor else pageBadge,
                                             shape = CircleShape
                                         ) {
-                                            Icon(
-                                                Icons.Filled.Check,
-                                                null,
-                                                tint = Color.White,
-                                                modifier = Modifier.padding(4.dp)
-                                            )
+                                            // The tick shows only when selected, so the state is in the shape and not only in the colour.
+                                            if (isSelected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
                                         }
                                     }
                                 }
@@ -273,21 +283,19 @@ fun PdfToImageView(
 
                         Button(
                             onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName), "zip")) },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(56.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp),
                             enabled = selectedPages.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
                             shape = RoundedCornerShape(20.dp)
                         ) {
-                            Text("Convert ${selectedPages.size} Pages to $format", fontWeight = FontWeight.Black)
+                            Text(stringResource(R.string.pdf2img_convert_pages_to, selectedPages.size, format), fontWeight = FontWeight.Black)
                         }
                     }
                 }
                 ToolState.PROCESSING -> {
                     ProcessingStateView(
-                        accentColor = accentColor,
                         uri = selectedUri,
                         password = unlockPassword.ifEmpty { null },
-                        text = "Rendering page $progressCount of ${selectedPages.size}...",
+                        text = stringResource(R.string.pdf2img_rendering_page_of, progressCount, selectedPages.size),
                         current = progressCount,
                         total = selectedPages.size,
                         showWarning = showLoadingWarning
@@ -295,13 +303,12 @@ fun PdfToImageView(
                 }
                 ToolState.SUCCESS -> {
                     SuccessView(
-                        message = "Images Exported",
-                        subMessage = "${selectedPages.size} pages saved to ZIP",
+                        message = stringResource(R.string.pdf2img_images_exported),
+                        subMessage = stringResource(R.string.pdf2img_pages_saved_to_zip, selectedPages.size),
                         processingTime = processingTime,
                         onDone = onBack,
                         onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
                         showPreviewButton = false,
-                        accentColor = accentColor
                     )
                 }
             }

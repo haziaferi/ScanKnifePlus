@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -10,9 +11,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
 
 /** The colour palettes offered in Settings. [storageName] is the stable preference value; never change it. */
@@ -76,7 +77,10 @@ val LocalIsDarkTheme = staticCompositionLocalOf { false }
 /** The active role tokens, including the roles Material3 has no slot for; the default palette's Light tokens outside the theme. */
 val LocalScanPalette = staticCompositionLocalOf { AppPalette.DEFAULT.light }
 
-/** The app theme: [palette] in Light or OLED, as [themeMode] and the system setting choose. The system bars follow bg and sf. */
+/**
+ * The app theme: [palette] in Light or OLED, as [themeMode] and the system setting choose. The window background follows bg at once, so a
+ * palette or theme change in Settings needs no recreation; the bars are edge to edge (enableEdgeToEdge), with icons for the theme.
+ */
 @Composable
 fun PaperKnifePlusTheme(
     palette: AppPalette = AppPalette.DEFAULT,
@@ -90,11 +94,14 @@ fun PaperKnifePlusTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = tokens.sf.toArgb()
+            window.setBackgroundDrawable(tokens.bg.toArgb().toDrawable())
             val controller = WindowCompat.getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !oled
             controller.isAppearanceLightNavigationBars = !oled
+            // Below API 29 enableEdgeToEdge leaves a scrim chosen by the system's night mode at launch, which can hide icons drawn for the app's
+            // theme; there the bar takes the theme's surface instead.
+            @Suppress("DEPRECATION")
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) window.navigationBarColor = tokens.sf.toArgb()
         }
     }
 

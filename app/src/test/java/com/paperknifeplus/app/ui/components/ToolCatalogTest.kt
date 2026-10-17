@@ -1,6 +1,8 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
@@ -60,12 +63,49 @@ class ToolCatalogTest {
         assertEquals(emptyList<String>(), offenders)
     }
 
+    /** The shell, every screen in the components (tools, Settings, About, the result screen) and the tools' shared scaffold. */
+    private fun screenFiles(): List<File> = listOf(File(sourceDir("com/paperknifeplus/app"), "MainActivity.kt")) +
+        components.listFiles()!!.filter { it.name.endsWith("View.kt") && !it.name.endsWith("Preview.kt") } +
+        listOf("ToolPicker.kt", "Tool.kt", "ToolCatalog.kt").map { File(components, it) }
+
     @Test
-    fun `the shell's files take colours from the theme only`() {
-        val shell = listOf(File(sourceDir("com/paperknifeplus/app"), "MainActivity.kt")) +
-            listOf("HomeView.kt", "HistoryView.kt", "ToolPicker.kt", "ToolsView.kt", "Tool.kt", "ToolCatalog.kt").map { File(components, it) }
-        val hardCoded = Regex("""Color\(0x|Color\.(White|Black|Gray|DarkGray|LightGray)|PaperPink""")
-        for (file in shell) assertEquals(file.name, null, hardCoded.find(file.readText())?.value)
+    fun `the screens take colours from the theme only`() {
+        val hardCoded = Regex("""Color\(0x|Color\.(White|Black|Gray|DarkGray|LightGray|Red|Blue)|PaperPink""")
+        for (file in screenFiles()) assertEquals(file.name, null, hardCoded.find(file.readText())?.value)
+    }
+
+    @Test
+    fun `the screens set no text under 12 sp`() {
+        val small = Regex("""fontSize = (\d+(\.\d+)?)\.sp""")
+        for (file in screenFiles()) {
+            val tooSmall = small.findAll(file.readText()).map { it.groupValues[1].toFloat() }.filter { it < 12f }.toList()
+            assertEquals(file.name, emptyList<Float>(), tooSmall)
+        }
+    }
+
+    @Test
+    fun `every tool records its outputs under its own catalog id, and nothing else writes History`() {
+        val catalog = File(components, "ToolCatalog.kt").readText()
+        val screenOf = Regex("""Tool\("([^"]+)"[^{]*\{\s*(\w+View)\(""").findAll(catalog).associate { it.groupValues[2] to it.groupValues[1] }
+        assertEquals(ToolCatalog.tools.size, screenOf.size)
+        val recorders = Regex("""rememberToolOutputs\("([^"]+)"\)""")
+        for ((screen, id) in screenOf) {
+            val ids = recorders.findAll(File(components, "$screen.kt").readText()).map { it.groupValues[1] }.toList()
+            // Compare shows two files side by side and saves nothing.
+            val expected = if (screen == "CompareView") emptyList() else listOf(id)
+            assertEquals(screen, expected, ids)
+            for (used in ids) assertEquals(used, ToolCatalog.byId(used)?.id)
+        }
+        val writers = sourceDir("").walkTopDown().filter { it.extension == "kt" && it.readText().contains("SessionManager.addEntry(") }.map { it.name }
+        assertEquals(setOf("Tool.kt", "ScanExport.kt"), writers.toSet())
+    }
+
+    @Test
+    fun `History's tag is the catalog name of the tool that made the output`() {
+        fun entry(toolId: String) = ActivityEntry("1", "out.pdf", toolId, "", Icons.Filled.Description)
+        for (tool in ToolCatalog.tools) assertEquals(tool.id, tool.name, entry(tool.id).tag)
+        assertEquals(R.string.history_tag_scan, entry(SCAN_ENTRY_TOOL).tag)
+        assertEquals(R.string.history_tag_tool, entry("Merge").tag)
     }
 
     @Test
@@ -113,13 +153,13 @@ class ToolCatalogTest {
     private companion object {
         /** A text only that tool's empty screen shows. */
         val SCREEN_TEXT = mapOf(
-            "merge" to "JOIN MULTIPLE DOCUMENTS", "split" to "EXTRACT PAGES FROM PDF", "delete" to "DELETE PAGES INSTANTLY",
-            "rearrange" to "MOVE PAGES TO NEW SLOTS", "rotate" to "FIX DOCUMENT ORIENTATION", "sign" to "SECURE SIGNATURE",
-            "watermark" to "CUSTOM OVERLAY", "page-numbers" to "CUSTOM PAGINATION", "bookmarks" to "EDIT DOCUMENT NAVIGATION",
-            "compress" to "OPTIMIZE PDF SIZE", "grayscale" to "CONVERT PDF TO B&W", "repair" to "RECOVER CORRUPT DOCUMENTS",
-            "compare" to "VISUAL DIFFERENCE TOOL", "protect" to "ENCRYPT YOUR DOCUMENT", "unlock" to "REMOVE PDF RESTRICTIONS",
-            "metadata" to "EDIT DOCUMENT PROPERTIES", "pdf2img" to "NATIVE EXPORT ENGINE", "img2pdf" to "JPG, PNG, OR WEBP",
-            "pdf2zip" to "PAGES TO ARCHIVE", "extract-images" to "EXTRACT ASSETS FROM PDFS", "pdf2text" to "EXTRACT RAW CONTENT"
+            "merge" to "Join multiple documents", "split" to "Extract pages from PDF", "delete" to "Delete pages instantly",
+            "rearrange" to "Move pages to new slots", "rotate" to "Fix document orientation", "sign" to "Secure signature",
+            "watermark" to "Custom overlay", "page-numbers" to "Custom pagination", "bookmarks" to "Edit document navigation",
+            "compress" to "Optimize PDF size", "grayscale" to "Convert PDF to B&W", "repair" to "Recover corrupt documents",
+            "compare" to "Visual difference tool", "protect" to "Encrypt your document", "unlock" to "Remove PDF restrictions",
+            "metadata" to "Edit document properties", "pdf2img" to "Native export engine", "img2pdf" to "JPG, PNG or WebP",
+            "pdf2zip" to "Pages to archive", "extract-images" to "Extract assets from PDFs", "pdf2text" to "Extract raw content"
         )
 
         /** The *View composables that are not tools: the shell's own screens and the tools' shared success screen. */

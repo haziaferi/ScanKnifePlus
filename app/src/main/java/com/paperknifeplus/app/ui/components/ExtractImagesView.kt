@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,19 +15,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import java.io.IOException
+import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
-import java.util.zip.ZipOutputStream
 
 @Composable
 fun ExtractImagesView(
@@ -38,8 +36,8 @@ fun ExtractImagesView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF14B8A6)
+    val outputs = rememberToolOutputs("extract-images")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
@@ -65,7 +63,7 @@ fun ExtractImagesView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -110,7 +108,7 @@ fun ExtractImagesView(
                     processingTime = timeStr
                     fileName = outputName
                     resultSummary = counts.summary
-                    SessionManager.addEntry(fileName, "Extract Image", "$extractedCount assets", Icons.Filled.Collections, uri)
+                    outputs.saved(uri, fileName, toolText(context, R.string.extract_images_assets, extractedCount), Icons.Filled.Collections)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -120,7 +118,7 @@ fun ExtractImagesView(
                 Log.w("ExtractImagesView", "Extraction failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -131,9 +129,8 @@ fun ExtractImagesView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Extract Image",
-                    subtitle = "EXTRACT ASSETS FROM PDFS",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_extract_images),
+                    subtitle = stringResource(R.string.extract_images_extract_assets_from_pdfs),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -143,17 +140,15 @@ fun ExtractImagesView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.PhotoLibrary,
-                            title = "Tap to enter file",
-                            subtitle = "EXTRACT ASSETS FROM PDF",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.extract_images_extract_assets_from_pdf),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -175,35 +170,26 @@ fun ExtractImagesView(
                             }
 
                             Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(24.dp))
-                            Text("READY TO STRIP ASSETS", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
-                            Text("Strip and save all raw image files from the document.", fontSize = 12.sp, color = Color.Gray)
+                            ToolSectionLabel(stringResource(R.string.extract_images_ready_to_strip_assets))
+                            Text(stringResource(R.string.extract_images_strip_and_save_all_raw), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                             Spacer(Modifier.height(32.dp))
 
-                            Button(
-                                onClick = {
+                            ToolPrimaryButton(stringResource(R.string.extract_images_extract_images_zip), onClick = {
                                     val safeName = outputFileName(pdfBaseName(fileName) + "-assets", "zip")
                                     saveLauncher.launch(safeName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("EXTRACT IMAGES (ZIP)", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Stripping image assets...",
+                            text = stringResource(R.string.extract_images_stripping_image_assets),
                             current = extractedCount,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -211,7 +197,7 @@ fun ExtractImagesView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Extraction Complete",
+                            message = stringResource(R.string.extract_images_extraction_complete),
                             subMessage = resultSummary,
                             processingTime = processingTime,
                             onDone = onBack,
@@ -222,7 +208,6 @@ fun ExtractImagesView(
                                 currentState = ToolState.SELECTING
                             },
                             showPreviewButton = false,
-                            accentColor = accentColor
                         )
                     }
                 }

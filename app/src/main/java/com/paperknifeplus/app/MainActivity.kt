@@ -14,7 +14,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +21,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -43,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -73,6 +77,8 @@ import com.haziaferi.scanknifeplus.ui.scan.ScanFlow
 import com.paperknifeplus.app.ui.components.AboutView
 import com.paperknifeplus.app.ui.components.HistoryView
 import com.paperknifeplus.app.ui.components.HomeView
+import com.paperknifeplus.app.ui.components.LocalOutputFolder
+import com.paperknifeplus.app.ui.components.OutputFolder
 import com.paperknifeplus.app.ui.components.PreferencesManager
 import com.paperknifeplus.app.ui.components.SettingsView
 import com.paperknifeplus.app.ui.components.ToolCatalog
@@ -166,7 +172,6 @@ class MainActivity : ComponentActivity() {
             var themePreference by remember { mutableIntStateOf(PreferencesManager.getTheme(applicationContext)) }
             var palette by remember { mutableStateOf(PreferencesManager.getPalette(applicationContext)) }
             val themeMode = ThemeMode.fromStored(themePreference)
-            val isDarkMode = themeMode.isOled(isSystemInDarkTheme())
 
             PaperKnifePlusTheme(palette = palette, themeMode = themeMode) {
                 val sheetState = rememberModalBottomSheetState()
@@ -199,6 +204,7 @@ class MainActivity : ComponentActivity() {
                     currentTool = FOLDER_ROUTE
                 }
 
+                val outputFolder = remember(folder) { OutputFolder(folder::copyOutput) }
                 FolderNotices(folder)
                 // Files a sync app changed while the app was away show when it comes back.
                 LifecycleResumeEffect(folder) {
@@ -227,128 +233,131 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .navigationBarsPadding()
-                ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.weight(1f),
-                            userScrollEnabled = currentTool == null,
-                            beyondViewportPageCount = 0
-                        ) { page ->
-                            when (mainScreens[page]) {
-                                HOME_ROUTE -> HomeView(
-                                    onAllTools = {
-                                        pickerKeepsFile = true
-                                        showToolPicker = true
-                                    },
-                                    onSettings = { currentTool = SETTINGS_ROUTE },
-                                    onImportPhotos = {
-                                        importUris = it
-                                        currentTool = SCAN_ROUTE
-                                    },
-                                    onSeeAll = { showTab(HISTORY_ROUTE) },
-                                    onOpenPreview = openPreview,
-                                    folder = folder.status,
-                                    onFolder = { openFolder(null) },
-                                    recentFolder = folder.history?.items
-                                )
-                                HISTORY_ROUTE -> HistoryView(
-                                    onItemClick = { uri, name, count ->
-                                        toolInitialPassword = null
-                                        openPreview(uri, name, count)
-                                    },
-                                    folder = folder.history,
-                                    onChooseFolder = { openFolder(null) },
-                                    onRefresh = { folder.refresh() }
+                // Edge to edge: the system navigation bar draws over a strip of the bottom bar's surface colour, below the content.
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    Box(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.weight(1f),
+                                userScrollEnabled = currentTool == null,
+                                beyondViewportPageCount = 0
+                            ) { page ->
+                                when (mainScreens[page]) {
+                                    HOME_ROUTE -> HomeView(
+                                        onAllTools = {
+                                            pickerKeepsFile = true
+                                            showToolPicker = true
+                                        },
+                                        onSettings = { currentTool = SETTINGS_ROUTE },
+                                        onImportPhotos = {
+                                            importUris = it
+                                            currentTool = SCAN_ROUTE
+                                        },
+                                        onSeeAll = { showTab(HISTORY_ROUTE) },
+                                        onOpenPreview = openPreview,
+                                        folder = folder.status,
+                                        onFolder = { openFolder(null) },
+                                        recentFolder = folder.history?.items
+                                    )
+                                    HISTORY_ROUTE -> HistoryView(
+                                        onItemClick = { uri, name, count ->
+                                            toolInitialPassword = null
+                                            openPreview(uri, name, count)
+                                        },
+                                        folder = folder.history,
+                                        onChooseFolder = { openFolder(null) },
+                                        onRefresh = { folder.refresh() }
+                                    )
+                                }
+                            }
+                            if (currentTool == null) {
+                                MainBottomBar(
+                                    currentScreen = mainScreens[pagerState.currentPage],
+                                    onNavigate = showTab,
+                                    onScan = { currentTool = SCAN_ROUTE }
                                 )
                             }
                         }
-                        if (currentTool == null) {
-                            MainBottomBar(
-                                currentScreen = mainScreens[pagerState.currentPage],
-                                onNavigate = showTab,
-                                onScan = { currentTool = SCAN_ROUTE }
-                            )
-                        }
-                    }
 
-                    if (showToolPicker) {
-                        val preloaded = previewData?.takeIf { pickerKeepsFile }
-                        ModalBottomSheet(
-                            onDismissRequest = { showToolPicker = false },
-                            sheetState = sheetState,
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-                        ) {
-                            ToolPickerContent(
-                                fileName = preloaded?.second,
-                                onRemoveFile = { pickerKeepsFile = false },
-                                onToolClick = { tool ->
-                                    scope.launch { sheetState.hide() }.invokeOnCompletion {
-                                        showToolPicker = false
-                                        toolInitialUri = preloaded?.first
-                                        toolInitialPassword = null
-                                        currentTool = tool
+                        if (showToolPicker) {
+                            val preloaded = previewData?.takeIf { pickerKeepsFile }
+                            ModalBottomSheet(
+                                onDismissRequest = { showToolPicker = false },
+                                sheetState = sheetState,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                            ) {
+                                ToolPickerContent(
+                                    fileName = preloaded?.second,
+                                    onRemoveFile = { pickerKeepsFile = false },
+                                    onToolClick = { tool ->
+                                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                                            showToolPicker = false
+                                            toolInitialUri = preloaded?.first
+                                            toolInitialPassword = null
+                                            currentTool = tool
+                                        }
                                     }
-                                }
-                            )
-                        }
-                    }
-
-                    AnimatedVisibility(visible = currentTool != null, enter = fadeIn(), exit = fadeOut()) {
-                        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                            when (val route = currentTool) {
-                                SETTINGS_ROUTE -> SettingsView(
-                                    isDarkMode = isDarkMode,
-                                    onThemeChange = { theme ->
-                                        themePreference = theme
-                                        PreferencesManager.setTheme(applicationContext, theme)
-                                    },
-                                    palette = palette,
-                                    onPaletteChange = {
-                                        palette = it
-                                        PreferencesManager.setPalette(applicationContext, it)
-                                    },
-                                    onOpenAbout = { currentTool = ABOUT_ROUTE },
-                                    onBack = closeTool,
-                                    folder = folder.status,
-                                    onFolder = { openFolder(SETTINGS_ROUTE) }
                                 )
-                                FOLDER_ROUTE -> FolderSetup(folder, onDone = { currentTool = folderReturn })
-                                ABOUT_ROUTE -> AboutView(onBack = { currentTool = SETTINGS_ROUTE })
-                                PREVIEW_ROUTE -> previewData?.let { (uri, name, count) ->
-                                    // Keyed by file, so a new 'Open with' file starts with a fresh reader (no old prompt, scroll or zoom).
-                                    key(uri) {
-                                        UltraPreview(
-                                            uri = uri, fileName = name, pageCount = count,
-                                            onDismiss = closeTool,
-                                            onOpenInTool = { tool, targetUri, targetPass ->
-                                                toolInitialUri = targetUri
-                                                toolInitialPassword = targetPass
-                                                currentTool = tool
-                                            }
-                                        )
+                            }
+                        }
+
+                        AnimatedVisibility(visible = currentTool != null, enter = fadeIn(), exit = fadeOut()) {
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                                when (val route = currentTool) {
+                                    SETTINGS_ROUTE -> SettingsView(
+                                        onThemeChange = { theme ->
+                                            themePreference = theme
+                                            PreferencesManager.setTheme(applicationContext, theme)
+                                        },
+                                        palette = palette,
+                                        onPaletteChange = {
+                                            palette = it
+                                            PreferencesManager.setPalette(applicationContext, it)
+                                        },
+                                        onOpenAbout = { currentTool = ABOUT_ROUTE },
+                                        onBack = closeTool,
+                                        folder = folder.status,
+                                        onFolder = { openFolder(SETTINGS_ROUTE) }
+                                    )
+                                    FOLDER_ROUTE -> FolderSetup(folder, onDone = { currentTool = folderReturn })
+                                    ABOUT_ROUTE -> AboutView(onBack = { currentTool = SETTINGS_ROUTE })
+                                    PREVIEW_ROUTE -> previewData?.let { (uri, name, count) ->
+                                        // Keyed by file, so a new 'Open with' file starts with a fresh reader (no old prompt, scroll or zoom).
+                                        key(uri) {
+                                            UltraPreview(
+                                                uri = uri, fileName = name, pageCount = count,
+                                                onDismiss = closeTool,
+                                                onOpenInTool = { tool, targetUri, targetPass ->
+                                                    toolInitialUri = targetUri
+                                                    toolInitialPassword = targetPass
+                                                    currentTool = tool
+                                                }
+                                            )
+                                        }
                                     }
-                                }
-                                SCAN_ROUTE -> {
-                                    val leave = {
-                                        importUris = emptyList()
-                                        closeTool()
+                                    SCAN_ROUTE -> {
+                                        val leave = {
+                                            importUris = emptyList()
+                                            closeTool()
+                                        }
+                                        ScanFlow(onClose = leave, onSaved = leave, importUris = importUris, folder = folder)
                                     }
-                                    ScanFlow(onClose = leave, onSaved = leave, importUris = importUris, folder = folder)
-                                }
-                                // Any other route is a tool id.
-                                else -> ToolCatalog.byId(route)?.let { tool ->
-                                    key(tool.id) { tool.screen(ToolLaunch(toolInitialUri, toolInitialPassword, closeTool, openPreview)) }
+                                    // Any other route is a tool id; its saved outputs are copied into the folder too (answer 5).
+                                    else -> ToolCatalog.byId(route)?.let { tool ->
+                                        CompositionLocalProvider(LocalOutputFolder provides outputFolder) {
+                                            key(tool.id) { tool.screen(ToolLaunch(toolInitialUri, toolInitialPassword, closeTool, openPreview)) }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
+                    Spacer(
+                        Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsBottomHeight(WindowInsets.navigationBars)
+                            .background(MaterialTheme.colorScheme.surface)
+                    )
                 }
             }
         }

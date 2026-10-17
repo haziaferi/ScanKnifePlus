@@ -32,9 +32,9 @@ class DeleteViewTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three.pdf")
         rule.setContent { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
 
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("MARKED FOR DELETION", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("0 / 3 MARKED FOR DELETION").assertExists()
-        rule.onNodeWithText("Tap to enter file").assertDoesNotExist()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("marked for deletion", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("0 / 3 marked for deletion").assertExists()
+        rule.onNodeWithText("Tap to choose a PDF").assertDoesNotExist()
     }
 
     @Test
@@ -42,9 +42,9 @@ class DeleteViewTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked.pdf")
         rule.setContent { DeleteView(initialUri = uri, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
 
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("MARKED FOR DELETION", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("0 / 2 MARKED FOR DELETION").assertExists()
-        rule.onNodeWithText("Password Required").assertDoesNotExist()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("marked for deletion", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("0 / 2 marked for deletion").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 
     @Test
@@ -52,8 +52,8 @@ class DeleteViewTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "owner-only.pdf")
         rule.setContent { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
 
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("MARKED FOR DELETION", substring = true)).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("0 / 2 MARKED FOR DELETION").assertExists()
-        rule.onNodeWithText("Password Required").assertDoesNotExist()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("marked for deletion", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("0 / 2 marked for deletion").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 }

@@ -21,14 +21,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
-import org.w3c.dom.Document
-import org.w3c.dom.Element
 import java.io.ByteArrayOutputStream
 import java.util.Calendar
 import java.util.Locale
@@ -37,11 +36,13 @@ import javax.xml.transform.OutputKeys
 import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
+import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
+import org.w3c.dom.Document
+import org.w3c.dom.Element
 
 @Composable
 fun MetadataView(
@@ -51,8 +52,8 @@ fun MetadataView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF6366F1)
+    val outputs = rememberToolOutputs("metadata")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -88,7 +89,7 @@ fun MetadataView(
         val count = getPageCount(context, uri, password)
         val properties = loadMetadata(context, uri, password)
         if (properties == null) {
-            Toast.makeText(context, "Could not read file properties", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, toolText(context, R.string.metadata_could_not_read_file_properties), Toast.LENGTH_LONG).show()
             backToSelection()
             return
         }
@@ -114,7 +115,7 @@ fun MetadataView(
         scope.launch {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     backToSelection()
                 }
                 PdfAccess.Encrypted -> fileToUnlock = fileName
@@ -148,7 +149,7 @@ fun MetadataView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Metadata", "Edited properties", Icons.Filled.Fingerprint, uri, pageCount)
+                    outputs.saved(uri, fileName, toolText(context, R.string.metadata_edited_properties), Icons.Filled.Fingerprint, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -158,7 +159,7 @@ fun MetadataView(
                 Log.w("MetadataView", "Saving properties failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -169,9 +170,8 @@ fun MetadataView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Metadata",
-                    subtitle = "EDIT DOCUMENT PROPERTIES",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_metadata),
+                    subtitle = stringResource(R.string.metadata_edit_document_properties),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -181,17 +181,15 @@ fun MetadataView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Reading file properties...")
+                LoadingStateView(showLoadingWarning, stringResource(R.string.metadata_reading_file_properties))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.Fingerprint,
-                            title = "Tap to enter file",
-                            subtitle = "EDIT PDF PROPERTIES",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.metadata_edit_pdf_properties),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -212,53 +210,43 @@ fun MetadataView(
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
 
                             Spacer(Modifier.height(24.dp))
 
-                            MetadataGroup("CORE METADATA") {
-                                MetadataEditField("Title", title, accentColor) { title = it }
-                                MetadataEditField("Author", author, accentColor) { author = it }
+                            MetadataGroup(stringResource(R.string.metadata_core_metadata)) {
+                                MetadataEditField(stringResource(R.string.tool_field_title), title, accentColor) { title = it }
+                                MetadataEditField(stringResource(R.string.metadata_author), author, accentColor) { author = it }
                             }
 
                             Spacer(Modifier.height(16.dp))
 
-                            MetadataGroup("ADDITIONAL TAGS") {
-                                MetadataEditField("Subject", subject, accentColor) { subject = it }
-                                MetadataEditField("Keywords", keywords, accentColor) { keywords = it }
+                            MetadataGroup(stringResource(R.string.metadata_additional_tags)) {
+                                MetadataEditField(stringResource(R.string.metadata_subject), subject, accentColor) { subject = it }
+                                MetadataEditField(stringResource(R.string.metadata_keywords), keywords, accentColor) { keywords = it }
                             }
 
                             Spacer(Modifier.height(16.dp))
 
-                            MetadataGroup("SOURCE ENGINE") {
-                                MetadataEditField("Creator", creator, accentColor) { creator = it }
-                                MetadataEditField("Producer", producer, accentColor) { producer = it }
+                            MetadataGroup(stringResource(R.string.metadata_source_engine)) {
+                                MetadataEditField(stringResource(R.string.metadata_creator), creator, accentColor) { creator = it }
+                                MetadataEditField(stringResource(R.string.metadata_producer), producer, accentColor) { producer = it }
                             }
 
                             Spacer(Modifier.height(32.dp))
 
-                            Button(
-                                onClick = {
+                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-meta", "pdf")
                                     saveLauncher.launch(defaultName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("SAVE PROPERTIES", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
-                            text = "Updating document metadata...",
+                            text = stringResource(R.string.metadata_updating_document_metadata),
                             current = 0,
                             total = 0,
                             showWarning = showLoadingWarning
@@ -266,8 +254,8 @@ fun MetadataView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Properties Updated",
-                            subMessage = "Document metadata saved",
+                            message = stringResource(R.string.metadata_properties_updated),
+                            subMessage = stringResource(R.string.metadata_document_metadata_saved),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {
@@ -276,7 +264,6 @@ fun MetadataView(
                                 currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -321,9 +308,9 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
     ) {
         Text(
             text = title,
-            fontSize = 8.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Black,
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 1.2.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
@@ -334,11 +321,11 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
 @Composable
 fun MetadataEditField(label: String, value: String, accentColor: Color, onValueChange: (String) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(0.7f), letterSpacing = 0.5.sp)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(0.7f), letterSpacing = 0.5.sp)
         TextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = TextFieldDefaults.colors(
                 unfocusedContainerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent,

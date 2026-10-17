@@ -99,8 +99,8 @@ class SignViewUnlockTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "locked-sign.pdf")
         rule.setContent { SignView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
 
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Password Required")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Password Required").assertExists()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Password required").assertExists()
     }
 }
 
@@ -123,7 +123,7 @@ class SignatureFilesTest {
     @Test
     fun `an export the provider refuses is reported`() {
         val file = File(context.cacheDir, "sig_export.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
-        assertTrue(runBlocking { exportSignature(context, file, refusing) }.startsWith("Export failed"))
+        assertTrue(runBlocking { exportSignature(context, file, refusing) }.startsWith("Error"))
     }
 
     class RefusingProvider : ContentProvider() {

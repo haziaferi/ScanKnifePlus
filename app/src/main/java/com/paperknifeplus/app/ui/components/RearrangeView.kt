@@ -9,18 +9,21 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
+import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,8 +38,8 @@ fun RearrangeView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF43F5E)
+    val outputs = rememberToolOutputs("rearrange")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -73,7 +76,7 @@ fun RearrangeView(
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
-                    Toast.makeText(context, UNREADABLE_PDF_MESSAGE, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
@@ -111,7 +114,7 @@ fun RearrangeView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Rearrange", "Reordered pages", Icons.Filled.GridView, uri, order.size)
+                    outputs.saved(uri, fileName, toolText(context, R.string.rearrange_reordered_pages), Icons.Filled.GridView, order.size)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -121,7 +124,7 @@ fun RearrangeView(
                 Log.w("RearrangeView", "Rearranging failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -132,9 +135,8 @@ fun RearrangeView(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
                 ToolTopBar(
-                    title = "Rearrange",
-                    subtitle = "MOVE PAGES TO NEW SLOTS",
-                    accent = accentColor,
+                    title = stringResource(R.string.tool_rearrange),
+                    subtitle = stringResource(R.string.rearrange_move_pages_to_new_slots),
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -144,17 +146,15 @@ fun RearrangeView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, false, "Preparing Rearrange Grid...")
+                LoadingStateView(false, stringResource(R.string.rearrange_preparing_rearrange_grid))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Filled.SwapVert,
-                            title = "Tap to enter file",
-                            subtitle = "REORDER PAGES RELIABLY",
-                            accentColor = accentColor,
+                            title = stringResource(R.string.tool_pick_pdf),
+                            subtitle = stringResource(R.string.rearrange_reorder_pages_reliably),
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -166,11 +166,11 @@ fun RearrangeView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
-                                    Text("${pageOrder.size} PAGES • TAP TO SELECT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
                                 }
                                 IconButton(onClick = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null }) {
-                                    Icon(Icons.Filled.Close, "Clear", tint = Color.Gray, modifier = Modifier.size(20.dp))
+                                    Icon(Icons.Filled.Close, stringResource(R.string.action_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                                 }
                             }
 
@@ -213,16 +213,15 @@ fun RearrangeView(
                                         },
                                         enabled = selectedPageIndex != null && selectedPageIndex!! > 0
                                     ) {
-                                        Icon(Icons.Filled.ArrowBackIos, "Move Back", tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else Color.Gray)
+                                        Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
 
                                     Button(
                                         onClick = { showMoveToDialog = true },
                                         enabled = selectedPageIndex != null,
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("MOVE TO...", fontSize = 11.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
 
                                     IconButton(
@@ -239,27 +238,25 @@ fun RearrangeView(
                                         },
                                         enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
                                     ) {
-                                        Icon(Icons.Filled.ArrowForwardIos, "Move Forward", tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else Color.Gray)
+                                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
 
                             Button(
                                 onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).heightIn(min = 56.dp),
                                 shape = RoundedCornerShape(24.dp)
                             ) {
-                                Text(text = "SAVE NEW ORDER", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                                Text(text = stringResource(R.string.action_save_pdf), fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
                             }
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
-                            text = "Applying new order...",
+                            text = stringResource(R.string.rearrange_applying_new_order),
                             current = 0,
                             total = 0,
                             showWarning = false
@@ -267,8 +264,8 @@ fun RearrangeView(
                     }
                     ToolState.SUCCESS -> {
                         SuccessView(
-                            message = "Rearrange Complete",
-                            subMessage = "Page order updated successfully",
+                            message = stringResource(R.string.rearrange_rearrange_complete),
+                            subMessage = stringResource(R.string.rearrange_page_order_updated_successfully),
                             processingTime = processingTime,
                             onDone = onBack,
                             onProcessMore = {
@@ -280,7 +277,6 @@ fun RearrangeView(
                             onPreview = {
                                 outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -289,15 +285,15 @@ fun RearrangeView(
             if (showMoveToDialog) {
                 AlertDialog(
                     onDismissRequest = { showMoveToDialog = false },
-                    title = { Text("Move Page to Position", fontWeight = FontWeight.Black) },
+                    title = { Text(stringResource(R.string.rearrange_move_page_to_position), fontWeight = FontWeight.Black) },
                     text = {
                         Column {
-                            Text("Current position: ${selectedPageIndex!! + 1}", fontSize = 12.sp, color = Color.Gray)
+                            Text(stringResource(R.string.rearrange_current_position, selectedPageIndex!! + 1), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(12.dp))
                             OutlinedTextField(
                                 value = moveToInput,
                                 onValueChange = { if (it.all { c -> c.isDigit() }) moveToInput = it },
-                                label = { Text("Target Page (1-${pageOrder.size})") },
+                                label = { Text(stringResource(R.string.rearrange_target_page_range, pageOrder.size)) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                             )
@@ -315,12 +311,12 @@ fun RearrangeView(
                                 showMoveToDialog = false
                                 moveToInput = ""
                             } else {
-                                Toast.makeText(context, "Invalid Page Number", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, toolText(context, R.string.rearrange_invalid_page_number), Toast.LENGTH_SHORT).show()
                             }
-                        }) { Text("MOVE", color = accentColor, fontWeight = FontWeight.Black) }
+                        }) { Text(stringResource(R.string.action_move), color = accentColor, fontWeight = FontWeight.Black) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showMoveToDialog = false; moveToInput = "" }) { Text("CANCEL", color = Color.Gray) }
+                        TextButton(onClick = { showMoveToDialog = false; moveToInput = "" }) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 )
             }
