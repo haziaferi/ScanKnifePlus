@@ -54,6 +54,8 @@ class HistoryFolderTest {
     fun `the folder's files fill History, with Conflicts as a fourth filter`() {
         var refreshed = 0
         history(folder, onRefresh = { refreshed++ })
+        // The refresh is a LaunchedEffect, which the main-thread rule only runs on a later frame, so wait for it rather than for idle.
+        rule.waitUntil(5_000) { refreshed > 0 }
         rule.waitForIdle()
         assertEquals("History reads the folder again as it shows", 1, refreshed)
         rule.onNodeWithText("Everything in Documents/Scans").assertExists()
