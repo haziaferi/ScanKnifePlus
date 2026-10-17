@@ -66,7 +66,11 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         // The one Robolectric test JVM runs the whole suite, Compose screens included; Gradle's 512 MB default ran out with the storage UI's tests.
-        unitTests.all { it.maxHeapSize = "2g" }
+        unitTests.all {
+            it.maxHeapSize = "2g"
+            // TEMPORARY (PR #45 diagnosis): name each test as it starts so CI shows which one exhausts the heap.
+            it.testLogging.events("started", "failed")
+        }
     }
 }
 
