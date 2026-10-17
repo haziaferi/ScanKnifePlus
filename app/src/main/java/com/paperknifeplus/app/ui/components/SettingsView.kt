@@ -32,6 +32,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
+import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
+import com.haziaferi.scanknifeplus.ui.folder.folderName
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.AppPalette
@@ -67,7 +69,9 @@ fun SettingsView(
     palette: AppPalette,
     onPaletteChange: (AppPalette) -> Unit,
     onOpenAbout: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    folder: FolderStatus = FolderStatus.NotChosen,
+    onFolder: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -177,6 +181,7 @@ fun SettingsView(
 
             item {
                 SettingsGroup("PRIVACY & STORAGE") {
+                    SettingsItem(Icons.Outlined.Folder, stringResource(R.string.settings_folder), folderSubtitle(folder), onClick = onFolder)
                     SettingsItem(Icons.Outlined.DeleteSweep, "Clear History", "Wipe all session history now") {
                         showClearConfirm = true
                     }
@@ -222,6 +227,17 @@ fun SettingsView(
                 TextButton(onClick = { showClearConfirm = false }) { Text("CANCEL", color = PaperPink) }
             }
         )
+    }
+}
+
+/** The Folder row's second line: where files are saved, that the folder must be chosen again, or that each file is saved with the picker. */
+@Composable
+private fun folderSubtitle(folder: FolderStatus): String {
+    val name = folderName(folder) ?: stringResource(R.string.folder_your_folder)
+    return when (folder) {
+        FolderStatus.NotChosen -> stringResource(R.string.settings_folder_none)
+        is FolderStatus.ChooseAgain -> stringResource(R.string.settings_folder_unreachable, name)
+        is FolderStatus.Ready, is FolderStatus.Copying -> stringResource(R.string.folder_bar_saving, name)
     }
 }
 

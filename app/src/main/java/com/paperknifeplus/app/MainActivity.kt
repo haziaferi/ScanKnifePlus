@@ -63,7 +63,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.lifecycleScope
+import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
+import com.haziaferi.scanknifeplus.ui.folder.FolderNotices
+import com.haziaferi.scanknifeplus.ui.folder.FolderSetup
 import com.haziaferi.scanknifeplus.ui.scan.ScanFlow
 import com.paperknifeplus.app.ui.components.AboutView
 import com.paperknifeplus.app.ui.components.HistoryView
@@ -94,9 +99,7 @@ const val SCAN_ROUTE = "scan"
 private const val SETTINGS_ROUTE = "settings"
 private const val ABOUT_ROUTE = "about"
 private const val PREVIEW_ROUTE = "ultra_preview"
-
-/** The PDF tool Import photos opens until the scan flow takes photos itself. */
-private const val IMPORT_PHOTOS_TOOL = "img2pdf"
+private const val FOLDER_ROUTE = "folder"
 
 /** The PDF an "Open with" [intent] carries: ACTION_VIEW with the PDF MIME type, or a path ending in ".pdf" when no type is given. */
 fun pdfUriFrom(intent: Intent?): Uri? {
@@ -141,6 +144,8 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Created once per launch, not per recreation: its launch work (the sweep, then the folder's sync conflicts) runs off the main thread.
+        val folder = ViewModelProvider(this)[FolderHolder::class.java].folder
         enableEdgeToEdge()
         // themes.xml can only hold the default palette; the stored one paints the first frame, so Rose and Graphite do not flash Still Water.
         val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -154,6 +159,8 @@ class MainActivity : ComponentActivity() {
             // Only stale copies: another window of the app may still be working on a fresh one.
             lifecycleScope.launch(Dispatchers.IO) { sweepDecryptedCopies(cacheDir, minAgeMs = STALE_COPY_AGE_MS) }
         }
+        // Folder setup opens by itself on a first launch, unless another app handed over a PDF to read.
+        val startRoute = if (savedInstanceState == null && incomingPdf == null && folder.offersSetup) FOLDER_ROUTE else null
 
         setContent {
             var themePreference by remember { mutableIntStateOf(PreferencesManager.getTheme(applicationContext)) }
@@ -168,7 +175,11 @@ class MainActivity : ComponentActivity() {
                 var pickerKeepsFile by remember { mutableStateOf(true) }
                 val scope = rememberCoroutineScope()
 
-                var currentTool by rememberSaveable { mutableStateOf<String?>(null) }
+                var currentTool by rememberSaveable { mutableStateOf(startRoute) }
+                // Where Folder setup goes back to: Settings when it was opened from there.
+                var folderReturn by rememberSaveable { mutableStateOf<String?>(null) }
+                // Not saveable, and not needed after a recreation: the scan flow's model, which outlives one, has the pages by then.
+                var importUris by remember { mutableStateOf(emptyList<Uri>()) }
                 var previewData by rememberSaveable(stateSaver = PreviewDataSaver) { mutableStateOf<Triple<Uri, String, Int>?>(null) }
                 var toolInitialUri by rememberSaveable { mutableStateOf<Uri?>(null) }
                 // Not saveable: saved state may be written to disk, and a password must not be.
@@ -182,12 +193,18 @@ class MainActivity : ComponentActivity() {
                     previewData = Triple(uri, name, count)
                     currentTool = PREVIEW_ROUTE
                 }
-                val openTool: (String) -> Unit = {
-                    toolInitialUri = null
-                    toolInitialPassword = null
-                    currentTool = it
-                }
                 val closeTool = { currentTool = null }
+                val openFolder: (String?) -> Unit = { from ->
+                    folderReturn = from
+                    currentTool = FOLDER_ROUTE
+                }
+
+                FolderNotices(folder)
+                // Files a sync app changed while the app was away show when it comes back.
+                LifecycleResumeEffect(folder) {
+                    folder.refresh()
+                    onPauseOrDispose {}
+                }
 
                 // An incoming PDF replaces whatever is open; the request is consumed once the reader shows it.
                 val incoming = incomingPdf
@@ -204,6 +221,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         showToolPicker -> scope.launch { sheetState.hide() }.invokeOnCompletion { showToolPicker = false }
                         currentTool == ABOUT_ROUTE -> currentTool = SETTINGS_ROUTE
+                        currentTool == FOLDER_ROUTE -> currentTool = folderReturn
                         currentTool != null -> currentTool = null
                         else -> showTab(HOME_ROUTE)
                     }
@@ -229,14 +247,25 @@ class MainActivity : ComponentActivity() {
                                         showToolPicker = true
                                     },
                                     onSettings = { currentTool = SETTINGS_ROUTE },
-                                    onImportPhotos = { openTool(IMPORT_PHOTOS_TOOL) },
+                                    onImportPhotos = {
+                                        importUris = it
+                                        currentTool = SCAN_ROUTE
+                                    },
                                     onSeeAll = { showTab(HISTORY_ROUTE) },
-                                    onOpenPreview = openPreview
+                                    onOpenPreview = openPreview,
+                                    folder = folder.status,
+                                    onFolder = { openFolder(null) },
+                                    recentFolder = folder.history?.items
                                 )
-                                HISTORY_ROUTE -> HistoryView(onItemClick = { uri, name, count ->
-                                    toolInitialPassword = null
-                                    openPreview(uri, name, count)
-                                })
+                                HISTORY_ROUTE -> HistoryView(
+                                    onItemClick = { uri, name, count ->
+                                        toolInitialPassword = null
+                                        openPreview(uri, name, count)
+                                    },
+                                    folder = folder.history,
+                                    onChooseFolder = { openFolder(null) },
+                                    onRefresh = { folder.refresh() }
+                                )
                             }
                         }
                         if (currentTool == null) {
@@ -286,8 +315,11 @@ class MainActivity : ComponentActivity() {
                                         PreferencesManager.setPalette(applicationContext, it)
                                     },
                                     onOpenAbout = { currentTool = ABOUT_ROUTE },
-                                    onBack = closeTool
+                                    onBack = closeTool,
+                                    folder = folder.status,
+                                    onFolder = { openFolder(SETTINGS_ROUTE) }
                                 )
+                                FOLDER_ROUTE -> FolderSetup(folder, onDone = { currentTool = folderReturn })
                                 ABOUT_ROUTE -> AboutView(onBack = { currentTool = SETTINGS_ROUTE })
                                 PREVIEW_ROUTE -> previewData?.let { (uri, name, count) ->
                                     // Keyed by file, so a new 'Open with' file starts with a fresh reader (no old prompt, scroll or zoom).
@@ -303,7 +335,13 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                SCAN_ROUTE -> ScanFlow(onClose = closeTool, onSaved = { closeTool() })
+                                SCAN_ROUTE -> {
+                                    val leave = {
+                                        importUris = emptyList()
+                                        closeTool()
+                                    }
+                                    ScanFlow(onClose = leave, onSaved = leave, importUris = importUris, folder = folder)
+                                }
                                 // Any other route is a tool id.
                                 else -> ToolCatalog.byId(route)?.let { tool ->
                                     key(tool.id) { tool.screen(ToolLaunch(toolInitialUri, toolInitialPassword, closeTool, openPreview)) }

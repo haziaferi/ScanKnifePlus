@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
+import com.haziaferi.scanknifeplus.ui.folder.AppFolder
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.components.PreferencesManager
@@ -46,6 +47,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 @RunWith(RobolectricTestRunner::class)
 class MainActivityTest {
@@ -92,7 +95,9 @@ class MainActivityTest {
     private fun view(uri: Uri, type: String? = "application/pdf") =
         Intent(Intent.ACTION_VIEW).setClass(context, MainActivity::class.java).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-    private fun launch(intent: Intent = Intent(context, MainActivity::class.java)) {
+    /** Launches the app; [setupSeen] stands for an earlier "Not now" on Folder setup, which otherwise opens by itself. */
+    private fun launch(intent: Intent = Intent(context, MainActivity::class.java), setupSeen: Boolean = true) {
+        if (setupSeen) AppFolder(context, CoroutineScope(Dispatchers.Unconfined)).dismissSetup()
         controller = Robolectric.buildActivity(MainActivity::class.java, intent).setup()
         rule.waitForIdle()
     }
@@ -187,6 +192,44 @@ class MainActivityTest {
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Home")
         rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+    }
+
+    @Test
+    fun `a first launch opens Folder setup, and Not now leaves it for Home for good`() {
+        launch(setupSeen = false)
+        waitFor("Choose where your documents live")
+        rule.onNode(hasText("Not now · save each file with the picker")).performClick()
+        waitFor("Scan a document")
+        rule.onNode(hasText("Choose a folder")).assertExists()
+
+        controller?.pause()?.stop()?.destroy()
+        launch(setupSeen = false)
+        waitFor("Scan a document")
+        assertFalse(shows("Choose where your documents live"))
+    }
+
+    @Test
+    fun `a PDF handed over on a first launch opens in the reader, not Folder setup`() {
+        launch(view(pdf("handed.pdf")), setupSeen = false)
+        waitFor("handed.pdf")
+        assertFalse(shows("Choose where your documents live"))
+    }
+
+    @Test
+    fun `Folder setup opens from the folder bar and from Settings and goes back where it came from`() {
+        launch()
+        rule.onNode(hasText("Choose a folder")).performClick()
+        waitFor("Choose where your documents live")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+
+        rule.onNode(hasContentDescription("Settings")).performClick()
+        waitFor("APPEARANCE")
+        rule.onNode(verticalList).performScrollToNode(hasText("Folder"))
+        rule.onNode(hasText("Folder")).performClick()
+        waitFor("Choose where your documents live")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("APPEARANCE")
     }
 
     @Test

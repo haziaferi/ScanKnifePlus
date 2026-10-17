@@ -18,7 +18,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import com.haziaferi.scanknifeplus.ui.folder.FolderItem
+import com.haziaferi.scanknifeplus.ui.folder.FolderKind
+import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -53,10 +57,20 @@ class HomeViewTest {
     @After
     fun tearDown() = rule.runOnUiThread { SessionManager.clearHistory() }
 
-    private fun home(onAllTools: () -> Unit = {}, onSettings: () -> Unit = {}, onImport: () -> Unit = {}, onSeeAll: () -> Unit = {}) =
-        rule.setContent {
-            HomeView(onAllTools = onAllTools, onSettings = onSettings, onImportPhotos = onImport, onSeeAll = onSeeAll, onOpenPreview = { _, _, _ -> })
-        }
+    private fun home(
+        onAllTools: () -> Unit = {},
+        onSettings: () -> Unit = {},
+        onSeeAll: () -> Unit = {},
+        folder: FolderStatus = FolderStatus.NotChosen,
+        onFolder: () -> Unit = {},
+        recentFolder: List<FolderItem>? = null,
+        onOpen: (Uri) -> Unit = {}
+    ) = rule.setContent {
+        HomeView(
+            onAllTools = onAllTools, onSettings = onSettings, onImportPhotos = {}, onSeeAll = onSeeAll, onOpenPreview = { uri, _, _ -> onOpen(uri) },
+            folder = folder, onFolder = onFolder, recentFolder = recentFolder
+        )
+    }
 
     @Test
     fun `the header shows the app name, All tools and Settings`() {
@@ -72,13 +86,48 @@ class HomeViewTest {
     }
 
     @Test
-    fun `the scan card has Import photos but no Scan button of its own`() {
-        var imports = 0
-        home(onImport = { imports++ })
+    fun `the scan card has Import photos, which asks the system picker for several images, but no Scan button of its own`() {
+        home()
         rule.onNodeWithText("Scan a document").assertHasNoClickAction()
         rule.onNodeWithText("Scan").assertDoesNotExist()
         rule.onNodeWithText("Import photos").performClick()
-        assertEquals(1, imports)
+        val request = shadowOf(rule.activity).nextStartedActivityForResult.intent
+        assertEquals(Intent.ACTION_GET_CONTENT, request.action)
+        assertEquals("image/*", request.type)
+        assertTrue(request.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false))
+    }
+
+    @Test
+    fun `the folder bar sits above the scan card and opens Folder setup`() {
+        var opened = 0
+        home(folder = FolderStatus.Ready("Documents/Scans"), onFolder = { opened++ })
+        val bar = rule.onNodeWithText("Saving to Documents/Scans").fetchSemanticsNode().boundsInRoot
+        val card = rule.onNodeWithText("Scan a document").fetchSemanticsNode().boundsInRoot
+        assertTrue(bar.bottom <= card.top)
+        rule.onNodeWithText("Saving to Documents/Scans").performClick()
+        assertEquals(1, opened)
+    }
+
+    @Test
+    fun `with a folder Recent shows its newest files, PDFs opening in the reader and others in History`() {
+        val pdf = Uri.parse("content://folder/new.pdf")
+        val items = listOf(
+            FolderItem("1", "new.pdf", FolderKind.SCAN, 10, 4, pdf),
+            FolderItem("2", "pages.zip", FolderKind.TOOL, 10, 3, Uri.parse("content://folder/pages.zip")),
+            FolderItem("3", "a.pdf", FolderKind.TOOL, 10, 2, Uri.parse("content://folder/a.pdf")),
+            FolderItem("4", "old.pdf", FolderKind.TOOL, 10, 1, Uri.parse("content://folder/old.pdf")),
+        )
+        rule.runOnUiThread { SessionManager.addEntry("session.pdf", "Merge", "2 files", Icons.Filled.Layers) }
+        val opened = mutableListOf<Uri>()
+        var seeAll = 0
+        home(folder = FolderStatus.Ready("Documents/Scans"), recentFolder = items, onOpen = { opened += it }, onSeeAll = { seeAll++ })
+        rule.onNodeWithText("Recent in your folder").assertExists()
+        rule.onNodeWithText("session.pdf").assertDoesNotExist()
+        rule.onNodeWithText("old.pdf").assertDoesNotExist()
+        rule.onNodeWithText("new.pdf").performScrollTo().performClick()
+        rule.onNodeWithText("pages.zip").performScrollTo().performClick()
+        assertEquals(listOf(pdf), opened)
+        assertEquals(1, seeAll)
     }
 
     @Test

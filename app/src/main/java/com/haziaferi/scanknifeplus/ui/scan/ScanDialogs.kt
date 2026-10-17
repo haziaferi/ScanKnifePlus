@@ -84,11 +84,11 @@ internal fun FilterDialog(current: String?, onPick: (String) -> Unit, onDismiss:
 }
 
 /**
- * The export options before the system file picker opens: page size (Fit included) and an optional password, where empty means none
- * (decision 6a). The PDF is then saved where the picker says, as the scanner's export does today.
+ * The export options before saving: page size (Fit included) and an optional password, where empty means none (decision 6a). The PDF is
+ * then saved into the user's [folder] when one is chosen (its name, shown here), else where the system file picker says.
  */
 @Composable
-internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> Unit) {
+internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> Unit, folder: String? = null) {
     var size by remember { mutableStateOf(PdfPageSize.DEFAULT) }
     var password by remember { mutableStateOf("") }
     val usable = remember(password) { ScanExport.isUsablePassword(password) }
@@ -116,10 +116,15 @@ internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> 
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text(stringResource(R.string.scan_save_where), style = scanText(13, FontWeight.Medium), color = LocalScanPalette.current.mu)
+                val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
+                Text(where, style = scanText(13, FontWeight.Medium), color = LocalScanPalette.current.mu)
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(size, password) }, enabled = usable) { Text(stringResource(R.string.scan_save_choose)) } },
+        confirmButton = {
+            TextButton(onClick = { onSave(size, password) }, enabled = usable) {
+                Text(stringResource(if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder))
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_cancel)) } }
     )
 }

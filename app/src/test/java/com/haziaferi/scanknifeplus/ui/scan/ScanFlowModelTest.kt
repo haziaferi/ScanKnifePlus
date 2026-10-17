@@ -21,6 +21,10 @@ import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
+import com.haziaferi.scanknifeplus.storage.FileFolderStore
+import com.haziaferi.scanknifeplus.storage.ScanFolder
+import com.haziaferi.scanknifeplus.storage.WorkingCopies
+import com.haziaferi.scanknifeplus.storage.WriteResult
 import java.io.File
 import java.nio.file.Files
 import java.util.Collections
@@ -83,15 +87,15 @@ class ScanFlowModelTest {
     }
     private val library = ScanLibrary(root.resolve("library"), clock = { now++ }, capture = writer, images = images, bookCapture = bookWriter)
     private var sessions = 0
+    @Volatile private var assemblyFails = false
     private val assembler = PdfAssembler { pages, _, _, dest, password ->
         written += password
         dest.writeText(pages.joinToString("|") { it.readText() })
-        true
+        !assemblyFails
     }
     private val saved = mutableListOf<SavedPdf>()
-    private val export = ScanExport(
-        context, library, ScanPdfExporter(library, root.resolve("export"), images = images, assembler = assembler), onSaved = { saved += it }
-    )
+    private val exporter = ScanPdfExporter(library, root.resolve("export"), images = images, assembler = assembler)
+    private val export = ScanExport(context, library, exporter, onSaved = { saved += it })
     private val models = mutableListOf<ScanFlowModel>()
 
     private fun model(
@@ -102,6 +106,7 @@ class ScanFlowModelTest {
         context,
         library = library,
         startSession = startSession,
+        exporter = exporter,
         export = export,
         main = Dispatchers.Unconfined,
         io = io,
@@ -396,6 +401,52 @@ class ScanFlowModelTest {
         } finally {
             thread.shutdown()
         }
+    }
+
+    private fun scanFolder(dir: File) = ScanFolder(FileFolderStore(dir), library, root.resolve("library"), WorkingCopies(root.resolve("bindings")))
+
+    @Test
+    fun `done with a folder writes the PDF at its top level and the pages under Scan sources, then ends keeping the pages`() {
+        val dir = root.resolve("folder").apply { mkdirs() }
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        m.shoot("a")
+        m.shoot("b")
+        waitUntil("two pages") { m.pages.size == 2 && m.canSave }
+        m.pendingSave = PdfPageSize.FIT to "secret"
+
+        var result: WriteResult? = null
+        m.saveToFolder(scanFolder(dir), PdfPageSize.FIT, "secret") { result = it }
+        val name = (result as WriteResult.Written).name
+        assertEquals("a|b", dir.resolve("$name.pdf").readText())
+        assertTrue(dir.resolve("Scan sources/$name/document.json").isFile)
+        assertEquals(listOf<String?>("secret"), written)
+        assertNull("the options are used once", m.pendingSave)
+        assertTrue("nothing went through the picker", saved.isEmpty())
+        assertFalse(m.busy)
+        assertEquals("the session ended keeping the document", listOf("a", "b"), m.storedTexts())
+    }
+
+    @Test
+    fun `a folder out of reach keeps Review and its pages, and a failed write says so`() {
+        val gone = root.resolve("gone")
+        val m = model()
+        m.shoot("a")
+        waitUntil("the page") { m.pages.size == 1 && m.canSave }
+
+        var result: WriteResult? = null
+        m.saveToFolder(scanFolder(gone), PdfPageSize.A4, "") { result = it }
+        assertEquals(WriteResult.FolderUnavailable, result)
+        assertNull("the caller asks for the folder again", m.notice)
+        assertFalse(m.busy)
+        assertEquals(1, m.pages.size)
+        assertTrue("the session still runs", m.canSave)
+
+        assemblyFails = true
+        m.saveToFolder(scanFolder(root.resolve("folder").apply { mkdirs() }), PdfPageSize.A4, "") { result = it }
+        assertEquals(WriteResult.Failed, result)
+        assertEquals(ScanNotice.SAVE_FAILED, m.notice)
+        assertEquals(1, m.pages.size)
     }
 
     @Test

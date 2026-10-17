@@ -18,6 +18,7 @@ import com.haziaferi.scanknifeplus.scan.camera.ScanCameraController
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraState
 import com.haziaferi.scanknifeplus.scan.export.SavedPdf
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
+import com.haziaferi.scanknifeplus.scan.export.ScanPdfExporter
 import com.haziaferi.scanknifeplus.scan.library.ScanDocument
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scan.library.ScanPage
@@ -30,6 +31,9 @@ import com.haziaferi.scanknifeplus.scanner.cv.BookPage
 import com.haziaferi.scanknifeplus.scanner.cv.BookSplit
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
+import com.haziaferi.scanknifeplus.storage.ScanFolder
+import com.haziaferi.scanknifeplus.storage.WriteResult
+import com.haziaferi.scanknifeplus.ui.folder.pdfMaker
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
@@ -67,7 +71,8 @@ internal class ScanFlowModel(
     context: Context,
     private val library: ScanLibrary = ScanLibrary(ScanFiles.libraryDir(context)),
     private val startSession: () -> ScanSession? = { ScanSession.start(context) },
-    private val export: ScanExport = ScanExport(context.applicationContext, library),
+    private val exporter: ScanPdfExporter = ScanPdfExporter(library, ScanFiles.exportDir(context)),
+    private val export: ScanExport = ScanExport(context.applicationContext, library, exporter),
     private val prefs: ScanPreferences = ScanPreferences(context),
     main: CoroutineContext = Dispatchers.Main.immediate,
     private val io: CoroutineContext = Dispatchers.IO,
@@ -397,6 +402,31 @@ internal class ScanFlowModel(
             end(keep = true)
             busy = false
             onSaved(saved)
+        }
+    }
+
+    /**
+     * Writes the document back into the user's [folder] ([ScanFolder.writeBack]: its PDF at the top level with page [size] and, unless empty,
+     * [password], its sources under `Scan sources/`), then ends the session keeping its pages, which the launch sweep removes once the folder
+     * holds them. [onDone] gets the result; on anything but [WriteResult.Written] Review stays as it was, with [ScanNotice.SAVE_FAILED] unless
+     * the folder could not be reached, which the caller handles.
+     */
+    fun saveToFolder(folder: ScanFolder, size: PdfPageSize, password: String, onDone: (WriteResult) -> Unit) {
+        pendingSave = null
+        commitDelete()
+        busy = true
+        scope.launch {
+            val result = edits.withLock {
+                val id = document?.id
+                if (id == null) WriteResult.Failed else withContext(io) { folder.writeBack(id, exporter.pdfMaker(size, password.ifEmpty { null })) }
+            }
+            if (result is WriteResult.Written) {
+                end(keep = true)
+            } else if (result != WriteResult.FolderUnavailable) {
+                notice = ScanNotice.SAVE_FAILED
+            }
+            busy = false
+            onDone(result)
         }
     }
 
