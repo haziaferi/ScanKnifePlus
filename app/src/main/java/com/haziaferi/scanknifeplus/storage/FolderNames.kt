@@ -37,6 +37,10 @@ object FolderNames {
     /** True for a version kept by conflict handling. */
     fun isLost(name: String): Boolean = LOST_NAME.containsMatchIn(name)
 
+    /** The name of the file kept version [name] lost to (`scan.pdf` for `scan.lost-20261013-142501.pdf`), or null if it is not one. */
+    fun lostOriginal(name: String): String? =
+        LOST_NAME.find(name)?.let { m -> name.substring(0, m.range.first) + m.groupValues[2] }
+
     /** The name the losing version of [name] is kept under at [epochMillis]: `scan.lost-20261013-142501.pdf`. */
     fun lostName(name: String, epochMillis: Long, timeZone: TimeZone): String {
         val (base, ext) = split(name)

@@ -188,4 +188,81 @@
     <string name="tool_extract_images_desc">Save embedded images</string>
     <string name="tool_pdf2text">PDF to text</string>
     <string name="tool_pdf2text_desc">Extract text</string>
+
+    <!-- The user's folder: setup, Home's folder bar, notices -->
+    <string name="folder_your_folder">your folder</string>
+    <string name="folder_checking">Checking your folder…</string>
+    <string name="folder_setup_title">Choose where your documents live</string>
+    <string name="folder_setup_body">ScanKnife+ keeps every PDF as a normal file in a folder you pick, so Syncthing or any sync app can carry it to your other devices. Nothing is uploaded by the app.</string>
+    <string name="folder_setup_preview_folder">Your folder</string>
+    <string name="folder_setup_preview_scan">scanknife-scan-2026-10-15-143205.pdf</string>
+    <string name="folder_setup_preview_tool">Tax return 2025 merged.pdf</string>
+    <string name="folder_setup_preview_sources">Scan sources/ · pages you can edit later</string>
+    <plurals name="folder_setup_copy">
+        <item quantity="one">The %d scan already on this phone will be copied into the folder. Existing files are never overwritten.</item>
+        <item quantity="other">The %d scans already on this phone will be copied into the folder. Existing files are never overwritten.</item>
+    </plurals>
+    <string name="folder_setup_failed">ScanKnife+ can\'t save into that folder. Choose a folder it can write to.</string>
+    <string name="folder_setup_choose">Choose folder</string>
+    <string name="folder_setup_not_now">Not now · save each file with the picker</string>
+    <string name="folder_setup_later">Not now</string>
+    <string name="folder_setup_keep">Keep the current folder</string>
+    <string name="folder_bar_saving">Saving to %1$s</string>
+    <string name="folder_bar_change">Change</string>
+    <string name="folder_bar_choose">Choose a folder</string>
+    <string name="folder_bar_unreachable">Can\'t reach %1$s</string>
+    <string name="folder_bar_choose_again">Choose again</string>
+    <plurals name="folder_bar_copying">
+        <item quantity="one">Copying %1$d scan into %2$s…</item>
+        <item quantity="other">Copying %1$d scans into %2$s…</item>
+    </plurals>
+    <plurals name="folder_conflicts_kept">
+        <item quantity="one">Settled %d sync clash in your folder. The other version is kept as a conflict copy in History.</item>
+        <item quantity="other">Settled %d sync clashes in your folder. Versions that differed are kept as conflict copies in History.</item>
+    </plurals>
+    <plurals name="folder_conflicts_merged">
+        <item quantity="one">Settled %d sync clash in your folder; both versions were merged.</item>
+        <item quantity="other">Settled %d sync clashes in your folder; the versions were merged.</item>
+    </plurals>
+    <plurals name="folder_copied">
+        <item quantity="one">%d scan copied into your folder.</item>
+        <item quantity="other">%d scans copied into your folder.</item>
+    </plurals>
+    <plurals name="folder_copy_failed">
+        <item quantity="one">%d scan couldn\'t be copied into your folder. It stays on this phone; choose the folder again to retry.</item>
+        <item quantity="other">%d scans couldn\'t be copied into your folder. They stay on this phone; choose the folder again to retry.</item>
+    </plurals>
+    <plurals name="folder_copy_stopped">
+        <item quantity="one">Copying stopped: your folder can\'t be reached. %d scan stays on this phone; the copy tries again at the next launch.</item>
+        <item quantity="other">Copying stopped: your folder can\'t be reached. %d scans stay on this phone; the copy tries again at the next launch.</item>
+    </plurals>
+    <string name="scan_folder_blocked_title">Can\'t reach your folder</string>
+    <string name="scan_folder_blocked_body">ScanKnife+ lost access to %1$s, so the PDF can\'t be saved there yet. Your pages are kept. Choose the folder again, or save this PDF somewhere else with the picker.</string>
+    <string name="scan_folder_blocked_choose">Choose the folder again</string>
+    <string name="scan_folder_blocked_later">Not now</string>
+    <string name="scan_folder_blocked_picker">Save elsewhere</string>
+    <string name="scan_save_into">The PDF goes into %1$s, its pages into Scan sources there.</string>
+    <string name="scan_save_folder">Save</string>
+
+    <!-- History of the folder -->
+    <string name="history_folder_subtitle">Everything in %1$s</string>
+    <string name="history_filter_conflicts">Conflicts</string>
+    <string name="history_empty_conflicts">No conflict copies. Versions kept after a sync clash show here.</string>
+    <string name="history_reading">Reading your folder…</string>
+    <string name="history_unreadable_title">Can\'t read your folder</string>
+    <string name="history_unreadable_body">ScanKnife+ lost access to %1$s, so History can\'t list it right now. Your files are still there, and scanning and the tools keep working; saving waits until you choose the folder again.</string>
+    <string name="history_choose_again">Choose the folder again</string>
+    <string name="history_tag_scan">Scan</string>
+    <string name="history_tag_tool">Tool output</string>
+    <string name="history_tag_conflict">Conflict copy</string>
+    <string name="history_conflict_note">Kept after a sync clash: another device changed %1$s at the same time. Compare it with %1$s, then delete the copy you don\'t need.</string>
+    <string name="history_conflict_open_original">Open %1$s</string>
+    <string name="history_no_pdf">No PDF yet · its pages are in Scan sources</string>
+    <string name="history_search">Search file names</string>
+    <string name="history_search_clear">Clear search</string>
+    <string name="history_search_empty">No file names match “%1$s”.</string>
+    <string name="home_recent_folder">Recent in your folder</string>
+    <string name="settings_folder">Folder</string>
+    <string name="settings_folder_none">Not chosen · each file is saved with the picker</string>
+    <string name="settings_folder_unreachable">Can\'t reach %1$s · choose it again</string>
 </resources>

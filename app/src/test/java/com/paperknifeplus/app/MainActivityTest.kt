@@ -26,6 +26,16 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
+import android.app.Activity
+import android.content.ClipData
+import androidx.lifecycle.ViewModelProvider
+import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
+import com.haziaferi.scanknifeplus.ui.scan.CaptureMode
+import com.haziaferi.scanknifeplus.ui.scan.ScanFlowHolder
+import com.haziaferi.scanknifeplus.ui.scan.ScanPhase
+import org.robolectric.Shadows.shadowOf
+import com.haziaferi.scanknifeplus.ui.folder.PrefsSetupSeen
+import com.haziaferi.scanknifeplus.ui.folder.SetupSeen
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.components.PreferencesManager
@@ -73,8 +83,18 @@ class MainActivityTest {
         override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
     }
 
+    /** Folder setup's answer, in memory, so no preferences an earlier test wrote can reach this one's activity. */
+    private val setup = object : SetupSeen {
+        var seen = false
+        override fun get() = seen
+        override fun set() {
+            seen = true
+        }
+    }
+
     @Before
     fun setUp() {
+        FolderHolder.setupSeenOf = { setup }
         Robolectric.setupContentProvider(PdfProvider::class.java, AUTHORITY)
     }
 
@@ -82,6 +102,7 @@ class MainActivityTest {
     fun tearDown() {
         controller?.pause()?.stop()?.destroy()
         SessionManager.clearHistory()
+        FolderHolder.setupSeenOf = ::PrefsSetupSeen
     }
 
     private fun pdf(name: String): Uri {
@@ -92,7 +113,9 @@ class MainActivityTest {
     private fun view(uri: Uri, type: String? = "application/pdf") =
         Intent(Intent.ACTION_VIEW).setClass(context, MainActivity::class.java).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
-    private fun launch(intent: Intent = Intent(context, MainActivity::class.java)) {
+    /** Launches the app; [setupSeen] stands for an earlier "Not now" on Folder setup, which otherwise opens by itself. */
+    private fun launch(intent: Intent = Intent(context, MainActivity::class.java), setupSeen: Boolean = true) {
+        setup.seen = setupSeen
         controller = Robolectric.buildActivity(MainActivity::class.java, intent).setup()
         rule.waitForIdle()
     }
@@ -187,6 +210,62 @@ class MainActivityTest {
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Home")
         rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+    }
+
+    @Test
+    fun `a first launch opens Folder setup, and Not now leaves it for Home for good`() {
+        launch(setupSeen = false)
+        waitFor("Choose where your documents live")
+        rule.onNode(hasText("Not now · save each file with the picker")).performClick()
+        waitFor("Scan a document")
+        rule.onNode(hasText("Choose a folder")).assertExists()
+
+        assertTrue("Not now is remembered", setup.seen)
+        controller?.pause()?.stop()?.destroy()
+        controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        waitFor("Scan a document")
+        assertFalse(shows("Choose where your documents live"))
+    }
+
+    @Test
+    fun `a PDF handed over on a first launch opens in the reader, not Folder setup`() {
+        launch(view(pdf("handed.pdf")), setupSeen = false)
+        waitFor("handed.pdf")
+        assertFalse(shows("Choose where your documents live"))
+    }
+
+    @Test
+    fun `Folder setup opens from the folder bar and from Settings and goes back where it came from`() {
+        launch()
+        rule.onNode(hasText("Choose a folder")).performClick()
+        waitFor("Choose where your documents live")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+
+        rule.onNode(hasContentDescription("Settings")).performClick()
+        waitFor("APPEARANCE")
+        rule.onNode(verticalList).performScrollToNode(hasText("Folder"))
+        rule.onNode(hasText("Folder")).performClick()
+        waitFor("Choose where your documents live")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("APPEARANCE")
+    }
+
+    @Test
+    fun `Import photos opens the scan flow in Review with the picked images`() {
+        launch()
+        rule.onNode(hasText("Import photos")).performClick()
+        val activity = controller!!.get()
+        val request = shadowOf(activity).nextStartedActivityForResult.intent
+        val picked = listOf(Uri.parse("content://$AUTHORITY/a.jpg"), Uri.parse("content://$AUTHORITY/b.jpg"))
+        val result = Intent().apply {
+            clipData = ClipData.newRawUri(null, picked[0]).apply { addItem(ClipData.Item(picked[1])) }
+        }
+        rule.runOnUiThread { shadowOf(activity).receiveResult(request, Activity.RESULT_OK, result) }
+        rule.waitUntil(10_000) { !shows("Home") }
+        val model = ViewModelProvider(activity)[ScanFlowHolder::class.java].model!!
+        assertEquals(ScanPhase.REVIEW, model.phase)
+        assertEquals(CaptureMode.MULTI, model.mode)
     }
 
     @Test

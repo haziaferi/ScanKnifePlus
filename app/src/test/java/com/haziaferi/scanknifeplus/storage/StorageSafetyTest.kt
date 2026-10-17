@@ -203,6 +203,17 @@ class StorageSafetyTest {
     }
 
     @Test
+    fun `a migration stopped between a scan's record and its PDF writes the PDF when run again`() {
+        val doc = f.scan("Receipt", pages = 1)
+        assertTrue(folder.writeBack(doc.id) is WriteResult.Written) // the record and pages, no PDF yet
+        assertFalse(f.file("Receipt.pdf").exists())
+
+        assertEquals(listOf(doc.id), folder.migrate(f.pdfs).written)
+        assertEquals("pdf of Receipt with 1 pages", f.file("Receipt.pdf").readText())
+        assertTrue("nothing left to copy", folder.migrate(f.pdfs).written.isEmpty())
+    }
+
+    @Test
     fun `a merge whose working copy cannot take the result says so instead of Written`() {
         val doc = f.scan("Receipt", pages = 1)
         assertTrue(folder.writeBack(doc.id, f.pdfs) is WriteResult.Written)

@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.runtime.mutableStateOf
+import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.ui.theme.AppPalette
 import org.junit.Assert.assertEquals
@@ -63,6 +65,26 @@ class SettingsViewTest {
         rule.onNodeWithText("Graphite Scholastic").performClick()
         rule.onNodeWithText("Still Water").performClick()
         assertEquals(listOf(AppPalette.ROSE, AppPalette.GRAPHITE_SCHOLASTIC, AppPalette.STILL_WATER), chosen)
+    }
+
+    @Test
+    fun `the Folder row says where files are saved and opens Folder setup`() {
+        val status = mutableStateOf<FolderStatus>(FolderStatus.NotChosen)
+        var opened = 0
+        rule.setContent {
+            SettingsView(
+                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {},
+                folder = status.value, onFolder = { opened++ }
+            )
+        }
+        val list = rule.onNode(hasScrollAction())
+        list.performScrollToNode(hasText("Not chosen · each file is saved with the picker"))
+        rule.onNodeWithText("Folder").performClick()
+        assertEquals(1, opened)
+        status.value = FolderStatus.Ready("Documents/Scans")
+        list.performScrollToNode(hasText("Saving to Documents/Scans"))
+        status.value = FolderStatus.ChooseAgain("Documents/Scans")
+        list.performScrollToNode(hasText("Can't reach Documents/Scans · choose it again"))
     }
 
     @Test

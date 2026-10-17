@@ -14,7 +14,9 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -140,9 +142,10 @@ class HistoryTest {
                 HistoryView(onItemClick = { _, _, _ -> })
             }
         }
+        rule.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Compress"))
         val name = rule.onNodeWithText(long).fetchSemanticsNode().boundsInRoot
         val tag = rule.onNodeWithText("Compress").fetchSemanticsNode().boundsInRoot
-        assertTrue("name overlaps the tag", name.right <= tag.left)
+        assertTrue("name $name overlaps the tag $tag", name.right <= tag.left)
         assertTrue("the name wraps instead of clipping", name.height > tag.height)
     }
 

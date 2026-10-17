@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.ui.scan
 
 import android.content.pm.ActivityInfo
 import android.os.Looper
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
@@ -20,9 +21,10 @@ class HoldPortraitTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
+    // Holding composes the hold; letting go takes the composition out of the window, which disposes it at once rather than at a later frame.
     private fun ActivityScenario<ComponentActivity>.show(holding: Boolean) = onActivity { a ->
         val holder = ViewModelProvider(a)[ScanFlowHolder::class.java]
-        a.setContent { if (holding) HoldPortrait(a, holder) }
+        if (holding) a.setContent { HoldPortrait(a, holder) } else a.setContentView(View(a))
     }
 
     private fun ActivityScenario<ComponentActivity>.orientation(): Int {

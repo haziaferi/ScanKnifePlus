@@ -50,6 +50,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haziaferi.scanknifeplus.ui.folder.FolderBar
+import com.haziaferi.scanknifeplus.ui.folder.FolderItem
+import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -58,21 +61,31 @@ import kotlinx.coroutines.withContext
 /** How many outputs Home's Recent list shows. */
 private const val RECENT_COUNT = 3
 
+/** What Import photos lets the user pick. */
+private const val IMAGE_TYPES = "image/*"
+
 /**
- * Home: header (wordmark, All tools, Settings), the scan card and the Recent list (1a, 3c, 3d). Scanning itself starts from the bottom bar's
- * Scan button, so the card carries Import photos and Open PDF (the system picker, then the reader); the accent stays on Scan, the active
- * tab and the Scan tag.
+ * Home: header (wordmark, All tools, Settings), the folder bar (2b, [folder], opening Folder setup with [onFolder]), the scan card and the
+ * Recent list (1a, 3c, 3d): the newest files of the folder ([recentFolder]) when one is listed, else this session's outputs. Scanning itself
+ * starts from the bottom bar's Scan button, so the card carries Import photos (the system picker, then the scan flow with the picked images)
+ * and Open PDF (the system picker, then the reader); the accent stays on Scan, the active tab and the Scan tag.
  */
 @Composable
 fun HomeView(
     onAllTools: () -> Unit,
     onSettings: () -> Unit,
-    onImportPhotos: () -> Unit,
+    onImportPhotos: (List<Uri>) -> Unit,
     onSeeAll: () -> Unit,
-    onOpenPreview: (Uri, String, Int) -> Unit
+    onOpenPreview: (Uri, String, Int) -> Unit,
+    folder: FolderStatus = FolderStatus.NotChosen,
+    onFolder: () -> Unit = {},
+    recentFolder: List<FolderItem>? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val pickPhotos = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) onImportPhotos(uris)
+    }
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
             scope.launch {
@@ -85,8 +98,13 @@ fun HomeView(
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         HomeHeader(onAllTools = onAllTools, onSettings = onSettings)
         Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-            ScanCard(onImportPhotos = onImportPhotos, onOpenPdf = { pickPdf.launch("application/pdf") })
-            RecentList(SessionManager.history.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
+            FolderBar(folder, onClick = onFolder)
+            ScanCard(onImportPhotos = { pickPhotos.launch(IMAGE_TYPES) }, onOpenPdf = { pickPdf.launch("application/pdf") })
+            if (recentFolder != null) {
+                FolderRecentList(recentFolder.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
+            } else {
+                RecentList(SessionManager.history.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
+            }
         }
     }
 }
@@ -179,13 +197,54 @@ private fun CardButton(label: String, onClick: () -> Unit, modifier: Modifier = 
 @Composable
 internal fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
     val context = LocalContext.current
+    RecentHeader(stringResource(R.string.home_recent), onSeeAll)
+    if (recent.isEmpty()) {
+        RecentEmpty()
+        return
+    }
+    EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        recent.forEachIndexed { index, entry ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            EntryRow(
+                entry = entry,
+                onClick = entry.uri?.let { uri ->
+                    {
+                        if (canOpenInReader(historyEntryMime(context.contentResolver, uri))) onOpenPreview(uri, entry.name, entry.pageCount)
+                        else onSeeAll()
+                    }
+                }
+            )
+        }
+    }
+}
+
+/** The folder's newest files ("Recent in your folder"); a PDF opens in the reader, anything else opens History. */
+@Composable
+internal fun FolderRecentList(recent: List<FolderItem>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
+    RecentHeader(stringResource(R.string.home_recent_folder), onSeeAll)
+    if (recent.isEmpty()) {
+        RecentEmpty()
+        return
+    }
+    EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+        recent.forEachIndexed { index, item ->
+            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            val uri = item.uri
+            FolderRow(item, onClick = if (uri != null && canOpenInReader(item.mime)) ({ onOpenPreview(uri, item.name, 0) }) else onSeeAll)
+        }
+    }
+}
+
+/** The Recent heading with See all, which opens History. */
+@Composable
+private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            stringResource(R.string.home_recent),
+            title,
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = colors.onBackground,
@@ -209,29 +268,16 @@ internal fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpe
             )
         }
     }
-    if (recent.isEmpty()) {
-        Text(
-            stringResource(R.string.home_recent_empty),
-            fontSize = 14.sp,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-        )
-    } else {
-        EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-            recent.forEachIndexed { index, entry ->
-                if (index > 0) HorizontalDivider(color = colors.outline)
-                EntryRow(
-                    entry = entry,
-                    onClick = entry.uri?.let { uri ->
-                        {
-                            if (canOpenInReader(historyEntryMime(context.contentResolver, uri))) onOpenPreview(uri, entry.name, entry.pageCount)
-                            else onSeeAll()
-                        }
-                    }
-                )
-            }
-        }
-    }
+}
+
+@Composable
+private fun RecentEmpty() {
+    Text(
+        stringResource(R.string.home_recent_empty),
+        fontSize = 14.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+    )
 }
 
 /** The surface card that holds the Recent rows. */
