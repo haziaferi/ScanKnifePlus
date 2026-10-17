@@ -26,6 +26,7 @@ import com.haziaferi.scanknifeplus.storage.ConflictReport
 import com.haziaferi.scanknifeplus.storage.FolderAccess
 import com.haziaferi.scanknifeplus.storage.FolderListing
 import com.haziaferi.scanknifeplus.storage.FolderState
+import com.haziaferi.scanknifeplus.storage.FolderStore
 import com.haziaferi.scanknifeplus.storage.PdfMaker
 import com.haziaferi.scanknifeplus.storage.ScanFolder
 import com.haziaferi.scanknifeplus.storage.WriteResult
@@ -246,8 +247,9 @@ class AppFolder(
 
     /**
      * Copies a tool output the user saved with the picker at [uri] to the folder's top level under the name the picker gave it (`-2` and so
-     * on when that is taken), creating a file only, then lists the folder again so History shows it; [onResult] tells how it went. Runs on
-     * this object's scope, so leaving the tool does not stop it. The saved output is only read, never changed.
+     * on when that is taken), creating a file only, then lists the folder again so History shows it; [onResult] tells how it went. A file the
+     * picker saved inside the folder is not copied. Runs on this object's scope, so leaving the tool does not stop it. The saved output is
+     * only read, never changed.
      */
     fun copyOutput(uri: Uri, onResult: (OutputCopy) -> Unit) {
         scope.launch {
@@ -256,7 +258,11 @@ class AppFolder(
                 when (val s = access.state()) {
                     FolderState.NotChosen -> OutputCopy.NO_FOLDER
                     FolderState.ChooseAgain -> OutputCopy.CHOOSE_AGAIN
-                    is FolderState.Ready -> copyInto(s.folder, uri)
+                    // Saved with the picker straight into the folder: it is there already, and a copy would only add a -2 twin.
+                    is FolderState.Ready -> {
+                        val tree = access.treeUri()
+                        if (tree != null && isInTree(tree, s.store, uri)) OutputCopy.COPIED else copyInto(s.folder, uri)
+                    }
                 }
             }
             if (result != OutputCopy.NO_FOLDER) load(resolve = false)
@@ -277,6 +283,29 @@ class AppFolder(
             // The output's provider may refuse the read with anything from SecurityException to IllegalStateException.
             Log.w(TAG, "Copying the output $uri failed", e)
             OutputCopy.FAILED
+        }
+    }
+
+    /**
+     * Whether [uri] is a document inside the folder [tree], read through [store]: at any depth where the provider can say so (API 29+, or
+     * the phone's storage), else at the top level, where the picker puts a file saved into the folder. Blocking; false when it cannot tell.
+     */
+    @WorkerThread
+    private fun isInTree(tree: Uri, store: FolderStore, uri: Uri): Boolean {
+        if (uri.authority != tree.authority) return false
+        return try {
+            val root = DocumentsContract.getTreeDocumentId(tree)
+            val doc = DocumentsContract.getDocumentId(uri)
+            when {
+                doc == root -> true
+                // The phone's storage names documents by path, so its ids answer this without a call to the provider.
+                tree.authority == EXTERNAL_STORAGE -> doc.startsWith(if (root.endsWith(":")) root else "$root/")
+                Build.VERSION.SDK_INT >= 29 -> DocumentsContract.isChildDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, root), uri)
+                else -> store.list(store.rootId).any { it.id == doc }
+            }
+        } catch (e: Exception) {
+            Log.i(TAG, "Cannot tell whether $uri is in the folder", e)
+            false
         }
     }
 

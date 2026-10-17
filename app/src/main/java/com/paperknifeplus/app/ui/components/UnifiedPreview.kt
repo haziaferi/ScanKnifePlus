@@ -30,7 +30,6 @@ import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 
 enum class PreviewMode {
     GRID,   // Scrollable grid (Split, etc.)
@@ -71,8 +70,8 @@ fun UnifiedPdfPreview(
                     .aspectRatio(0.707f)
                     .clickable(enabled = !disableLightbox) { lightboxPage = 0 },
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.Gray.copy(0.1f)),
-                colors = CardDefaults.cardColors(containerColor = if (LocalIsDarkTheme.current) Color(0xFF18181B) else Color(0xFFF5F5F5))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 val request = remember(uri, password) { PdfPageRequest(uri, 0, password, 1.2f) }
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -90,10 +89,10 @@ fun UnifiedPdfPreview(
                     if (!disableLightbox && showZoomIcon) {
                         Surface(
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                            color = Color.Black.copy(0.3f),
+                            color = pageBadge,
                             shape = CircleShape
                         ) {
-                            Icon(Icons.Filled.ZoomIn, null, tint = Color.White, modifier = Modifier.padding(8.dp).size(20.dp))
+                            Icon(Icons.Filled.ZoomIn, null, tint = pageBadgeText, modifier = Modifier.padding(8.dp).size(20.dp))
                         }
                     }
                 }
@@ -131,7 +130,7 @@ fun UnifiedPdfPreview(
                                 color = accentColor,
                                 shape = CircleShape
                             ) {
-                                Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.padding(4.dp))
+                                Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
                             }
                         }
                     }
@@ -164,22 +163,22 @@ fun UnifiedPdfPreview(
                     if (mode == PreviewMode.ROTATE) {
                         Surface(
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
-                            color = Color.Black.copy(0.4f), shape = CircleShape
-                        ) { Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.padding(6.dp)) }
+                            color = pageBadge, shape = CircleShape
+                        ) { Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = pageBadgeText, modifier = Modifier.padding(6.dp)) }
                     } else if (onToggleSelection != null) {
                         Box(modifier = Modifier.fillMaxSize().background(if (isSelected) accentColor.copy(alpha = 0.15f) else Color.Transparent))
                         if (showSelectionIcon) {
                             Surface(
                                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
-                                color = if (isSelected) accentColor else Color.Black.copy(0.3f), shape = CircleShape
-                            ) { Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.padding(4.dp)) }
+                                color = if (isSelected) accentColor else pageBadge, shape = CircleShape
+                            ) { Icon(Icons.Filled.Check, null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText, modifier = Modifier.padding(4.dp)) }
                         }
                         if (!disableLightbox && showZoomIcon) {
                             Surface(
                                 onClick = { lightboxPage = index },
                                 modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(24.dp),
-                                color = Color.Black.copy(0.3f), shape = CircleShape
-                            ) { Icon(Icons.Filled.Fullscreen, null, tint = Color.White, modifier = Modifier.padding(4.dp)) }
+                                color = pageBadge, shape = CircleShape
+                            ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
                         }
                     }
                     itemOverlay?.invoke(this, index)
@@ -229,7 +228,7 @@ fun PdfPageItem(
         if (painter.state is AsyncImagePainter.State.Loading) {
             CircularProgressIndicator(color = accentColor, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
         } else if (painter.state is AsyncImagePainter.State.Error && password != null) {
-             Icon(Icons.Filled.Lock, null, tint = Color.Gray.copy(0.3f), modifier = Modifier.size(32.dp))
+             Icon(Icons.Filled.Lock, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(32.dp))
         }
         
         if (showIndexNumbers) {
@@ -237,7 +236,7 @@ fun PdfPageItem(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                 color = pageBadge, shape = RoundedCornerShape(8.dp)
             ) {
-                Text("${index + 1}", color = pageBadgeText, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                Text("${index + 1}", color = pageBadgeText, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
             }
         }
         content()

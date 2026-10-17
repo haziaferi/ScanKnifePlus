@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.theme
 
 import android.app.Activity
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -97,6 +98,10 @@ fun PaperKnifePlusTheme(
             val controller = WindowCompat.getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !oled
             controller.isAppearanceLightNavigationBars = !oled
+            // Below API 29 enableEdgeToEdge leaves a scrim chosen by the system's night mode at launch, which can hide icons drawn for the app's
+            // theme; there the bar takes the theme's surface instead.
+            @Suppress("DEPRECATION")
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) window.navigationBarColor = tokens.sf.toArgb()
         }
     }
 

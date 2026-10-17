@@ -329,4 +329,24 @@
     <string name="about_ui_design">UI and design</string>
     <string name="about_media">Media</string>
     <string name="about_notices">Notices</string>
+    <!-- Reader -->
+    <string name="reader_share">Share</string>
+    <string name="reader_tools">Tools for this file</string>
+
+    <!-- Inks the stamping tools put into documents -->
+    <string name="ink_black">Black</string>
+    <string name="ink_white">White</string>
+    <string name="ink_red">Red</string>
+    <string name="ink_blue">Blue</string>
+    <string name="ink_indigo">Indigo</string>
+    <string name="ink_emerald">Emerald</string>
+    <string name="ink_dark_red">Dark red</string>
+    <string name="ink_mid_blue">Mid blue</string>
+    <string name="ink_rose">Rose</string>
+    <string name="ink_dark_grey">Dark grey</string>
+    <string name="ink_grey">Grey</string>
+    <string name="ink_green">Green</string>
+    <string name="ink_violet">Violet</string>
+    <string name="ink_amber">Amber</string>
+    <string name="ink_pink">Pink</string>
 </resources>

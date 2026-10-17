@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -248,7 +253,8 @@ fun PdfToImageView(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .background(if (isSelected) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                                .clickable { selectedPages = if (isSelected) selectedPages - index else selectedPages + index }
+                                                .toggleable(value = isSelected, role = Role.Checkbox) { selectedPages = if (it) selectedPages + index else selectedPages - index }
+                                                .semantics { contentDescription = "Page ${index + 1}"; stateDescription = if (isSelected) "Selected" else "Not selected" }
                                         )
 
                                         Surface(
@@ -259,12 +265,8 @@ fun PdfToImageView(
                                             color = if (isSelected) accentColor else pageBadge,
                                             shape = CircleShape
                                         ) {
-                                            Icon(
-                                                Icons.Filled.Check,
-                                                null,
-                                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText,
-                                                modifier = Modifier.padding(4.dp)
-                                            )
+                                            // The tick shows only when selected, so the state is in the shape and not only in the colour.
+                                            if (isSelected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
                                         }
                                     }
                                 }

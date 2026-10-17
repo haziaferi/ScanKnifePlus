@@ -503,9 +503,9 @@ fun SignView(
                         Spacer(Modifier.height(12.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(savedSignatures) { file ->
-                                Box {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Surface(
-                                        modifier = Modifier.size(100.dp, 60.dp).clickable {
+                                        modifier = Modifier.size(100.dp, 60.dp).clickable(onClickLabel = "Use this signature") {
                                             showSignOptions = false
                                             scope.launch { startPlacing(withContext(Dispatchers.IO) { BitmapFactory.decodeFile(file.absolutePath) }) }
                                         },
@@ -517,13 +517,12 @@ fun SignView(
                                             selectedSignatureFile = file
                                             exportSignatureLauncher.launch(outputFileName("signature_${System.currentTimeMillis()}", "png"))
                                         },
-                                        modifier = Modifier.align(Alignment.BottomEnd).size(22.dp)
                                     ) {
                                         Icon(
                                             Icons.Outlined.FileDownload,
                                             contentDescription = "Export signature",
-                                            tint = accentColor.copy(alpha = 0.7f),
-                                            modifier = Modifier.size(14.dp)
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }

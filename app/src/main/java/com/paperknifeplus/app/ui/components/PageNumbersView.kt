@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -352,13 +356,13 @@ fun PageNumbersView(
 
             if (showPositionSheet) {
                 ModalBottomSheet(onDismissRequest = { showPositionSheet = false }) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding()) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
                         Text("SELECT POSITION", modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                         listOf("Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right").forEach { pos ->
                             ListItem(
                                 headlineContent = { Text(pos, fontWeight = if (position == pos) FontWeight.Bold else FontWeight.Normal) },
                                 leadingContent = { RadioButton(selected = position == pos, onClick = null) },
-                                modifier = Modifier.clickable { position = pos; showPositionSheet = false }
+                                modifier = Modifier.selectable(selected = position == pos, role = Role.RadioButton) { position = pos; showPositionSheet = false }
                             )
                         }
                     }
@@ -367,15 +371,15 @@ fun PageNumbersView(
 
             if (showColorSheet) {
                 ModalBottomSheet(onDismissRequest = { showColorSheet = false }) {
-                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding()) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
                         Text("SELECT COLOR", modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                         DocumentInk.pageNumbers.forEach { ink ->
                             val col = ink.color
                             ListItem(
-                                headlineContent = { Text(ink.name, fontWeight = if (numberColor == col) FontWeight.Bold else FontWeight.Normal) },
+                                headlineContent = { Text(stringResource(ink.name), fontWeight = if (numberColor == col) FontWeight.Bold else FontWeight.Normal) },
                                 leadingContent = { Box(Modifier.size(24.dp).clip(CircleShape).background(col).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)) },
                                 trailingContent = { RadioButton(selected = numberColor == col, onClick = null) },
-                                modifier = Modifier.clickable { numberColor = col; showColorSheet = false }
+                                modifier = Modifier.selectable(selected = numberColor == col, role = Role.RadioButton) { numberColor = col; showColorSheet = false }
                             )
                         }
                     }

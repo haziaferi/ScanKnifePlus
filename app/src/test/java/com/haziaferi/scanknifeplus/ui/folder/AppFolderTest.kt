@@ -1,9 +1,15 @@
 package com.haziaferi.scanknifeplus.ui.folder
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
@@ -26,6 +32,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 
 /** The app's folder state over FolderAccess and a DocumentsProvider serving a folder named "Scans", with all work run inline. */
@@ -285,6 +292,43 @@ class AppFolderTest {
         assertTrue(folder.chooseNow())
         assertEquals(OutputCopy.FAILED, folder.copyNow("gone.pdf", content = null))
         assertFalse(File(folderRoot, "gone.pdf").exists())
+    }
+
+    @Test
+    fun `an output the picker saved inside the folder is not copied again, and History still lists it`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        File(folderRoot, "merged.pdf").writeText("saved here")
+        var result: OutputCopy? = null
+        folder.copyOutput(DocumentsContract.buildDocumentUriUsingTree(treeUri, "${TestDocumentsProvider.ROOT}/merged.pdf")) { result = it }
+        assertEquals(OutputCopy.COPIED, result)
+        assertEquals(listOf("merged.pdf"), folderRoot.list()!!.toList())
+        assertEquals(listOf("merged.pdf"), folder.history!!.items!!.map { it.name })
+    }
+
+    /** Serves one saved output under a display name that differs from its URI, as a document provider's picker save does. */
+    class NamedOutputProvider : ContentProvider() {
+        override fun onCreate() = true
+        override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
+            ParcelFileDescriptor.open(File(context!!.cacheDir, "named-output"), ParcelFileDescriptor.MODE_READ_ONLY)
+        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor =
+            MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME)).apply { addRow(arrayOf<Any?>("Tax return 2025 merged.pdf")) }
+        override fun getType(uri: Uri) = "application/pdf"
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
+        override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+
+    @Test
+    fun `a content output is copied under the name its provider gives`() {
+        Robolectric.setupContentProvider(NamedOutputProvider::class.java, "com.haziaferi.scanknifeplus.test.outputs")
+        File(context.cacheDir, "named-output").writeText("merged")
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        var result: OutputCopy? = null
+        folder.copyOutput(Uri.parse("content://com.haziaferi.scanknifeplus.test.outputs/document/42")) { result = it }
+        assertEquals(OutputCopy.COPIED, result)
+        assertEquals("merged", File(folderRoot, "Tax return 2025 merged.pdf").readText())
     }
 
     @Test

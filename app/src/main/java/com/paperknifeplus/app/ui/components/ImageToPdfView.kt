@@ -12,13 +12,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBackIos
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.*
@@ -29,6 +30,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -163,7 +168,8 @@ fun ImageToPdfView(
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(MaterialTheme.colorScheme.surfaceVariant)
                                         .border(BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent), RoundedCornerShape(16.dp))
-                                        .clickable { selectedIndex = if (isSelected) null else index }
+                                        .toggleable(value = isSelected, role = Role.Checkbox) { selectedIndex = if (it) index else null }
+                                        .semantics { contentDescription = "Image ${index + 1}"; stateDescription = if (isSelected) "Selected" else "Not selected" }
                                 ) {
                                     Image(
                                         painter = rememberAsyncImagePainter(model = uri, imageLoader = PdfImageLoader.get(context)),

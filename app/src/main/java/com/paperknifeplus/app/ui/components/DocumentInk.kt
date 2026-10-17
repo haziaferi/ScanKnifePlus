@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -12,13 +13,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.paperknifeplus.app.R
 
-/** One ink the user can put into a document, with the [name] a screen reader says for its swatch. */
-class Ink(val name: String, val color: Color)
+/** One ink the user can put into a document, with the [name] its swatch shows and a screen reader says. */
+class Ink(@StringRes val name: Int, val color: Color)
 
 /**
  * The inks of the stamping tools (page numbers, signatures, watermarks). They are document content, not UI, so they stay the same in
@@ -35,19 +38,19 @@ object DocumentInk {
     val Paper = White
 
     val pageNumbers = listOf(
-        Ink("Black", Black), Ink("White", White), Ink("Red", Color(0xFFFF0000)), Ink("Blue", Color(0xFF0000FF)),
-        Ink("Indigo", Color(0xFF8B5CF6)), Ink("Emerald", Color(0xFF10B981))
+        Ink(R.string.ink_black, Black), Ink(R.string.ink_white, White), Ink(R.string.ink_red, Color(0xFFFF0000)), Ink(R.string.ink_blue, Color(0xFF0000FF)),
+        Ink(R.string.ink_indigo, Color(0xFF8B5CF6)), Ink(R.string.ink_emerald, Color(0xFF10B981))
     )
 
     val signature = listOf(
-        Ink("Black", Black), Ink("Blue", Color(0xFF0000FF)), Ink("Dark red", Color(0xFFC00000)), Ink("Mid blue", Color(0xFF0070C0)),
-        Ink("Rose", Color(0xFFF43F5E))
+        Ink(R.string.ink_black, Black), Ink(R.string.ink_blue, Color(0xFF0000FF)), Ink(R.string.ink_dark_red, Color(0xFFC00000)), Ink(R.string.ink_mid_blue, Color(0xFF0070C0)),
+        Ink(R.string.ink_rose, Color(0xFFF43F5E))
     )
 
     val watermark = listOf(
-        Ink("Black", Black), Ink("Dark grey", Color(0xFF444444)), Ink("Grey", TemplateGray), Ink("White", White), Ink("Red", Color(0xFFFF0000)),
-        Ink("Blue", Color(0xFF0000FF)), Ink("Green", Color(0xFF10B981)), Ink("Violet", Color(0xFF8B5CF6)), Ink("Amber", Color(0xFFF59E0B)),
-        Ink("Pink", Color(0xFFEC4899))
+        Ink(R.string.ink_black, Black), Ink(R.string.ink_dark_grey, Color(0xFF444444)), Ink(R.string.ink_grey, TemplateGray), Ink(R.string.ink_white, White), Ink(R.string.ink_red, Color(0xFFFF0000)),
+        Ink(R.string.ink_blue, Color(0xFF0000FF)), Ink(R.string.ink_green, Color(0xFF10B981)), Ink(R.string.ink_violet, Color(0xFF8B5CF6)), Ink(R.string.ink_amber, Color(0xFFF59E0B)),
+        Ink(R.string.ink_pink, Color(0xFFEC4899))
     )
 }
 
@@ -58,11 +61,12 @@ object DocumentInk {
 @Composable
 fun InkSwatch(ink: Ink, selected: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val label = stringResource(ink.name)
     Box(
         modifier = Modifier
             .size(48.dp)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .semantics { contentDescription = ink.name },
+            .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
         Box(

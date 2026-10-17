@@ -123,9 +123,9 @@ fun CompareView(
                     ToolSectionLabel("SELECT DOCUMENTS")
                     Spacer(Modifier.height(16.dp))
                     
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        CompareFileCard("ORIGINAL (A)", nameA, fileA != null, Modifier.weight(1f)) { pickALauncher.launch("application/pdf") }
-                        CompareFileCard("REVISED (B)", nameB, fileB != null, Modifier.weight(1f)) { pickBLauncher.launch("application/pdf") }
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        CompareFileCard("ORIGINAL (A)", nameA, fileA != null, Modifier.weight(1f).fillMaxHeight()) { pickALauncher.launch("application/pdf") }
+                        CompareFileCard("REVISED (B)", nameB, fileB != null, Modifier.weight(1f).fillMaxHeight()) { pickBLauncher.launch("application/pdf") }
                     }
                     
                     Spacer(Modifier.height(32.dp))
@@ -278,7 +278,7 @@ fun CompareFileCard(label: String, name: String, isSelected: Boolean, modifier: 
     val content = if (isSelected) colors.onPrimaryContainer else colors.onSurface
     Surface(
         onClick = onClick,
-        modifier = modifier.aspectRatio(1f),
+        modifier = modifier.heightIn(min = 148.dp),
         shape = RoundedCornerShape(24.dp),
         color = if (isSelected) colors.primaryContainer else colors.surface,
         border = BorderStroke(1.dp, if (isSelected) colors.onPrimaryContainer else colors.outline)
@@ -288,7 +288,7 @@ fun CompareFileCard(label: String, name: String, isSelected: Boolean, modifier: 
             Spacer(Modifier.height(12.dp))
             Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = content, textAlign = TextAlign.Center)
             Spacer(Modifier.height(4.dp))
-            Text(if (isSelected) name else "Select File", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = content, maxLines = 2, textAlign = TextAlign.Center)
+            Text(if (isSelected) name else "Select File", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = content, textAlign = TextAlign.Center)
         }
     }
 }

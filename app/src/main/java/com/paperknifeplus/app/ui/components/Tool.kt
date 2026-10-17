@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -49,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -56,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -70,8 +73,8 @@ import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
-import kotlinx.coroutines.delay
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 /** The [ActivityEntry.toolId] of scans; ScanExport writes it. Tools use their [ToolCatalog] id. */
 const val SCAN_ENTRY_TOOL = "scan"
@@ -401,12 +404,14 @@ fun ToolStatusText(text: String) {
 fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
-        selected = selected,
-        onClick = onClick,
         color = if (selected) colors.primaryContainer else colors.surface,
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, if (selected) colors.onPrimaryContainer else colors.outline),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             RadioButton(selected = selected, onClick = null)

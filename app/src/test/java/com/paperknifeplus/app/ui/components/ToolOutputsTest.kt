@@ -11,7 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -21,6 +20,7 @@ import com.haziaferi.scanknifeplus.ui.folder.OutputCopy
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import org.junit.After
@@ -41,7 +41,7 @@ class ToolOutputsTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = createAndroidComposeRule<ComponentActivity>()
+    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
