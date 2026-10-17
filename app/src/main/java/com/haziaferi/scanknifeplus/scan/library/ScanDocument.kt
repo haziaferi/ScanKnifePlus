@@ -18,7 +18,8 @@ data class BookCrop(val spread: Quad, val split: Double, val side: BookPage, val
  * One page of a scanned document, mirroring OpenScan's `pages` table, with file names relative to the document's folder: [image] is shown,
  * [original] is the uncropped capture for re-crops, [unfiltered] keeps filters from compounding, and [filter] names the applied filter. A re-crop
  * keeps [quarterTurns], the clockwise turn from [original] (0 without one); [book] is set on a Book mode page with an original until it is
- * re-cropped by hand.
+ * re-cropped by hand. [quad] is where the page sits in [original] (fractions of its upright size), detected at capture or set by a re-crop, so
+ * a later crop starts from it; null for a Book mode page, a page without an original, or one stored uncropped.
  */
 data class ScanPage(
     val id: String,
@@ -28,6 +29,7 @@ data class ScanPage(
     val filter: String? = null,
     val quarterTurns: Int = 0,
     val book: BookCrop? = null,
+    val quad: Quad? = null,
 ) {
     /** Every file this page owns. */
     val files: List<String> get() = listOfNotNull(image, original, unfiltered).distinct()
@@ -62,12 +64,13 @@ data class ScanDocument(
                 // Only when turned, so records of unturned pages stay as they were and older versions read them unchanged.
                 .apply { if (p.quarterTurns != 0) put("quarterTurns", p.quarterTurns) }
                 .apply { p.book?.let { put("book", bookJson(it)) } }
+                .apply { p.quad?.let { put("quad", quadJson(it)) } }
         }))
 
     internal companion object {
         /**
          * Written for future migrations; records are read best-effort whatever their version, since every field read here is required in v1
-         * except the optional `quarterTurns` and `book`.
+         * except the optional `quarterTurns`, `book` and `quad`.
          */
         const val FORMAT_VERSION = 1
 
@@ -88,13 +91,28 @@ data class ScanDocument(
                         filter = p.optStringOrNull("filter"),
                         quarterTurns = p.optInt("quarterTurns", 0).mod(4),
                         book = p.optJSONObject("book")?.let { readBook(it) },
+                        quad = p.optJSONArray("quad")?.let { readQuad(it) },
                     )
                 },
             )
         }
 
+        private fun quadJson(q: Quad): JSONArray = JSONArray(q.points.flatMap { listOf(it.x, it.y) })
+
+        /** The quad recorded in [json], or null if it is damaged: the page then reads without one rather than losing the record. */
+        private fun readQuad(json: JSONArray): Quad? = try {
+            require(json.length() == 8)
+            val c = List(4) { Pt(json.getDouble(2 * it), json.getDouble(2 * it + 1)) }
+            require(c.all { it.x.isFinite() && it.y.isFinite() })
+            Quad(c[0], c[1], c[2], c[3])
+        } catch (e: JSONException) {
+            null
+        } catch (e: IllegalArgumentException) {
+            null
+        }
+
         private fun bookJson(b: BookCrop): JSONObject = JSONObject()
-            .put("spread", JSONArray(b.spread.points.flatMap { listOf(it.x, it.y) }))
+            .put("spread", quadJson(b.spread))
             .put("split", b.split)
             .put("side", b.side.name)
             .put("turns", b.turns)

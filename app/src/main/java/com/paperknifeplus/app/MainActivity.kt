@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import com.haziaferi.scanknifeplus.ui.scan.ScanFlow
 import com.paperknifeplus.app.ui.components.AboutView
 import com.paperknifeplus.app.ui.components.HistoryView
 import com.paperknifeplus.app.ui.components.HomeView
@@ -302,7 +303,8 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                // A tool id; any other route (SCAN_ROUTE until the scan flow adds its branch above) draws nothing here.
+                                SCAN_ROUTE -> ScanFlow(onClose = closeTool, onSaved = { closeTool() })
+                                // Any other route is a tool id.
                                 else -> ToolCatalog.byId(route)?.let { tool ->
                                     key(tool.id) { tool.screen(ToolLaunch(toolInitialUri, toolInitialPassword, closeTool, openPreview)) }
                                 }

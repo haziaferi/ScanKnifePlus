@@ -1,6 +1,112 @@
 <resources>
     <string name="app_name">ScanKnife+</string>
 
+    <!-- Document scanner: Scanner -->
+    <string name="scan_close">Close scanner</string>
+    <string name="scan_auto_on">Auto on</string>
+    <string name="scan_auto_off">Auto off</string>
+    <string name="scan_torch">Torch</string>
+    <string name="scan_state_on">On</string>
+    <string name="scan_state_off">Off</string>
+    <string name="scan_hold_steady">Hold steady</string>
+    <string name="scan_hold_steady_book">Hold steady · both pages in view</string>
+    <string name="scan_low_light">Low light: more light or the torch helps the scanner find the page.</string>
+    <string name="scan_mode_group">Capture mode</string>
+    <string name="scan_mode_single">Single page</string>
+    <string name="scan_mode_multi">Multi page</string>
+    <string name="scan_mode_book">Book</string>
+    <string name="scan_shutter_single">Take photo and review it</string>
+    <string name="scan_shutter">Take photo</string>
+    <plurals name="scan_review_pages">
+        <item quantity="one">Review %d page</item>
+        <item quantity="other">Review %d pages</item>
+    </plurals>
+    <string name="scan_done">Done</string>
+    <string name="scan_page_label">Page %d</string>
+    <string name="scan_permission_title">Camera access needed</string>
+    <string name="scan_permission_body">ScanKnife+ needs the camera to scan documents. Photos stay on this phone.</string>
+    <string name="scan_permission_allow">Allow camera</string>
+    <string name="scan_permission_blocked">The camera is turned off for ScanKnife+. Allow it under Permissions in the app\'s settings.</string>
+    <string name="scan_permission_settings">Open settings</string>
+    <string name="scan_camera_in_use">Another app is using the camera. Close it and the scanner carries on.</string>
+    <string name="scan_camera_waiting">Waiting for the camera…</string>
+    <string name="scan_camera_unavailable">The camera couldn\'t start. Close the scanner and try again.</string>
+    <string name="scan_shot_failed">The photo couldn\'t be taken. Try again.</string>
+    <string name="scan_store_failed">A photo couldn\'t be saved as a page.</string>
+    <string name="scan_retry">Retry</string>
+    <string name="scan_dismiss">Dismiss</string>
+
+    <!-- Document scanner: Review -->
+    <string name="scan_review_title">Review</string>
+    <string name="scan_back_to_scanner">Back to scanner</string>
+    <string name="scan_review_multi">Multi page · %s</string>
+    <string name="scan_review_book">Book · %1$s · %2$s</string>
+    <plurals name="scan_pages">
+        <item quantity="one">%d page</item>
+        <item quantity="other">%d pages</item>
+    </plurals>
+    <plurals name="scan_spreads">
+        <item quantity="one">%d spread</item>
+        <item quantity="other">%d spreads</item>
+    </plurals>
+    <string name="scan_page_of">Page %1$d of %2$d</string>
+    <string name="scan_move_earlier">Move page earlier</string>
+    <string name="scan_move_later">Move page later</string>
+    <string name="scan_page_deleted">Page deleted</string>
+    <string name="scan_page_n_deleted">Page %d deleted</string>
+    <string name="scan_undo">Undo</string>
+    <string name="scan_no_pages">No pages left. Add page to scan more.</string>
+    <string name="scan_split_line">Split line</string>
+    <string name="scan_split_centre">Centre</string>
+    <string name="scan_split_left">%d%% left of centre</string>
+    <string name="scan_split_right">%d%% right of centre</string>
+    <string name="scan_split_hint">Drag to where the pages meet. Both pages are re-cut from their own copy of the photo.</string>
+    <string name="scan_page_actions">Page actions</string>
+    <string name="scan_rotate">Rotate</string>
+    <string name="scan_crop">Crop</string>
+    <string name="scan_filter">Filter</string>
+    <string name="scan_delete">Delete</string>
+    <string name="scan_add_page">Add page</string>
+    <string name="scan_state_selected">Selected</string>
+    <string name="scan_state_not_selected">Not selected</string>
+    <string name="scan_edit_failed">That change couldn\'t be made. Try again.</string>
+
+    <!-- Document scanner: Crop and Filter -->
+    <string name="scan_crop_title">Crop page</string>
+    <string name="scan_crop_hint">Drag the corners to the edges of the page.</string>
+    <string name="scan_corner_top_left">Top-left corner</string>
+    <string name="scan_corner_top_right">Top-right corner</string>
+    <string name="scan_corner_bottom_right">Bottom-right corner</string>
+    <string name="scan_corner_bottom_left">Bottom-left corner</string>
+    <string name="scan_cancel">Cancel</string>
+    <string name="scan_apply">Apply</string>
+    <string name="scan_filter_original">Original</string>
+    <string name="scan_filter_auto">Auto</string>
+    <string name="scan_filter_lighten">Lighten</string>
+    <string name="scan_filter_grayscale">Grayscale</string>
+    <string name="scan_filter_bw">Black and white</string>
+    <string name="scan_filter_whiteboard">Whiteboard</string>
+
+    <!-- Document scanner: saving and leaving -->
+    <string name="scan_save_title">Save PDF</string>
+    <string name="scan_page_size">Page size</string>
+    <string name="scan_size_a4">A4</string>
+    <string name="scan_size_letter">Letter</string>
+    <string name="scan_size_legal">Legal</string>
+    <string name="scan_size_fit">Fit</string>
+    <string name="scan_password">Password (optional)</string>
+    <string name="scan_password_hint">Leave empty to save without a password.</string>
+    <string name="scan_password_invalid">This password can\'t protect a PDF. Remove control characters.</string>
+    <string name="scan_save_where">You choose the folder and the file name next.</string>
+    <string name="scan_save_choose">Choose where to save</string>
+    <string name="scan_save_failed">The PDF couldn\'t be saved. Try again.</string>
+    <string name="scan_leave_title">Keep the scanned pages?</string>
+    <plurals name="scan_leave_body">
+        <item quantity="one">%d page isn\'t saved as a PDF yet. Keep it in the app for later, or discard it.</item>
+        <item quantity="other">%d pages aren\'t saved as a PDF yet. Keep them in the app for later, or discard them.</item>
+    </plurals>
+    <string name="scan_keep">Keep</string>
+    <string name="scan_discard">Discard</string>
     <!-- Bottom bar -->
     <string name="nav_home">Home</string>
     <string name="nav_scan">Scan</string>
