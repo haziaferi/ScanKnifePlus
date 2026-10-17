@@ -34,7 +34,7 @@ class DeleteViewTest {
 
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("marked for deletion", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("0 / 3 marked for deletion").assertExists()
-        rule.onNodeWithText("Tap to choose a PDF").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertDoesNotExist()
     }
 
     @Test

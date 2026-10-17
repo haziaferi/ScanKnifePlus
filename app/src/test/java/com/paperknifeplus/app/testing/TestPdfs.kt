@@ -26,6 +26,7 @@ import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
@@ -109,6 +110,18 @@ object TestPdfs {
             it.rectangle = PDRectangle(72f, 72f, 100f, 20f)
             it.page = first
         }
+    }
+
+    const val WEB_LINK = "https://example.org/page"
+
+    /** A one-page PDF whose page is covered by a link to [WEB_LINK]. */
+    fun webLinked(): ByteArray = build(1) { doc ->
+        val page = doc.getPage(0)
+        page.annotations = listOf(PDAnnotationLink().apply {
+            action = PDActionURI().apply { uri = WEB_LINK }
+            rectangle = PDRectangle(0f, 0f, page.mediaBox.width, page.mediaBox.height)
+            this.page = page
+        })
     }
 
     /** Text in the uncompressed content stream of page n (1-based) of [structured], to tell whether that page made it into a saved file. */

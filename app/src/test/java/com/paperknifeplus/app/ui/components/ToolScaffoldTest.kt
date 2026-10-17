@@ -79,7 +79,7 @@ class ToolScaffoldTest {
         emptyScreen(null)
         rule.onNodeWithText("Optimize any PDF document").assertExists()
         rule.onNodeWithText("Recent in your folder").assertDoesNotExist()
-        rule.onNodeWithText("Tap to choose a PDF").assertIsDisplayed()
+        rule.onNodeWithText("Choose PDF").assertIsDisplayed()
     }
 
     @Test

@@ -305,7 +305,7 @@ class MainActivityTest {
         rule.onNode(hasContentDescription("Remove viewed.pdf")).performClick()
         rule.waitUntil(10_000) { !shows("Opens with") }
         openCompress()
-        waitFor("Tap to choose a PDF")
+        waitFor("Choose PDF")
         rule.waitForIdle()
         assertFalse(shows("Optimization level"))
     }

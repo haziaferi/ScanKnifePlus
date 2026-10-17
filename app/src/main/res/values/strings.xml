@@ -392,9 +392,9 @@
     <string name="tool_file_details">%1$s • %2$s pages</string>
     <string name="tool_image_n">Image %1$s</string>
     <string name="tool_page_n">Page %1$s</string>
-    <string name="tool_pick_images">Tap to choose images</string>
-    <string name="tool_pick_pdf">Tap to choose a PDF</string>
-    <string name="tool_pick_pdfs">Tap to choose PDFs</string>
+    <string name="tool_pick_images">Choose images</string>
+    <string name="tool_pick_pdf">Choose PDF</string>
+    <string name="tool_pick_pdfs">Choose PDFs</string>
     <string name="tool_preparing">Preparing document…</string>
     <string name="tool_share_failed">Can\'t share this file</string>
     <string name="tool_unreadable">Can\'t read this PDF.</string>
