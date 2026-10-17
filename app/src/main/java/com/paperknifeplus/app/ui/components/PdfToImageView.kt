@@ -57,6 +57,8 @@ fun PdfToImageView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
+    var outputUri by remember { mutableStateOf<Uri?>(null) }
 
     var pageCount by remember { mutableIntStateOf(0) }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -83,7 +85,9 @@ fun PdfToImageView(
         selectedUri = uri
         unlockPassword = ""
         unlockError = false
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         isFileLoading = true
         scope.launch {
             when (inspectPdf(context, uri)) {
@@ -118,6 +122,7 @@ fun PdfToImageView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
+                    outputUri = uri
                     outputs.saved(uri, fileName, toolText(context, R.string.pdf2img_images, selectedPages.size), Icons.Outlined.BurstMode)
                     currentState = ToolState.SUCCESS
                 }
@@ -141,153 +146,151 @@ fun PdfToImageView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_pdf2img),
-                    subtitle = stringResource(R.string.pdf2img_native_export_engine),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_pdf2img), stringResource(R.string.pdf2img_native_export_engine), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (currentState) {
                 ToolState.SELECTING -> {
-                    SelectionGrid(
-                        onSelect = { pickLauncher.launch("application/pdf") },
+                    ToolEmptyState(
                         icon = Icons.Outlined.BurstMode,
-                        title = stringResource(R.string.tool_pick_pdf),
-                        subtitle = stringResource(R.string.pdf2img_convert_document_to_images),
-                        modifier = Modifier.fillMaxSize()
+                        title = stringResource(R.string.pdf2img_convert_document_to_images),
+                        task = stringResource(R.string.tool_pdf2img_desc),
+                        onChoose = { pickLauncher.launch("application/pdf") },
+                        onOpenRecent = { handleFileSelection(it) }
                     )
                 }
                 ToolState.CONFIGURING -> {
-                    Column(Modifier.fillMaxSize()) {
-                        Spacer(Modifier.height(16.dp))
+                    ToolConfigLayout(
+                        action = stringResource(R.string.pdf2img_convert_pages_to, selectedPages.size, format),
+                        onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName), "zip")) },
+                        actionEnabled = selectedPages.isNotEmpty(),
+                        scroll = false
+                    ) {
+                        ToolFileCard(
+                            uri = selectedUri!!,
+                            password = unlockPassword.ifEmpty { null },
+                            name = fileName,
+                            details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                            onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                        )
+                        Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                            Spacer(Modifier.height(16.dp))
 
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            shape = RoundedCornerShape(24.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                ToolSectionLabel(stringResource(R.string.pdf2img_export_configuration))
-                                Spacer(Modifier.height(12.dp))
-
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Column(Modifier.weight(1f)) {
-                                        ToolSectionLabel(stringResource(R.string.pdf2img_format))
-                                        Spacer(Modifier.height(8.dp))
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            IMAGE_FORMATS.forEach { f ->
-                                                val isSel = format == f
-                                                Surface(
-                                                    selected = isSel,
-                                                    onClick = { format = f },
-                                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                                    border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Text(f, fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Column(Modifier.weight(1f)) {
-                                        ToolSectionLabel(stringResource(R.string.pdf2img_quality))
-                                        Spacer(Modifier.height(8.dp))
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("Standard", "HD", "Ultra HD").forEach { q ->
-                                                val isSel = quality == q
-                                                Surface(
-                                                    selected = isSel,
-                                                    onClick = { quality = q },
-                                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                                    border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Text(
-                                                            stringResource(
-                                                                when (q) {
-                                                                    "Ultra HD" -> R.string.pdf2img_quality_ultra
-                                                                    "HD" -> R.string.pdf2img_quality_hd
-                                                                    else -> R.string.pdf2img_quality_standard
-                                                                }
-                                                            ), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                        ToolSectionLabel(stringResource(R.string.pdf2img_select_pages_to_export), Modifier.padding(start = 4.dp))
-                        Spacer(Modifier.height(8.dp))
-
-                        Box(modifier = Modifier.weight(1f)) {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(bottom = 100.dp)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                shape = RoundedCornerShape(24.dp)
                             ) {
-                                items(pageCount, key = { it }) { index ->
-                                    val isSelected = selectedPages.contains(index)
-                                    PdfPageItem(
-                                        uri = selectedUri!!,
-                                        index = index,
-                                        password = unlockPassword.ifEmpty { null },
-                                        imageLoader = imageLoader,
-                                        accentColor = accentColor,
-                                        onClick = { lightboxPage = index },
-                                        modifier = Modifier.border(
-                                            BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent),
-                                            RoundedCornerShape(12.dp)
-                                        )
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(if (isSelected) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                                .toggleable(value = isSelected, role = Role.Checkbox) { selectedPages = if (it) selectedPages + index else selectedPages - index }
-                                                .semantics { contentDescription = toolText(context, R.string.tool_page_n, index + 1); stateDescription = if (isSelected) toolText(context, R.string.state_selected) else toolText(context, R.string.state_not_selected) }
-                                        )
+                                Column(Modifier.padding(16.dp)) {
+                                    ToolSectionLabel(stringResource(R.string.pdf2img_export_configuration))
+                                    Spacer(Modifier.height(12.dp))
 
-                                        Surface(
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(8.dp)
-                                                .size(24.dp),
-                                            color = if (isSelected) accentColor else pageBadge,
-                                            shape = CircleShape
-                                        ) {
-                                            // The tick shows only when selected, so the state is in the shape and not only in the colour.
-                                            if (isSelected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            ToolSectionLabel(stringResource(R.string.pdf2img_format))
+                                            Spacer(Modifier.height(8.dp))
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                IMAGE_FORMATS.forEach { f ->
+                                                    val isSel = format == f
+                                                    Surface(
+                                                        selected = isSel,
+                                                        onClick = { format = f },
+                                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                        border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Text(f, fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Column(Modifier.weight(1f)) {
+                                            ToolSectionLabel(stringResource(R.string.pdf2img_quality))
+                                            Spacer(Modifier.height(8.dp))
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                listOf("Standard", "HD", "Ultra HD").forEach { q ->
+                                                    val isSel = quality == q
+                                                    Surface(
+                                                        selected = isSel,
+                                                        onClick = { quality = q },
+                                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                                        border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Text(
+                                                                stringResource(
+                                                                    when (q) {
+                                                                        "Ultra HD" -> R.string.pdf2img_quality_ultra
+                                                                        "HD" -> R.string.pdf2img_quality_hd
+                                                                        else -> R.string.pdf2img_quality_standard
+                                                                    }
+                                                                ), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        Button(
-                            onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName), "zip")) },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp),
-                            enabled = selectedPages.isNotEmpty(),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text(stringResource(R.string.pdf2img_convert_pages_to, selectedPages.size, format), fontWeight = FontWeight.Black)
+                            Spacer(Modifier.height(16.dp))
+                            ToolSectionLabel(stringResource(R.string.pdf2img_select_pages_to_export), Modifier.padding(start = 4.dp))
+                            Spacer(Modifier.height(8.dp))
+
+                            Box(modifier = Modifier.weight(1f)) {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(2),
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    contentPadding = PaddingValues(bottom = 100.dp)
+                                ) {
+                                    items(pageCount, key = { it }) { index ->
+                                        val isSelected = selectedPages.contains(index)
+                                        PdfPageItem(
+                                            uri = selectedUri!!,
+                                            index = index,
+                                            password = unlockPassword.ifEmpty { null },
+                                            imageLoader = imageLoader,
+                                            accentColor = accentColor,
+                                            onClick = { lightboxPage = index },
+                                            modifier = Modifier.border(
+                                                BorderStroke(2.dp, if (isSelected) accentColor else Color.Transparent),
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(if (isSelected) accentColor.copy(alpha = 0.1f) else Color.Transparent)
+                                                    .toggleable(value = isSelected, role = Role.Checkbox) { selectedPages = if (it) selectedPages + index else selectedPages - index }
+                                                    .semantics { contentDescription = toolText(context, R.string.tool_page_n, index + 1); stateDescription = if (isSelected) toolText(context, R.string.state_selected) else toolText(context, R.string.state_not_selected) }
+                                            )
+
+                                            Surface(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(8.dp)
+                                                    .size(24.dp),
+                                                color = if (isSelected) accentColor else pageBadge,
+                                                shape = CircleShape
+                                            ) {
+                                                // The tick shows only when selected, so the state is in the shape and not only in the colour.
+                                                if (isSelected) Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -305,10 +308,9 @@ fun PdfToImageView(
                     SuccessView(
                         message = stringResource(R.string.pdf2img_images_exported),
                         subMessage = stringResource(R.string.pdf2img_pages_saved_to_zip, selectedPages.size),
-                        processingTime = processingTime,
+                        result = outputUri?.let { ToolResult(it, fileName, ZIP_MIME) },
                         onDone = onBack,
-                        onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
-                        showPreviewButton = false,
+                        onProcessMore = { selectedUri = null; outputUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
                     )
                 }
             }

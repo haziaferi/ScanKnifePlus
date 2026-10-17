@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
@@ -48,6 +47,7 @@ fun RearrangeView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
@@ -69,7 +69,9 @@ fun RearrangeView(
         selectedUri = uri
         sourceUri = uri
         unlockPassword = password.orEmpty()
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -133,122 +135,109 @@ fun RearrangeView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_rearrange),
-                    subtitle = stringResource(R.string.rearrange_move_pages_to_new_slots),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_rearrange), stringResource(R.string.rearrange_move_pages_to_new_slots), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(false, stringResource(R.string.rearrange_preparing_rearrange_grid))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Filled.SwapVert,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.rearrange_reorder_pages_reliably),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.rearrange_reorder_pages_reliably),
+                            task = stringResource(R.string.tool_rearrange_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
-                                }
-                                IconButton(onClick = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null }) {
-                                    Icon(Icons.Filled.Close, stringResource(R.string.action_clear), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                                }
-                            }
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
+                            scroll = false
+                        ) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageOrder.size),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                                ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
+                                Spacer(Modifier.height(12.dp))
 
-                            Box(modifier = Modifier.weight(1f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageOrder.size,
-                                    mode = PreviewMode.REORDER,
-                                    password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
-                                    accentColor = accentColor,
-                                    pageOrder = pageOrder,
-                                    selectedPages = selectedPageIndex?.let { setOf(it) } ?: emptySet(),
-                                    onToggleSelection = { index ->
-                                        selectedPageIndex = if (selectedPageIndex == index) null else index
-                                    }
-                                )
-                            }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    UnifiedPdfPreview(
+                                        uri = selectedUri!!,
+                                        pageCount = pageOrder.size,
+                                        mode = PreviewMode.REORDER,
+                                        password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                        accentColor = accentColor,
+                                        pageOrder = pageOrder,
+                                        selectedPages = selectedPageIndex?.let { setOf(it) } ?: emptySet(),
+                                        onToggleSelection = { index ->
+                                            selectedPageIndex = if (selectedPageIndex == index) null else index
+                                        }
+                                    )
+                                }
 
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceAround,
-                                    verticalAlignment = Alignment.CenterVertically
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(20.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = {
-                                            selectedPageIndex?.let { current ->
-                                                if (current > 0) {
-                                                    val newList = pageOrder.toMutableList()
-                                                    val item = newList.removeAt(current)
-                                                    newList.add(current - 1, item)
-                                                    pageOrder = newList
-                                                    selectedPageIndex = current - 1
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceAround,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                selectedPageIndex?.let { current ->
+                                                    if (current > 0) {
+                                                        val newList = pageOrder.toMutableList()
+                                                        val item = newList.removeAt(current)
+                                                        newList.add(current - 1, item)
+                                                        pageOrder = newList
+                                                        selectedPageIndex = current - 1
+                                                    }
                                                 }
-                                            }
-                                        },
-                                        enabled = selectedPageIndex != null && selectedPageIndex!! > 0
-                                    ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                            },
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! > 0
+                                        ) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
 
-                                    Button(
-                                        onClick = { showMoveToDialog = true },
-                                        enabled = selectedPageIndex != null,
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
-                                    }
+                                        Button(
+                                            onClick = { showMoveToDialog = true },
+                                            enabled = selectedPageIndex != null,
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                        }
 
-                                    IconButton(
-                                        onClick = {
-                                            selectedPageIndex?.let { current ->
-                                                if (current < pageOrder.size - 1) {
-                                                    val newList = pageOrder.toMutableList()
-                                                    val item = newList.removeAt(current)
-                                                    newList.add(current + 1, item)
-                                                    pageOrder = newList
-                                                    selectedPageIndex = current + 1
+                                        IconButton(
+                                            onClick = {
+                                                selectedPageIndex?.let { current ->
+                                                    if (current < pageOrder.size - 1) {
+                                                        val newList = pageOrder.toMutableList()
+                                                        val item = newList.removeAt(current)
+                                                        newList.add(current + 1, item)
+                                                        pageOrder = newList
+                                                        selectedPageIndex = current + 1
+                                                    }
                                                 }
-                                            }
-                                        },
-                                        enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
-                                    ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                            },
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
+                                        ) {
+                                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
                                     }
                                 }
-                            }
-
-                            Button(
-                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).heightIn(min = 56.dp),
-                                shape = RoundedCornerShape(24.dp)
-                            ) {
-                                Text(text = stringResource(R.string.action_save_pdf), fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
                             }
                         }
                     }
@@ -266,7 +255,7 @@ fun RearrangeView(
                         SuccessView(
                             message = stringResource(R.string.rearrange_rearrange_complete),
                             subMessage = stringResource(R.string.rearrange_page_order_updated_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -274,9 +263,7 @@ fun RearrangeView(
                                 selectedPageIndex = null
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = {
-                                outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) }
-                            },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) } }
                         )
                     }
                 }

@@ -216,7 +216,7 @@ private fun LazyListScope.sessionRows(filter: HistoryFilter, query: String, onIt
                 onClick = if (canOpenInReader(mime)) {
                     { item.uri?.let { uri -> onItemClick(uri, item.name, item.pageCount) } }
                 } else null,
-                onShare = item.uri?.let { uri -> { share(context, uri, item.name, mime ?: historyEntryMime(context.contentResolver, uri)) } }
+                onShare = item.uri?.let { uri -> { shareFile(context, uri, item.name, mime ?: historyEntryMime(context.contentResolver, uri)) } }
             )
         }
     }
@@ -234,7 +234,7 @@ private fun LazyListScope.folderRows(items: List<FolderItem>?, filter: HistoryFi
         val context = LocalContext.current
         CardSlice(first = index == 0, last = index == shown.lastIndex) {
             Column {
-                FolderRow(item, onClick = open(item), onShare = item.uri?.let { uri -> { share(context, uri, item.name, item.mime) } })
+                FolderRow(item, onClick = open(item), onShare = item.uri?.let { uri -> { shareFile(context, uri, item.name, item.mime) } })
                 if (item.kind == FolderKind.CONFLICT) ConflictActions(item, onOpen = open(item), onOpenOriginal = item.original?.let(open))
             }
         }
@@ -316,7 +316,7 @@ private fun EmptyMessage(text: String) {
 }
 
 /** Opens the share sheet for [uri]; sharing doubles as "Save to Files", the most reliable way to export on Android. */
-private fun share(context: Context, uri: Uri, name: String, mime: String) {
+internal fun shareFile(context: Context, uri: Uri, name: String, mime: String) {
     try {
         context.startActivity(Intent.createChooser(ScanExport.shareIntent(uri, name, mime), context.getString(R.string.history_share_chooser)))
     } catch (e: Exception) {

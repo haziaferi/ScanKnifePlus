@@ -10,11 +10,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
@@ -54,6 +52,7 @@ fun PdfToZipView(
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
+    var outputUri by remember { mutableStateOf<Uri?>(null) }
     var pageCount by remember { mutableIntStateOf(0) }
     var processingTime by remember { mutableStateOf("") }
     var progressCount by remember { mutableIntStateOf(0) }
@@ -128,6 +127,7 @@ fun PdfToZipView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
+                    outputUri = uri
                     outputs.saved(uri, fileName, toolText(context, R.string.pdf2zip_pages_archived, pageCount), Icons.Outlined.FolderZip)
                     currentState = ToolState.SUCCESS
                 }
@@ -147,64 +147,43 @@ fun PdfToZipView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_pdf2zip),
-                    subtitle = stringResource(R.string.pdf2zip_pages_to_archive),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_pdf2zip), stringResource(R.string.pdf2zip_pages_to_archive), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(false, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.FolderZip,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.pdf2zip_create_pages_archive),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.pdf2zip_create_pages_archive),
+                            task = stringResource(R.string.tool_pdf2zip_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.pdf2zip_convert_and_save_zip),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-pages", "zip")) }
                         ) {
-                            Spacer(Modifier.height(12.dp))
-
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth(0.75f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor
-                                )
-                            }
-
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-
-                            Spacer(Modifier.height(20.dp))
-                            ToolSectionLabel(stringResource(R.string.pdf2zip_archive_info))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            ToolSectionLabel(stringResource(R.string.pdf2zip_archive_info), Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
                             Text(
                                 stringResource(R.string.pdf2zip_bundle_note),
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 4.dp),
-                                textAlign = TextAlign.Center
+                                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
                             )
-
-                            Spacer(Modifier.height(24.dp))
-
-                            ToolPrimaryButton(stringResource(R.string.pdf2zip_convert_and_save_zip), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-pages", "zip")) }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -221,10 +200,9 @@ fun PdfToZipView(
                         SuccessView(
                             message = stringResource(R.string.pdf2zip_archive_created),
                             subMessage = stringResource(R.string.pdf2zip_individual_pages_saved_to_zip, pageCount),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName, ZIP_MIME) },
                             onDone = onBack,
-                            onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
-                            showPreviewButton = false,
+                            onProcessMore = { selectedUri = null; outputUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
                         )
                     }
                 }

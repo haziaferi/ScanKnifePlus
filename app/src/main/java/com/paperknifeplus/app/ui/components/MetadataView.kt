@@ -8,15 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -168,78 +165,56 @@ fun MetadataView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_metadata),
-                    subtitle = stringResource(R.string.metadata_edit_document_properties),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_metadata), stringResource(R.string.metadata_edit_document_properties), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.metadata_reading_file_properties))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.Fingerprint,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.metadata_edit_pdf_properties),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.metadata_edit_pdf_properties),
+                            task = stringResource(R.string.tool_metadata_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-meta", "pdf")) }
                         ) {
-                            Spacer(Modifier.height(16.dp))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = unlockPassword.ifEmpty { null },
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                            )
+                            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                                MetadataGroup(stringResource(R.string.metadata_core_metadata)) {
+                                    MetadataEditField(stringResource(R.string.tool_field_title), title, accentColor) { title = it }
+                                    MetadataEditField(stringResource(R.string.metadata_author), author, accentColor) { author = it }
+                                }
 
-                            Box(modifier = Modifier.fillMaxWidth(0.6f).aspectRatio(0.707f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor
-                                )
+                                Spacer(Modifier.height(16.dp))
+
+                                MetadataGroup(stringResource(R.string.metadata_additional_tags)) {
+                                    MetadataEditField(stringResource(R.string.metadata_subject), subject, accentColor) { subject = it }
+                                    MetadataEditField(stringResource(R.string.metadata_keywords), keywords, accentColor) { keywords = it }
+                                }
+
+                                Spacer(Modifier.height(16.dp))
+
+                                MetadataGroup(stringResource(R.string.metadata_source_engine)) {
+                                    MetadataEditField(stringResource(R.string.metadata_creator), creator, accentColor) { creator = it }
+                                    MetadataEditField(stringResource(R.string.metadata_producer), producer, accentColor) { producer = it }
+                                }
                             }
-
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-
-                            Spacer(Modifier.height(24.dp))
-
-                            MetadataGroup(stringResource(R.string.metadata_core_metadata)) {
-                                MetadataEditField(stringResource(R.string.tool_field_title), title, accentColor) { title = it }
-                                MetadataEditField(stringResource(R.string.metadata_author), author, accentColor) { author = it }
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-
-                            MetadataGroup(stringResource(R.string.metadata_additional_tags)) {
-                                MetadataEditField(stringResource(R.string.metadata_subject), subject, accentColor) { subject = it }
-                                MetadataEditField(stringResource(R.string.metadata_keywords), keywords, accentColor) { keywords = it }
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-
-                            MetadataGroup(stringResource(R.string.metadata_source_engine)) {
-                                MetadataEditField(stringResource(R.string.metadata_creator), creator, accentColor) { creator = it }
-                                MetadataEditField(stringResource(R.string.metadata_producer), producer, accentColor) { producer = it }
-                            }
-
-                            Spacer(Modifier.height(32.dp))
-
-                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = {
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-meta", "pdf")
-                                    saveLauncher.launch(defaultName)
-                                }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -256,14 +231,14 @@ fun MetadataView(
                         SuccessView(
                             message = stringResource(R.string.metadata_properties_updated),
                             subMessage = stringResource(R.string.metadata_document_metadata_saved),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null
                                 unlockPassword = ""
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

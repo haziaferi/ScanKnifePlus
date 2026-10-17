@@ -6,15 +6,12 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -131,55 +128,44 @@ fun CompressView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_compress),
-                    subtitle = stringResource(R.string.compress_optimize_pdf_size),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_compress), stringResource(R.string.compress_optimize_pdf_size), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.compress_analyzing_file_structure))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.Bolt,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.compress_optimize_any_pdf_document),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.compress_optimize_any_pdf_document),
+                            task = stringResource(R.string.tool_compress_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.compress_compress_and_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")) }
                         ) {
-                            Spacer(Modifier.height(16.dp))
-
-                            Box(modifier = Modifier.fillMaxWidth(0.65f).aspectRatio(0.707f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.COVER,
-                                    password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
-                                    accentColor = accentColor
-                                )
-                            }
-
-                            ToolFileInfo(fileName, stringResource(R.string.tool_file_details, fileSize, pageCount))
-
-                            Spacer(Modifier.height(24.dp))
-                            ToolSectionLabel(stringResource(R.string.compress_optimization_level), Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(12.dp))
-
-                            Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            ToolSectionLabel(
+                                stringResource(R.string.compress_optimization_level),
+                                Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)
+                            )
+                            Column(
+                                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp).selectableGroup(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 listOf("Basic", "Recommended", "Extreme").forEach { level ->
                                     ToolOptionRow(
                                         selected = compressionLevel == level,
@@ -199,13 +185,6 @@ fun CompressView(
                                     )
                                 }
                             }
-
-                            Spacer(Modifier.height(32.dp))
-                            ToolPrimaryButton(stringResource(R.string.compress_compress_and_save_pdf), onClick = {
-                                val defaultName = outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")
-                                saveLauncher.launch(defaultName)
-                            }, modifier = Modifier.fillMaxWidth())
-                            Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -222,7 +201,7 @@ fun CompressView(
                         SuccessView(
                             message = stringResource(R.string.compress_compression_complete),
                             subMessage = "", // No saved-size line: providers often still report 0 B right after the write.
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -231,9 +210,7 @@ fun CompressView(
                                 unlockPassword = ""
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = {
-                                outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
-                            },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

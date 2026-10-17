@@ -274,10 +274,16 @@
     <string name="tool_page_progress">Page %1$d of %2$d</string>
     <string name="tool_done_in">Done in %1$s</string>
     <string name="tool_process_more">Process more files</string>
-    <string name="tool_open_preview">Open preview</string>
-    <string name="tool_preview_unavailable">Preview unavailable</string>
     <string name="tool_back_to_tools">Back to tools</string>
     <string name="tool_copy_failed">Saved locally in the app. Could not access your folder.</string>
+    <string name="tool_step_choose_pdf">Choose a PDF</string>
+    <string name="tool_step_choose_pdfs">Choose PDFs</string>
+    <string name="tool_step_choose_images">Choose images</string>
+    <string name="tool_step_choose_body">From your folder or anywhere on this phone</string>
+    <string name="tool_step_options">Set the options</string>
+    <string name="tool_step_save">Save the result</string>
+    <string name="tool_step_save_body">Your original file stays as it is</string>
+    <string name="tool_recent_note">Only PDFs are listed. Tap one to use it here, or choose any PDF on this phone.</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Appearance</string>
@@ -292,37 +298,42 @@
     <string name="settings_author_hint">e.g. John Doe</string>
     <string name="settings_privacy">Privacy and storage</string>
     <string name="settings_clear_history">Clear history</string>
-    <string name="settings_clear_history_body">Wipe all session history now</string>
     <string name="settings_clear_cache">Clear cache</string>
-    <string name="settings_clear_cache_body">Purge all temporary documents and previews</string>
     <string name="settings_cache_cleared">Cache cleared</string>
     <string name="settings_cache_partly">Part of the cache could not be cleared</string>
     <string name="settings_about">About</string>
     <string name="settings_about_app">About %1$s</string>
-    <string name="settings_about_body">How it works, credits and licenses</string>
     <string name="settings_version">%1$s V%2$s</string>
     <string name="settings_clear_history_title">Clear history?</string>
     <string name="settings_clear_history_confirm_body">This will permanently remove all entries from your history tab. This cannot be undone.</string>
     <string name="settings_clear_history_confirm">Wipe everything</string>
     <string name="settings_history_cleared">History wiped</string>
+    <string name="settings_value_not_chosen">Not chosen</string>
+    <string name="settings_value_not_set">Not set</string>
 
     <!-- About -->
     <string name="about_title">About</string>
     <string name="about_libraries_title">Open Source</string>
     <string name="about_license_title">License</string>
     <string name="about_tagline">Native PDF workshop</string>
-    <string name="about_how_title">How it works</string>
-    <string name="about_how_body">%1$s is built on a simple but powerful idea: your documents belong to you, and they should never have to leave your device to be modified.\n\nTraditional PDF tools often require you to upload your files to their servers. This means your private contracts, bank statements, or personal letters are being sent over the internet and processed on a computer you don\'t control. Even if they promise to delete the data, the risk remains.\n\nWe took a different path. We built a \'Native Engine\' that brings the workshop to your phone. When you open a PDF in %1$s, our app reads the file\'s structure directly from your storage. When you sign a document, merge files, or extract images, all the heavy lifting is done by your phone\'s processor. It\'s like having a professional printing press and a secure vault built right into your pocket.\n\nThis approach doesn\'t just protect your privacy; it makes the app incredibly fast and reliable. Because there\'s no uploading or downloading, tools work instantly. You can edit a document on a plane, in a remote area without a signal, or in a high-security environment with zero connectivity. Your data starts on your device and ends on your device, exactly where it belongs.</string>
-    <string name="about_privacy_title">Privacy by design</string>
-    <string name="about_privacy_body">• 100% local processing: files never leave your device\n• No servers, no cloud, no uploads\n• No tracking, no analytics, no telemetry\n• Works completely offline\n• Your files, your processor, your device</string>
-    <string name="about_open_title">Fully open source</string>
-    <string name="about_open_body">• All code available on GitHub\n• Anyone can audit the source\n• No hidden tracking or data collection\n• Community-driven development\n• Security researchers can verify claims</string>
     <string name="about_credits">Credits</string>
     <string name="about_legal">Legal</string>
     <string name="about_libraries">Open Source Libraries</string>
     <string name="about_libraries_body">The tech powering our engine</string>
     <string name="about_license">GPL v3</string>
     <string name="about_license_body">Read the legal terms</string>
+    <string name="about_fact_offline">Works offline</string>
+    <string name="about_fact_offline_body">Every tool runs on this phone; nothing is uploaded</string>
+    <string name="about_fact_tracking">No tracking</string>
+    <string name="about_fact_tracking_body">No analytics, no ads, no account</string>
+    <string name="about_fact_open">Open source</string>
+    <string name="about_fact_open_body">Anyone can read and check the code</string>
+    <string name="about_credit_paperknife">%1$s is a fork of PaperKnife+ and keeps its PDF tools.\nBy potatameister; contributors are listed on the project\'s GitHub page.</string>
+    <string name="about_credit_openscan">The document scanner is ported from OpenScan to Kotlin.\nBy Vijay T S and Vikram H (Ethereal Developers); contributors are listed on the project\'s GitHub page.</string>
+    <string name="about_not_affiliated">%1$s is an independent fork and is not affiliated with or endorsed by the PaperKnife+ or OpenScan projects or their authors.</string>
+    <string name="about_source_code">Source code</string>
+    <string name="about_source_code_url" translatable="false">github.com/haziaferi/ScanKnifePlus</string>
+    <string name="link_confirm_title">Open this link in your browser?</string>
     <string name="about_core_engine">Core engine</string>
     <string name="about_ui_design">UI and design</string>
     <string name="about_media">Media</string>

@@ -1,5 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
@@ -13,13 +15,16 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 class AboutViewTest {
@@ -66,11 +71,11 @@ class AboutViewTest {
         openLibraries()
         pressBack()
         rule.onNodeWithText("Open Source").assertDoesNotExist()
-        rule.onNodeWithText("How it works").assertExists()
+        rule.onNodeWithText("Works offline").assertExists()
 
         openLibraries()
         rule.onNodeWithContentDescription("Back").performClick()
-        rule.onNodeWithText("How it works").assertExists()
+        rule.onNodeWithText("Works offline").assertExists()
         assertFalse(backCalled)
         assertFalse(rule.activity.isFinishing)
     }
@@ -101,5 +106,38 @@ class AboutViewTest {
         rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
         openLibraries()
         for (text in listOf("OpenScan", "[BSD-3-Clause]", "CameraX", "Notices", "Fake notice", "fake notice body", "Other notice")) scrollTo(text)
+    }
+
+    @Test
+    fun `the About page shows the three facts and the version under the name`() {
+        rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
+        for (text in listOf("Works offline", "No tracking", "Open source", "ScanKnife+ V")) scrollTo(text, substring = true)
+        assertNowhereOnPage("100% local", "Native Engine", "tools work instantly")
+    }
+
+    @Test
+    fun `the source code row asks before opening the browser, and Cancel stays`() {
+        rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
+        scrollTo("Source code")
+        rule.onNodeWithText("Source code").performClick()
+        rule.onNodeWithText("Open this link in your browser?").assertExists()
+        rule.onNodeWithText(SOURCE_URL).assertExists()
+        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithText("Open this link in your browser?").assertDoesNotExist()
+        assertNull(shadowOf(rule.activity).nextStartedActivity)
+
+        rule.onNodeWithText("Source code").performClick()
+        rule.onNodeWithText("Open").performClick()
+        val started = shadowOf(rule.activity).nextStartedActivity
+        assertEquals(Intent.ACTION_VIEW, started.action)
+        assertEquals(Uri.parse(SOURCE_URL), started.data)
+    }
+
+    @Test
+    fun `a credit asks before opening its project's page`() {
+        rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
+        scrollTo("By potatameister", substring = true)
+        rule.onNodeWithText("By potatameister", substring = true).performClick()
+        rule.onNodeWithText(PAPERKNIFE_URL).assertExists()
     }
 }

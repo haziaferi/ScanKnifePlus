@@ -41,6 +41,7 @@ fun GrayscaleView(
     var unlockPassword by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
     var fallbackPages by remember { mutableIntStateOf(0) }
@@ -62,7 +63,9 @@ fun GrayscaleView(
     fun handleFileSelection(uri: Uri) {
         dropDecryptedCopy()
         selectedUri = uri
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -126,15 +129,7 @@ fun GrayscaleView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_grayscale),
-                    subtitle = stringResource(R.string.grayscale_convert_pdf_to_b_w),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_grayscale), stringResource(R.string.grayscale_convert_pdf_to_b_w), processingTime, onBack)
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -143,20 +138,28 @@ fun GrayscaleView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Outlined.Palette,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.grayscale_grayscale_any_pdf_document),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.grayscale_grayscale_any_pdf_document),
+                            task = stringResource(R.string.tool_grayscale_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(
-                            modifier = Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        ToolConfigLayout(
+                            action = stringResource(R.string.grayscale_convert_and_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")) },
+                            scroll = false
                         ) {
-                            Spacer(Modifier.height(16.dp))
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = null,
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)
+                            )
 
                             Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 UnifiedPdfPreview(
@@ -174,7 +177,7 @@ fun GrayscaleView(
                             Surface(
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                                 shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(16.dp),
@@ -192,14 +195,6 @@ fun GrayscaleView(
                                     )
                                 }
                             }
-
-                            Spacer(Modifier.height(24.dp))
-
-                            ToolPrimaryButton(stringResource(R.string.grayscale_convert_and_save_pdf), onClick = {
-                                    val defaultName = outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")
-                                    saveLauncher.launch(defaultName)
-                                }, modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp))
-                            Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -216,10 +211,10 @@ fun GrayscaleView(
                         SuccessView(
                             message = stringResource(R.string.grayscale_grayscale_complete),
                             subMessage = grayscaleSummary(context, fallbackPages),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = { dropDecryptedCopy(); selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
-                            onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

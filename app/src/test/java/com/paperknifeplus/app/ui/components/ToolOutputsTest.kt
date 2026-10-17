@@ -14,7 +14,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.OutputCopy
@@ -128,7 +127,7 @@ class ToolOutputsTest {
             }
         }
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair and save PDF")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Repair and save PDF").performScrollTo().performClick()
+        rule.onNodeWithText("Repair and save PDF").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair complete")).fetchSemanticsNodes().isNotEmpty() }
         rule.waitForIdle()
 

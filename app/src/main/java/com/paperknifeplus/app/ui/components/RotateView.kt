@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
@@ -45,6 +44,7 @@ fun RotateView(
     var unlockPassword by remember { mutableStateOf("") }
     var pageRotations by remember { mutableStateOf<Map<Int, Int>>(emptyMap()) }
     var fileName by remember { mutableStateOf("") }
+    var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var processingTime by remember { mutableStateOf("") }
@@ -63,7 +63,9 @@ fun RotateView(
         selectedUri = uri
         sourceUri = uri
         unlockPassword = ""
-        fileName = getUriDetails(context, uri).name
+        val details = getUriDetails(context, uri)
+        fileName = details.name
+        fileSize = details.size
         unlockError = false
         isFileLoading = true
         scope.launch {
@@ -128,91 +130,91 @@ fun RotateView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_rotate),
-                    subtitle = stringResource(R.string.rotate_fix_document_orientation),
-                    showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(currentState, stringResource(R.string.tool_rotate), stringResource(R.string.rotate_fix_document_orientation), processingTime, onBack)
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.AutoMirrored.Filled.RotateRight,
-                            title = stringResource(R.string.tool_pick_pdf),
-                            subtitle = stringResource(R.string.rotate_rotate_any_pdf_document),
-                            modifier = Modifier.fillMaxSize()
+                            title = stringResource(R.string.rotate_rotate_any_pdf_document),
+                            task = stringResource(R.string.tool_rotate_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleFileSelection(it) }
                         )
                     }
                     ToolState.CONFIGURING -> {
-                        Column(Modifier.fillMaxSize()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    val changed = pageRotations.values.count { it != 0 }
-                                    ToolStatusText(stringResource(R.string.rotate_pages_modified, changed, pageCount))
-                                }
-
-                                TextButton(onClick = {
-                                    pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
-                                }) {
-                                    Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.rotate_rotate_all_90), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
-                                }
-                            }
-
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                color = accentColor.copy(alpha = 0.05f),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
+                        ToolConfigLayout(
+                            action = stringResource(R.string.action_save_pdf),
+                            onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) },
+                            scroll = false
+                        ) {
+                            ToolFileCard(
+                                uri = selectedUri!!,
+                                password = null,
+                                name = fileName,
+                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                            )
+                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Filled.Info, null, tint = accentColor, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        stringResource(R.string.rotate_tap_page),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = accentColor
+                                    ToolStatusText(stringResource(R.string.rotate_pages_modified, pageRotations.values.count { it != 0 }, pageCount))
+
+                                    TextButton(onClick = {
+                                        pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
+                                    }) {
+                                        Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(stringResource(R.string.rotate_rotate_all_90), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                    color = accentColor.copy(alpha = 0.05f),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Filled.Info, null, tint = accentColor, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            stringResource(R.string.rotate_tap_page),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = accentColor
+                                        )
+                                    }
+                                }
+
+                                Box(modifier = Modifier.weight(1f)) {
+                                    UnifiedPdfPreview(
+                                        uri = selectedUri!!,
+                                        pageCount = pageCount,
+                                        mode = PreviewMode.ROTATE,
+                                        password = null,
+                                        accentColor = accentColor,
+                                        pageRotations = pageRotations,
+                                        disableLightbox = true, // By product request: tapping a page rotates it instead.
+                                        onRotatePage = { index ->
+                                            val current = pageRotations[index] ?: 0
+                                            pageRotations = pageRotations + (index to (current + 90) % 360)
+                                        }
                                     )
                                 }
                             }
-
-                            Box(modifier = Modifier.weight(1f)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.ROTATE,
-                                    password = null,
-                                    accentColor = accentColor,
-                                    pageRotations = pageRotations,
-                                    disableLightbox = true, // By product request: tapping a page rotates it instead.
-                                    onRotatePage = { index ->
-                                        val current = pageRotations[index] ?: 0
-                                        pageRotations = pageRotations + (index to (current + 90) % 360)
-                                    }
-                                )
-                            }
-
-                            ToolPrimaryButton(stringResource(R.string.action_save_pdf), onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
@@ -229,7 +231,7 @@ fun RotateView(
                         SuccessView(
                             message = stringResource(R.string.rotate_rotate_complete),
                             subMessage = stringResource(R.string.rotate_orientation_updated_successfully),
-                            processingTime = processingTime,
+                            result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -239,9 +241,7 @@ fun RotateView(
                                 pageRotations = emptyMap()
                                 currentState = ToolState.SELECTING
                             },
-                            onPreview = {
-                                outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
-                            },
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
                 }

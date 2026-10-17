@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -72,35 +74,46 @@ class LargeTextLayoutTest {
             )
         }
         val list = rule.onNode(hasScrollAction())
-        val subtitle = "Can't reach Documents/Scans · choose it again"
-        list.performScrollToNode(hasText(subtitle))
+        list.performScrollToNode(hasText("Choose again"))
         assertNotClipped("Folder")
-        assertNotClipped(subtitle)
-        assertTrue("the status is under the name", text(subtitle).top >= text("Folder").bottom)
-
-        list.performScrollToNode(hasText("Graphite Scholastic"))
-        assertNotClipped("Graphite Scholastic")
+        assertNotClipped("Choose again")
+        assertNotClipped("Colour palette")
         assertNotClipped("Still Water")
+        assertTrue("the value is beside the name", text("Choose again").left >= text("Folder").right)
+
+        rule.onNodeWithText("Colour palette").performClick()
+        assertNotClipped("Graphite Scholastic")
     }
 
     @Test
     fun `the tool scaffold grows with its text`() {
-        val label = "COMPRESS & SAVE PDF WITH A LONGER LABEL"
+        val label = "Compress and save PDF with a longer label"
+        val name = "a-rather-long-file-name-for-the-test.pdf"
         atDoubleText {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                ToolTopBar(title = "Compress", subtitle = "OPTIMIZE PDF SIZE", showChange = true, onBack = {}, onChange = {})
-                ToolFileInfo("a-rather-long-file-name-for-the-test.pdf", "1.2 MB • 3 PAGES")
+                ToolTopBar(title = "Compress", subtitle = "Optimize PDF size", showChange = true, onBack = {}, onChange = {})
+                ToolFileCard(Uri.parse("content://test/a.pdf"), null, name, "1.2 MB • 3 pages", onChange = {})
                 ToolOptionRow(selected = true, title = "Recommended", description = "Great balance of size and quality", onClick = {})
                 ToolPrimaryButton(label, onClick = {})
-                SelectionGrid(onSelect = {}, icon = Icons.Outlined.Bolt, title = "Tap to enter file", subtitle = "OPTIMIZE ANY PDF DOCUMENT")
             }
         }
-        val change = rule.onNode(hasClickAction() and hasText("Change")).bounds()
-        assertTrue("the title runs under Change", text("Compress").right <= change.left)
-        assertTrue("the subtitle runs under Change", text("OPTIMIZE PDF SIZE").right <= change.left)
+        // The top bar's Change comes first in the tree, the file card's second.
+        val changes = rule.onAllNodes(hasClickAction() and hasText("Change"))
+        val barChange = changes[0].bounds()
+        assertTrue("the title runs under Change", text("Compress").right <= barChange.left)
+        assertTrue("the subtitle runs under Change", text("Optimize PDF size").right <= barChange.left)
+        assertTrue("the file name runs beside the card's Change", text(name).right <= changes[1].bounds().left)
 
-        for (shown in listOf("Compress", "OPTIMIZE PDF SIZE", "Recommended", "Great balance of size and quality", label, "Tap to enter file", "OPTIMIZE ANY PDF DOCUMENT")) {
-            assertNotClipped(shown)
+        val shown = listOf("Compress", "Optimize PDF size", name, "1.2 MB • 3 pages", "Recommended", "Great balance of size and quality", label)
+        for (text in shown) assertNotClipped(text)
+    }
+
+    @Test
+    fun `the empty tool screen's steps show their text uncut`() {
+        atDoubleText { ToolEmptyState(Icons.Outlined.Bolt, "Optimize any PDF document", "Make the file smaller", onChoose = {}, onOpenRecent = null) }
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Your original file stays as it is"))
+        for (text in listOf("Optimize any PDF document", "From your folder or anywhere on this phone", "Make the file smaller", "Your original file stays as it is")) {
+            assertNotClipped(text)
         }
     }
 

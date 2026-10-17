@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.LocalActivity
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -11,9 +12,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -24,14 +28,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,8 +75,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
+import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
+import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.OutputCopy
+import com.haziaferi.scanknifeplus.ui.folder.folderPdfs
+import com.paperknifeplus.app.MainActivity
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
@@ -246,30 +260,218 @@ fun ToolTopBar(
     }
 }
 
-/** The empty tool screen: one card, the whole of it a button that opens the file picker. */
+/**
+ * The top bar of a tool screen in [state]: none while the tool works; on the result, how long it took ([processingTime]) under [title] and
+ * back named Back to tools; otherwise [subtitle], and Change ([onChange]) for a tool whose files are a list rather than one file card.
+ */
 @Composable
-fun SelectionGrid(onSelect: () -> Unit, icon: ImageVector, title: String, subtitle: String, modifier: Modifier = Modifier) {
+fun ToolScreenBar(state: ToolState, title: String, subtitle: String, processingTime: String, onBack: () -> Unit, onChange: (() -> Unit)? = null) {
+    when (state) {
+        ToolState.PROCESSING -> Unit
+        ToolState.SUCCESS -> ToolTopBar(
+            title = title,
+            subtitle = processingTime.takeIf { it.isNotEmpty() }?.let { stringResource(R.string.tool_done_in, it) },
+            showChange = false,
+            onBack = onBack,
+            backLabel = stringResource(R.string.tool_back_to_tools)
+        )
+        else -> ToolTopBar(title = title, subtitle = subtitle, showChange = onChange != null, onBack = onBack, onChange = onChange ?: {})
+    }
+}
+
+/** The PDFs of the user's folder for the empty tool screens, newest first; null while no folder is listed (none chosen, unreadable, reading). */
+val LocalFolderPdfs = staticCompositionLocalOf<@Composable () -> List<FolderItem>?> { { appFolderPdfs() } }
+
+@Composable
+private fun appFolderPdfs(): List<FolderItem>? {
+    // Only the app's own activity holds the folder (its FolderHolder, made in onCreate); any other host, such as a test, has none.
+    val activity = LocalActivity.current as? MainActivity ?: return null
+    val folder = remember(activity) { ViewModelProvider(activity)[FolderHolder::class.java].folder }
+    return folder.history?.items?.let { folderPdfs(it) }
+}
+
+/**
+ * The empty tool screen (1b, then 1c): a card naming the tool's [title] and its three steps ([chooseStep], [task], saving), then the newest
+ * PDFs of the user's folder ([LocalFolderPdfs]), which [onOpenRecent] opens in the tool, and [chooseLabel] (T1, the picker) pinned at the
+ * bottom. Without a listed folder, or without [onOpenRecent] (a tool that takes images), only the card shows.
+ */
+@Composable
+fun ToolEmptyState(
+    icon: ImageVector,
+    title: String,
+    task: String,
+    onChoose: () -> Unit,
+    onOpenRecent: ((Uri) -> Unit)?,
+    chooseLabel: String = stringResource(R.string.tool_pick_pdf),
+    chooseStep: String = stringResource(R.string.tool_step_choose_pdf)
+) {
     val colors = MaterialTheme.colorScheme
+    val recent = if (onOpenRecent != null) LocalFolderPdfs.current() else null
+    ToolConfigLayout(action = chooseLabel, onAction = onChoose, actionIcon = Icons.Outlined.Description) {
+        ToolCard(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(Modifier.size(52.dp).background(colors.surfaceVariant, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(28.dp))
+                    }
+                    Text(
+                        title,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 26.sp,
+                        color = colors.onSurface,
+                        modifier = Modifier.weight(1f).semantics { heading() }
+                    )
+                }
+                HorizontalDivider(color = colors.outline)
+                ToolStep(1, chooseStep, stringResource(R.string.tool_step_choose_body))
+                ToolStep(2, stringResource(R.string.tool_step_options), task)
+                ToolStep(3, stringResource(R.string.tool_step_save), stringResource(R.string.tool_step_save_body))
+            }
+        }
+        if (!recent.isNullOrEmpty() && onOpenRecent != null) {
+            Text(
+                stringResource(R.string.home_recent_folder),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.onBackground,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).semantics { heading() }
+            )
+            ToolCard(Modifier.padding(horizontal = 16.dp)) {
+                Column {
+                    recent.forEachIndexed { index, item ->
+                        if (index > 0) HorizontalDivider(color = colors.outline)
+                        FolderRow(item, onClick = item.uri?.let { uri -> { onOpenRecent(uri) } })
+                    }
+                }
+            }
+            Text(
+                stringResource(R.string.tool_recent_note),
+                fontSize = 13.sp,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp)
+            )
+        }
+    }
+}
+
+/** One numbered step of the empty tool screen: the number in a recessed circle, [title] over [body]. */
+@Composable
+private fun ToolStep(number: Int, title: String, body: String) {
+    val colors = MaterialTheme.colorScheme
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(28.dp).background(colors.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+            Text("$number", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+            Text(body, fontSize = 13.sp, color = colors.onSurfaceVariant)
+        }
+    }
+}
+
+/** A card on the background, as the prototype's: surface, outline, 18 dp corners. */
+@Composable
+fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Surface(
-        onClick = onSelect,
-        modifier = modifier.fillMaxWidth().padding(vertical = 12.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = colors.surface,
-        border = BorderStroke(1.dp, colors.outline)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically)
-        ) {
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        modifier = modifier.fillMaxWidth(),
+        content = content
+    )
+}
+
+/**
+ * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
+ * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
+ * to save ([secondary], T2) shows it beside the action.
+ */
+@Composable
+fun ToolConfigLayout(
+    action: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    actionEnabled: Boolean = true,
+    actionIcon: ImageVector? = null,
+    scroll: Boolean = true,
+    secondary: ToolAction? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(modifier.fillMaxSize()) {
+        Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), content = content)
+        ToolActionBar {
+            if (secondary == null) {
+                ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.fillMaxWidth(), enabled = actionEnabled, icon = actionIcon)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.weight(1f), enabled = actionEnabled, icon = actionIcon)
+                    ToolSecondaryButton(
+                        secondary.label,
+                        onClick = secondary.onClick,
+                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                        enabled = secondary.enabled
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A second action of a tool screen: [label], [onClick], and whether it is [enabled]. */
+class ToolAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
+
+/** The strip under a tool screen that holds its pinned actions: a top rule, then [content] on the background. */
+@Composable
+fun ToolActionBar(content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp), content = content)
+    }
+}
+
+/** The first page of [uri] (opened with [password]) small, as a file card's thumbnail. */
+@Composable
+fun PdfThumbnail(uri: Uri, password: String?, modifier: Modifier = Modifier) {
+    val request = remember(uri, password) { PdfPageRequest(uri, 0, password, THUMBNAIL_SCALE) }
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp)).clip(RoundedCornerShape(4.dp))) {
+        Image(
+            painter = rememberAsyncImagePainter(request, PdfImageLoader.get(LocalContext.current)),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+/** The render scale of [PdfThumbnail]: enough for 64 dp on a dense screen. */
+internal const val THUMBNAIL_SCALE = 0.4f
+
+/**
+ * The picked file as a small card (2b): its first page (from [uri], opened with [password]), [name] over [details] (size and pages), and
+ * Change ([onChange], T3: 40 dp visible in a 48 dp target). The name wraps rather than clips.
+ */
+@Composable
+fun ToolFileCard(uri: Uri, password: String?, name: String, details: String, onChange: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    ToolCard(modifier) {
+        Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            PdfThumbnail(uri, password, Modifier.size(width = 48.dp, height = 64.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
+                Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta)
+            }
             Box(
-                modifier = Modifier.size(64.dp).background(colors.surfaceVariant, RoundedCornerShape(18.dp)),
+                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable(role = Role.Button, onClick = onChange),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(32.dp))
+                Box(
+                    Modifier.heightIn(min = 40.dp).border(1.dp, colors.outline, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                }
             }
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = colors.onSurface, textAlign = TextAlign.Center)
-            Text(subtitle, fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
         }
     }
 }
@@ -368,15 +570,6 @@ private fun SlowNote(visible: Boolean, text: String) {
                 Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
             }
         }
-    }
-}
-
-/** The picked file under its preview: [name], wrapping rather than clipping, over its [details] line (size and pages). */
-@Composable
-fun ToolFileInfo(name: String, details: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
-        Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center)
-        Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta, textAlign = TextAlign.Center)
     }
 }
 

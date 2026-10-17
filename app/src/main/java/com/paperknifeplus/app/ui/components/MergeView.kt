@@ -81,6 +81,7 @@ fun MergeView(
     var progressCount by remember { mutableIntStateOf(0) }
     var isFileLoading by remember { mutableStateOf(false) }
     var mergedUri by remember { mutableStateOf<Uri?>(null) }
+    var mergedName by remember { mutableStateOf("") }
 
     var fileToUnlock by remember { mutableStateOf<MergeFile?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -157,6 +158,7 @@ fun MergeView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     mergedUri = uri
+                    mergedName = outputName
                     outputs.saved(uri, outputName, toolText(context, R.string.merge_files_joined, files.size), Icons.Filled.Layers, finalCount)
                     currentState = ToolState.SUCCESS
                 }
@@ -176,15 +178,14 @@ fun MergeView(
 
     Scaffold(
         topBar = {
-            if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                ToolTopBar(
-                    title = stringResource(R.string.tool_merge),
-                    subtitle = stringResource(R.string.merge_join_multiple_documents),
-                    showChange = selectedFiles.isNotEmpty() && currentState == ToolState.CONFIGURING,
-                    onBack = onBack,
-                    onChange = { updateFiles(emptyList()); currentState = ToolState.SELECTING }
-                )
-            }
+            ToolScreenBar(
+                currentState,
+                stringResource(R.string.tool_merge),
+                stringResource(R.string.merge_join_multiple_documents),
+                processingTime,
+                onBack,
+                onChange = if (selectedFiles.isNotEmpty()) ({ updateFiles(emptyList()); currentState = ToolState.SELECTING }) else null
+            )
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
@@ -193,24 +194,31 @@ fun MergeView(
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
-                        SelectionGrid(
-                            onSelect = { pickLauncher.launch("application/pdf") },
+                        ToolEmptyState(
                             icon = Icons.Filled.Layers,
-                            title = stringResource(R.string.tool_pick_pdfs),
-                            subtitle = stringResource(R.string.merge_select_multiple_pdfs),
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
+                            title = stringResource(R.string.merge_select_multiple_pdfs),
+                            task = stringResource(R.string.tool_merge_desc),
+                            onChoose = { pickLauncher.launch("application/pdf") },
+                            onOpenRecent = { handleUris(listOf(it)) },
+                            chooseLabel = stringResource(R.string.tool_pick_pdfs),
+                            chooseStep = stringResource(R.string.tool_step_choose_pdfs)
                         )
                     }
 
                     ToolState.CONFIGURING -> {
                         val listState = rememberLazyListState()
-
-                        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+                        val allReady = selectedFiles.size > 1 && selectedFiles.all { !it.isLocked || it.isUnlocked }
+                        ToolConfigLayout(
+                            action = if (allReady) stringResource(R.string.merge_merge_files, selectedFiles.size) else stringResource(R.string.merge_unlock_all_files_first),
+                            onAction = { saveLauncher.launch(outputFileName("merged_${System.currentTimeMillis() / 1000}", "pdf")) },
+                            actionEnabled = allReady,
+                            scroll = false
+                        ) {
                             LazyColumn(
                                 state = listState,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                                contentPadding = PaddingValues(top = 8.dp, bottom = 120.dp)
+                                contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
                             ) {
                                 itemsIndexed(
                                     items = selectedFiles,
@@ -252,21 +260,6 @@ fun MergeView(
                                     }
                                 }
                             }
-
-                            val allReady = selectedFiles.size > 1 && selectedFiles.all { !it.isLocked || it.isUnlocked }
-                            Button(
-                                onClick = { saveLauncher.launch(outputFileName("merged_${System.currentTimeMillis() / 1000}", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).heightIn(min = 56.dp),
-                                enabled = allReady,
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = accentColor,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    disabledContainerColor = accentColor.copy(alpha = 0.3f)
-                                )
-                            ) {
-                                Text(if (allReady) stringResource(R.string.merge_merge_files, selectedFiles.size) else stringResource(R.string.merge_unlock_all_files_first), fontWeight = FontWeight.Black)
-                            }
                         }
                     }
 
@@ -284,10 +277,10 @@ fun MergeView(
                         SuccessView(
                             message = stringResource(R.string.merge_merge_complete),
                             subMessage = stringResource(R.string.merge_successfully_joined_documents, selectedFiles.size),
-                            processingTime = processingTime,
+                            result = mergedUri?.let { ToolResult(it, mergedName) },
                             onDone = onBack,
                             onProcessMore = { updateFiles(emptyList()); mergedUri = null; currentState = ToolState.SELECTING },
-                            onPreview = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, toolText(context, R.string.merge_merged_pdf), getPageCount(context, uri, null)) } } },
+                            onOpen = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, toolText(context, R.string.merge_merged_pdf), getPageCount(context, uri, null)) } } }
                         )
                     }
                 }

@@ -2,6 +2,7 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.Context
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -10,7 +11,7 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.mainThreadComposeRule
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
@@ -64,7 +65,8 @@ class PdfToImageTest {
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
         val tile = rule.onNode(isToggleable() and hasContentDescription("Page 1"))
         tile.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)).assertIsOn()
-        tile.performClick()
+        // The test window is small: the file card and the pinned action leave the first row of tiles only partly on screen.
+        tile.performSemanticsAction(SemanticsActions.OnClick)
         tile.assertIsOff()
         rule.onNode(hasText("Convert 2 pages to JPG")).assertExists()
     }

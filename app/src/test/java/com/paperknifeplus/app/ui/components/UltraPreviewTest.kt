@@ -201,8 +201,8 @@ class ToolHandOffTest {
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Tap to choose a PDF").performClick()
         waitFor("1 pages")
-        rule.waitUntil(30_000) { thumbnailCached(plain, null, 1.2f) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 1.2f))
+        rule.waitUntil(30_000) { thumbnailCached(plain, null, THUMBNAIL_SCALE) }
+        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE))
     }
 
     @Test
