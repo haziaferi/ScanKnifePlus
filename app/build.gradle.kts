@@ -104,3 +104,6 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+// TEMPORARY (CI hang diagnosis): name each test as it starts.
+tasks.withType<Test>().configureEach { testLogging { events("started", "failed") } }
