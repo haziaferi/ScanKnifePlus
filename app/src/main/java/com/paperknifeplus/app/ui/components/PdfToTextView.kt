@@ -7,11 +7,9 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,15 +18,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.CancellationException
@@ -44,8 +38,8 @@ fun PdfToTextView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF14B8A6)
+    val outputs = rememberToolOutputs("pdf2text")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -92,7 +86,10 @@ fun PdfToTextView(
             scope.launch(Dispatchers.IO) {
                 try {
                     context.contentResolver.requireOutputStream(saveUri).use { it.write(text.toByteArray()) }
-                    withContext(Dispatchers.Main) { Toast.makeText(context, "Saved as TXT", Toast.LENGTH_SHORT).show() }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Saved as TXT", Toast.LENGTH_SHORT).show()
+                        outputs.copy(saveUri)
+                    }
                 } catch (e: CancellationException) {
                     deleteCreatedDocument(context, saveUri)
                     throw e
@@ -113,7 +110,7 @@ fun PdfToTextView(
                 .onSuccess { (text, chunks) ->
                     extractedText = text
                     textChunks = chunks
-                    SessionManager.addEntry(fileName, "To Text", "${text.length} chars", Icons.Outlined.Description)
+                    outputs.record(fileName, "${text.length} chars", Icons.Outlined.Description)
                     currentState = ToolState.SUCCESS
                 }
                 .onFailure { e ->
@@ -133,7 +130,6 @@ fun PdfToTextView(
                 ToolTopBar(
                     title = "PDF to Text",
                     subtitle = "EXTRACT RAW CONTENT",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
@@ -143,17 +139,15 @@ fun PdfToTextView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.Description,
                             title = "Tap to select PDF",
                             subtitle = "EXTRACT TEXT DATA",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -173,27 +167,15 @@ fun PdfToTextView(
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                            ToolFileInfo(fileName, "Scan PDF text layers and output a plain .txt file.")
 
                             Spacer(Modifier.height(24.dp))
-                            Text("READY TO EXTRACT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
-                            Text("Scan PDF text layers and output a plain .txt file.", fontSize = 12.sp, color = Color.Gray)
-
-                            Spacer(Modifier.height(24.dp))
-                            Button(
-                                onClick = { startExtraction() },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White),
-                                shape = RoundedCornerShape(20.dp)
-                            ) {
-                                Text("EXTRACT TEXT", fontWeight = FontWeight.Black)
-                            }
+                            ToolPrimaryButton("EXTRACT TEXT", onClick = { startExtraction() }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Reading text layers...",
@@ -212,9 +194,9 @@ fun PdfToTextView(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
-                                    Text("EXTRACTED CONTENT", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
-                                    Text("${extractedText.length} CHARACTERS FOUND", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                                Column(Modifier.weight(1f)) {
+                                    ToolSectionLabel("EXTRACTED CONTENT")
+                                    Text("${extractedText.length} CHARACTERS FOUND", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Row {
                                     IconButton(onClick = {
@@ -222,27 +204,27 @@ fun PdfToTextView(
                                         val clip = android.content.ClipData.newPlainText("PDF Text", extractedText)
                                         clipboard.setPrimaryClip(clip)
                                         Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                                    }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
-                                        Icon(Icons.Filled.ContentCopy, null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                    }, modifier = Modifier.size(48.dp)) {
+                                        Icon(Icons.Filled.ContentCopy, "Copy text", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                     Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.background(accentColor.copy(alpha = 0.1f), CircleShape).size(36.dp)) {
-                                        Icon(Icons.Filled.Save, null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                    IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.size(48.dp)) {
+                                        Icon(Icons.Filled.Save, "Save as TXT", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                 }
                             }
 
                             Surface(
                                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
-                                color = if (isDark) Color(0xFF09090B) else Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 shape = RoundedCornerShape(24.dp),
-                                border = BorderStroke(1.dp, Color.Gray.copy(0.1f))
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                             ) {
                                 Box(Modifier.padding(20.dp)) {
                                     if (extractedText.isBlank()) {
                                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Icon(Icons.Filled.FindInPage, null, modifier = Modifier.size(48.dp).alpha(0.2f), tint = accentColor)
-                                            Text("No text detected. The document might be a high-res scan.", fontSize = 11.sp, color = Color.Gray, textAlign = TextAlign.Center)
+                                            Icon(Icons.Filled.FindInPage, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text("No text detected. The document might be a high-res scan.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                                         }
                                     } else {
                                         // One item per block of lines, so a long text is laid out only where it is on screen.
@@ -261,17 +243,7 @@ fun PdfToTextView(
                                 }
                             }
 
-                            Button(
-                                onClick = onBack,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp)
-                                    .height(56.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("DONE", fontWeight = FontWeight.Black)
-                            }
+                            ToolPrimaryButton("DONE", onClick = onBack, modifier = Modifier.fillMaxWidth().padding(24.dp))
                         }
                     }
                 }

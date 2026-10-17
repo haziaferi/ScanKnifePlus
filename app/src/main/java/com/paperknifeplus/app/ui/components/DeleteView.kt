@@ -17,12 +17,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,8 +36,8 @@ fun DeleteView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF43F5E)
+    val outputs = rememberToolOutputs("delete")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -146,7 +145,7 @@ fun DeleteView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = getUriDetails(context, uri).name
-                    SessionManager.addEntry(fileName, "Delete", "${toDelete.size} pages removed", Icons.Filled.Delete, uri, finalCount)
+                    outputs.saved(uri, fileName, "${toDelete.size} pages removed", Icons.Filled.Delete, finalCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -166,35 +165,21 @@ fun DeleteView(
     Scaffold(
         topBar = {
             if (currentState != ToolState.SUCCESS && currentState != ToolState.PROCESSING) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), CircleShape)) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text("Delete", fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
-                        Text("REMOVE PAGES FROM PDF", fontSize = 8.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
-                    }
-                }
+                ToolTopBar(title = "Delete", subtitle = "REMOVE PAGES FROM PDF", showChange = false, onBack = onBack)
             }
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
-                            isDark = isDark,
                             icon = Icons.Filled.Delete,
                             title = "Tap to enter file",
                             subtitle = "DELETE PAGES INSTANTLY",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -206,14 +191,14 @@ fun DeleteView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
-                                    Text("${pagesToDeleteSet.size} / $pageCount MARKED FOR DELETION", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    ToolStatusText("${pagesToDeleteSet.size} / $pageCount MARKED FOR DELETION")
                                 }
                                 
                                 TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                     Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                     Spacer(Modifier.width(8.dp))
-                                    Text(if (showRangeInput) "HIDE RANGE" else "ENTER RANGE", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor)
+                                    Text(if (showRangeInput) "HIDE RANGE" else "ENTER RANGE", fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
                                 }
                             }
 
@@ -229,24 +214,24 @@ fun DeleteView(
                                             pagesToDeleteSet = all
                                             rangeText = PageRanges.format(all)
                                         },
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.1f), contentColor = accentColor),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text("SELECT ALL", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        Text("SELECT ALL", fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
                                     Button(
                                         onClick = { 
                                             pagesToDeleteSet = emptySet()
                                             rangeText = ""
                                         },
-                                        modifier = Modifier.weight(1f).height(36.dp),
+                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                         shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.Gray.copy(alpha = 0.1f), contentColor = Color.Gray),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
                                         contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Text("CLEAR ALL", fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        Text("CLEAR ALL", fontSize = 12.sp, fontWeight = FontWeight.Black)
                                     }
                                 }
                             }
@@ -274,7 +259,7 @@ fun DeleteView(
                                             )
                                         )
                                         Spacer(Modifier.height(8.dp))
-                                        Text("Tip: Pages selected in grid will be removed.", fontSize = 10.sp, color = Color.Gray)
+                                        Text("Tip: Pages selected in grid will be removed.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }
@@ -300,18 +285,16 @@ fun DeleteView(
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-cleaned", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, 
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp), 
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).heightIn(min = 56.dp), 
                                 enabled = pagesToDeleteSet.isNotEmpty() && pagesToDeleteSet.size < pageCount,
-                                shape = RoundedCornerShape(20.dp), 
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                                shape = RoundedCornerShape(20.dp)
                             ) {
-                                Text("DELETE ${pagesToDeleteSet.size} PAGES", fontWeight = FontWeight.Black, color = Color.White)
+                                Text("DELETE ${pagesToDeleteSet.size} PAGES", fontWeight = FontWeight.Black)
                             }
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Removing selected pages...",
@@ -341,7 +324,6 @@ fun DeleteView(
                                     }
                                 }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }

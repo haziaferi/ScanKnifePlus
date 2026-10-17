@@ -107,7 +107,7 @@ class SplitViewTest {
         startSplit(locked, TestPdfs.USER_PASSWORD, picked = plain)
         waitForPages("0 / 2 PAGES SELECTED")
 
-        rule.onNodeWithText("CHANGE").performClick()
+        rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Tap to enter file").performClick()
         waitForPages("0 / 1 PAGES SELECTED")
         rule.waitUntil(10_000) { thumbnailCached(plain, null) }

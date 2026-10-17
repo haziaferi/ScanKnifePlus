@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
@@ -15,7 +14,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -23,7 +21,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,8 +34,8 @@ fun RepairView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF59E0B)
+    val outputs = rememberToolOutputs("repair")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
@@ -99,7 +96,7 @@ fun RepairView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Repair", "Restored", Icons.Outlined.Build, uri, pageCount)
+                    outputs.saved(uri, fileName, "Restored", Icons.Outlined.Build, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -122,7 +119,6 @@ fun RepairView(
                 ToolTopBar(
                     title = "Repair",
                     subtitle = "RECOVER CORRUPT DOCUMENTS",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -132,17 +128,15 @@ fun RepairView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Analyzing structure...")
+                LoadingStateView(showLoadingWarning, "Analyzing structure...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.Build,
                             title = "Tap to enter file",
                             subtitle = "REPAIR BROKEN PDF STRUCTURE",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -163,40 +157,30 @@ fun RepairView(
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
 
                             Spacer(Modifier.height(32.dp))
 
-                            Text("READY TO REPAIR", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
+                            ToolSectionLabel("READY TO REPAIR")
                             Text(
                                 "${stringResource(R.string.app_name)} will rebuild the PDF index and cross-reference table to restore accessibility.",
                                 fontSize = 12.sp,
-                                color = Color.Gray,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
 
                             Spacer(Modifier.height(32.dp))
 
-                            Button(
-                                onClick = {
+                            ToolPrimaryButton("REPAIR & SAVE PDF", onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-repaired", "pdf")
                                     saveLauncher.launch(defaultName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("REPAIR & SAVE PDF", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Rebuilding XRef tables...",
@@ -217,7 +201,6 @@ fun RepairView(
                                 currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }

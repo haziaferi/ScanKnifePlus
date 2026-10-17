@@ -100,6 +100,6 @@ class AboutViewTest {
     fun `the libraries page credits OpenScan and CameraX and shows one row per notice`() {
         rule.setContent { AboutView(onBack = {}, loadNotices = { fakeNotices }) }
         openLibraries()
-        for (text in listOf("OpenScan", "[BSD-3-Clause]", "CameraX", "NOTICES", "Fake notice", "fake notice body", "Other notice")) scrollTo(text)
+        for (text in listOf("OpenScan", "[BSD-3-Clause]", "CameraX", "Notices", "Fake notice", "fake notice body", "Other notice")) scrollTo(text)
     }
 }

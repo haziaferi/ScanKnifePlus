@@ -24,7 +24,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
 import org.w3c.dom.Document
@@ -51,8 +50,8 @@ fun MetadataView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF6366F1)
+    val outputs = rememberToolOutputs("metadata")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -148,7 +147,7 @@ fun MetadataView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Metadata", "Edited properties", Icons.Filled.Fingerprint, uri, pageCount)
+                    outputs.saved(uri, fileName, "Edited properties", Icons.Filled.Fingerprint, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -171,7 +170,6 @@ fun MetadataView(
                 ToolTopBar(
                     title = "Metadata",
                     subtitle = "EDIT DOCUMENT PROPERTIES",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -181,17 +179,15 @@ fun MetadataView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Reading file properties...")
+                LoadingStateView(showLoadingWarning, "Reading file properties...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.Fingerprint,
                             title = "Tap to enter file",
                             subtitle = "EDIT PDF PROPERTIES",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -212,9 +208,7 @@ fun MetadataView(
                                 )
                             }
 
-                            Spacer(Modifier.height(16.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
 
                             Spacer(Modifier.height(24.dp))
 
@@ -239,23 +233,15 @@ fun MetadataView(
 
                             Spacer(Modifier.height(32.dp))
 
-                            Button(
-                                onClick = {
+                            ToolPrimaryButton("SAVE PROPERTIES", onClick = {
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-meta", "pdf")
                                     saveLauncher.launch(defaultName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("SAVE PROPERTIES", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Updating document metadata...",
@@ -276,7 +262,6 @@ fun MetadataView(
                                 currentState = ToolState.SELECTING
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -321,9 +306,9 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
     ) {
         Text(
             text = title,
-            fontSize = 8.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Black,
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 1.2.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
@@ -334,11 +319,11 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
 @Composable
 fun MetadataEditField(label: String, value: String, accentColor: Color, onValueChange: (String) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(0.7f), letterSpacing = 0.5.sp)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(0.7f), letterSpacing = 0.5.sp)
         TextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             colors = TextFieldDefaults.colors(
                 unfocusedContainerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent,

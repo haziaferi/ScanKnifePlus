@@ -264,7 +264,7 @@ fun UltraPreview(
                 .padding(padding)
         ) {
             if (isInitializing) {
-                LoadingStateView(PaperPink, false, "Loading Document View...")
+                LoadingStateView(showWarning = false, text = "Loading Document View...")
             } else if (fileToUnlock == null) {
                 Box(
                     modifier = Modifier

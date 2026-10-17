@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -16,12 +15,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -38,8 +35,8 @@ fun ExtractImagesView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF14B8A6)
+    val outputs = rememberToolOutputs("extract-images")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
@@ -110,7 +107,7 @@ fun ExtractImagesView(
                     processingTime = timeStr
                     fileName = outputName
                     resultSummary = counts.summary
-                    SessionManager.addEntry(fileName, "Extract Image", "$extractedCount assets", Icons.Filled.Collections, uri)
+                    outputs.saved(uri, fileName, "$extractedCount assets", Icons.Filled.Collections)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -133,7 +130,6 @@ fun ExtractImagesView(
                 ToolTopBar(
                     title = "Extract Image",
                     subtitle = "EXTRACT ASSETS FROM PDFS",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -143,17 +139,15 @@ fun ExtractImagesView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.PhotoLibrary,
                             title = "Tap to enter file",
                             subtitle = "EXTRACT ASSETS FROM PDF",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -175,32 +169,23 @@ fun ExtractImagesView(
                             }
 
                             Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
 
                             Spacer(Modifier.height(24.dp))
-                            Text("READY TO STRIP ASSETS", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
-                            Text("Strip and save all raw image files from the document.", fontSize = 12.sp, color = Color.Gray)
+                            ToolSectionLabel("READY TO STRIP ASSETS")
+                            Text("Strip and save all raw image files from the document.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                             Spacer(Modifier.height(32.dp))
 
-                            Button(
-                                onClick = {
+                            ToolPrimaryButton("EXTRACT IMAGES (ZIP)", onClick = {
                                     val safeName = outputFileName(pdfBaseName(fileName) + "-assets", "zip")
                                     saveLauncher.launch(safeName)
-                                },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("EXTRACT IMAGES (ZIP)", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(100.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Stripping image assets...",
@@ -222,7 +207,6 @@ fun ExtractImagesView(
                                 currentState = ToolState.SELECTING
                             },
                             showPreviewButton = false,
-                            accentColor = accentColor
                         )
                     }
                 }

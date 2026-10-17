@@ -6,20 +6,17 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +45,8 @@ fun PdfToZipView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF14B8A6)
+    val outputs = rememberToolOutputs("pdf2zip")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -130,7 +127,7 @@ fun PdfToZipView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "PDF to Pages ZIP", "$pageCount pages archived", Icons.Outlined.FolderZip, uri)
+                    outputs.saved(uri, fileName, "$pageCount pages archived", Icons.Outlined.FolderZip)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -153,7 +150,6 @@ fun PdfToZipView(
                 ToolTopBar(
                     title = "PDF to ZIP",
                     subtitle = "PAGES TO ARCHIVE",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING }
@@ -163,17 +159,15 @@ fun PdfToZipView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, false, "Preparing document...")
+                LoadingStateView(false, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Outlined.FolderZip,
                             title = "Tap to enter file",
                             subtitle = "CREATE PAGES ARCHIVE",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -194,36 +188,26 @@ fun PdfToZipView(
                                 )
                             }
 
-                            Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
 
                             Spacer(Modifier.height(20.dp))
-                            Text("ARCHIVE INFO", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.5.sp)
+                            ToolSectionLabel("ARCHIVE INFO")
                             Text(
                                 "Bundle all document pages as individual PDFs into a single ZIP archive.",
-                                fontSize = 11.sp,
-                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 4.dp),
                                 textAlign = TextAlign.Center
                             )
 
                             Spacer(Modifier.height(24.dp))
 
-                            Button(
-                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-pages", "zip")) },
-                                modifier = Modifier.fillMaxWidth().height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("CONVERT & SAVE ZIP", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                            ToolPrimaryButton("CONVERT & SAVE ZIP", onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-pages", "zip")) }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Archiving page $progressCount of $pageCount...",
@@ -240,7 +224,6 @@ fun PdfToZipView(
                             onDone = onBack,
                             onProcessMore = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
                             showPreviewButton = false,
-                            accentColor = accentColor
                         )
                     }
                 }

@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.ui.folder
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.scan.ScanFiles
@@ -239,6 +240,51 @@ class AppFolderTest {
         assertTrue(folder.offersSetup)
         folder.dismissSetup()
         assertFalse(appFolder(started = false).offersSetup)
+    }
+
+    /** [AppFolder.copyOutput] for a tool output the picker saved as [name] in the cache, with its result. */
+    private fun AppFolder.copyNow(name: String, content: String? = "pdf $name"): OutputCopy {
+        val saved = File(context.cacheDir, name).apply { delete() }
+        content?.let { saved.writeText(it) }
+        var result: OutputCopy? = null
+        copyOutput(Uri.fromFile(saved)) { result = it }
+        return result!!
+    }
+
+    @Test
+    fun `a tool output goes to the folder's top level under its own name, never over a file, and History lists it`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        assertEquals(OutputCopy.COPIED, folder.copyNow("merged.pdf"))
+        assertEquals(OutputCopy.COPIED, folder.copyNow("merged.pdf", "second"))
+        assertEquals("pdf merged.pdf", File(folderRoot, "merged.pdf").readText())
+        assertEquals("second", File(folderRoot, "merged-2.pdf").readText())
+        assertEquals(setOf("merged.pdf", "merged-2.pdf"), folder.history!!.items!!.filter { it.kind == FolderKind.TOOL }.map { it.name }.toSet())
+    }
+
+    @Test
+    fun `with no folder chosen a tool output is not copied`() {
+        val folder = appFolder()
+        assertEquals(OutputCopy.NO_FOLDER, folder.copyNow("merged.pdf"))
+        assertEquals(emptyList<String>(), folderRoot.list()!!.toList())
+    }
+
+    @Test
+    fun `a folder that cannot be reached asks to be chosen again and gets no copy`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        resolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        assertEquals(OutputCopy.CHOOSE_AGAIN, folder.copyNow("merged.pdf"))
+        assertFalse(File(folderRoot, "merged.pdf").exists())
+        assertEquals(FolderStatus.ChooseAgain("Scans"), folder.status)
+    }
+
+    @Test
+    fun `an output that cannot be read fails the copy and leaves the folder as it was`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        assertEquals(OutputCopy.FAILED, folder.copyNow("gone.pdf", content = null))
+        assertFalse(File(folderRoot, "gone.pdf").exists())
     }
 
     @Test

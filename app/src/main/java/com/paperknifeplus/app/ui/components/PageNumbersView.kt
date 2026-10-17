@@ -18,13 +18,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.paperknifeplus.app.ui.theme.PaperPink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -39,8 +36,8 @@ fun PageNumbersView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = PaperPink
+    val outputs = rememberToolOutputs("page-numbers")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf(initialUri) }
@@ -56,7 +53,7 @@ fun PageNumbersView(
     var position by remember { mutableStateOf("Bottom Right") }
     var fontSize by remember { mutableFloatStateOf(14f) }
     var format by remember { mutableStateOf("Page {n}") }
-    var numberColor by remember { mutableStateOf(Color.Black) }
+    var numberColor by remember { mutableStateOf(DocumentInk.Black) }
     var showPreviewOverlay by remember { mutableStateOf(true) }
     val previewDate = remember { pageDate() }
 
@@ -109,7 +106,7 @@ fun PageNumbersView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Page Numbers", "Numbering applied", Icons.Filled.FormatListNumbered, uri, pageCount)
+                    outputs.saved(uri, fileName, "Numbering applied", Icons.Filled.FormatListNumbered, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -132,7 +129,6 @@ fun PageNumbersView(
                 ToolTopBar(
                     title = "Page Numbers",
                     subtitle = "CUSTOM PAGINATION",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { selectedUri = null; currentState = ToolState.SELECTING }
@@ -142,17 +138,15 @@ fun PageNumbersView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, false, "Preparing document...")
+                LoadingStateView(false, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
                             icon = Icons.Filled.FormatListNumbered,
                             title = "Tap to enter file",
                             subtitle = "ADD PAGE NUMBERS",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)
                         )
                     }
@@ -205,28 +199,20 @@ fun PageNumbersView(
                                 onClick = { showSettingsSheet = true },
                                 color = accentColor.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.width(80.dp).height(24.dp)
+                                modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
                             ) {
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Filled.KeyboardArrowUp, null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Filled.KeyboardArrowUp, "Numbering options", tint = accentColor, modifier = Modifier.size(24.dp))
                                 }
                             }
 
                             Spacer(Modifier.height(8.dp))
 
-                            Button(
-                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("SAVE DOCUMENT", fontWeight = FontWeight.Black)
-                            }
+                            ToolPrimaryButton("SAVE DOCUMENT", onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Applying numbering...",
@@ -248,7 +234,6 @@ fun PageNumbersView(
                             onPreview = {
                                 outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }
@@ -295,11 +280,11 @@ fun PageNumbersView(
                             .navigationBarsPadding(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("PAGE NUMBER SETTINGS", fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.sp)
+                        ToolSectionLabel("PAGE NUMBER SETTINGS")
                         Spacer(Modifier.height(24.dp))
 
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("LIVE PREVIEW", fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text("LIVE PREVIEW", fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                             Switch(checked = showPreviewOverlay, onCheckedChange = { showPreviewOverlay = it }, colors = SwitchDefaults.colors(checkedTrackColor = accentColor))
                         }
 
@@ -309,7 +294,7 @@ fun PageNumbersView(
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
-                                label = { Text("Format ({n})", fontSize = 9.sp) },
+                                label = { Text("Format ({n})", fontSize = 12.sp) },
                                 modifier = Modifier.weight(1.5f),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
@@ -317,22 +302,22 @@ fun PageNumbersView(
                             )
 
                             Surface(
-                                modifier = Modifier.weight(1f).height(56.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                 onClick = { showColorSheet = true }
                             ) {
                                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                                    Box(Modifier.size(16.dp).clip(CircleShape).background(numberColor).border(1.dp, Color.Gray.copy(0.3f), CircleShape))
+                                    Box(Modifier.size(20.dp).clip(CircleShape).background(numberColor).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                                     Spacer(Modifier.width(8.dp))
-                                    Text("COLOR", fontSize = 9.sp, fontWeight = FontWeight.Black)
+                                    Text("COLOR", fontSize = 12.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                         }
 
                         Spacer(Modifier.height(24.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("FONT SIZE: ${fontSize.toInt()} PT", fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text("FONT SIZE: ${fontSize.toInt()} PT", fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                             Slider(
                                 value = fontSize,
                                 onValueChange = { fontSize = it },
@@ -354,11 +339,11 @@ fun PageNumbersView(
                                 Icon(Icons.Filled.Place, null, tint = accentColor, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(16.dp))
                                 Column {
-                                    Text("POSITION", fontSize = 8.sp, fontWeight = FontWeight.Black, color = Color.Gray)
+                                    ToolSectionLabel("POSITION")
                                     Text(position.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
                                 }
                                 Spacer(Modifier.weight(1f))
-                                Icon(Icons.Filled.ArrowDropDown, null, tint = Color.Gray)
+                                Icon(Icons.Filled.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -384,12 +369,12 @@ fun PageNumbersView(
                 ModalBottomSheet(onDismissRequest = { showColorSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding()) {
                         Text("SELECT COLOR", modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
-                        val colors = listOf(Color.Black, Color.White, Color.Red, Color.Blue, Color(0xFF8B5CF6), Color(0xFF10B981))
-                        val colorNames = listOf("Black", "White", "Red", "Blue", "Indigo", "Emerald")
-                        colors.forEachIndexed { idx, col ->
+                        DocumentInk.pageNumbers.forEach { ink ->
+                            val col = ink.color
                             ListItem(
-                                headlineContent = { Text(colorNames[idx], fontWeight = if (numberColor == col) FontWeight.Bold else FontWeight.Normal) },
-                                leadingContent = { Box(Modifier.size(24.dp).clip(CircleShape).background(col).border(1.dp, Color.Gray.copy(0.3f), CircleShape)) },
+                                headlineContent = { Text(ink.name, fontWeight = if (numberColor == col) FontWeight.Bold else FontWeight.Normal) },
+                                leadingContent = { Box(Modifier.size(24.dp).clip(CircleShape).background(col).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)) },
+                                trailingContent = { RadioButton(selected = numberColor == col, onClick = null) },
                                 modifier = Modifier.clickable { numberColor = col; showColorSheet = false }
                             )
                         }

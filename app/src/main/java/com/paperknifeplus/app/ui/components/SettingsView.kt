@@ -5,31 +5,58 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.DeleteForever
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
@@ -38,7 +65,7 @@ import com.haziaferi.scanknifeplus.ui.folder.folderName
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.AppPalette
-import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,9 +88,19 @@ fun clearAppCache(context: Context): Boolean = try {
     false
 }
 
+/** The theme choices in the order Settings offers them, with their labels. */
+private val THEMES = listOf(
+    ThemeMode.SYSTEM to R.string.settings_theme_system,
+    ThemeMode.LIGHT to R.string.settings_theme_light,
+    ThemeMode.OLED to R.string.settings_theme_oled
+)
+
+/**
+ * Settings in the prototype's style: groups under headings, each a card of rows of at least 60 dp (Appearance, Files, Privacy and storage,
+ * About), then the version. The theme and the palette are chips that wrap at large text sizes.
+ */
 @Composable
 fun SettingsView(
-    isDarkMode: Boolean,
     onThemeChange: (Int) -> Unit,
     palette: AppPalette,
     onPaletteChange: (AppPalette) -> Unit,
@@ -74,137 +111,94 @@ fun SettingsView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val tokens = LocalScanPalette.current
     val appName = stringResource(R.string.app_name)
+    val cacheCleared = stringResource(R.string.settings_cache_cleared)
+    val cachePartly = stringResource(R.string.settings_cache_partly)
+    val historyCleared = stringResource(R.string.settings_history_cleared)
 
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
     var currentTheme by remember { mutableIntStateOf(PreferencesManager.getTheme(context)) }
-
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.settings_back),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = buildAnnotatedString {
-                        append("Settings")
-                        withStyle(SpanStyle(color = tokens.ac)) { append(".") }
-                    },
-                    fontWeight = FontWeight.Black,
-                    fontSize = 28.sp,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    letterSpacing = (-1).sp
-                )
-                Logo(modifier = Modifier.size(24.dp), partColor = tokens.tx)
-            }
-        }
+    Column(Modifier.fillMaxSize()) {
+        ToolTopBar(
+            title = stringResource(R.string.home_settings),
+            subtitle = null,
+            showChange = false,
+            onBack = onBack,
+            backLabel = stringResource(R.string.settings_back)
+        )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 20.dp, top = 0.dp, end = 20.dp, bottom = 160.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            item {
-                SettingsGroup("APPEARANCE") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ThemeOption("System", Icons.Outlined.SettingsSuggest, currentTheme == 0, Modifier.weight(1f)) {
-                            currentTheme = 0
-                            onThemeChange(0)
-                        }
-                        ThemeOption("Light", Icons.Outlined.LightMode, currentTheme == 1, Modifier.weight(1f)) {
-                            currentTheme = 1
-                            onThemeChange(1)
-                        }
-                        ThemeOption("OLED", Icons.Outlined.DarkMode, currentTheme == 2, Modifier.weight(1f)) {
-                            currentTheme = 2
-                            onThemeChange(2)
-                        }
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+            item(key = "appearance") {
+                SettingsGroup(stringResource(R.string.settings_appearance)) {
+                    ChoiceRow(stringResource(R.string.settings_theme), THEMES, selected = { it.first.stored == currentTheme }, label = { stringResource(it.second) }) {
+                        currentTheme = it.first.stored
+                        onThemeChange(it.first.stored)
                     }
-                    Text(
-                        "COLOUR PALETTE", fontSize = 9.sp, fontWeight = FontWeight.Black, color = LocalScanPalette.current.ac, letterSpacing = 1.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AppPalette.entries.forEach { option ->
-                            ThemeOption(option.label, paletteIcon(option), option == palette, Modifier.weight(1f)) { onPaletteChange(option) }
-                        }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    ChoiceRow(stringResource(R.string.settings_palette), AppPalette.entries, selected = { it == palette }, label = { it.label }) {
+                        onPaletteChange(it)
                     }
                 }
             }
 
-            item {
-                SettingsGroup("USER PROFILE") {
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-                        Text("DEFAULT AUTHOR", fontSize = 9.sp, fontWeight = FontWeight.Black, color = tokens.ac, letterSpacing = 1.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text("This name is automatically added to the 'Author' field in the metadata of every PDF you save.", fontSize = 10.sp, color = tokens.mu)
-                        Spacer(Modifier.height(12.dp))
-                        TextField(
+            item(key = "files") {
+                SettingsGroup(stringResource(R.string.settings_files)) {
+                    SettingsItem(Icons.Outlined.Folder, stringResource(R.string.settings_folder), folderSubtitle(folder), onClick = onFolder)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.settings_author), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.settings_author_body), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        OutlinedTextField(
                             value = autoAuthor,
                             onValueChange = {
                                 autoAuthor = it
                                 PreferencesManager.setDefaultAuthor(context, it)
                             },
-                            placeholder = { Text("e.g. John Doe", fontSize = 14.sp) },
+                            placeholder = { Text(stringResource(R.string.settings_author_hint), fontSize = 15.sp) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = tokens.ac,
-                                cursorColor = tokens.ac
-                            ),
                             singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            shape = RoundedCornerShape(14.dp)
                         )
                     }
                 }
             }
 
-            item {
-                SettingsGroup("PRIVACY & STORAGE") {
-                    SettingsItem(
-                        Icons.Outlined.Folder, stringResource(R.string.settings_folder), folderSubtitle(folder), subtitleSize = 12.sp, onClick = onFolder
-                    )
-                    SettingsItem(Icons.Outlined.DeleteSweep, "Clear History", "Wipe all session history now") {
+            item(key = "privacy") {
+                SettingsGroup(stringResource(R.string.settings_privacy)) {
+                    SettingsItem(Icons.Outlined.DeleteSweep, stringResource(R.string.settings_clear_history), stringResource(R.string.settings_clear_history_body)) {
                         showClearConfirm = true
                     }
-                    SettingsItem(Icons.Outlined.DeleteForever, "Clear Cache", "Purge all temporary documents and previews") {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+                    SettingsItem(Icons.Outlined.DeleteForever, stringResource(R.string.settings_clear_cache), stringResource(R.string.settings_clear_cache_body)) {
                         scope.launch {
                             val cleared = withContext(Dispatchers.IO) { clearAppCache(context) }
-                            Toast.makeText(context, if (cleared) "Cache cleared successfully" else "Partial cache clear", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, if (cleared) cacheCleared else cachePartly, Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
             }
 
-            item {
-                SettingsGroup("ABOUT") {
-                    SettingsItem(Icons.Outlined.Info, "About $appName", "How it works, credits and licenses", onClick = onOpenAbout)
+            item(key = "about") {
+                SettingsGroup(stringResource(R.string.settings_about)) {
+                    SettingsItem(
+                        Icons.Outlined.Info,
+                        stringResource(R.string.settings_about_app, appName),
+                        stringResource(R.string.settings_about_body),
+                        onClick = onOpenAbout
+                    )
                 }
             }
 
-            item {
-                Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$appName V${appVersionName(context)}", fontSize = 8.sp, color = tokens.mu, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-                }
+            item(key = "version") {
+                Text(
+                    stringResource(R.string.settings_version, appName, appVersionName(context)),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp)
+                )
             }
         }
     }
@@ -212,20 +206,24 @@ fun SettingsView(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear History?", fontWeight = FontWeight.Black) },
-            text = { Text("This will permanently remove all entries from your history tab. This cannot be undone.") },
+            title = { Text(stringResource(R.string.settings_clear_history_title), fontWeight = FontWeight.ExtraBold) },
+            text = { Text(stringResource(R.string.settings_clear_history_confirm_body)) },
             confirmButton = {
-                Button(
+                TextButton(
                     onClick = {
                         SessionManager.clearHistory()
                         showClearConfirm = false
-                        Toast.makeText(context, "History wiped", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, historyCleared, Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalScanPalette.current.sf2, contentColor = MaterialTheme.colorScheme.onSurface)
-                ) { Text("WIPE EVERYTHING", fontWeight = FontWeight.Black) }
+                    modifier = Modifier.heightIn(min = 48.dp)
+                ) {
+                    Text(stringResource(R.string.settings_clear_history_confirm), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("CANCEL", color = LocalScanPalette.current.ac) }
+                TextButton(onClick = { showClearConfirm = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.settings_cancel), color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         )
     }
@@ -242,94 +240,83 @@ private fun folderSubtitle(folder: FolderStatus): String {
     }
 }
 
+/** A heading (16 sp, as Home's "Recent in your folder") over a card of rows. */
 @Composable
-fun ThemeOption(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val palette = LocalScanPalette.current
-    Surface(
-        onClick = onClick,
-        modifier = modifier.height(72.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = if (selected) palette.acSoft else Color.Transparent,
-        border = BorderStroke(1.dp, if (selected) palette.ac else palette.bd)
-    ) {
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (selected) palette.ac else palette.mu)
-            Spacer(Modifier.height(8.dp))
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (selected) palette.ac else palette.mu, textAlign = TextAlign.Center)
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.padding(horizontal = 16.dp)) {
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp).semantics { heading() }
+        )
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column { content() }
         }
     }
 }
 
-private fun paletteIcon(palette: AppPalette): ImageVector = when (palette) {
-    AppPalette.STILL_WATER -> Icons.Outlined.WaterDrop
-    AppPalette.ROSE -> Icons.Outlined.LocalFlorist
-    AppPalette.GRAPHITE_SCHOLASTIC -> Icons.Outlined.School
-}
-
+/** One choice of several as chips (T3: a 48 dp target, 8 dp apart), the chosen one tonal and marked selected, not by colour alone. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column {
-        Text(
-            text = title,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Black,
-            color = LocalScanPalette.current.mu,
-            letterSpacing = 1.5.sp,
-            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-        )
-        Surface(
-            color = LocalScanPalette.current.sf,
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, LocalScanPalette.current.bd)
+private fun <T> ChoiceRow(title: String, options: List<T>, selected: (T) -> Boolean, label: @Composable (T) -> String, onSelect: (T) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+        FlowRow(
+            modifier = Modifier.selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                content()
+            options.forEach { option ->
+                val on = selected(option)
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .widthIn(min = 48.dp)
+                        .then(if (on) Modifier.background(colors.primaryContainer, RoundedCornerShape(24.dp)) else Modifier)
+                        .border(1.dp, if (on) colors.onPrimaryContainer else colors.outline, RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(24.dp))
+                        .selectable(selected = on, role = Role.RadioButton, onClick = { onSelect(option) })
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label(option), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (on) colors.onPrimaryContainer else colors.onSurface)
+                }
             }
         }
     }
 }
 
+/** A row of at least 60 dp: icon tile, [title] over [subtitle], and an arrow; the whole row is one button. */
 @Composable
-fun SettingsItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    enabled: Boolean = true,
-    accentColor: Color? = null,
-    subtitleSize: TextUnit = 11.sp,
-    onClick: () -> Unit = {}
-) {
+private fun SettingsItem(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .alpha(if (enabled) 1f else 0.5f),
-        verticalAlignment = Alignment.CenterVertically
+            .heightIn(min = 60.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Box(
-            modifier = Modifier
-                .size(36.dp)
-                .background(accentColor?.copy(alpha = 0.1f) ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(10.dp)),
+            modifier = Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = accentColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = colors.onSurface)
         }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, fontSize = subtitleSize, color = LocalScanPalette.current.mu)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
+            Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
         }
-        Icon(
-            imageVector = Icons.Default.ChevronRight,
-            contentDescription = null,
-            tint = LocalScanPalette.current.mu,
-            modifier = Modifier.size(18.dp)
-        )
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }

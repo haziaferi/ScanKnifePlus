@@ -243,12 +243,12 @@ class MainActivityTest {
         waitFor("Scan a document")
 
         rule.onNode(hasContentDescription("Settings")).performClick()
-        waitFor("APPEARANCE")
+        waitFor("Appearance")
         rule.onNode(verticalList).performScrollToNode(hasText("Folder"))
         rule.onNode(hasText("Folder")).performClick()
         waitFor("Choose where your documents live")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
-        waitFor("APPEARANCE")
+        waitFor("Appearance")
     }
 
     @Test
@@ -272,12 +272,12 @@ class MainActivityTest {
     fun `Settings opens from the header and About goes back to it`() {
         launch()
         rule.onNode(hasContentDescription("Settings")).performClick()
-        waitFor("APPEARANCE")
+        waitFor("Appearance")
         rule.onNode(verticalList).performScrollToNode(hasText("About ScanKnife+"))
         rule.onNode(hasText("About ScanKnife+")).performClick()
-        rule.waitUntil(10_000) { !shows("APPEARANCE") }
+        rule.waitUntil(10_000) { !shows("Appearance") }
         rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
-        waitFor("APPEARANCE")
+        waitFor("Appearance")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Scan a document")
     }
@@ -334,6 +334,26 @@ class MainActivityTest {
         PreferencesManager.setPalette(context, AppPalette.GRAPHITE_SCHOLASTIC)
         PreferencesManager.setTheme(context, ThemeMode.OLED.stored)
         assertDecorBackground(AppPalette.GRAPHITE_SCHOLASTIC.oled.bg.toArgb())
+    }
+
+    @Test
+    fun `the window background follows a palette and theme change in Settings at once`() {
+        try {
+            launch()
+            val window = controller!!.get().window
+            rule.onNode(hasContentDescription("Settings")).performClick()
+            waitFor("Appearance")
+            rule.onNode(verticalList).performScrollToNode(hasText("Rose"))
+            rule.onNode(hasText("Rose") and hasClickAction()).performClick()
+            rule.waitForIdle()
+            assertEquals(AppPalette.ROSE.light.bg.toArgb(), (window.decorView.background as ColorDrawable).color)
+            rule.onNode(hasText("OLED") and hasClickAction()).performClick()
+            rule.waitForIdle()
+            assertEquals(AppPalette.ROSE.oled.bg.toArgb(), (window.decorView.background as ColorDrawable).color)
+        } finally {
+            PreferencesManager.setPalette(context, AppPalette.DEFAULT)
+            PreferencesManager.setTheme(context, ThemeMode.SYSTEM.stored)
+        }
     }
 
     private fun assertDecorBackground(color: Int) {

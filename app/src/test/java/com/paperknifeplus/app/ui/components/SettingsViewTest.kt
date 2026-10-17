@@ -30,7 +30,7 @@ class SettingsViewTest {
         var opened = 0
         rule.setContent {
             SettingsView(
-                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = { opened++ },
+                onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = { opened++ },
                 onBack = {}
             )
         }
@@ -52,7 +52,7 @@ class SettingsViewTest {
         val themes = mutableListOf<Int>()
         rule.setContent {
             SettingsView(
-                isDarkMode = false, onThemeChange = { themes += it }, palette = AppPalette.STILL_WATER, onPaletteChange = { chosen += it },
+                onThemeChange = { themes += it }, palette = AppPalette.STILL_WATER, onPaletteChange = { chosen += it },
                 onOpenAbout = {}, onBack = {}
             )
         }
@@ -60,7 +60,7 @@ class SettingsViewTest {
         rule.onNodeWithText("OLED").performClick()
         assertEquals(listOf(2), themes)
 
-        rule.onNodeWithText("COLOUR PALETTE").assertExists()
+        rule.onNodeWithText("Colour palette").assertExists()
         rule.onNodeWithText("Rose").performClick()
         rule.onNodeWithText("Graphite Scholastic").performClick()
         rule.onNodeWithText("Still Water").performClick()
@@ -73,7 +73,7 @@ class SettingsViewTest {
         var opened = 0
         rule.setContent {
             SettingsView(
-                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {},
+                onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {},
                 folder = status.value, onFolder = { opened++ }
             )
         }
@@ -92,7 +92,7 @@ class SettingsViewTest {
         var back = 0
         rule.setContent {
             SettingsView(
-                isDarkMode = false, onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {},
+                onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {},
                 onBack = { back++ }
             )
         }

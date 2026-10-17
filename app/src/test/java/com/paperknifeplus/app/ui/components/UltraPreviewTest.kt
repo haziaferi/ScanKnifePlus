@@ -198,7 +198,7 @@ class ToolHandOffTest {
         val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-compress.pdf")
         show(plain) { CompressView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         waitFor("2 PAGES")
-        rule.onNodeWithText("CHANGE").performClick()
+        rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Tap to enter file").performClick()
         waitFor("1 PAGES")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 1.2f) }
@@ -211,7 +211,7 @@ class ToolHandOffTest {
         val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-rearrange.pdf")
         show(plain) { RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         waitFor("2 PAGES")
-        rule.onNodeWithText("CHANGE").performClick()
+        rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Tap to enter file").performClick()
         waitFor("1 PAGES")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }

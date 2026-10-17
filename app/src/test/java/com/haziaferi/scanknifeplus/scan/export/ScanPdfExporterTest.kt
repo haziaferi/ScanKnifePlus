@@ -12,6 +12,7 @@ import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.ExportQuality
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
+import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
 import com.paperknifeplus.app.ui.components.SessionManager
 import java.io.File
 import java.nio.file.Files
@@ -222,7 +223,7 @@ class ScanPdfExporterTest {
         assertEquals(0, SessionManager.history.size) // posted, not yet run
         shadowOf(Looper.getMainLooper()).idle()
         val entry = SessionManager.history.single()
-        assertEquals("Scan", entry.tool)
+        assertEquals(SCAN_ENTRY_TOOL, entry.toolId)
         assertEquals("2 pages", entry.size)
         assertEquals(saved.uri, entry.uri)
         assertEquals(2, entry.pageCount)

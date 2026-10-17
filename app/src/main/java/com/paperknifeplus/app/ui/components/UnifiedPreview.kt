@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
@@ -164,7 +165,7 @@ fun UnifiedPdfPreview(
                         Surface(
                             modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
                             color = Color.Black.copy(0.4f), shape = CircleShape
-                        ) { Icon(Icons.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.padding(6.dp)) }
+                        ) { Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.padding(6.dp)) }
                     } else if (onToggleSelection != null) {
                         Box(modifier = Modifier.fillMaxSize().background(if (isSelected) accentColor.copy(alpha = 0.15f) else Color.Transparent))
                         if (showSelectionIcon) {
@@ -215,7 +216,7 @@ fun PdfPageItem(
     val request = remember(uri, index, password, scale, rotation) { PdfPageRequest(uri, index, password, scale, rotation) }
     Box(
         modifier = modifier.aspectRatio(if (rotation % 180 != 0) 1.414f else 0.707f).clip(RoundedCornerShape(12.dp))
-            .background(if (LocalIsDarkTheme.current) Color(0xFF18181B) else Color(0xFFF4F4F5))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -234,9 +235,9 @@ fun PdfPageItem(
         if (showIndexNumbers) {
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                color = Color.Black.copy(0.6f), shape = RoundedCornerShape(8.dp)
+                color = pageBadge, shape = RoundedCornerShape(8.dp)
             ) {
-                Text("${index + 1}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                Text("${index + 1}", color = pageBadgeText, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
             }
         }
         content()

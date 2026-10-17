@@ -382,10 +382,10 @@ private fun FilterChips(options: List<HistoryFilter>, selected: HistoryFilter, o
     }
 }
 
-/** A session entry as an [OutputRow]: its icon, name, size line and tool tag. */
+/** A session entry as an [OutputRow]: its icon, name, size line and its tool's catalog name as the tag. */
 @Composable
 internal fun EntryRow(entry: ActivityEntry, onClick: (() -> Unit)?, onShare: (() -> Unit)? = null) {
-    OutputRow(entry.icon, entry.name, entry.size, entry.tool, entry.tagRole.colors(LocalScanPalette.current), onClick, onShare)
+    OutputRow(entry.icon, entry.name, entry.size, stringResource(entry.tag), entry.tagRole.colors(LocalScanPalette.current), onClick, onShare)
 }
 
 /** A file of the folder as an [OutputRow]: its kind's icon and tag, and its date and size (or that a scan has no PDF yet). */

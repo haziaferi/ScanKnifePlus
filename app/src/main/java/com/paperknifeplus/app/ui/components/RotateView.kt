@@ -8,17 +8,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,8 +32,8 @@ fun RotateView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFFF43F5E)
+    val outputs = rememberToolOutputs("rotate")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -107,7 +107,7 @@ fun RotateView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = outputName
-                    SessionManager.addEntry(fileName, "Rotate", "Fixed orientation", Icons.Filled.RotateRight, uri, pageCount)
+                    outputs.saved(uri, fileName, "Fixed orientation", Icons.AutoMirrored.Filled.RotateRight, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -130,7 +130,6 @@ fun RotateView(
                 ToolTopBar(
                     title = "Rotate",
                     subtitle = "FIX DOCUMENT ORIENTATION",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING }
@@ -140,17 +139,15 @@ fun RotateView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") },
-                            isDark = isDark,
-                            icon = Icons.Filled.RotateRight,
+                            icon = Icons.AutoMirrored.Filled.RotateRight,
                             title = "Tap to enter file",
                             subtitle = "ROTATE ANY PDF DOCUMENT",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -162,17 +159,17 @@ fun RotateView(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
+                                    Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     val changed = pageRotations.values.count { it != 0 }
-                                    Text("$changed / $pageCount PAGES MODIFIED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                    ToolStatusText("$changed / $pageCount PAGES MODIFIED")
                                 }
 
                                 TextButton(onClick = {
                                     pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
                                 }) {
-                                    Icon(Icons.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
+                                    Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("ROTATE ALL 90°", fontSize = 10.sp, fontWeight = FontWeight.Black, color = accentColor)
+                                    Text("ROTATE ALL 90°", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                 }
                             }
 
@@ -190,7 +187,7 @@ fun RotateView(
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         "Tap page to rotate",
-                                        fontSize = 10.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = accentColor
                                     )
@@ -213,19 +210,11 @@ fun RotateView(
                                 )
                             }
 
-                            Button(
-                                onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp).height(60.dp),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("SAVE ROTATED PDF", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                            ToolPrimaryButton("SAVE ROTATED PDF", onClick = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) }, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Applying rotations to document...",
@@ -251,7 +240,6 @@ fun RotateView(
                             onPreview = {
                                 outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) }
                             },
-                            accentColor = accentColor
                         )
                     }
                 }

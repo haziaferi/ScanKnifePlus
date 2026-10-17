@@ -21,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -35,8 +34,8 @@ fun ProtectView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF6366F1)
+    val outputs = rememberToolOutputs("protect")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -95,7 +94,7 @@ fun ProtectView(
                 processingTime = formatElapsed(startTime)
                 outputUri = uri
                 fileName = withContext(Dispatchers.IO) { getUriDetails(context, uri).name }
-                SessionManager.addEntry(fileName, "Protect", "Encrypted", Icons.Outlined.Lock, uri, pageCount)
+                outputs.saved(uri, fileName, "Encrypted", Icons.Outlined.Lock, pageCount)
                 currentState = ToolState.SUCCESS
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
@@ -116,7 +115,6 @@ fun ProtectView(
                 ToolTopBar(
                     title = "Protect",
                     subtitle = "ENCRYPT YOUR DOCUMENT",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = {
@@ -129,17 +127,15 @@ fun ProtectView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
-                            isDark = isDark,
                             icon = Icons.Outlined.Security,
                             title = "Tap to enter file",
                             subtitle = "PROTECT ANY PDF DOCUMENT",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -160,19 +156,17 @@ fun ProtectView(
                                 )
                             }
                             
-                            Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
                             
                             Spacer(Modifier.height(24.dp))
-                            Text("SET PROTECTION", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.2.sp)
+                            ToolSectionLabel("SET PROTECTION")
                             Spacer(Modifier.height(8.dp))
                             
                             OutlinedTextField(
                                 value = protectPassword,
                                 onValueChange = { protectPassword = it },
                                 label = { Text("New Password", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                modifier = Modifier.fillMaxWidth().height(56.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 colors = TextFieldDefaults.colors(
                                     focusedIndicatorColor = accentColor,
@@ -183,13 +177,13 @@ fun ProtectView(
                             )
                             
                             Spacer(Modifier.height(12.dp))
-                            Surface(color = Color(0xFFFFF1F2), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Warning, null, tint = Color(0xFFF43F5E), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Filled.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(20.dp))
                                     Spacer(Modifier.width(10.dp))
                                     Text(
                                         "${stringResource(R.string.app_name)} cannot recover lost passwords.",
-                                        fontSize = 10.sp, color = Color(0xFF9F1239), fontWeight = FontWeight.Bold
+                                        fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
@@ -200,19 +194,17 @@ fun ProtectView(
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-protected", "pdf")
                                     saveLauncher.launch(defaultName) 
                                 }, 
-                                modifier = Modifier.fillMaxWidth().height(60.dp), 
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), 
                                 enabled = protectPassword.isNotBlank(), 
-                                shape = RoundedCornerShape(20.dp), 
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
+                                shape = RoundedCornerShape(20.dp)
                             ) {
-                                Text("PROTECT & SAVE", fontWeight = FontWeight.Black, color = Color.White)
+                                Text("PROTECT & SAVE", fontWeight = FontWeight.Black)
                             }
                             Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = unlockPassword.ifEmpty { null },
                             text = "Applying encryption policy...",
@@ -234,7 +226,6 @@ fun ProtectView(
                                 currentState = ToolState.SELECTING 
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }

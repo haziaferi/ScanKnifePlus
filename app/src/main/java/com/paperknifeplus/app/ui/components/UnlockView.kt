@@ -6,19 +6,16 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -33,8 +30,8 @@ fun UnlockView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDark = LocalIsDarkTheme.current
-    val accentColor = Color(0xFF6366F1)
+    val outputs = rememberToolOutputs("unlock")
+    val accentColor = MaterialTheme.colorScheme.primary
 
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
@@ -105,7 +102,7 @@ fun UnlockView(
                     processingTime = timeStr
                     outputUri = uri
                     fileName = name
-                    SessionManager.addEntry(fileName, "Unlock", "Decrypted", Icons.Outlined.LockOpen, uri, pageCount)
+                    outputs.saved(uri, fileName, "Decrypted", Icons.Outlined.LockOpen, pageCount)
                     currentState = ToolState.SUCCESS
                 }
             } catch (e: CancellationException) {
@@ -128,7 +125,6 @@ fun UnlockView(
                 ToolTopBar(
                     title = "Unlock",
                     subtitle = "REMOVE PDF RESTRICTIONS",
-                    accent = accentColor,
                     showChange = selectedUri != null && currentState == ToolState.CONFIGURING,
                     onBack = onBack,
                     onChange = {
@@ -142,17 +138,15 @@ fun UnlockView(
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp)) {
             if (isFileLoading) {
-                LoadingStateView(accentColor, showLoadingWarning, "Preparing document...")
+                LoadingStateView(showLoadingWarning, "Preparing document...")
             } else {
                 when (currentState) {
                     ToolState.SELECTING -> {
                         SelectionGrid(
                             onSelect = { pickLauncher.launch("application/pdf") }, 
-                            isDark = isDark,
                             icon = Icons.Outlined.LockOpen,
                             title = "Tap to select locked file",
                             subtitle = "REMOVE PASSWORD PROTECTION",
-                            accentColor = accentColor,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -173,32 +167,22 @@ fun UnlockView(
                                 )
                             }
                             
-                            Spacer(Modifier.height(12.dp))
-                            Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1)
-                            Text("$fileSize • $pageCount PAGES", fontSize = 10.sp, color = Color.Gray)
+                            ToolFileInfo(fileName, "$fileSize • $pageCount PAGES")
                             
                             Spacer(Modifier.height(20.dp))
-                            Text("DOCUMENT UNLOCKED", fontSize = 9.sp, fontWeight = FontWeight.Black, color = accentColor, letterSpacing = 1.2.sp)
-                            Text("Ready to save without restrictions.", color = Color.Gray, fontSize = 11.sp)
+                            ToolSectionLabel("DOCUMENT UNLOCKED")
+                            Text("Ready to save without restrictions.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             
                             Spacer(Modifier.height(32.dp))
-                            Button(
-                                onClick = { 
+                            ToolPrimaryButton("SAVE UNRESTRICTED PDF", onClick = { 
                                     val defaultName = outputFileName(pdfBaseName(fileName) + "-unlocked", "pdf")
                                     saveLauncher.launch(defaultName) 
-                                }, 
-                                modifier = Modifier.fillMaxWidth().height(60.dp), 
-                                shape = RoundedCornerShape(20.dp), 
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.White)
-                            ) {
-                                Text("SAVE UNRESTRICTED PDF", fontWeight = FontWeight.Black, color = Color.White)
-                            }
+                                }, modifier = Modifier.fillMaxWidth())
                             Spacer(Modifier.height(32.dp))
                         }
                     }
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
-                            accentColor = accentColor,
                             uri = selectedUri,
                             password = password,
                             text = "Decrypting document...",
@@ -220,7 +204,6 @@ fun UnlockView(
                                 currentState = ToolState.SELECTING 
                             },
                             onPreview = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
-                            accentColor = accentColor
                         )
                     }
                 }
