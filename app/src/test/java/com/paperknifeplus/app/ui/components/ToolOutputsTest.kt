@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -20,7 +21,6 @@ import com.haziaferi.scanknifeplus.ui.folder.OutputCopy
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
-import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import org.junit.After
@@ -40,8 +40,9 @@ class ToolOutputsTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
+    // The default rule: under the main-thread rule the real RepairView's progress animation never lets the test settle.
     @get:Rule(order = 1)
-    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
