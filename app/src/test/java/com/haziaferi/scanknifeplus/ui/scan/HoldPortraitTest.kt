@@ -13,6 +13,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.time.Duration
 
 /** The scan flow's portrait hold gives back the orientation from before the first lock, even after the lock recreated the activity. */
 @RunWith(RobolectricTestRunner::class)
@@ -26,7 +27,9 @@ class HoldPortraitTest {
     }
 
     private fun ActivityScenario<ComponentActivity>.orientation(): Int {
-        shadowOf(Looper.getMainLooper()).idle()
+        // Past the next frames too: new content is composed on a Choreographer frame, which idle() alone runs only when it is already due,
+        // as it is when this class runs alone but not after other classes have moved the looper's clock.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(FRAMES_MS))
         var o = 0
         onActivity { o = it.requestedOrientation }
         return o
@@ -47,5 +50,9 @@ class HoldPortraitTest {
             scenario.show(holding = false)
             assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR, scenario.orientation())
         }
+    }
+
+    private companion object {
+        const val FRAMES_MS = 100L
     }
 }
