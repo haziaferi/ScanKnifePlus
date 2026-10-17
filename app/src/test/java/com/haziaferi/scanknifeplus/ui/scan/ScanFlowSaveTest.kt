@@ -36,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -235,6 +236,17 @@ class ScanFlowSaveTest {
         // Exactly the two scans, each once under its own name (a scan made in the same second as Other has a library id ending in -2).
         assertEquals(setOf("Other.pdf", pdfOf(model)), pdfs())
         assertEquals(setOf("Other", pdfOf(model).removeSuffix(".pdf")), File(folderRoot, "Scan sources").list().orEmpty().toSet())
+    }
+
+    @Test
+    fun `a folder out of reach also lets the PDF be saved elsewhere with the picker`() {
+        val model = flowInReview(unreachable())
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Save").performClick()
+        rule.onNodeWithText("Save elsewhere").performClick()
+        rule.onNodeWithText("Can't reach your folder").assertDoesNotExist()
+        assertTrue(startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
+        assertNotNull("the save options wait for the picker's answer", model.pendingSave)
     }
 
     @Test

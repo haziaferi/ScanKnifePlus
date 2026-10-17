@@ -190,6 +190,31 @@ class AppFolderTest {
         assertTrue(folder.chooseNow())
         assertEquals(FolderNotice.CopyStopped(left = 2), folder.notice)
         assertFalse(File(folderRoot, "Lease.pdf").exists())
+
+        // The next launch, with the folder back, runs the copy again; the one after has nothing left to do.
+        TestDocumentsProvider.crash = false
+        assertTrue(FolderAccess(context).adopt(treeUri))
+        val relaunched = appFolder()
+        assertEquals(FolderNotice.Copied(written = 2, failed = 0), relaunched.notice)
+        assertTrue(File(folderRoot, "Lease.pdf").isFile)
+        assertNull("copied once", appFolder().notice)
+    }
+
+    @Test
+    fun `a copy the app was closed during runs again at the next launch`() {
+        scan("Lease")
+        assertTrue(FolderAccess(context).adopt(treeUri))
+        PrefsCopyPending(context).set(true) // as left by a copy that never returned
+        assertEquals(FolderNotice.Copied(written = 1, failed = 0), appFolder().notice)
+        assertFalse(PrefsCopyPending(context).get())
+    }
+
+    @Test
+    fun `a launch with no copy left unfinished copies nothing`() {
+        scan("Lease")
+        assertTrue(FolderAccess(context).adopt(treeUri))
+        assertNull(appFolder().notice)
+        assertFalse(File(folderRoot, "Lease.pdf").exists())
     }
 
     @Test
@@ -230,7 +255,7 @@ class AppFolderTest {
             noticeText(res, FolderNotice.Copied(2, 1))
         )
         assertEquals(
-            "Copying stopped: your folder can't be reached. 2 scans stay on this phone.",
+            "Copying stopped: your folder can't be reached. 2 scans stay on this phone; the copy tries again at the next launch.",
             noticeText(res, FolderNotice.CopyStopped(2))
         )
     }

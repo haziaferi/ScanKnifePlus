@@ -233,13 +233,14 @@
         <item quantity="other">%d scans couldn\'t be copied into your folder. They stay on this phone; choose the folder again to retry.</item>
     </plurals>
     <plurals name="folder_copy_stopped">
-        <item quantity="one">Copying stopped: your folder can\'t be reached. %d scan stays on this phone.</item>
-        <item quantity="other">Copying stopped: your folder can\'t be reached. %d scans stay on this phone.</item>
+        <item quantity="one">Copying stopped: your folder can\'t be reached. %d scan stays on this phone; the copy tries again at the next launch.</item>
+        <item quantity="other">Copying stopped: your folder can\'t be reached. %d scans stay on this phone; the copy tries again at the next launch.</item>
     </plurals>
     <string name="scan_folder_blocked_title">Can\'t reach your folder</string>
-    <string name="scan_folder_blocked_body">ScanKnife+ lost access to %1$s, so the PDF can\'t be saved there yet. Your pages are kept. Choose the folder again to save.</string>
+    <string name="scan_folder_blocked_body">ScanKnife+ lost access to %1$s, so the PDF can\'t be saved there yet. Your pages are kept. Choose the folder again, or save this PDF somewhere else with the picker.</string>
     <string name="scan_folder_blocked_choose">Choose the folder again</string>
     <string name="scan_folder_blocked_later">Not now</string>
+    <string name="scan_folder_blocked_picker">Save elsewhere</string>
     <string name="scan_save_into">The PDF goes into %1$s, its pages into Scan sources there.</string>
     <string name="scan_save_folder">Save</string>
 

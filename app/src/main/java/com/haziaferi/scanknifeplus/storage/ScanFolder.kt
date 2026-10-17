@@ -270,15 +270,16 @@ class ScanFolder(
     }
 
     /**
-     * Writes every working copy whose record this folder does not have yet (at first every scan, after a change of folder every scan) with
-     * its PDF, creating files and deleting nothing (a PDF already at a scan's name gets a `-2` name rather than being replaced). The list is
-     * fixed first and private copies stay until the launch sweep finds them confirmed, so a migration that stops halfway loses nothing.
-     * Working copies in [skip] are left out: a scan still open is written by its own [writeBack].
+     * Writes every working copy this folder does not have in full yet (at first every scan, after a change of folder every scan, and a scan
+     * whose record was written but not its PDF) with its PDF, creating files and deleting nothing (a PDF already at a scan's name gets a `-2`
+     * name rather than being replaced). The list is fixed first and private copies stay until the launch sweep finds them confirmed, so a
+     * migration that stops halfway loses nothing and a second run finishes it. Working copies in [skip] are left out: a scan still open is
+     * written by its own [writeBack].
      */
     @WorkerThread
     fun migrate(pdf: PdfMaker?, skip: Set<String> = emptySet()): Migration = synchronized(LOCK) {
         val snapshot = library.documents().map { it.id }
-            .filter { id -> id !in skip && copies.get(id)?.takeIf { it.folder == store.location }?.base == null }
+            .filter { id -> id !in skip && copies.get(id)?.takeIf { it.folder == store.location }?.confirmed == null }
         val written = mutableListOf<String>()
         val failed = mutableListOf<String>()
         for ((i, id) in snapshot.withIndex()) {

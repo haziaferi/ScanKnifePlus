@@ -78,6 +78,27 @@ class PrefsSetupSeen(context: Context) : SetupSeen {
     }
 }
 
+/** Whether a copy of the scans on this phone into the folder started and did not finish, so the next launch runs it again. */
+interface CopyPending {
+    fun get(): Boolean
+
+    fun set(pending: Boolean)
+}
+
+/** [CopyPending] in the app's preferences, beside [PrefsSetupSeen], written at once. */
+class PrefsCopyPending(context: Context) : CopyPending {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    override fun get() = prefs.getBoolean(KEY_PENDING, false)
+
+    override fun set(pending: Boolean) = prefs.edit(commit = true) { putBoolean(KEY_PENDING, pending) }
+
+    private companion object {
+        const val PREFS = "folder_setup"
+        const val KEY_PENDING = "copy_pending"
+    }
+}
+
 /** [ScanPdfExporter.writePdf] as the storage layer's [PdfMaker], all pages at [size], encrypted for [password] if given. */
 fun ScanPdfExporter.pdfMaker(size: PdfPageSize = PdfPageSize.DEFAULT, password: String? = null): PdfMaker =
     PdfMaker { id, deliver -> writePdf(id, null, ExportQuality.DEFAULT, size, password, deliver = deliver) != null }
@@ -95,6 +116,7 @@ class AppFolder(
     private val library: ScanLibrary = ScanLibrary(ScanFiles.libraryDir(context)),
     private val pdf: PdfMaker = ScanPdfExporter(library, ScanFiles.exportDir(context)).pdfMaker(),
     private val setupSeen: SetupSeen = PrefsSetupSeen(context),
+    private val copyPending: CopyPending = PrefsCopyPending(context),
     private val sweep: () -> Unit = { access.sweep() },
 ) {
     // Completed once the launch sweep has run: WorkingCopies.sweep must finish before any session or copy into the folder starts.
@@ -156,7 +178,8 @@ class AppFolder(
 
     /**
      * The launch work, off the main thread: the sweep of working copies the folder already holds, then the folder's sync conflicts, reported
-     * once, then the first listing. Run once per launch; scan sessions and copies into the folder wait for the sweep ([awaitSwept]).
+     * once, then the first listing, then a copy into the folder that an earlier launch left unfinished. Run once per launch; scan sessions and
+     * copies into the folder wait for the sweep ([awaitSwept]).
      */
     fun start() {
         scope.launch {
@@ -166,6 +189,8 @@ class AppFolder(
                 swept.complete(Unit)
             }
             load(resolve = true)
+            // Create-only, so scans the stopped copy already wrote, or a scan since saved into the folder, are not written twice.
+            if (copyPending.get() && state is FolderState.Ready) copyScans()
         }
     }
 
@@ -226,13 +251,19 @@ class AppFolder(
         awaitSwept()
         val ready = state as? FolderState.Ready ?: return
         val count = scansOnPhone - skip.size
-        if (count <= 0) return
+        if (count <= 0) {
+            copyPending.set(false)
+            return
+        }
         copying = count
+        // Set before the copy, so a copy the system ends with the app is run again at the next launch too.
+        copyPending.set(true)
         val migration = try {
             withContext(io) { ready.folder.migrate(pdf, skip) }
         } finally {
             copying = null
         }
+        copyPending.set(migration.folderUnavailable)
         notice = if (migration.folderUnavailable) {
             FolderNotice.CopyStopped(migration.failed.size)
         } else {

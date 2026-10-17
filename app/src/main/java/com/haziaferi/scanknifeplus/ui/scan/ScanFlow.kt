@@ -214,6 +214,10 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         FolderBlockedDialog(folder?.name, onChooseAgain = {
             folderBlocked = false
             chooseAgain()
+        }, onPicker = {
+            // The options stay pending, as for any save with the picker.
+            folderBlocked = false
+            model.pdfName?.let(picker::launch) ?: run { model.pendingSave = null }
         }, onDismiss = {
             folderBlocked = false
             model.pendingSave = null

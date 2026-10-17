@@ -86,17 +86,22 @@ private fun boldName(text: String, name: String): AnnotatedString = buildAnnotat
 }
 
 /**
- * Saving a scan while the folder cannot be reached: the pages stay, and saving waits until the folder is chosen again ([onChooseAgain]); the
- * scan flow stays open behind it.
+ * Saving a scan while the folder cannot be reached: the pages stay, and the PDF is saved once the folder is chosen again ([onChooseAgain]),
+ * or elsewhere with the system picker ([onPicker]); the scan flow stays open behind it.
  */
 @Composable
-fun FolderBlockedDialog(name: String?, onChooseAgain: () -> Unit, onDismiss: () -> Unit) {
+fun FolderBlockedDialog(name: String?, onChooseAgain: () -> Unit, onPicker: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.scan_folder_blocked_title)) },
         text = { Text(stringResource(R.string.scan_folder_blocked_body, name ?: stringResource(R.string.folder_your_folder))) },
         confirmButton = { TextButton(onClick = onChooseAgain) { Text(stringResource(R.string.scan_folder_blocked_choose)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_folder_blocked_later)) } }
+        dismissButton = {
+            Row {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_folder_blocked_later)) }
+                TextButton(onClick = onPicker) { Text(stringResource(R.string.scan_folder_blocked_picker)) }
+            }
+        }
     )
 }
 
