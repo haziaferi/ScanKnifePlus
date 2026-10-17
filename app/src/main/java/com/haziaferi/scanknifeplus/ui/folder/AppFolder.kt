@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.DocumentsContract
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -55,6 +56,27 @@ sealed interface FolderNotice {
     data class CopyStopped(val left: Int) : FolderNotice
 }
 
+/** Whether Folder setup has been answered ("Not now", or a folder chosen), so it no longer opens by itself at launch. */
+interface SetupSeen {
+    fun get(): Boolean
+
+    fun set()
+}
+
+/** [SetupSeen] in the app's preferences, written at once (one small value). */
+class PrefsSetupSeen(context: Context) : SetupSeen {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    override fun get() = prefs.getBoolean(KEY_SEEN, false)
+
+    override fun set() = prefs.edit(commit = true) { putBoolean(KEY_SEEN, true) }
+
+    private companion object {
+        const val PREFS = "folder_setup"
+        const val KEY_SEEN = "setup_seen"
+    }
+}
+
 /** [ScanPdfExporter.writePdf] as the storage layer's [PdfMaker], all pages at [size], encrypted for [password] if given. */
 fun ScanPdfExporter.pdfMaker(size: PdfPageSize = PdfPageSize.DEFAULT, password: String? = null): PdfMaker =
     PdfMaker { id, deliver -> writePdf(id, null, ExportQuality.DEFAULT, size, password, deliver = deliver) != null }
@@ -71,10 +93,9 @@ class AppFolder(
     private val access: FolderAccess = FolderAccess(context),
     private val library: ScanLibrary = ScanLibrary(ScanFiles.libraryDir(context)),
     private val pdf: PdfMaker = ScanPdfExporter(library, ScanFiles.exportDir(context)).pdfMaker(),
+    private val setupSeen: SetupSeen = PrefsSetupSeen(context),
 ) {
-    private val appContext = context.applicationContext
     private val resolver: ContentResolver = context.contentResolver
-    private val prefs get() = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** The folder as last checked; null until the first check. */
     var state by mutableStateOf<FolderState?>(if (access.treeUri() == null) FolderState.NotChosen else null)
@@ -124,10 +145,10 @@ class AppFolder(
     }
 
     /** Whether Folder setup opens by itself at launch: no folder chosen, and its "Not now" never tapped. */
-    val offersSetup: Boolean get() = access.treeUri() == null && !prefs.getBoolean(KEY_SETUP_SEEN, false)
+    val offersSetup: Boolean get() = access.treeUri() == null && !setupSeen.get()
 
-    /** "Not now" on Folder setup: each file is saved with the picker, and setup no longer opens by itself. Written at once (one small value). */
-    fun dismissSetup() = prefs.edit(commit = true) { putBoolean(KEY_SETUP_SEEN, true) }
+    /** "Not now" on Folder setup: each file is saved with the picker, and setup no longer opens by itself. */
+    fun dismissSetup() = setupSeen.set()
 
     /**
      * The launch work, off the main thread: the sweep of working copies the folder already holds, then the folder's sync conflicts, reported
@@ -232,13 +253,17 @@ class AppFolder(
 
     private companion object {
         const val TAG = "AppFolder"
-        const val PREFS = "folder_setup"
-        const val KEY_SETUP_SEEN = "setup_seen"
         const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
     }
 }
 
 /** Keeps the app's [AppFolder] across configuration changes and starts its launch work once, when first created. */
 class FolderHolder(app: Application) : AndroidViewModel(app) {
-    val folder = AppFolder(app, viewModelScope).also { it.start() }
+    val folder = AppFolder(app, viewModelScope, setupSeen = setupSeenOf(app)).also { it.start() }
+
+    companion object {
+        /** Where the app's [SetupSeen] comes from; tests of the whole app replace it, as Robolectric can carry preferences between tests. */
+        @VisibleForTesting
+        internal var setupSeenOf: (Context) -> SetupSeen = ::PrefsSetupSeen
+    }
 }

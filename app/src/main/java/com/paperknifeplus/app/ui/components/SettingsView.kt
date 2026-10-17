@@ -37,9 +37,7 @@ import com.haziaferi.scanknifeplus.ui.folder.folderName
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.AppPalette
-import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
-import com.paperknifeplus.app.ui.theme.PaperPink
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,7 +73,7 @@ fun SettingsView(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val isDarkBg = LocalIsDarkTheme.current
+    val tokens = LocalScanPalette.current
     val appName = stringResource(R.string.app_name)
 
     var autoAuthor by remember { mutableStateOf(PreferencesManager.getDefaultAuthor(context)) }
@@ -101,14 +99,14 @@ fun SettingsView(
                     modifier = Modifier.weight(1f),
                     text = buildAnnotatedString {
                         append("Settings")
-                        withStyle(SpanStyle(color = PaperPink)) { append(".") }
+                        withStyle(SpanStyle(color = tokens.ac)) { append(".") }
                     },
                     fontWeight = FontWeight.Black,
                     fontSize = 28.sp,
                     color = MaterialTheme.colorScheme.onBackground,
                     letterSpacing = (-1).sp
                 )
-                Logo(modifier = Modifier.size(24.dp), partColor = if (isDarkBg) Color.White else Color.Black)
+                Logo(modifier = Modifier.size(24.dp), partColor = tokens.tx)
             }
         }
 
@@ -154,9 +152,9 @@ fun SettingsView(
             item {
                 SettingsGroup("USER PROFILE") {
                     Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
-                        Text("DEFAULT AUTHOR", fontSize = 9.sp, fontWeight = FontWeight.Black, color = PaperPink, letterSpacing = 1.sp)
+                        Text("DEFAULT AUTHOR", fontSize = 9.sp, fontWeight = FontWeight.Black, color = tokens.ac, letterSpacing = 1.sp)
                         Spacer(Modifier.height(4.dp))
-                        Text("This name is automatically added to the 'Author' field in the metadata of every PDF you save.", fontSize = 10.sp, color = Color.Gray)
+                        Text("This name is automatically added to the 'Author' field in the metadata of every PDF you save.", fontSize = 10.sp, color = tokens.mu)
                         Spacer(Modifier.height(12.dp))
                         TextField(
                             value = autoAuthor,
@@ -169,8 +167,8 @@ fun SettingsView(
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = PaperPink,
-                                cursorColor = PaperPink
+                                focusedIndicatorColor = tokens.ac,
+                                cursorColor = tokens.ac
                             ),
                             singleLine = true,
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -202,7 +200,7 @@ fun SettingsView(
 
             item {
                 Column(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$appName V${appVersionName(context)}", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                    Text("$appName V${appVersionName(context)}", fontSize = 8.sp, color = tokens.mu, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                 }
             }
         }
@@ -220,11 +218,11 @@ fun SettingsView(
                         showClearConfirm = false
                         Toast.makeText(context, "History wiped", Toast.LENGTH_SHORT).show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray.copy(alpha = 0.2f), contentColor = MaterialTheme.colorScheme.onSurface)
+                    colors = ButtonDefaults.buttonColors(containerColor = LocalScanPalette.current.sf2, contentColor = MaterialTheme.colorScheme.onSurface)
                 ) { Text("WIPE EVERYTHING", fontWeight = FontWeight.Black) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) { Text("CANCEL", color = PaperPink) }
+                TextButton(onClick = { showClearConfirm = false }) { Text("CANCEL", color = LocalScanPalette.current.ac) }
             }
         )
     }
@@ -243,17 +241,18 @@ private fun folderSubtitle(folder: FolderStatus): String {
 
 @Composable
 fun ThemeOption(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val palette = LocalScanPalette.current
     Surface(
         onClick = onClick,
         modifier = modifier.height(72.dp),
         shape = RoundedCornerShape(16.dp),
-        color = if (selected) PaperPink.copy(alpha = 0.1f) else Color.Transparent,
-        border = BorderStroke(1.dp, if (selected) PaperPink else Color.Gray.copy(alpha = 0.1f))
+        color = if (selected) palette.acSoft else Color.Transparent,
+        border = BorderStroke(1.dp, if (selected) palette.ac else palette.bd)
     ) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (selected) PaperPink else Color.Gray)
+            Icon(icon, null, modifier = Modifier.size(20.dp), tint = if (selected) palette.ac else palette.mu)
             Spacer(Modifier.height(8.dp))
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (selected) PaperPink else Color.Gray, textAlign = TextAlign.Center)
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (selected) palette.ac else palette.mu, textAlign = TextAlign.Center)
         }
     }
 }
@@ -271,14 +270,14 @@ fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
             text = title,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black,
-            color = Color.Gray,
+            color = LocalScanPalette.current.mu,
             letterSpacing = 1.5.sp,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         Surface(
-            color = if (LocalIsDarkTheme.current) Color(0xFF09090B) else Color.White,
+            color = LocalScanPalette.current.sf,
             shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, if (LocalIsDarkTheme.current) Color.White.copy(alpha = 0.05f) else Color.Black.copy(0.03f))
+            border = BorderStroke(1.dp, LocalScanPalette.current.bd)
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 content()
@@ -320,12 +319,12 @@ fun SettingsItem(
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, fontSize = 11.sp, color = Color.Gray)
+            Text(subtitle, fontSize = 11.sp, color = LocalScanPalette.current.mu)
         }
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = Color.Gray.copy(alpha = 0.3f),
+            tint = LocalScanPalette.current.mu,
             modifier = Modifier.size(18.dp)
         )
     }

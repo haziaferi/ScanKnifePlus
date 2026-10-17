@@ -26,7 +26,9 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
-import com.haziaferi.scanknifeplus.ui.folder.AppFolder
+import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
+import com.haziaferi.scanknifeplus.ui.folder.PrefsSetupSeen
+import com.haziaferi.scanknifeplus.ui.folder.SetupSeen
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.components.PreferencesManager
@@ -47,8 +49,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import java.io.File
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 
 @RunWith(RobolectricTestRunner::class)
 class MainActivityTest {
@@ -76,8 +76,18 @@ class MainActivityTest {
         override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
     }
 
+    /** Folder setup's answer, in memory, so no preferences an earlier test wrote can reach this one's activity. */
+    private val setup = object : SetupSeen {
+        var seen = false
+        override fun get() = seen
+        override fun set() {
+            seen = true
+        }
+    }
+
     @Before
     fun setUp() {
+        FolderHolder.setupSeenOf = { setup }
         Robolectric.setupContentProvider(PdfProvider::class.java, AUTHORITY)
     }
 
@@ -85,6 +95,7 @@ class MainActivityTest {
     fun tearDown() {
         controller?.pause()?.stop()?.destroy()
         SessionManager.clearHistory()
+        FolderHolder.setupSeenOf = ::PrefsSetupSeen
     }
 
     private fun pdf(name: String): Uri {
@@ -97,7 +108,7 @@ class MainActivityTest {
 
     /** Launches the app; [setupSeen] stands for an earlier "Not now" on Folder setup, which otherwise opens by itself. */
     private fun launch(intent: Intent = Intent(context, MainActivity::class.java), setupSeen: Boolean = true) {
-        if (setupSeen) AppFolder(context, CoroutineScope(Dispatchers.Unconfined)).dismissSetup()
+        setup.seen = setupSeen
         controller = Robolectric.buildActivity(MainActivity::class.java, intent).setup()
         rule.waitForIdle()
     }
@@ -202,8 +213,9 @@ class MainActivityTest {
         waitFor("Scan a document")
         rule.onNode(hasText("Choose a folder")).assertExists()
 
+        assertTrue("Not now is remembered", setup.seen)
         controller?.pause()?.stop()?.destroy()
-        launch(setupSeen = false)
+        controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         waitFor("Scan a document")
         assertFalse(shows("Choose where your documents live"))
     }
