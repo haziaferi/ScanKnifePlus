@@ -57,7 +57,8 @@ class ScanFlowSaveTest {
     @get:Rule(order = 1)
     val rule = createAndroidComposeRule<ComponentActivity>()
 
-    private val context: Context get() = rule.activity
+    // The application, not the activity: a model or folder kept by a session thread must never keep a test's activity alive.
+    private val context: Context get() = rule.activity.applicationContext
     private val root: File = Files.createTempDirectory("flow-save").toFile()
     private val folderRoot = File(root, "Scans").apply { mkdirs() }
     private val treeUri = DocumentsContract.buildTreeDocumentUri(TestDocumentsProvider.AUTHORITY, TestDocumentsProvider.ROOT)
@@ -96,7 +97,8 @@ class ScanFlowSaveTest {
 
     @After
     fun cleanUp() {
-        models.forEach { it.close() }
+        // Ends each session too, so no session thread outlives its test.
+        models.forEach { it.abandon() }
         forgetFolder()
         ScanFiles.libraryDir(context).deleteRecursively()
         root.deleteRecursively()
@@ -133,6 +135,9 @@ class ScanFlowSaveTest {
         val doc = library.create(name)
         library.addCapture(doc.id, ImageSource { name.byteInputStream() }, null, keepOriginal = true)
     }
+
+    /** The PDF name a scan's own save gives [model]'s document: its export name, which follows its library id when it has no name. */
+    private fun pdfOf(model: ScanFlowModel): String = model.pdfName!!
 
     /** The flow in Review of one page with [text], shown with [folder]. */
     private fun flowInReview(folder: AppFolder?, text: String = "page", io: CoroutineContext = Dispatchers.Unconfined): ScanFlowModel {
@@ -224,13 +229,12 @@ class ScanFlowSaveTest {
 
     @Test
     fun `a folder out of reach holds the save until it is chosen again, then saves and copies the other scans in`() {
-        flowInReview(unreachable())
+        val model = flowInReview(unreachable())
         saveAndChooseAgain()
         rule.waitUntil(10_000) { saved == 1 }
-        assertEquals(2, pdfs().size)
-        assertTrue("Other.pdf" in pdfs())
-        val sources = File(folderRoot, "Scan sources").list().orEmpty().toSet()
-        assertFalse("the open scan is written once, by its own save: ${pdfs()} $sources", pdfs().any { it.endsWith("-2.pdf") })
+        // Exactly the two scans, each once under its own name (a scan made in the same second as Other has a library id ending in -2).
+        assertEquals(setOf("Other.pdf", pdfOf(model)), pdfs())
+        assertEquals(setOf("Other", pdfOf(model).removeSuffix(".pdf")), File(folderRoot, "Scan sources").list().orEmpty().toSet())
     }
 
     @Test

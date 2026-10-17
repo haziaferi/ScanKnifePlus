@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.ui.scan
 
 import android.content.pm.ActivityInfo
 import android.os.Looper
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
@@ -13,7 +14,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import java.time.Duration
 
 /** The scan flow's portrait hold gives back the orientation from before the first lock, even after the lock recreated the activity. */
 @RunWith(RobolectricTestRunner::class)
@@ -21,15 +21,14 @@ class HoldPortraitTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
+    // Holding composes the hold; letting go takes the composition out of the window, which disposes it at once rather than at a later frame.
     private fun ActivityScenario<ComponentActivity>.show(holding: Boolean) = onActivity { a ->
         val holder = ViewModelProvider(a)[ScanFlowHolder::class.java]
-        a.setContent { if (holding) HoldPortrait(a, holder) }
+        if (holding) a.setContent { HoldPortrait(a, holder) } else a.setContentView(View(a))
     }
 
     private fun ActivityScenario<ComponentActivity>.orientation(): Int {
-        // Past the next frames too: new content is composed on a Choreographer frame, which idle() alone runs only when it is already due,
-        // as it is when this class runs alone but not after other classes have moved the looper's clock.
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(FRAMES_MS))
+        shadowOf(Looper.getMainLooper()).idle()
         var o = 0
         onActivity { o = it.requestedOrientation }
         return o
@@ -50,9 +49,5 @@ class HoldPortraitTest {
             scenario.show(holding = false)
             assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR, scenario.orientation())
         }
-    }
-
-    private companion object {
-        const val FRAMES_MS = 100L
     }
 }

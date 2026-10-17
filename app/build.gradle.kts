@@ -63,7 +63,11 @@ android {
     }
     buildFeatures { compose = true }
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        // The one Robolectric test JVM runs the whole suite, Compose screens included; Gradle's 512 MB default ran out with the storage UI's tests.
+        unitTests.all { it.maxHeapSize = "2g" }
+    }
 }
 
 kotlin {
