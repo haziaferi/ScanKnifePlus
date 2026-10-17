@@ -191,6 +191,7 @@
 
     <!-- The user's folder: setup, Home's folder bar, notices -->
     <string name="folder_your_folder">your folder</string>
+    <string name="folder_checking">Checking your folder…</string>
     <string name="folder_setup_title">Choose where your documents live</string>
     <string name="folder_setup_body">ScanKnife+ keeps every PDF as a normal file in a folder you pick, so Syncthing or any sync app can carry it to your other devices. Nothing is uploaded by the app.</string>
     <string name="folder_setup_preview_folder">Your folder</string>

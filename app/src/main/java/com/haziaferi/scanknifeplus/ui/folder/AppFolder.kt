@@ -27,6 +27,7 @@ import com.haziaferi.scanknifeplus.storage.FolderListing
 import com.haziaferi.scanknifeplus.storage.FolderState
 import com.haziaferi.scanknifeplus.storage.PdfMaker
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,7 +46,7 @@ sealed interface FolderStatus {
     data class Copying(val name: String?, val count: Int) : FolderStatus
 }
 
-/** A message the app shows once, as a short toast, then clears with [AppFolder.noticeShown]. */
+/** A message the app shows once, as a toast, then clears with [AppFolder.noticeShown]. */
 sealed interface FolderNotice {
     /** Sync conflicts were settled; [keptCopies] of them left a conflict copy beside the file. */
     data class Conflicts(val count: Int, val keptCopies: Int) : FolderNotice
@@ -94,7 +95,10 @@ class AppFolder(
     private val library: ScanLibrary = ScanLibrary(ScanFiles.libraryDir(context)),
     private val pdf: PdfMaker = ScanPdfExporter(library, ScanFiles.exportDir(context)).pdfMaker(),
     private val setupSeen: SetupSeen = PrefsSetupSeen(context),
+    private val sweep: () -> Unit = { access.sweep() },
 ) {
+    // Completed once the launch sweep has run: WorkingCopies.sweep must finish before any session or copy into the folder starts.
+    private val swept = CompletableDeferred<Unit>()
     private val resolver: ContentResolver = context.contentResolver
 
     /** The folder as last checked; null until the first check. */
@@ -152,14 +156,21 @@ class AppFolder(
 
     /**
      * The launch work, off the main thread: the sweep of working copies the folder already holds, then the folder's sync conflicts, reported
-     * once, then the first listing. Run once per launch, before any scan session.
+     * once, then the first listing. Run once per launch; scan sessions and copies into the folder wait for the sweep ([awaitSwept]).
      */
     fun start() {
         scope.launch {
-            withContext(io) { access.sweep() }
-            refresh(resolve = true)
+            try {
+                withContext(io) { sweep() }
+            } finally {
+                swept.complete(Unit)
+            }
+            load(resolve = true)
         }
     }
+
+    /** Returns once the launch sweep of [start] has run. */
+    suspend fun awaitSwept() = swept.await()
 
     /** Checks the folder again and lists it; with [resolve], first settles its sync conflicts and reports them. */
     fun refresh(resolve: Boolean = false) {
@@ -168,8 +179,8 @@ class AppFolder(
 
     /**
      * Adopts [treeUri] from the folder picker and tells [onResult] whether it could (false keeps the folder as it was: it cannot be written
-     * to). Then, with [copyScans], the scans on this phone are copied into it in the background, creating files only; a caller still holding
-     * a scan in progress passes false and calls [copyScansIn] once that scan is saved. Runs on this object's scope, so leaving the screen that
+     * to). Then, with [copyScans], the scans on this phone are copied into it in the background, creating files only; a caller holding a
+     * scan in progress passes false and calls [copyScansIn] leaving that scan out. Runs on this object's scope, so leaving the screen that
      * asked does not stop the copy.
      */
     fun choose(treeUri: Uri, copyScans: Boolean = true, onResult: (Boolean) -> Unit) {
@@ -184,9 +195,9 @@ class AppFolder(
         }
     }
 
-    /** Copies the scans on this phone that the folder does not have yet into it, in the background; see [choose]. */
-    fun copyScansIn() {
-        scope.launch { copyScans() }
+    /** Copies the scans on this phone that the folder does not have yet into it, in the background, except those in [skip]; see [choose]. */
+    fun copyScansIn(skip: Set<String> = emptySet()) {
+        scope.launch { copyScans(skip) }
     }
 
     /** Reports sync conflicts settled while writing to the folder. */
@@ -211,12 +222,14 @@ class AppFolder(
         report(loaded.reports)
     }
 
-    private suspend fun copyScans() {
+    private suspend fun copyScans(skip: Set<String> = emptySet()) {
+        awaitSwept()
         val ready = state as? FolderState.Ready ?: return
-        if (scansOnPhone == 0) return
-        copying = scansOnPhone
+        val count = scansOnPhone - skip.size
+        if (count <= 0) return
+        copying = count
         val migration = try {
-            withContext(io) { ready.folder.migrate(pdf) }
+            withContext(io) { ready.folder.migrate(pdf, skip) }
         } finally {
             copying = null
         }

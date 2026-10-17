@@ -26,7 +26,14 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
+import android.app.Activity
+import android.content.ClipData
+import androidx.lifecycle.ViewModelProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
+import com.haziaferi.scanknifeplus.ui.scan.CaptureMode
+import com.haziaferi.scanknifeplus.ui.scan.ScanFlowHolder
+import com.haziaferi.scanknifeplus.ui.scan.ScanPhase
+import org.robolectric.Shadows.shadowOf
 import com.haziaferi.scanknifeplus.ui.folder.PrefsSetupSeen
 import com.haziaferi.scanknifeplus.ui.folder.SetupSeen
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
@@ -242,6 +249,23 @@ class MainActivityTest {
         waitFor("Choose where your documents live")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("APPEARANCE")
+    }
+
+    @Test
+    fun `Import photos opens the scan flow in Review with the picked images`() {
+        launch()
+        rule.onNode(hasText("Import photos")).performClick()
+        val activity = controller!!.get()
+        val request = shadowOf(activity).nextStartedActivityForResult.intent
+        val picked = listOf(Uri.parse("content://$AUTHORITY/a.jpg"), Uri.parse("content://$AUTHORITY/b.jpg"))
+        val result = Intent().apply {
+            clipData = ClipData.newRawUri(null, picked[0]).apply { addItem(ClipData.Item(picked[1])) }
+        }
+        rule.runOnUiThread { shadowOf(activity).receiveResult(request, Activity.RESULT_OK, result) }
+        rule.waitUntil(10_000) { !shows("Home") }
+        val model = ViewModelProvider(activity)[ScanFlowHolder::class.java].model!!
+        assertEquals(ScanPhase.REVIEW, model.phase)
+        assertEquals(CaptureMode.MULTI, model.mode)
     }
 
     @Test

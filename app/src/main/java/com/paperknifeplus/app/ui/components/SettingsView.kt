@@ -29,6 +29,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
@@ -179,7 +180,9 @@ fun SettingsView(
 
             item {
                 SettingsGroup("PRIVACY & STORAGE") {
-                    SettingsItem(Icons.Outlined.Folder, stringResource(R.string.settings_folder), folderSubtitle(folder), onClick = onFolder)
+                    SettingsItem(
+                        Icons.Outlined.Folder, stringResource(R.string.settings_folder), folderSubtitle(folder), subtitleSize = 12.sp, onClick = onFolder
+                    )
                     SettingsItem(Icons.Outlined.DeleteSweep, "Clear History", "Wipe all session history now") {
                         showClearConfirm = true
                     }
@@ -293,6 +296,7 @@ fun SettingsItem(
     subtitle: String,
     enabled: Boolean = true,
     accentColor: Color? = null,
+    subtitleSize: TextUnit = 11.sp,
     onClick: () -> Unit = {}
 ) {
     Row(
@@ -319,7 +323,7 @@ fun SettingsItem(
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, fontSize = 11.sp, color = LocalScanPalette.current.mu)
+            Text(subtitle, fontSize = subtitleSize, color = LocalScanPalette.current.mu)
         }
         Icon(
             imageVector = Icons.Default.ChevronRight,

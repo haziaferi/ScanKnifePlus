@@ -248,6 +248,17 @@ class ScanFolderTest {
     }
 
     @Test
+    fun `migration leaves out the scans it is told to skip`() {
+        val open = f.scan("Open", pages = 1)
+        val other = f.scan("Other", pages = 1)
+
+        val migration = folder.migrate(f.pdfs, skip = setOf(open.id))
+
+        assertEquals(listOf(other.id), migration.written)
+        assertEquals(setOf("Other.pdf", "Scan sources"), f.names())
+    }
+
+    @Test
     fun `tool outputs are copied to the top level under a free name`() {
         f.file("merged.pdf").writeText("old")
         assertEquals("merged-2.pdf", written(folder.copyOutput("merged.pdf") { "new".byteInputStream() }))

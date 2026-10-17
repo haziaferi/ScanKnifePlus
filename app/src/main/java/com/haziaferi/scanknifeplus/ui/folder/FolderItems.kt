@@ -26,12 +26,9 @@ data class FolderItem(
     val mime: String get() = URLConnection.guessContentTypeFromName(name) ?: "application/octet-stream"
 }
 
-// A kept losing version, `<base>.lost-<yyyyMMdd-HHmmss>[-n]<ext>`, as FolderNames.lostName makes it.
-private val LOST_PART = Regex("""\.lost-\d{8}-\d{6}(-\d+)?(?=(\.[^.]*)?$)""")
-
 /** The name of the file [name] is a conflict copy of: a kept `.lost-` version or a Syncthing conflict copy; null for any other file. */
 fun originalOf(name: String): String? =
-    FolderNames.conflictOf(name) ?: if (FolderNames.isLost(name)) name.replaceFirst(LOST_PART, "") else null
+    FolderNames.conflictOf(name) ?: FolderNames.lostOriginal(name)
 
 /**
  * History's rows for [listing], newest first: top-level files (a scan's PDF counts as a scan), scans in `Scan sources/` without a PDF, and

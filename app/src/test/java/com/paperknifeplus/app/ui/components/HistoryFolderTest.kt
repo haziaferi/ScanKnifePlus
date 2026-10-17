@@ -13,7 +13,6 @@ import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,6 +22,7 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderKind
 import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,7 +40,7 @@ class HistoryFolderTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = createAndroidComposeRule<ComponentActivity>()
+    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
 
     private fun uri(name: String) = Uri.parse("content://folder/$name")
 

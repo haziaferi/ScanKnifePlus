@@ -77,6 +77,7 @@ internal class ScanFlowModel(
     main: CoroutineContext = Dispatchers.Main.immediate,
     private val io: CoroutineContext = Dispatchers.IO,
     takePicture: (suspend (File) -> File?)? = null,
+    private val beforeSession: suspend () -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + main)
@@ -156,6 +157,8 @@ internal class ScanFlowModel(
         }
         pipeline.setAutoCaptureEnabled(autoCapture)
         scope.launch {
+            // The app's launch sweep comes first: it must finish before any session starts.
+            beforeSession()
             // Registered on io under the lock, so a session that finishes starting after close() is still ended, as ScanSession requires.
             val started = withContext(io) {
                 val s = startSession() ?: return@withContext null

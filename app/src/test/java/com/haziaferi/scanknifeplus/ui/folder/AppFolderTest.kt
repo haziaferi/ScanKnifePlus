@@ -12,6 +12,7 @@ import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.storage.FolderAccess
 import com.haziaferi.scanknifeplus.storage.PdfMaker
 import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
+import com.haziaferi.scanknifeplus.ui.scan.ScanFlowModel
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.CoroutineScope
@@ -48,11 +49,26 @@ class AppFolderTest {
 
     @After
     fun cleanUp() {
+        forgetFolder()
         base.deleteRecursively()
         ScanFiles.libraryDir(context).deleteRecursively()
     }
 
-    private fun appFolder() = AppFolder(context, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined, FolderAccess(context), library, pdfs)
+    private val sweeps = mutableListOf<String>()
+
+    /** The app's folder over this test's library, with its launch work done unless [started] is false. */
+    /**
+     * Forgets the folder this test chose: Robolectric can hand a later test's activity the preferences instance this one wrote, so they are
+     * emptied through it before the test ends.
+     */
+    private fun forgetFolder() {
+        for (name in listOf("scan_folder", "folder_setup")) context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+        File(context.filesDir, "scan-folder").deleteRecursively()
+    }
+
+    private fun appFolder(started: Boolean = true, pdf: PdfMaker = pdfs, events: MutableList<String> = sweeps) = AppFolder(
+        context, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined, FolderAccess(context), library, pdf, sweep = { events += "sweep" }
+    ).also { if (started) it.start() }
 
     private fun scan(name: String) {
         val doc = library.create(name)
@@ -118,10 +134,12 @@ class AppFolderTest {
     fun `the launch work settles the folder's sync conflicts and reports them once`() {
         val folder = appFolder()
         assertTrue(folder.chooseNow())
+        assertEquals(listOf("sweep"), sweeps)
         File(folderRoot, "a.pdf").apply { writeText("mine") }.setLastModified(1_000_000)
         File(folderRoot, "a.sync-conflict-20261010-101010-ABCDEFG.pdf").apply { writeText("theirs") }.setLastModified(2_000_000)
 
         folder.start()
+        assertEquals("the sweep runs at each launch", listOf("sweep", "sweep"), sweeps)
         assertEquals(FolderNotice.Conflicts(count = 1, keptCopies = 1), folder.notice)
         folder.noticeShown()
         val conflict = folder.history!!.items!!.single { it.kind == FolderKind.CONFLICT }
@@ -133,11 +151,69 @@ class AppFolderTest {
     }
 
     @Test
+    fun `the launch sweep runs once at start, and a scan session waits for it`() {
+        val events = mutableListOf<String>()
+        val folder = appFolder(started = false, events = events)
+        val model = ScanFlowModel(
+            context, library = library, startSession = { null.also { events += "session" } }, main = Dispatchers.Unconfined,
+            io = Dispatchers.Unconfined, beforeSession = folder::awaitSwept
+        )
+        try {
+            assertEquals("the session waits for the sweep", emptyList<String>(), events)
+            folder.start()
+            assertEquals(listOf("sweep", "session"), events)
+        } finally {
+            model.close()
+        }
+    }
+
+    @Test
+    fun `a ready folder that cannot be listed shows History's warning, never an empty list`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        TestDocumentsProvider.crash = true
+        folder.refresh()
+        assertEquals(FolderStatus.Ready("Scans"), folder.status)
+        assertEquals(HistoryFolder("Scans", null, unreadable = true), folder.history)
+    }
+
+    @Test
+    fun `a copy that loses the folder halfway says it stopped and how many scans stay on the phone`() {
+        scan("Lease")
+        scan("Receipt")
+        val losing = PdfMaker { id, deliver ->
+            resolver.releasePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            TestDocumentsProvider.crash = true
+            deliver(File(base, "out.pdf").apply { writeText("pdf of $id") })
+        }
+        val folder = appFolder(pdf = losing)
+        assertTrue(folder.chooseNow())
+        assertEquals(FolderNotice.CopyStopped(left = 2), folder.notice)
+        assertFalse(File(folderRoot, "Lease.pdf").exists())
+    }
+
+    @Test
+    fun `a copy leaves out the scans it is told to skip`() {
+        scan("Lease")
+        scan("Open")
+        val folder = appFolder()
+        var adopted: Boolean? = null
+        folder.choose(treeUri, copyScans = false) { adopted = it }
+        assertEquals(true, adopted)
+        assertNull("nothing copied yet", folder.notice)
+        val open = library.documents().single { it.displayName == "Open" }.id
+        folder.copyScansIn(skip = setOf(open))
+        assertEquals(FolderNotice.Copied(written = 1, failed = 0), folder.notice)
+        assertTrue(File(folderRoot, "Lease.pdf").isFile)
+        assertFalse(File(folderRoot, "Open.pdf").exists())
+    }
+
+    @Test
     fun `Not now stops setup from opening by itself`() {
         val folder = appFolder()
         assertTrue(folder.offersSetup)
         folder.dismissSetup()
-        assertFalse(appFolder().offersSetup)
+        assertFalse(appFolder(started = false).offersSetup)
     }
 
     @Test

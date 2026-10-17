@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.FolderOff
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -96,6 +97,23 @@ fun FolderBlockedDialog(name: String?, onChooseAgain: () -> Unit, onDismiss: () 
         text = { Text(stringResource(R.string.scan_folder_blocked_body, name ?: stringResource(R.string.folder_your_folder))) },
         confirmButton = { TextButton(onClick = onChooseAgain) { Text(stringResource(R.string.scan_folder_blocked_choose)) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_folder_blocked_later)) } }
+    )
+}
+
+/** While the folder has not been checked yet: a progress line and Cancel; [onCheck] runs once, as it shows, to start a check. */
+@Composable
+fun CheckingFolderDialog(onCheck: () -> Unit, onDismiss: () -> Unit) {
+    LaunchedEffect(Unit) { onCheck() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                Text(stringResource(R.string.folder_checking))
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_cancel)) } }
     )
 }
 

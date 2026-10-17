@@ -39,18 +39,16 @@ import com.haziaferi.scanknifeplus.storage.FolderState
 import com.haziaferi.scanknifeplus.storage.ScanFolder
 import com.haziaferi.scanknifeplus.storage.WriteResult
 import com.haziaferi.scanknifeplus.ui.folder.AppFolder
+import com.haziaferi.scanknifeplus.ui.folder.CheckingFolderDialog
 import com.haziaferi.scanknifeplus.ui.folder.FolderBlockedDialog
 import com.haziaferi.scanknifeplus.ui.folder.rememberFolderPicker
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.PlusJakartaSans
 
 /**
- * The document scanner: Scanner, then Review, then a PDF saved into the user's [folder] when one is chosen, else where the system file picker
- * says. A folder that cannot be reached holds only the save: it waits, with the pages kept, until the folder is chosen again. Given
- * [importUris] (picked images), the flow starts in Review with them as its pages instead. The camera permission is asked as the flow starts.
- * [onSaved] runs once the PDF is saved (a picker save is already in History); [onClose] runs when the user leaves without saving, after the
- * keep-or-discard prompt (decision 6) when there are pages. The flow holds the screen in portrait, as the camera, the live outline and the
- * crop all assume a portrait screen; Book mode reads how the phone is held from its sensors instead.
+ * The document scanner: Scanner (or Review of the picked [importUris]), then Review, then a PDF saved into the user's [folder], or with the
+ * system file picker when none is chosen; a folder out of reach holds only the save, until it is chosen again. [onSaved] runs once saved,
+ * [onClose] when the user leaves without saving (after the keep-or-discard prompt); the screen is held in portrait throughout.
  */
 @Composable
 fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = emptyList(), folder: AppFolder? = null) {
@@ -58,7 +56,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     val activity = remember(context) { context.findActivity() }
     val holder = remember(activity) { ViewModelProvider(activity)[ScanFlowHolder::class.java] }
     val model = remember(holder) {
-        holder.model ?: ScanFlowModel(context.applicationContext).also {
+        holder.model ?: ScanFlowModel(context.applicationContext, beforeSession = { folder?.awaitSwept() }).also {
             holder.model = it
             it.importImages(context.contentResolver, importUris)
         }
@@ -97,8 +95,6 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     var leaving by remember { mutableStateOf(false) }
     var retakePrompt by remember { mutableStateOf(false) }
     var folderBlocked by remember { mutableStateOf(false) }
-    // Set once the folder is chosen again from here: the other scans on the phone are copied in only after this one is saved.
-    var copyAfterSave by remember { mutableStateOf(false) }
     val saved = {
         holder.model = null
         onSaved()
@@ -122,7 +118,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
                 when (result) {
                     is WriteResult.Written -> {
                         folder?.report(result.conflicts)
-                        if (copyAfterSave) folder?.copyScansIn() else folder?.refresh()
+                        folder?.refresh()
                         saved()
                     }
                     WriteResult.FolderUnavailable -> {
@@ -139,7 +135,8 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     val chooseAgain = folder?.let { f ->
         rememberFolderPicker(f, copyScans = false) { adopted ->
             val ready = f.state as? FolderState.Ready
-            if (adopted) copyAfterSave = true
+            // The other scans on the phone are copied in at once, whatever becomes of this save, which writes this scan itself.
+            if (adopted) f.copyScansIn(skip = setOfNotNull(model.document?.id))
             if (adopted && ready != null) saveToFolder(ready.folder) else folderBlocked = true
         }
     }
@@ -193,7 +190,10 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
             model.applyFilter(it)
         }, onDismiss = { filtering = false })
     }
-    if (saveOptions) {
+    if (saveOptions && folder != null && folder.state == null) {
+        // Not checked yet (just after launch): Done waits for the check rather than guessing between the folder and the picker.
+        CheckingFolderDialog(onCheck = { folder.refresh() }, onDismiss = { saveOptions = false })
+    } else if (saveOptions) {
         val state = folder?.state
         val yourFolder = stringResource(R.string.folder_your_folder)
         val into = folder?.takeIf { state != null && state != FolderState.NotChosen }?.let { it.name ?: yourFolder }
