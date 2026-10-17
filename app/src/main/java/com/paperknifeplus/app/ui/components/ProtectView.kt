@@ -42,6 +42,8 @@ fun ProtectView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
     var protectPassword by remember { mutableStateOf("") }
+    // The password the saved output was encrypted with, so its result card can draw the first page; kept in memory only.
+    var savedPassword by remember { mutableStateOf<String?>(null) }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
@@ -93,6 +95,7 @@ fun ProtectView(
                 protectPdf(context, source, uri, unlockPassword.ifEmpty { null }, protectPassword)
                 processingTime = formatElapsed(startTime)
                 outputUri = uri
+                savedPassword = protectPassword
                 fileName = withContext(Dispatchers.IO) { getUriDetails(context, uri).name }
                 outputs.saved(uri, fileName, toolText(context, R.string.protect_encrypted), Icons.Outlined.Lock, pageCount)
                 currentState = ToolState.SUCCESS
@@ -188,7 +191,7 @@ fun ProtectView(
                         SuccessView(
                             message = stringResource(R.string.protect_protect_complete),
                             subMessage = stringResource(R.string.protect_document_encrypted_with_password),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = savedPassword) },
                             onDone = onBack,
                             onProcessMore = {
                                 selectedUri = null

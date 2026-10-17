@@ -4,11 +4,14 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.View
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
@@ -19,6 +22,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderKind
@@ -128,6 +134,42 @@ class ToolScaffoldTest {
         val button = rule.onNodeWithText(action).fetchSemanticsNode().boundsInRoot
         val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
         assertTrue("the action ends inside the screen", button.bottom <= root.bottom)
+    }
+
+    @Test
+    fun `the keyboard pushes the primary action up instead of covering it`() {
+        val action = "Protect and save"
+        var view: View? = null
+        rule.setContent {
+            view = LocalView.current
+            ToolConfigLayout(action = action, onAction = {}) { Text("Password") }
+        }
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val keyboard = (root.height / 2).toInt()
+        rule.runOnUiThread {
+            val insets = WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, keyboard))
+                .setVisible(WindowInsetsCompat.Type.ime(), true)
+                .build()
+            ViewCompat.dispatchApplyWindowInsets(view!!, insets)
+        }
+        rule.waitForIdle()
+        val button = rule.onNodeWithText(action).fetchSemanticsNode().boundsInRoot
+        assertTrue("the action ends above the keyboard: ${button.bottom} > ${root.bottom - keyboard}", button.bottom <= root.bottom - keyboard)
+    }
+
+    @Test
+    fun `Merge opened with one recent file says another PDF is needed`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "only-one.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalFolderPdfs provides { listOf(item("only-one.pdf", uri = uri)) }) {
+                MergeView(onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.onNodeWithText("only-one.pdf").performScrollTo().performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Add at least one more PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Add at least one more PDF").assertIsNotEnabled()
+        rule.onNodeWithText("Unlock all files first").assertDoesNotExist()
     }
 
     private fun result(onOpen: (() -> Unit)?, mime: String = PDF_MIME, done: () -> Unit = {}, more: () -> Unit = {}) = rule.setContent {

@@ -207,11 +207,17 @@ fun MergeView(
 
                     ToolState.CONFIGURING -> {
                         val listState = rememberLazyListState()
-                        val allReady = selectedFiles.size > 1 && selectedFiles.all { !it.isLocked || it.isUnlocked }
+                        val enoughFiles = selectedFiles.size > 1
+                        val allUnlocked = selectedFiles.all { !it.isLocked || it.isUnlocked }
                         ToolConfigLayout(
-                            action = if (allReady) stringResource(R.string.merge_merge_files, selectedFiles.size) else stringResource(R.string.merge_unlock_all_files_first),
+                            // The disabled action says what is missing: a second file (one recent file opens Merge with one), or a password.
+                            action = when {
+                                !enoughFiles -> stringResource(R.string.merge_add_another_file)
+                                !allUnlocked -> stringResource(R.string.merge_unlock_all_files_first)
+                                else -> stringResource(R.string.merge_merge_files, selectedFiles.size)
+                            },
                             onAction = { saveLauncher.launch(outputFileName("merged_${System.currentTimeMillis() / 1000}", "pdf")) },
-                            actionEnabled = allReady,
+                            actionEnabled = enoughFiles && allUnlocked,
                             scroll = false
                         ) {
                             LazyColumn(

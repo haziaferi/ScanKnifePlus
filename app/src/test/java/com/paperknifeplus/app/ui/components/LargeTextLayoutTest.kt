@@ -35,11 +35,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** At twice the text size, Settings rows and the tools' shared scaffold grow with their text instead of clipping it. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
+// Twice the text size for every window, the sheets' dialogs too; LocalDensity alone would reach only the content window.
+@Config(fontScale = 2f)
 class LargeTextLayoutTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
@@ -55,11 +58,15 @@ class LargeTextLayoutTest {
 
     private fun text(text: String): Rect = rule.onNodeWithText(text, useUnmergedTree = true).bounds()
 
-    /** Fails when [text] is cut: its own layout, measured in the space its container gave it, overflows (bounds alone cannot show this). */
-    private fun assertNotClipped(text: String) {
+    private fun layoutOf(text: String): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
         rule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
-        val layout = results.single()
+        return results.single()
+    }
+
+    /** Fails when [text] is cut: its own layout, measured in the space its container gave it, overflows (bounds alone cannot show this). */
+    private fun assertNotClipped(text: String) {
+        val layout = layoutOf(text)
         // Height overflow is a cut line; a visible end short of the text is a line dropped by maxLines or an ellipsis.
         assertFalse("$text is cut off at the bottom", layout.didOverflowHeight)
         assertEquals("$text loses its end", layout.layoutInput.text.length, layout.getLineEnd(layout.lineCount - 1, visibleEnd = true))
@@ -82,6 +89,7 @@ class LargeTextLayoutTest {
         assertTrue("the value is beside the name", text("Choose again").left >= text("Folder").right)
 
         rule.onNodeWithText("Colour palette").performClick()
+        assertEquals("the sheet measures at twice the text size", 2f, layoutOf("Graphite Scholastic").layoutInput.density.fontScale)
         assertNotClipped("Graphite Scholastic")
     }
 
@@ -112,9 +120,10 @@ class LargeTextLayoutTest {
     fun `the empty tool screen's steps show their text uncut`() {
         atDoubleText { ToolEmptyState(Icons.Outlined.Bolt, "Optimize any PDF document", "Make the file smaller", onChoose = {}, onOpenRecent = null) }
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Your original file stays as it is"))
-        for (text in listOf("Optimize any PDF document", "From your folder or anywhere on this phone", "Make the file smaller", "Your original file stays as it is")) {
-            assertNotClipped(text)
-        }
+        // The step numbers too: their circles grow with the text instead of cutting it.
+        val shown = listOf("1", "2", "3", "Optimize any PDF document", "From your folder or anywhere on this phone", "Make the file smaller",
+            "Your original file stays as it is")
+        for (text in shown) assertNotClipped(text)
     }
 
     @Test

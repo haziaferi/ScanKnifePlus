@@ -165,7 +165,7 @@ fun SettingsView(
 
             item(key = "privacy") {
                 SettingsGroup(stringResource(R.string.settings_privacy)) {
-                    SettingsRow(Icons.Outlined.DeleteForever, stringResource(R.string.settings_clear_cache), value = null, opensSheet = false) {
+                    SettingsRow(Icons.Outlined.DeleteForever, stringResource(R.string.settings_clear_cache), value = null, chevron = false) {
                         scope.launch {
                             val cleared = withContext(Dispatchers.IO) { clearAppCache(context) }
                             Toast.makeText(context, if (cleared) cacheCleared else cachePartly, Toast.LENGTH_SHORT).show()
@@ -176,6 +176,7 @@ fun SettingsView(
                         Icons.Outlined.DeleteSweep,
                         stringResource(R.string.settings_clear_history),
                         value = null,
+                        chevron = false,
                         tint = colors.error
                     ) { sheet = SettingsSheet.CLEAR_HISTORY }
                 }
@@ -297,7 +298,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
 }
 
 /**
- * A one-line row of at least 60 dp: icon tile, [title], its current [value] and, when it [opensSheet], an arrow; the whole row is one button.
+ * A one-line row of at least 60 dp: icon tile, [title], its current [value] and, with [chevron], an arrow; the whole row is one button.
  * [tint] marks a destructive row (in words too: its title says what it does).
  */
 @Composable
@@ -305,7 +306,7 @@ private fun SettingsRow(
     icon: ImageVector,
     title: String,
     value: String?,
-    opensSheet: Boolean = true,
+    chevron: Boolean = true,
     tint: Color = MaterialTheme.colorScheme.onSurface,
     onClick: () -> Unit
 ) {
@@ -324,7 +325,7 @@ private fun SettingsRow(
         }
         Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = tint, modifier = Modifier.weight(1f))
         if (value != null) Text(value, fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.End, modifier = Modifier.weight(1f, fill = false))
-        if (opensSheet) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
 

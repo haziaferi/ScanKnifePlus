@@ -20,11 +20,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -360,7 +362,10 @@ fun ToolEmptyState(
 private fun ToolStep(number: Int, title: String, body: String) {
     val colors = MaterialTheme.colorScheme
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(28.dp).background(colors.surfaceVariant, CircleShape), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.defaultMinSize(minWidth = 28.dp, minHeight = 28.dp).background(colors.surfaceVariant, CircleShape).padding(horizontal = 6.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center
+        ) {
             Text("$number", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
         }
         Column(Modifier.weight(1f)) {
@@ -398,7 +403,8 @@ fun ToolConfigLayout(
     secondary: ToolAction? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier.fillMaxSize()) {
+    // Above the keyboard, so a text field never hides the action (the window draws edge to edge).
+    Column(modifier.fillMaxSize().imePadding()) {
         Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), content = content)
         ToolActionBar {
             if (secondary == null) {

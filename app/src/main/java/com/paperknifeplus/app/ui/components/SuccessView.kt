@@ -39,8 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 
-/** A file a tool saved, as its result screen shows it: [uri], the [name] the picker gave it, and its [mime] type. */
-data class ToolResult(val uri: Uri, val name: String, val mime: String = PDF_MIME)
+/** A file a tool saved, as its result screen shows it: [uri], the [name] the picker gave it, its [mime] type, and the [password] it opens with. */
+data class ToolResult(val uri: Uri, val name: String, val mime: String = PDF_MIME, val password: String? = null)
 
 internal const val PDF_MIME = "application/pdf"
 internal const val ZIP_MIME = "application/zip"
@@ -86,7 +86,7 @@ fun SuccessView(
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     val thumb = Modifier.size(width = 56.dp, height = 76.dp)
                     if (result != null && result.mime == PDF_MIME) {
-                        PdfThumbnail(result.uri, null, thumb)
+                        PdfThumbnail(result.uri, result.password, thumb)
                     } else {
                         Box(thumb.background(colors.surfaceVariant, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
                             Icon(Icons.Outlined.FolderZip, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(24.dp))

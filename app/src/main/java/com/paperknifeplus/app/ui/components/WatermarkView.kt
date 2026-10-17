@@ -182,6 +182,7 @@ fun WatermarkView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
+                    fileName = outputName
                     outputs.saved(uri, outputName, toolText(context, R.string.watermark_branding_applied_locally), Icons.Filled.TextFields, pageCount)
                     currentState = ToolState.SUCCESS
                 }

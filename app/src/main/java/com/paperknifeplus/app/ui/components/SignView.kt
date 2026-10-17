@@ -205,6 +205,7 @@ fun SignView(
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     outputUri = uri
+                    fileName = outputName
                     outputs.saved(uri, outputName, toolText(context, R.string.sign_document_signed_locally), Icons.Filled.Draw, pageCount)
                     currentState = ToolState.SUCCESS
                 }

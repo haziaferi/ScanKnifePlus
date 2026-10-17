@@ -480,6 +480,7 @@
     <string name="merge_select_multiple_pdfs">Select multiple PDFs</string>
     <string name="merge_successfully_joined_documents">Successfully joined %1$s documents</string>
     <string name="merge_unlock_all_files_first">Unlock all files first</string>
+    <string name="merge_add_another_file">Add at least one more PDF</string>
     <string name="metadata_additional_tags">Additional tags</string>
     <string name="metadata_author">Author</string>
     <string name="metadata_core_metadata">Core metadata</string>
