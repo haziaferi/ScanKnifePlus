@@ -131,9 +131,8 @@ fun AboutMain(onNavigate: (String) -> Unit) {
     ) {
         item {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Logo(modifier = Modifier.size(64.dp), partColor = LocalScanPalette.current.tx)
-                Spacer(Modifier.height(16.dp))
-                Text(appName, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = colors.onBackground)
+                WordmarkStack(fontSize = 28.sp, markHeight = 80.dp)
+                Spacer(Modifier.height(8.dp))
                 Text(stringResource(R.string.about_tagline), fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
                 Text(
                     stringResource(R.string.settings_version, appName, appVersionName(context)),
