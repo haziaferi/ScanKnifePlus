@@ -100,6 +100,7 @@ fun PaperKnifePlusTheme(
             controller.isAppearanceLightNavigationBars = !oled
             // Below API 29 enableEdgeToEdge leaves a scrim chosen by the system's night mode at launch, which can hide icons drawn for the app's
             // theme; there the bar takes the theme's surface instead.
+            // The setter is deprecated because API 35 enforces edge-to-edge; below 29 it is still the way to colour the bar.
             @Suppress("DEPRECATION")
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) window.navigationBarColor = tokens.sf.toArgb()
         }

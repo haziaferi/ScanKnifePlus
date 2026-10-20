@@ -286,7 +286,7 @@ class ScanCameraController(context: Context) {
                 capture.takePicture(options, mainExecutor, object : ImageCapture.OnImageSavedCallback {
                     override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                         endCapture(token)
-                        cont.resume(file) { ioExecutor.execute { file.delete() } }
+                        cont.resume(file) { _, _, _ -> ioExecutor.execute { file.delete() } }
                     }
 
                     override fun onError(exception: ImageCaptureException) {

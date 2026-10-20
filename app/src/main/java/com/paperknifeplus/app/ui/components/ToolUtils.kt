@@ -410,6 +410,7 @@ suspend fun convertPdfToImages(
                 }
                 opened.use { renderer ->
                     val scale = when (quality) { "Ultra HD" -> 3.0f; "HD" -> 2.0f; "Standard" -> 1.5f; else -> 1.0f }
+                    @Suppress("DEPRECATION") // WEBP_LOSSLESS needs API 30; older devices keep the old WEBP.
                     val cf = when (format) {
                         "PNG" -> Bitmap.CompressFormat.PNG
                         "WebP" -> if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSLESS else Bitmap.CompressFormat.WEBP
