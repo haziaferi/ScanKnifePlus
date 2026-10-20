@@ -13,11 +13,11 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
-import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
@@ -77,7 +77,7 @@ class RearrangeViewTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 

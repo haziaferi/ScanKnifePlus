@@ -15,13 +15,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.core.content.IntentCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -199,8 +200,8 @@ class ToolScaffoldTest {
         rule.onNodeWithText("Share").performClick()
         val started = shadowOf(context as Application).nextStartedActivity
         assertEquals(Intent.ACTION_CHOOSER, started.action)
-        val send = started.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
-        assertEquals(Uri.parse("content://test/out.pdf"), send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))
+        val send = IntentCompat.getParcelableExtra(started, Intent.EXTRA_INTENT, Intent::class.java)!!
+        assertEquals(Uri.parse("content://test/out.pdf"), IntentCompat.getParcelableExtra(send, Intent.EXTRA_STREAM, Uri::class.java))
     }
 
     @Test

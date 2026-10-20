@@ -10,7 +10,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump

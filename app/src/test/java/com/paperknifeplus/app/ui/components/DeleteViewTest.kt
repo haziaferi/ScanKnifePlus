@@ -3,8 +3,8 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
-import com.paperknifeplus.app.testing.mainThreadComposeRule
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -20,7 +20,7 @@ class DeleteViewTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = mainThreadComposeRule()
+    val rule = createComposeRule()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
