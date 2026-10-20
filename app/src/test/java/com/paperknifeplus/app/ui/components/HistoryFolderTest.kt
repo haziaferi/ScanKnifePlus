@@ -12,11 +12,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.core.content.IntentCompat
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderKind
 import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
-import com.paperknifeplus.app.testing.mainThreadAndroidComposeRule
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -32,7 +33,7 @@ class HistoryFolderTest {
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = mainThreadAndroidComposeRule<ComponentActivity>()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     private fun uri(name: String) = Uri.parse("content://folder/$name")
 
@@ -54,7 +55,7 @@ class HistoryFolderTest {
     fun `the folder's files fill History, with Conflicts as a fourth filter`() {
         var refreshed = 0
         history(folder, onRefresh = { refreshed++ })
-        // The refresh is a LaunchedEffect, which the main-thread rule only runs on a later frame, so wait for it rather than for idle.
+        // The refresh is a LaunchedEffect, which a standard test dispatcher may run only on a later frame, so wait for it, not for idle.
         rule.waitUntil(5_000) { refreshed > 0 }
         rule.waitForIdle()
         assertEquals("History reads the folder again as it shows", 1, refreshed)
@@ -85,7 +86,7 @@ class HistoryFolderTest {
 
     @Test
     fun `a scan without its PDF shows but neither opens nor shares`() {
-        // Alone in the list, so it shows without scrolling, which never settles under the main-thread rule.
+        // Alone in the list, so it shows without scrolling.
         history(HistoryFolder("Documents/Scans", listOf(draft)))
         rule.onNodeWithText("Draft").assertHasNoClickAction()
         rule.onNodeWithText("No PDF yet", substring = true).assertExists()
@@ -97,10 +98,10 @@ class HistoryFolderTest {
         history(folder)
         rule.onNodeWithContentDescription("Share Tax return merged.pdf").performClick()
         val chooser = shadowOf(rule.activity).nextStartedActivity
-        val send = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        val send = IntentCompat.getParcelableExtra(chooser, Intent.EXTRA_INTENT, Intent::class.java)!!
         assertEquals(Intent.ACTION_SEND, send.action)
         assertEquals("application/pdf", send.type)
-        assertEquals(merged.uri, send.getParcelableExtra(Intent.EXTRA_STREAM))
+        assertEquals(merged.uri, IntentCompat.getParcelableExtra(send, Intent.EXTRA_STREAM, Uri::class.java))
     }
 
     @Test

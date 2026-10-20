@@ -5,7 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.Density
@@ -20,10 +20,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
 
-/**
- * History's folder rows at large text sizes. It scrolls the lazy list, so it runs on the default rule: under the main-thread rule a lazy list
- * scroll never settles. Folder rows start nothing on Dispatchers.IO, so the default rule is safe here.
- */
+/** History's folder rows at large text sizes. */
 @RunWith(RobolectricTestRunner::class)
 class HistoryFolderLayoutTest {
     @get:Rule(order = 0)

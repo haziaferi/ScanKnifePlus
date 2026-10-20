@@ -17,11 +17,12 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
+import androidx.core.content.IntentCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import org.junit.After
@@ -65,7 +66,7 @@ class HistoryTest {
             val intent = historyShareIntent(entry(uri), historyEntryMime(context.contentResolver, uri))!!
             assertEquals(Intent.ACTION_SEND, intent.action)
             assertEquals(type, intent.type)
-            assertEquals(uri, intent.getParcelableExtra(Intent.EXTRA_STREAM))
+            assertEquals(uri, IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java))
             assertEquals(uri, intent.clipData!!.getItemAt(0).uri)
             assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
         }

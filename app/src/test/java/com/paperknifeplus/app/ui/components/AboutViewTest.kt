@@ -7,7 +7,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -31,8 +31,6 @@ class AboutViewTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
-    // Not mainThreadAndroidComposeRule: under its standard test dispatcher the lazy list never scrolls, so performScrollToNode loops until
-    // the heap runs out.
     @get:Rule(order = 1)
     val rule = createAndroidComposeRule<ComponentActivity>()
 

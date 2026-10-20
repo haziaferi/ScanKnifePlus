@@ -11,7 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
@@ -39,7 +39,6 @@ class ToolOutputsTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
-    // The default rule: under the main-thread rule the real RepairView's progress animation never lets the test settle.
     @get:Rule(order = 1)
     val rule = createAndroidComposeRule<ComponentActivity>()
 
