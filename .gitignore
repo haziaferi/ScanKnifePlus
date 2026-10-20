@@ -28,3 +28,8 @@ build/
 keystore.properties
 *.jks
 *.keystore
+
+# OCR benchmark language data: fetched and verified by docs/ocr-bench/fetch_tessdata.py, packed into the test APK only
+/app/src/androidTest/assets/tessdata/
+# Camera photos pulled for the OCR benchmark (docs/ocr-bench/run.sh --camera)
+/docs/ocr-bench/scans/

@@ -1,0 +1,6 @@
+page	lang	paper	description
+a-english	eng	a4	English body text, 11 pt Liberation Serif
+b-italian	ita	a4	Italian body text with accents, 11 pt Liberation Serif
+c-footnotes	eng+ita	a4	Footnote-size English and Italian, 8 pt Liberation Sans
+d-receipt	ita	a4	Receipt-like narrow column, 9 pt DejaVu Sans Mono
+e-layout	eng	a4	Headings, two columns and a table, Liberation Sans
