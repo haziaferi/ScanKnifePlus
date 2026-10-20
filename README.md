@@ -1,6 +1,9 @@
-<img src="icon.png" width="128" height="128" align="left" style="margin-right: 16px">
-
-# ScanKnife+
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/design/launcher/wordmark-dark.svg">
+    <img src="docs/design/launcher/wordmark-light.svg" alt="ScanKnife+" width="300">
+  </picture>
+</h1>
 
 A privacy-first PDF utility and document scanner for Android. Works 100% offline - no internet, no trackers.
 

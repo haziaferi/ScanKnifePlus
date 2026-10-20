@@ -34,7 +34,27 @@ The script writes these files under `app/src/main/res/`:
 - `drawable/ic_launcher.xml` and `drawable/ic_launcher_round.xml`: the whole icon in a rounded square and a circle, for Android 7.0
   and 7.1, which have no adaptive icons.
 
+It also writes `drawable/brand_mark_light.xml` and `drawable/brand_mark_dark.xml`: the mark without its tile, for the wordmark.
+
+- **The light version** has a deeper cyan of the same hue (#008A9E, at least 3:1 on every light theme), darker halves and no glow.
+- **The dark version** keeps the icon's colours and glow.
+- **Choosing between them:** the app picks one by its own theme setting, not the system's.
+
 Don't edit those files by hand; change `make_icon.py` and run it again.
+
+## Wordmark
+
+"ScanKnife+" is set in the app's own font, Plus Jakarta Sans:
+
+- "Scan" in Medium and "Knife" in ExtraBold, with tracking −0.015 em.
+- A smaller raised "+" (62% size) in brand red: #C41E3A on light themes and #F04A66 on OLED. Both clear 4.5:1 on every app
+  background.
+- The letters take the theme's text colour.
+
+In the app, `Wordmark.kt` draws it: `WordmarkRow` (mark beside the name) on Home, and `WordmarkStack` (mark above it) on About.
+
+`wordmark-light.svg` and `wordmark-dark.svg` are the stacked lockup, outlined and on a transparent ground, for the repository
+README. VectorCraft built them with `tools/wordmark.py banner`, after running `python make_icon.py --marks work`.
 
 In the adaptive icon, the artboard is scaled by 72/108 into the safe zone, so no launcher mask cuts into it. Vector drawables have
 gradients but no blur. So `make_icon.py` rebuilds each VectorCraft glow from the blur's own profile: a Gaussian blur of each line,

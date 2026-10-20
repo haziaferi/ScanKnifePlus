@@ -117,14 +117,7 @@ private fun HomeHeader(onAllTools: () -> Unit, onSettings: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            stringResource(R.string.app_name),
-            fontSize = 22.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = (-0.3).sp,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f).semantics { heading() }
-        )
+        WordmarkRow(fontSize = 22.sp, markHeight = 30.dp, modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { heading() })
         HeaderButton(Icons.Outlined.GridView, stringResource(R.string.home_all_tools), onAllTools)
         HeaderButton(Icons.Outlined.Settings, stringResource(R.string.home_settings), onSettings)
     }
