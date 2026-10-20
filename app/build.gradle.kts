@@ -101,6 +101,8 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.rules)
+    // OCR benchmark only (OcrBenchmarkTest); no OCR ships to users yet.
+    androidTestImplementation(libs.tesseract4android.openmp)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }

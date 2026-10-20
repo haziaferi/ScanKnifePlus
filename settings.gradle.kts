@@ -10,6 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Tesseract4Android (the owner's fork) is published only on JitPack; nothing else may resolve from it.
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.haziaferi.Tesseract4Android") }
+        }
     }
 }
 
