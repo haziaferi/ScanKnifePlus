@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="108" height="108" viewBox="0 0 108 108">
+  <defs>
+    <radialGradient id="radial-gradient-1" cx="54" cy="54" r="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1c2260"/>
+      <stop offset="1" stop-color="#080a1e"/>
+    </radialGradient>
+    <linearGradient id="linear-gradient-1" x1="56" y1="54" x2="56" y2="29" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffc2cc"/>
+      <stop offset="0.14" stop-color="#ff6b81"/>
+      <stop offset="0.55" stop-color="#e0284c"/>
+      <stop offset="1" stop-color="#7e0e2c"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="56" y1="54" x2="56" y2="79" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e6eaf1"/>
+      <stop offset="0.14" stop-color="#b4bccd"/>
+      <stop offset="0.55" stop-color="#737c94"/>
+      <stop offset="1" stop-color="#3c4358"/>
+    </linearGradient>
+    <filter id="filter-1" filterUnits="userSpaceOnUse" x="18.375" y="8.641" width="17.25" height="17.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="0.75" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-2" filterUnits="userSpaceOnUse" x="72.375" y="8.641" width="17.25" height="17.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="0.75" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-3" filterUnits="userSpaceOnUse" x="72.375" y="82.109" width="17.25" height="17.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="0.75" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-4" filterUnits="userSpaceOnUse" x="18.375" y="82.109" width="17.25" height="17.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="0.75" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-5" filterUnits="userSpaceOnUse" x="15.875" y="46.375" width="41.083" height="15.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-6" filterUnits="userSpaceOnUse" x="43.958" y="48.625" width="39.75" height="10.75" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="0.75" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="filter-7" filterUnits="userSpaceOnUse" x="70.708" y="46.375" width="21.417" height="15.25" data-vc-blend="screen" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="glow"/><feFlood flood-color="#36e6ff" flood-opacity="0.85"/><feComposite in2="glow" operator="in" result="paint"/><feMerge><feMergeNode in="paint"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <title>u3-D8a</title>
+  <g id="Layer_1" data-name="Layer 1">
+    <path d="M0 0 L108 0 L108 108 L0 108 Z" fill="url(#radial-gradient-1)"/>
+    <path d="M49.333 54 L34.333 29 L78.333 54 Z" fill="url(#linear-gradient-1)"/>
+    <path d="M49.333 54 L78.333 54 L34.333 79 Z" fill="url(#linear-gradient-2)"/>
+    <g filter="url(#filter-1)">
+      <path d="M23.5 20.766 L30.5 20.766 L30.5 13.766" fill="none" stroke="#36e6ff" stroke-width="1.75" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-2)">
+      <path d="M84.5 20.766 L77.5 20.766 L77.5 13.766" fill="none" stroke="#36e6ff" stroke-width="1.75" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-3)">
+      <path d="M84.5 87.234 L77.5 87.234 L77.5 94.234" fill="none" stroke="#36e6ff" stroke-width="1.75" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-4)">
+      <path d="M23.5 87.234 L30.5 87.234 L30.5 94.234" fill="none" stroke="#36e6ff" stroke-width="1.75" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-5)">
+      <path d="M23.5 54 L49.333 54" fill="none" stroke="#36e6ff" stroke-width="2.25" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-6)">
+      <path d="M49.333 54 L78.333 54" fill="none" stroke="#36e6ff" stroke-width="2.25" stroke-miterlimit="10"/>
+    </g>
+    <g filter="url(#filter-7)">
+      <path d="M78.333 54 L84.5 54" fill="none" stroke="#36e6ff" stroke-width="2.25" stroke-miterlimit="10"/>
+    </g>
+  </g>
+</svg>
