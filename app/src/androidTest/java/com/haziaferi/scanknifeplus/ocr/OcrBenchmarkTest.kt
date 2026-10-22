@@ -2,6 +2,9 @@ package com.haziaferi.scanknifeplus.ocr
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.Debug
 import android.os.SystemClock
 import android.util.Log
@@ -15,10 +18,12 @@ import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scanner.cv.DetectionResult
 import com.haziaferi.scanknifeplus.scanner.cv.DocumentDetector
 import com.haziaferi.scanknifeplus.scanner.cv.PerspectiveCrop
+import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.cv.RgbaImage
 import com.haziaferi.scanknifeplus.scanner.store.StoredImage
 import java.io.File
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -34,6 +39,8 @@ import org.junit.runner.RunWith
  * perspective warp at full resolution, straight to the target DPI, as the planned OCR copy would. Per page and run it writes the recognised
  * text, a words.tsv (word, confidence, box) and one metrics row into the additional test output directory, which the Android Gradle plugin
  * pulls to `app/build/outputs/connected_android_test_additional_output/`; pages that cannot be prepared go to failures.tsv instead.
+ *
+ * The `field*` methods are field mode: real photos without ground truth in `ocr-bench/field/<set>/`, with orientation detection first.
  */
 @RunWith(AndroidJUnit4::class)
 class OcrBenchmarkTest {
@@ -330,8 +337,278 @@ class OcrBenchmarkTest {
         }
     }
 
+    // Field mode: real photos without ground truth, pushed by `run.sh --field` into `ocr-bench/field/<set>/` with an optional field.tsv
+    // (page, langs, long_mm). Output goes to `ocr-field/<set>/` in the additional test output, one file set per page, so the per-chunk
+    // instrumentations of run.sh never overwrite each other.
+
+    /** Detection only: where the scanner's one-shot detection puts the quad on each photo, with previews to judge it. */
+    @Test fun fieldDetect() = forEachFieldPhoto { set, out, page, image, _ ->
+        val dir = File(out, "detect").apply { mkdirs() }
+        val start = SystemClock.elapsedRealtime()
+        val decoded = ImageCodec.decodeScaled(ImageSource.of(image), Int.MAX_VALUE)
+        if (decoded == null) {
+            writeTable(File(dir, "$page.detect.tsv"), DETECT_HEADER, "$set\t$page\tdecode failed\t\t\t\t\t\t")
+            return@forEachFieldPhoto
+        }
+        StoredImage.flattenOntoWhite(decoded.pixels)
+        val found = DocumentDetector.detectFromRgba(decoded.pixels, decoded.width, decoded.height)
+        val ms = SystemClock.elapsedRealtime() - start
+        val quad = (found as? DetectionResult.Success)?.quad
+        val natural = quad?.let { PerspectiveCrop.outputSize(it) }
+        writeTable(
+            File(dir, "$page.detect.tsv"), DETECT_HEADER,
+            "$set\t$page\t${outcome(found)}\t${decoded.width}\t${decoded.height}\t${quad?.let(::quadText).orEmpty()}\t" +
+                "${quad?.let { "%.1f".format(Locale.ROOT, 100 * quadArea(it) / (decoded.width.toDouble() * decoded.height)) }.orEmpty()}\t" +
+                "${natural?.let { "${it.width}x${it.height}" }.orEmpty()}\t$ms",
+        )
+        writePreview(rgbaPreview(decoded, quad), File(dir, "$page.quad.jpg"))
+        if (quad != null) PerspectiveCrop.warpToPage(decoded, quad, PREVIEW_EDGE)?.let { writePreview(rgbaPreview(it, null), File(dir, "$page.warp.jpg")) }
+    }
+
+    @Test fun fieldFast300() = field("fast", 300)
+
+    @Test fun fieldFast400() = field("fast", 400)
+
+    @Test fun fieldBest300() = field("best", 300)
+
+    @Test fun fieldBest400() = field("best", 400)
+
+    /**
+     * Per photo: detect and warp to [dpi] (from the manifest's physical long edge), Tesseract OSD on the warped grey page, rotate as OSD says,
+     * then recognise in every manifest language; pages OSD rotated are also recognised unrotated (primary language) for comparison.
+     */
+    private fun field(model: String, dpi: Int) = forEachFieldPhoto { set, out, page, image, entry ->
+        val dir = File(out, "$model-$dpi").apply { mkdirs() }
+        val prepStart = SystemClock.elapsedRealtime()
+        val prepared = fieldPhotoAt(image, entry.longMm, dpi, entry.frame)
+        val prepMs = SystemClock.elapsedRealtime() - prepStart
+        if (prepared !is FieldInput.Ready) {
+            writeTable(File(dir, "$page.failures.tsv"), "set\tpage\tmodel\tdpi\treason", "$set\t$page\t$model\t$dpi\t${(prepared as FieldInput.Failed).reason}")
+            Log.w(TAG, "field $set/$page $model-$dpi: ${prepared.reason}")
+            return@forEachFieldPhoto
+        }
+        val dataPath = installModel(model)
+        val osd = orientation(dataPath, prepared.input, dpi)
+        val rotate = osd.result?.rotateClockwise ?: 0
+        val upright = if (rotate == 0) prepared.input else rotated(prepared.input, rotate)
+        if (model == "fast" && dpi == 300) writePreview(greyPreview(upright), File(out, "detect/$page.upright.jpg"))
+        val rows = StringBuilder()
+        fun once(lang: String, input: Input.Ready, variant: String) {
+            val r = recognise(dataPath, lang, input, dpi, PSM_DEFAULT)
+            val stem = if (variant == "upright") "$page.$lang" else "$page.$lang.$variant"
+            File(dir, "$stem.txt").writeText(r.text + "\n")
+            File(dir, "$stem.words.tsv").writeText(r.words)
+            val o = osd.result
+            rows.append(
+                "$set\t$page\t$model\t$dpi\t$lang\t$variant\t${if (entry.frame) "frame" else "quad"}\t${entry.longMm}\t" +
+                    "${prepared.photoWidth}x${prepared.photoHeight}\t${prepared.quad?.let(::quadText).orEmpty()}\t" +
+                    "${"%.1f".format(Locale.ROOT, prepared.quadAreaPct)}\t${prepared.naturalWidth}x${prepared.naturalHeight}\t" +
+                    "${prepared.sourceDpi.roundToInt()}\t${input.width}\t${input.height}\t$prepMs\t${osd.ms}\t${o?.degrees ?: ""}\t$rotate\t" +
+                    "${o?.confidence ?: ""}\t${o?.script ?: ""}\t${o?.scriptConfidence ?: ""}\t${osd.error.orEmpty()}\t${r.initMs}\t${r.recogniseMs}\t" +
+                    "${r.nativeBaseKb}\t${r.nativePeakKb}\t${r.pssBaseKb}\t${r.pssPeakKb}\t${r.hwmKb}\t${r.meanConfidence}\t${r.wordCount}\t${r.flavor}\n",
+            )
+            Log.i(TAG, "field $set/$page $model-$dpi $lang $variant: ${r.recogniseMs} ms, ${r.wordCount} words")
+        }
+        for (lang in entry.langs) once(lang, upright, "upright")
+        if (rotate != 0) once(entry.langs.first(), prepared.input, "norot")
+        writeTable(File(dir, "$page.runs.tsv"), FIELD_RUNS_HEADER, rows.toString().trimEnd('\n'))
+    }
+
+    /** [frame]: recognise the whole photo instead of the detected quad (for photos where detection picks the wrong region). */
+    private class FieldEntry(val langs: List<String>, val longMm: Double, val frame: Boolean)
+
+    private fun forEachFieldPhoto(block: (String, File, String, File, FieldEntry) -> Unit) {
+        val root = context.getExternalFilesDir(null)?.let { File(it, "ocr-bench/field") }
+        val sets = root?.listFiles().orEmpty().filter { it.isDirectory }.sortedBy { it.name }
+        assumeTrue("no field photos pushed to ocr-bench/field", sets.any { set -> set.listFiles().orEmpty().any(::isFieldPhoto) })
+        val out = File(outputRoot(), "ocr-field")
+        for (set in sets) {
+            val manifest = readFieldManifest(File(set, "field.tsv"))
+            for (image in set.listFiles().orEmpty().filter(::isFieldPhoto).sortedBy { it.name }) {
+                val page = image.name.substringBefore('.')
+                block(set.name, File(out, set.name), page, image, manifest[page] ?: FieldEntry(listOf("ita"), PAPER_MM.getValue("a4").second, false))
+            }
+        }
+    }
+
+    private fun isFieldPhoto(file: File): Boolean = file.isFile && FIELD_PHOTO.matches(file.name)
+
+    /**
+     * field.tsv: page, langs (comma-separated, the first is the primary), input (`quad` or `frame`), physical long edge in mm of what that
+     * input covers; more columns (covers, label) are for the report only.
+     */
+    private fun readFieldManifest(file: File): Map<String, FieldEntry> = if (!file.isFile) emptyMap() else file.readLines().drop(1).mapNotNull { line ->
+        line.split('\t').takeIf { it.size >= 4 && it[0].isNotBlank() }?.let {
+            it[0] to FieldEntry(it[1].split(',').map(String::trim), it[3].toDouble(), it[2].trim() == "frame")
+        }
+    }.toMap()
+
+    private sealed interface FieldInput {
+        class Ready(
+            val input: Input.Ready, val photoWidth: Int, val photoHeight: Int, val quad: Quad?, val quadAreaPct: Double, val naturalWidth: Int,
+            val naturalHeight: Int, val sourceDpi: Double,
+        ) : FieldInput
+
+        class Failed(val reason: String) : FieldInput
+    }
+
+    /**
+     * Like [photoAt], but the page size comes from the quad's own aspect and a physical long edge, not from a paper format. With [frame] the
+     * whole upright photo is used instead, without detection.
+     */
+    private fun fieldPhotoAt(image: File, longMm: Double, dpi: Int, frame: Boolean): FieldInput = try {
+        val decoded = ImageCodec.decodeScaled(ImageSource.of(image), Int.MAX_VALUE) ?: return FieldInput.Failed("cannot decode")
+        StoredImage.flattenOntoWhite(decoded.pixels)
+        val longPx = (longMm / MM_PER_INCH * dpi).roundToInt()
+        if (frame) {
+            val scale = longPx.toDouble() / max(decoded.width, decoded.height)
+            val w = (decoded.width * scale).roundToInt()
+            val h = (decoded.height * scale).roundToInt()
+            val sourceDpi = max(decoded.width, decoded.height) / (longMm / MM_PER_INCH)
+            return FieldInput.Ready(
+                Input.Ready(greyResized(decoded, w, h), w, h, "frame", sourceDpi), decoded.width, decoded.height, null, 100.0, decoded.width,
+                decoded.height, sourceDpi,
+            )
+        }
+        when (val found = DocumentDetector.detectFromRgba(decoded.pixels, decoded.width, decoded.height)) {
+            is DetectionResult.NotFound -> FieldInput.Failed("page not detected in ${decoded.width}x${decoded.height}")
+            is DetectionResult.Failure -> FieldInput.Failed("detection failed: ${found.message}")
+            is DetectionResult.Success -> {
+                val natural = PerspectiveCrop.outputSize(found.quad)
+                val scale = longPx.toDouble() / max(natural.width, natural.height)
+                val w = (natural.width * scale).roundToInt()
+                val h = (natural.height * scale).roundToInt()
+                val warped = PerspectiveCrop.warpToPage(decoded, found.quad, max(w, h)) ?: return FieldInput.Failed("warp failed")
+                val sourceDpi = max(natural.width, natural.height) / (longMm / MM_PER_INCH)
+                FieldInput.Ready(
+                    Input.Ready(greyResized(warped, w, h), w, h, "photo", sourceDpi), decoded.width, decoded.height, found.quad,
+                    100 * quadArea(found.quad) / (decoded.width.toDouble() * decoded.height), natural.width, natural.height, sourceDpi,
+                )
+            }
+        }
+    } catch (e: OutOfMemoryError) {
+        FieldInput.Failed("out of memory")
+    }
+
+    private class Osd(val result: TessOsd.Result?, val error: String?, val ms: Long)
+
+    /** Tesseract OSD (legacy engine, osd.traineddata) on the warped grey page; one fresh instance, timed without the init. */
+    private fun orientation(dataPath: String, input: Input.Ready, dpi: Int): Osd {
+        val tess = TessBaseAPI()
+        try {
+            if (!tess.init(dataPath, "osd", TessBaseAPI.OEM_TESSERACT_ONLY)) return Osd(null, "init osd failed", 0)
+            tess.setVariable("user_defined_dpi", dpi.toString())
+            tess.setPageSegMode(PageSegMode.PSM_OSD_ONLY)
+            val start = SystemClock.elapsedRealtime()
+            tess.setImage(input.grey, input.width, input.height, 1, input.width)
+            val (result, error) = TessOsd.detect(tess)
+            return Osd(result, error, SystemClock.elapsedRealtime() - start)
+        } finally {
+            tess.recycle()
+        }
+    }
+
+    /** [input] turned clockwise by [degrees] (90, 180 or 270). */
+    private fun rotated(input: Input.Ready, degrees: Int): Input.Ready {
+        val w = input.width
+        val h = input.height
+        val src = input.grey
+        val out = ByteArray(src.size)
+        for (y in 0 until h) for (x in 0 until w) {
+            val v = src[y * w + x]
+            when (degrees) {
+                90 -> out[x * h + (h - 1 - y)] = v
+                180 -> out[(h - 1 - y) * w + (w - 1 - x)] = v
+                270 -> out[(w - 1 - x) * h + y] = v
+                else -> error("rotation $degrees")
+            }
+        }
+        val swap = degrees != 180
+        return Input.Ready(out, if (swap) h else w, if (swap) w else h, input.source, input.sourceDpi)
+    }
+
+    private fun outcome(found: DetectionResult): String = when (found) {
+        is DetectionResult.Success -> "found"
+        is DetectionResult.NotFound -> "not found"
+        is DetectionResult.Failure -> "failed: ${found.message}"
+    }
+
+    private fun quadText(q: Quad): String = q.points.joinToString(" ") { "${it.x.roundToInt()},${it.y.roundToInt()}" }
+
+    /** Shoelace area of the quad in square pixels. */
+    private fun quadArea(q: Quad): Double {
+        val p = q.points
+        return abs(p.indices.sumOf { i -> p[i].x * p[(i + 1) % 4].y - p[(i + 1) % 4].x * p[i].y }) / 2
+    }
+
+    private fun writeTable(file: File, header: String, rows: String) {
+        file.parentFile?.mkdirs()
+        file.writeText(header + "\n" + rows + "\n")
+    }
+
+    /** A box-averaged ARGB copy of [src] with the long edge at most [PREVIEW_EDGE], the [quad] drawn on it in red. */
+    private fun rgbaPreview(src: RgbaImage, quad: Quad?): Bitmap {
+        val f = (max(src.width, src.height) + PREVIEW_EDGE - 1) / PREVIEW_EDGE
+        val w = src.width / f
+        val h = src.height / f
+        val argb = IntArray(w * h)
+        val p = src.pixels
+        for (y in 0 until h) for (x in 0 until w) {
+            var r = 0
+            var g = 0
+            var b = 0
+            for (dy in 0 until f) for (dx in 0 until f) {
+                val i = ((y * f + dy) * src.width + x * f + dx) * 4
+                r += p[i].toInt() and 0xff
+                g += p[i + 1].toInt() and 0xff
+                b += p[i + 2].toInt() and 0xff
+            }
+            val n = f * f
+            argb[y * w + x] = (0xff shl 24) or ((r / n) shl 16) or ((g / n) shl 8) or (b / n)
+        }
+        val bitmap = Bitmap.createBitmap(argb, w, h, Bitmap.Config.ARGB_8888).copy(Bitmap.Config.ARGB_8888, true)
+        if (quad != null) {
+            val paint = Paint().apply {
+                color = Color.RED
+                strokeWidth = 4f
+                style = Paint.Style.STROKE
+                isAntiAlias = true
+            }
+            val pts = quad.points.map { (it.x / f).toFloat() to (it.y / f).toFloat() }
+            val canvas = Canvas(bitmap)
+            for (i in pts.indices) canvas.drawLine(pts[i].first, pts[i].second, pts[(i + 1) % 4].first, pts[(i + 1) % 4].second, paint)
+        }
+        return bitmap
+    }
+
+    private fun greyPreview(input: Input.Ready): Bitmap {
+        val f = (max(input.width, input.height) + PREVIEW_EDGE - 1) / PREVIEW_EDGE
+        val w = input.width / f
+        val h = input.height / f
+        val argb = IntArray(w * h)
+        for (y in 0 until h) for (x in 0 until w) {
+            var sum = 0
+            for (dy in 0 until f) for (dx in 0 until f) sum += input.grey[(y * f + dy) * input.width + x * f + dx].toInt() and 0xff
+            val v = sum / (f * f)
+            argb[y * w + x] = (0xff shl 24) or (v shl 16) or (v shl 8) or v
+        }
+        return Bitmap.createBitmap(argb, w, h, Bitmap.Config.ARGB_8888)
+    }
+
+    private fun writePreview(bitmap: Bitmap, file: File) {
+        file.parentFile?.mkdirs()
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 80, it) }
+        bitmap.recycle()
+    }
+
     private companion object {
         const val TAG = "OcrBenchmark"
+        const val PREVIEW_EDGE = 1600
+        val FIELD_PHOTO = Regex("""^[^.]+\.photo\.(jpe?g|png)$""", RegexOption.IGNORE_CASE)
+        const val DETECT_HEADER = "set\tpage\toutcome\tphoto_w\tphoto_h\tquad\tquad_area_pct\tnatural\tdetect_ms"
+        const val FIELD_RUNS_HEADER = "set\tpage\tmodel\tdpi\tlang\tvariant\tinput\tlong_mm\tphoto\tquad\tquad_area_pct\tnatural\tsource_dpi\twidth\theight\t" +
+            "prep_ms\tosd_ms\tosd_deg\trotate\tosd_conf\tscript\tscript_conf\tosd_error\tinit_ms\trecognise_ms\tnative_base_kb\tnative_peak_kb\t" +
+            "pss_base_kb\tpss_peak_kb\tvm_hwm_kb\tmean_conf\twords\tflavor"
         const val MM_PER_INCH = 25.4
         const val LAYOUT_PAGE = "e-layout"
         val PSM_DEFAULT = PageSegMode.PSM_AUTO

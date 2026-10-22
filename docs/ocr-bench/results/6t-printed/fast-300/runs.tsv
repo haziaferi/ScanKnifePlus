@@ -1,0 +1,6 @@
+set	page	model	dpi	psm	lang	source	source_dpi	width	height	init_ms	recognise_ms	native_base_kb	native_peak_kb	pss_base_kb	pss_peak_kb	vm_hwm_kb	mean_conf	words	flavor
+6t-printed	a-english	fast	300	3	eng	photo	393	2480	3508	139	3371	21222	59751	305597	358499	448260	95	277	openmp
+6t-printed	b-italian	fast	300	3	ita	photo	377	2480	3508	134	1825	24992	60137	321047	366070	454676	94	203	openmp
+6t-printed	c-footnotes	fast	300	3	eng+ita	photo	377	2480	3508	263	2156	36781	72614	333702	380226	467616	94	163	openmp
+6t-printed	d-receipt	fast	300	3	ita	photo	388	2480	3508	138	1038	25359	60288	320240	363207	451936	93	66	openmp
+6t-printed	e-layout	fast	300	3	eng	photo	394	2480	3508	134	1770	25191	60336	318315	364347	452412	94	111	openmp

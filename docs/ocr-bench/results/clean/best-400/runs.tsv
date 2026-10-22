@@ -1,6 +1,6 @@
 set	page	model	dpi	psm	lang	source	source_dpi	width	height	init_ms	recognise_ms	native_base_kb	native_peak_kb	pss_base_kb	pss_peak_kb	vm_hwm_kb	mean_conf	words	flavor
-clean	a-english	best	400	3	eng	render	400	3307	4677	175	6271	26214	93071	211908	297607	382372	95	276	openmp
-clean	b-italian	best	400	3	ita	render	400	3307	4677	154	4946	26916	97854	222216	305228	374764	95	203	openmp
-clean	c-footnotes	best	400	3	eng+ita	render	400	3307	4677	309	5265	43675	134529	254504	341156	392604	95	164	openmp
-clean	d-receipt	best	400	3	ita	render	400	3307	4677	145	3159	27320	84479	223452	291240	338992	92	67	openmp
-clean	e-layout	best	400	3	eng	render	400	3307	4677	170	3160	29765	86968	239880	313248	357796	95	110	openmp
+clean	a-english	best	400	3	eng	render	400	3307	4677	168	7298	30310	96194	352768	425304	475640	95	276	openmp
+clean	b-italian	best	400	3	ita	render	400	3307	4677	148	6279	27899	98797	231744	316512	356580	95	203	openmp
+clean	c-footnotes	best	400	3	eng+ita	render	400	3307	4677	309	5655	44352	135220	263688	349148	394008	95	164	openmp
+clean	d-receipt	best	400	3	ita	render	400	3307	4677	149	2480	27964	85060	232320	293560	368528	92	67	openmp
+clean	e-layout	best	400	3	eng	render	400	3307	4677	174	3414	30417	87182	248580	324868	388620	95	110	openmp

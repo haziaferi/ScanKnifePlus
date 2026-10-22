@@ -18,6 +18,8 @@ Results: [results.md](results.md).
 | `run.sh` | Fetches the data, pushes image sets, runs each test method through the shared `device-test.sh`, collects and scores. |
 | `score.py` | CER/WER, the threshold sweep and the page segmentation table; writes `results.md`. Standard library only. |
 | `results/` | Raw output of the last run: per set and configuration the recognised text, words.tsv, runs.tsv and failures.tsv. |
+| `native/tess_osd.c`, `.../ocr/TessOsd.kt` | Field mode only: JNI shim that exposes Tesseract's orientation detection (see "Field mode"). |
+| `field-results.md` | Field mode results (real photos without ground truth); the raw output stays in the git-ignored `field-out/`. |
 
 ## Corpus
 
@@ -94,3 +96,39 @@ The clean set always runs as the baseline. Each set gets its own section in resu
 5. Check the "page not detected" table in results.md: such a page was skipped, and needs a retake with more contrast around the sheet.
 
 Photos from elsewhere work too: name them `<page>.photo.jpg` in one folder and pass `<name>=<folder>`; images already cropped to the sheet go without `.photo`. `python docs/ocr-bench/score.py --check-images <folder>` shows how each name will be read.
+
+## Field mode
+
+Real photos (books, notes) have no ground truth, so field mode measures what can be measured without it. Results: [field-results.md](field-results.md) (aggregated numbers and short labels only).
+
+    bash docs/ocr-bench/run.sh --field <name>=<folder>
+
+The folder holds raw camera photos named `<page>.photo.jpg` (any name before `.photo`; a `book-`/`hand-` prefix groups them in the summary) and an optional `field.tsv`:
+
+| Column | Meaning |
+|---|---|
+| `page` | the name before `.photo` |
+| `langs` | Tesseract languages, comma-separated; the first is the primary (e.g. `ita` or `ita,eng+ita`); default `ita` |
+| `input` | `quad` (default): recognise the detected and warped quad; `frame`: the whole upright photo, for photos where detection picks the wrong region (check `fieldDetect`'s previews first) |
+| `long_mm` | physical long edge in mm of that input (the page or spread the quad covers, or the whole frame); sets the target DPI; default 297 |
+| `covers`, `label` | for the report only: what the quad covers, and a short neutral label (no page content) |
+
+Per photo, `fieldDetect` records the scanner's one-shot detection (outcome, quad, its share of the photo, natural size) and writes previews: the photo with the quad, the warped page, and (from the fast 300 run) the upright grey page. Then `fieldFast300` … `fieldBest400`, per photo:
+
+1. Decode, detect and warp as in the main runs; the page size comes from the quad's own aspect and `long_mm` at the target DPI. With `input` = `frame` the whole upright photo is scaled to `long_mm` at the target DPI instead.
+2. **Orientation**: Tesseract OSD (legacy engine, `osd.traineddata`, a fresh instance) on the warped grey page. Tesseract4Android does not expose OSD to Java, so a small JNI shim (`native/tess_osd.c`) calls the C API function `TessBaseAPIDetectOrientationScript` that `libtesseract.so` exports, on the `TessBaseAPI` behind the Java object. `run.sh --field` builds it with the NDK into the git-ignored `app/src/androidTest/jniLibs/`, so it reaches the test APK only. The page is turned clockwise by Tesseract's own "Rotate" value (`(360 - orientation) % 360`) before recognition.
+3. Recognition in every manifest language with PSM 3, measured as in the main runs (time, native heap growth, PSS, VmHWM, words.tsv). A page OSD turned is also recognised unturned (primary language), to show what the turn is worth.
+
+`run.sh` pushes `FIELD_CHUNK` photos (default 4) per instrumentation and runs each method per chunk, so no run is long enough for BgDetect; `FIELD_METHODS` limits the methods (e.g. `FIELD_METHODS=fieldDetect` to check detection first and then fill in `field.tsv`). Everything lands in the git-ignored `docs/ocr-bench/field-out/<name>/`: `detect/` (detection rows and previews) and `<model>-<dpi>/` with `<page>.<lang>.txt`, `<page>.<lang>.words.tsv`, `<page>.<lang>.norot.txt` for turned pages, and `<page>.runs.tsv`. The photos are pushed from their folder and not copied into the repository.
+
+### Findings on the field photos (OnePlus 6T, 2026-10-22)
+
+Eleven photos: nine pages of two Italian textbooks (single pages, two-page spreads, figures with labels, a large table, four shot sideways) and two sheets of handwritten notes in block capitals. Details in field-results.md.
+- **One-shot detection is not usable on open books.** It "found" a quad on every photo, but on books it was the right region only twice (whole page plus the facing page's edge); otherwise one text column, one text block, the gutter strip of the table page, or a degenerate shape across a spread. On the notes it found the whole sheet once and cut off the bottom sixth once. The OCR for 7 of 11 photos therefore ran on the whole frame (`input` = `frame`) as a stand-in for a corrected crop. An OCR flow from book photos needs the crop UI (or a detector that knows about spreads and gutters) before recognition.
+- **Orientation**: OSD was right on the sideways prose spreads (270°, confidence 13-18) and the sideways table (90°, only 7-8), but returned 0° with a wrong script (6-11, "Hebrew"/"Arabic") on a sideways spread with figures, and on handwriting gave noise (confidence 0.1-1.3) that turned one sheet upside down at 300 DPI and the other at 400 DPI. PSM 3 reads sideways prose by itself (its vertical-text detection: turned and unturned outputs share 96-99% of their words), so the turn only mattered for the table page, where it is essential (mean word confidence 81-91 turned vs 22-26 unturned). A turn should be applied only above a confidence floor (about 5 would have kept every correct turn and stopped both wrong ones).
+- **Fast vs best agree closely on printed pages** (1-5% CER at the same DPI) while **300 vs 400 DPI disagree far more** (10-12% of words differ, ignoring order): the two models make the same mistakes on the same pixels, so the image dominates the errors and fast-vs-best agreement is a weak accuracy proxy. Neither DPI is clearly better without ground truth. tessdata_best costs 2-5x the time (spreads: 24-41 s vs 6-17 s) for no visible gain.
+- **Cost**: fast 300 averages 4.7 s per book photo (spreads 6-9 s), plus 0.7-2.6 s for OSD and 2-10 s to decode, detect and warp the 16 MP photo; native heap growth up to 100 MB (best 400 on a spread), PSS up to 421 MB.
+- **Confidence is uninformative on print and saturated on handwriting**: book pages average 81-94 and a filter at 50 drops 1-7% of words (15% on the table page); on the notes the mean word confidence is 22-41 and the same filter drops 63-90%. Handwriting is not usable with these models (fast vs best disagree on 75-90% of words); only some large block-capital headings come through.
+- eng+ita instead of ita changes about 1% of characters on Italian pages and costs 15-90% more time.
+
+`score.py --field` reports per photo: detection and OSD (rotation, confidence, script); per configuration time, memory, word count and mean word confidence; how many words each confidence threshold 10-90 would drop; agreement between configurations as CER/WER of fast against best at the same DPI and of 300 against 400 for the same model (a proxy for accuracy: disagreement shows errors, agreement does not prove correctness); turned vs unturned outputs; and primary vs a second language. Its edit distance is a bit-vector implementation of the same Levenshtein distance, fast enough for whole spreads.

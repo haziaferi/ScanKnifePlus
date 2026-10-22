@@ -6,6 +6,98 @@ Page segmentation is set explicitly: PSM 3 (fully automatic) for the main runs. 
 
 **Reading order fails on `e-layout`** (two columns 10 mm apart, then a table): no mode reads it in the expected order. PSM 3 and 1 keep the two columns apart but read the table column by column; PSM 4 and 6 read the table row by row but merge the two columns line by line. Its CER/WER therefore measure reading order, not recognition; "Missed words" ignores order. The page segmentation table at the end of each set compares the modes on that page.
 
+## Set `6t-printed`
+
+Tesseract4Android flavor: `openmp`. One fresh Tesseract instance per page. Source: `render` = clean render at that DPI, `cropped` = image cropped to the sheet and scaled, `photo` = raw camera photo detected and warped by the scanner's own code; the number is the page's resolution in DPI before scaling (below the target DPI means upsampled).
+
+### Per page
+
+| Page | Lang | Model | DPI | Source (DPI) | Pixels | Init ms | Recognise ms | Native heap peak MB (+ over base) | PSS peak MB (+) | VmHWM MB | Mean conf | CER | WER | Missed words |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| a-english | eng | best | 300 | photo (393) | 2480x3508 | 174 | 5658 | 67 (+41) | 357 (+58) | 439 | 95 | 0.19 | 1.09 | 0.72 |
+| a-english | eng | best | 400 | photo (393) | 3307x4677 | 173 | 6987 | 88 (+62) | 422 (+92) | 503 | 95 | 0.00 | 0.00 | 0.00 |
+| a-english | eng | fast | 300 | photo (393) | 2480x3508 | 139 | 3371 | 58 (+38) | 350 (+52) | 438 | 95 | 0.13 | 1.09 | 0.72 |
+| a-english | eng | fast | 400 | photo (393) | 3307x4677 | 150 | 2970 | 77 (+57) | 409 (+84) | 494 | 95 | 0.06 | 0.36 | 0.36 |
+| b-italian | ita | best | 300 | photo (377) | 2480x3508 | 149 | 5463 | 69 (+42) | 366 (+55) | 442 | 94 | 0.32 | 1.97 | 1.97 |
+| b-italian | ita | best | 400 | photo (377) | 3307x4677 | 150 | 4864 | 90 (+63) | 426 (+88) | 501 | 94 | 0.24 | 1.48 | 1.48 |
+| b-italian | ita | fast | 300 | photo (377) | 2480x3508 | 134 | 1825 | 59 (+34) | 357 (+44) | 444 | 94 | 0.41 | 2.46 | 2.46 |
+| b-italian | ita | fast | 400 | photo (377) | 3307x4677 | 136 | 2438 | 84 (+59) | 404 (+68) | 492 | 94 | 0.24 | 1.48 | 0.99 |
+| c-footnotes | eng+ita | best | 300 | photo (377) | 2480x3508 | 314 | 5240 | 90 (+47) | 379 (+52) | 443 | 94 | 0.60 | 2.47 | 1.85 |
+| c-footnotes | eng+ita | best | 400 | photo (377) | 3307x4677 | 304 | 6461 | 113 (+69) | 430 (+74) | 496 | 93 | 46.76 | 48.15 | 6.17 |
+| c-footnotes | eng+ita | fast | 300 | photo (377) | 2480x3508 | 263 | 2156 | 71 (+35) | 371 (+45) | 457 | 94 | 0.80 | 3.09 | 2.47 |
+| c-footnotes | eng+ita | fast | 400 | photo (377) | 3307x4677 | 258 | 3839 | 95 (+59) | 420 (+71) | 503 | 93 | 46.56 | 46.91 | 4.32 |
+| d-receipt | ita | best | 300 | photo (388) | 2480x3508 | 148 | 2946 | 61 (+34) | 363 (+51) | 421 | 92 | 0.23 | 1.52 | 1.52 |
+| d-receipt | ita | best | 400 | photo (388) | 3307x4677 | 148 | 3420 | 86 (+59) | 417 (+74) | 469 | 91 | 30.86 | 37.88 | 1.52 |
+| d-receipt | ita | fast | 300 | photo (388) | 2480x3508 | 138 | 1038 | 59 (+34) | 355 (+42) | 441 | 93 | 0.23 | 1.52 | 1.52 |
+| d-receipt | ita | fast | 400 | photo (388) | 3307x4677 | 132 | 1496 | 86 (+61) | 420 (+79) | 502 | 93 | 30.86 | 37.88 | 3.03 |
+| e-layout | eng | best | 300 | photo (394) | 2480x3508 | 180 | 2887 | 64 (+34) | 361 (+50) | 418 | 93 | 35.26 | 35.45 | 3.64 |
+| e-layout | eng | best | 400 | photo (394) | 3307x4677 | 169 | 3652 | 89 (+59) | 433 (+90) | 493 | 94 | 34.54 | 31.82 | 0.91 |
+| e-layout | eng | fast | 300 | photo (394) | 2480x3508 | 134 | 1770 | 59 (+34) | 356 (+45) | 442 | 94 | 35.12 | 34.55 | 2.73 |
+| e-layout | eng | fast | 400 | photo (394) | 3307x4677 | 140 | 2016 | 86 (+61) | 423 (+82) | 505 | 94 | 34.68 | 32.73 | 1.82 |
+
+### By language
+
+Time is the mean recognition time per page; memory is the worst page (native heap growth over the post-init baseline, and absolute PSS / VmHWM of the test process).
+
+| Language | Model | DPI | Pages | Mean s/page | Max native +MB | Max PSS MB | Max VmHWM MB | CER | WER | Missed words |
+|---|---|---|---|---|---|---|---|---|---|---|
+| eng | best | 300 | 2 | 4.3 | 41 | 361 | 439 | 10.93 | 10.88 | 1.55 |
+| eng | best | 400 | 2 | 5.3 | 62 | 433 | 503 | 10.58 | 9.07 | 0.26 |
+| eng | fast | 300 | 2 | 2.6 | 38 | 356 | 442 | 10.84 | 10.62 | 1.30 |
+| eng | fast | 400 | 2 | 2.5 | 61 | 423 | 505 | 10.66 | 9.59 | 0.78 |
+| ita | best | 300 | 2 | 4.2 | 42 | 366 | 442 | 0.30 | 1.86 | 1.86 |
+| ita | best | 400 | 2 | 4.1 | 63 | 426 | 501 | 8.35 | 10.41 | 1.49 |
+| ita | fast | 300 | 2 | 1.4 | 34 | 357 | 444 | 0.36 | 2.23 | 2.23 |
+| ita | fast | 400 | 2 | 2.0 | 61 | 420 | 502 | 8.35 | 10.41 | 1.49 |
+| eng+ita | best | 300 | 1 | 5.2 | 47 | 379 | 443 | 0.60 | 2.47 | 1.85 |
+| eng+ita | best | 400 | 1 | 6.5 | 69 | 430 | 496 | 46.76 | 48.15 | 6.17 |
+| eng+ita | fast | 300 | 1 | 2.2 | 35 | 371 | 457 | 0.80 | 3.09 | 2.47 |
+| eng+ita | fast | 400 | 1 | 3.8 | 59 | 420 | 503 | 46.56 | 46.91 | 4.32 |
+| all | best | 300 | 5 | 4.4 | 47 | 379 | 443 | 5.22 | 6.24 | 1.71 |
+| all | best | 400 | 5 | 5.1 | 69 | 433 | 503 | 17.17 | 17.26 | 1.84 |
+| all | fast | 300 | 5 | 2.0 | 38 | 371 | 457 | 5.24 | 6.36 | 1.84 |
+| all | fast | 400 | 5 | 2.6 | 61 | 423 | 505 | 17.17 | 17.26 | 1.71 |
+
+### Low-confidence word filter
+
+Words with Tesseract word confidence below the threshold are dropped (text rebuilt from words.tsv in reading order); CER over all pages of the set. `dropped` is the number of words removed, `real` how many of them occur in the ground truth of their page (dropping those is pure loss).
+
+| Threshold | best 300 CER | dropped (real) | best 400 CER | dropped (real) | fast 300 CER | dropped (real) | fast 400 CER | dropped (real) |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 5.22 | 0 (0) | 17.17 | 0 (0) | 5.24 | 0 (0) | 17.17 | 0 (0) |
+| 10 | 5.18 | 1 (0) | 17.37 | 1 (0) | 5.20 | 1 (0) | 17.17 | 0 (0) |
+| 20 | 5.18 | 1 (0) | 17.37 | 1 (0) | 5.20 | 1 (0) | 17.17 | 0 (0) |
+| 30 | 5.18 | 1 (0) | 17.37 | 1 (0) | 5.20 | 1 (0) | 17.17 | 0 (0) |
+| 40 | 5.18 | 1 (0) | 17.37 | 1 (0) | 5.14 | 2 (0) | 17.17 | 2 (2) |
+| 50 | 5.61 | 3 (1) | 17.25 | 3 (1) | 5.36 | 4 (2) | 17.23 | 6 (3) |
+| 60 | 5.77 | 5 (3) | 16.94 | 5 (2) | 5.40 | 5 (2) | 17.23 | 6 (3) |
+| 70 | 5.99 | 9 (6) | 17.02 | 7 (3) | 5.63 | 6 (2) | 17.25 | 7 (3) |
+| 80 | 6.36 | 14 (8) | 17.55 | 15 (8) | 6.76 | 15 (9) | 18.02 | 16 (11) |
+| 90 | 8.68 | 35 (26) | 18.93 | 35 (26) | 8.28 | 32 (22) | 18.74 | 40 (30) |
+
+### Page segmentation modes on the layout page
+
+Only `e-layout`; the expected order is column by column (README). Low missed words with high CER means the right words in the wrong order.
+
+| Model | DPI | PSM | Recognise ms | CER | WER | Missed words |
+|---|---|---|---|---|---|---|
+| best | 300 | 3 auto (default) | 2879 | 35.26 | 35.45 | 3.64 |
+| best | 300 | 1 auto + OSD | 4530 | 35.26 | 35.45 | 3.64 |
+| best | 300 | 4 single column | 3288 | 41.04 | 51.82 | 1.82 |
+| best | 300 | 6 single block | 2646 | 45.66 | 62.73 | 2.73 |
+| best | 400 | 3 auto (default) | 3636 | 34.54 | 31.82 | 0.91 |
+| best | 400 | 1 auto + OSD | 4518 | 34.54 | 31.82 | 0.91 |
+| best | 400 | 4 single column | 3410 | 41.18 | 53.64 | 2.73 |
+| best | 400 | 6 single block | 3742 | 45.81 | 62.73 | 1.82 |
+| fast | 300 | 3 auto (default) | 1850 | 35.12 | 34.55 | 2.73 |
+| fast | 300 | 1 auto + OSD | 2256 | 35.12 | 34.55 | 2.73 |
+| fast | 300 | 4 single column | 1690 | 40.90 | 50.91 | 0.91 |
+| fast | 300 | 6 single block | 1026 | 45.52 | 62.73 | 2.73 |
+| fast | 400 | 3 auto (default) | 1831 | 34.68 | 32.73 | 1.82 |
+| fast | 400 | 1 auto + OSD | 3230 | 34.68 | 32.73 | 1.82 |
+| fast | 400 | 4 single column | 2246 | 40.90 | 50.91 | 1.82 |
+| fast | 400 | 6 single block | 1499 | 45.23 | 62.73 | 2.73 |
+
 ## Set `clean`
 
 Tesseract4Android flavor: `openmp`. One fresh Tesseract instance per page. Source: `render` = clean render at that DPI, `cropped` = image cropped to the sheet and scaled, `photo` = raw camera photo detected and warped by the scanner's own code; the number is the page's resolution in DPI before scaling (below the target DPI means upsampled).
@@ -14,26 +106,26 @@ Tesseract4Android flavor: `openmp`. One fresh Tesseract instance per page. Sourc
 
 | Page | Lang | Model | DPI | Source (DPI) | Pixels | Init ms | Recognise ms | Native heap peak MB (+ over base) | PSS peak MB (+) | VmHWM MB | Mean conf | CER | WER | Missed words |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| a-english | eng | best | 300 | render (300) | 2480x3508 | 177 | 5459 | 70 (+44) | 258 (+57) | 339 | 95 | 0.00 | 0.00 | 0.00 |
-| a-english | eng | best | 400 | render (400) | 3307x4677 | 175 | 6271 | 91 (+65) | 291 (+84) | 373 | 95 | 0.00 | 0.00 | 0.00 |
-| a-english | eng | fast | 300 | render (300) | 2480x3508 | 138 | 1962 | 57 (+37) | 248 (+52) | 333 | 95 | 0.00 | 0.00 | 0.00 |
-| a-english | eng | fast | 400 | render (400) | 3307x4677 | 139 | 3674 | 79 (+58) | 280 (+77) | 364 | 95 | 0.00 | 0.00 | 0.00 |
-| b-italian | ita | best | 300 | render (300) | 2480x3508 | 150 | 4522 | 74 (+48) | 273 (+53) | 347 | 95 | 0.65 | 3.94 | 2.96 |
-| b-italian | ita | best | 400 | render (400) | 3307x4677 | 154 | 4946 | 96 (+69) | 298 (+81) | 366 | 95 | 0.65 | 3.94 | 2.96 |
-| b-italian | ita | fast | 300 | render (300) | 2480x3508 | 139 | 1662 | 58 (+34) | 261 (+45) | 344 | 95 | 0.49 | 2.96 | 2.96 |
-| b-italian | ita | fast | 400 | render (400) | 3307x4677 | 141 | 2991 | 80 (+56) | 284 (+70) | 366 | 95 | 0.49 | 2.96 | 2.46 |
-| c-footnotes | eng+ita | best | 300 | render (300) | 2480x3508 | 309 | 6010 | 109 (+66) | 293 (+65) | 345 | 95 | 0.10 | 0.62 | 0.62 |
-| c-footnotes | eng+ita | best | 400 | render (400) | 3307x4677 | 309 | 5265 | 131 (+89) | 333 (+85) | 383 | 95 | 0.50 | 3.09 | 1.85 |
-| c-footnotes | eng+ita | fast | 300 | render (300) | 2480x3508 | 256 | 1472 | 76 (+40) | 263 (+43) | 345 | 95 | 0.10 | 0.62 | 0.62 |
-| c-footnotes | eng+ita | fast | 400 | render (400) | 3307x4677 | 297 | 1789 | 97 (+61) | 313 (+72) | 393 | 95 | 0.50 | 3.09 | 1.85 |
-| d-receipt | ita | best | 300 | render (300) | 2480x3508 | 162 | 2245 | 61 (+35) | 266 (+44) | 315 | 90 | 0.23 | 3.03 | 1.52 |
-| d-receipt | ita | best | 400 | render (400) | 3307x4677 | 145 | 3159 | 82 (+56) | 284 (+66) | 331 | 92 | 0.23 | 3.03 | 1.52 |
-| d-receipt | ita | fast | 300 | render (300) | 2480x3508 | 129 | 965 | 58 (+34) | 257 (+39) | 338 | 94 | 0.00 | 0.00 | 0.00 |
-| d-receipt | ita | fast | 400 | render (400) | 3307x4677 | 135 | 1191 | 80 (+55) | 295 (+65) | 374 | 93 | 0.00 | 0.00 | 0.00 |
-| e-layout | eng | best | 300 | render (300) | 2480x3508 | 169 | 3471 | 63 (+34) | 272 (+49) | 317 | 95 | 34.39 | 30.91 | 0.00 |
-| e-layout | eng | best | 400 | render (400) | 3307x4677 | 170 | 3160 | 85 (+56) | 306 (+72) | 349 | 95 | 34.39 | 30.91 | 0.00 |
-| e-layout | eng | fast | 300 | render (300) | 2480x3508 | 149 | 1149 | 55 (+31) | 257 (+40) | 338 | 95 | 34.39 | 30.91 | 0.00 |
-| e-layout | eng | fast | 400 | render (400) | 3307x4677 | 135 | 1648 | 80 (+56) | 281 (+66) | 359 | 95 | 34.39 | 30.91 | 0.00 |
+| a-english | eng | best | 300 | render (300) | 2480x3508 | 171 | 6885 | 72 (+43) | 365 (+46) | 414 | 95 | 0.00 | 0.00 | 0.00 |
+| a-english | eng | best | 400 | render (400) | 3307x4677 | 168 | 7298 | 94 (+64) | 415 (+71) | 464 | 95 | 0.00 | 0.00 | 0.00 |
+| a-english | eng | fast | 300 | render (300) | 2480x3508 | 140 | 1967 | 60 (+36) | 364 (+44) | 449 | 95 | 0.00 | 0.00 | 0.00 |
+| a-english | eng | fast | 400 | render (400) | 3307x4677 | 138 | 3699 | 82 (+57) | 409 (+68) | 487 | 95 | 0.00 | 0.00 | 0.00 |
+| b-italian | ita | best | 300 | render (300) | 2480x3508 | 146 | 5939 | 75 (+48) | 361 (+50) | 413 | 95 | 0.65 | 3.94 | 2.96 |
+| b-italian | ita | best | 400 | render (400) | 3307x4677 | 148 | 6279 | 96 (+69) | 309 (+83) | 348 | 95 | 0.65 | 3.94 | 2.96 |
+| b-italian | ita | fast | 300 | render (300) | 2480x3508 | 139 | 2532 | 59 (+34) | 357 (+45) | 440 | 95 | 0.49 | 2.96 | 2.96 |
+| b-italian | ita | fast | 400 | render (400) | 3307x4677 | 130 | 3058 | 81 (+56) | 295 (+71) | 368 | 95 | 0.49 | 2.96 | 2.46 |
+| c-footnotes | eng+ita | best | 300 | render (300) | 2480x3508 | 309 | 6082 | 109 (+66) | 401 (+64) | 436 | 95 | 0.10 | 0.62 | 0.62 |
+| c-footnotes | eng+ita | best | 400 | render (400) | 3307x4677 | 309 | 5655 | 132 (+89) | 341 (+83) | 385 | 95 | 0.50 | 3.09 | 1.85 |
+| c-footnotes | eng+ita | fast | 300 | render (300) | 2480x3508 | 264 | 1490 | 76 (+40) | 375 (+43) | 457 | 95 | 0.10 | 0.62 | 0.62 |
+| c-footnotes | eng+ita | fast | 400 | render (400) | 3307x4677 | 261 | 2705 | 98 (+62) | 317 (+66) | 392 | 95 | 0.50 | 3.09 | 1.85 |
+| d-receipt | ita | best | 300 | render (300) | 2480x3508 | 147 | 2194 | 62 (+35) | 267 (+48) | 298 | 90 | 0.23 | 3.03 | 1.52 |
+| d-receipt | ita | best | 400 | render (400) | 3307x4677 | 149 | 2480 | 83 (+56) | 287 (+60) | 360 | 92 | 0.23 | 3.03 | 1.52 |
+| d-receipt | ita | fast | 300 | render (300) | 2480x3508 | 130 | 898 | 58 (+33) | 257 (+38) | 338 | 94 | 0.00 | 0.00 | 0.00 |
+| d-receipt | ita | fast | 400 | render (400) | 3307x4677 | 131 | 1182 | 80 (+55) | 304 (+65) | 375 | 93 | 0.00 | 0.00 | 0.00 |
+| e-layout | eng | best | 300 | render (300) | 2480x3508 | 172 | 3524 | 64 (+34) | 278 (+49) | 306 | 95 | 34.39 | 30.91 | 0.00 |
+| e-layout | eng | best | 400 | render (400) | 3307x4677 | 174 | 3414 | 85 (+55) | 317 (+74) | 380 | 95 | 34.39 | 30.91 | 0.00 |
+| e-layout | eng | fast | 300 | render (300) | 2480x3508 | 135 | 1178 | 56 (+31) | 266 (+40) | 347 | 95 | 34.39 | 30.91 | 0.00 |
+| e-layout | eng | fast | 400 | render (400) | 3307x4677 | 134 | 1657 | 81 (+56) | 290 (+66) | 360 | 95 | 34.39 | 30.91 | 0.00 |
 
 ### By language
 
@@ -41,22 +133,22 @@ Time is the mean recognition time per page; memory is the worst page (native hea
 
 | Language | Model | DPI | Pages | Mean s/page | Max native +MB | Max PSS MB | Max VmHWM MB | CER | WER | Missed words |
 |---|---|---|---|---|---|---|---|---|---|---|
-| eng | best | 300 | 2 | 4.5 | 44 | 272 | 339 | 10.53 | 8.81 | 0.00 |
-| eng | best | 400 | 2 | 4.7 | 65 | 306 | 373 | 10.53 | 8.81 | 0.00 |
-| eng | fast | 300 | 2 | 1.6 | 37 | 257 | 338 | 10.53 | 8.81 | 0.00 |
-| eng | fast | 400 | 2 | 2.7 | 58 | 281 | 364 | 10.53 | 8.81 | 0.00 |
-| ita | best | 300 | 2 | 3.4 | 48 | 273 | 347 | 0.54 | 3.72 | 2.60 |
-| ita | best | 400 | 2 | 4.1 | 69 | 298 | 366 | 0.54 | 3.72 | 2.60 |
-| ita | fast | 300 | 2 | 1.3 | 34 | 261 | 344 | 0.36 | 2.23 | 2.23 |
-| ita | fast | 400 | 2 | 2.1 | 56 | 295 | 374 | 0.36 | 2.23 | 1.86 |
-| eng+ita | best | 300 | 1 | 6.0 | 66 | 293 | 345 | 0.10 | 0.62 | 0.62 |
-| eng+ita | best | 400 | 1 | 5.3 | 89 | 333 | 383 | 0.50 | 3.09 | 1.85 |
-| eng+ita | fast | 300 | 1 | 1.5 | 40 | 263 | 345 | 0.10 | 0.62 | 0.62 |
-| eng+ita | fast | 400 | 1 | 1.8 | 61 | 313 | 393 | 0.50 | 3.09 | 1.85 |
-| all | best | 300 | 5 | 4.3 | 66 | 293 | 347 | 5.02 | 5.51 | 0.98 |
-| all | best | 400 | 5 | 4.6 | 89 | 333 | 383 | 5.10 | 6.00 | 1.22 |
-| all | fast | 300 | 5 | 1.4 | 40 | 263 | 345 | 4.96 | 5.02 | 0.86 |
-| all | fast | 400 | 5 | 2.3 | 61 | 313 | 393 | 5.04 | 5.51 | 0.98 |
+| eng | best | 300 | 2 | 5.2 | 43 | 365 | 414 | 10.53 | 8.81 | 0.00 |
+| eng | best | 400 | 2 | 5.4 | 64 | 415 | 464 | 10.53 | 8.81 | 0.00 |
+| eng | fast | 300 | 2 | 1.6 | 36 | 364 | 449 | 10.53 | 8.81 | 0.00 |
+| eng | fast | 400 | 2 | 2.7 | 57 | 409 | 487 | 10.53 | 8.81 | 0.00 |
+| ita | best | 300 | 2 | 4.1 | 48 | 361 | 413 | 0.54 | 3.72 | 2.60 |
+| ita | best | 400 | 2 | 4.4 | 69 | 309 | 360 | 0.54 | 3.72 | 2.60 |
+| ita | fast | 300 | 2 | 1.7 | 34 | 357 | 440 | 0.36 | 2.23 | 2.23 |
+| ita | fast | 400 | 2 | 2.1 | 56 | 304 | 375 | 0.36 | 2.23 | 1.86 |
+| eng+ita | best | 300 | 1 | 6.1 | 66 | 401 | 436 | 0.10 | 0.62 | 0.62 |
+| eng+ita | best | 400 | 1 | 5.7 | 89 | 341 | 385 | 0.50 | 3.09 | 1.85 |
+| eng+ita | fast | 300 | 1 | 1.5 | 40 | 375 | 457 | 0.10 | 0.62 | 0.62 |
+| eng+ita | fast | 400 | 1 | 2.7 | 62 | 317 | 392 | 0.50 | 3.09 | 1.85 |
+| all | best | 300 | 5 | 4.9 | 66 | 401 | 436 | 5.02 | 5.51 | 0.98 |
+| all | best | 400 | 5 | 5.0 | 89 | 415 | 464 | 5.10 | 6.00 | 1.22 |
+| all | fast | 300 | 5 | 1.6 | 40 | 375 | 457 | 4.96 | 5.02 | 0.86 |
+| all | fast | 400 | 5 | 2.5 | 62 | 409 | 487 | 5.04 | 5.51 | 0.98 |
 
 ### Low-confidence word filter
 
@@ -81,19 +173,19 @@ Only `e-layout`; the expected order is column by column (README). Low missed wor
 
 | Model | DPI | PSM | Recognise ms | CER | WER | Missed words |
 |---|---|---|---|---|---|---|
-| best | 300 | 3 auto (default) | 2821 | 34.39 | 30.91 | 0.00 |
-| best | 300 | 1 auto + OSD | 3576 | 34.39 | 30.91 | 0.00 |
-| best | 300 | 4 single column | 3486 | 40.75 | 50.00 | 0.00 |
-| best | 300 | 6 single block | 3228 | 40.75 | 50.00 | 0.00 |
-| best | 400 | 3 auto (default) | 3805 | 34.39 | 30.91 | 0.00 |
-| best | 400 | 1 auto + OSD | 3964 | 34.39 | 30.91 | 0.00 |
-| best | 400 | 4 single column | 3757 | 40.75 | 50.00 | 0.00 |
-| best | 400 | 6 single block | 3469 | 40.75 | 50.00 | 0.00 |
-| fast | 300 | 3 auto (default) | 1141 | 34.39 | 30.91 | 0.00 |
-| fast | 300 | 1 auto + OSD | 2434 | 34.39 | 30.91 | 0.00 |
-| fast | 300 | 4 single column | 1143 | 40.90 | 50.91 | 0.91 |
-| fast | 300 | 6 single block | 989 | 40.90 | 50.91 | 0.91 |
-| fast | 400 | 3 auto (default) | 1635 | 34.39 | 30.91 | 0.00 |
-| fast | 400 | 1 auto + OSD | 2286 | 34.39 | 30.91 | 0.00 |
-| fast | 400 | 4 single column | 1425 | 40.90 | 50.91 | 0.91 |
-| fast | 400 | 6 single block | 1145 | 40.75 | 50.00 | 0.00 |
+| best | 300 | 3 auto (default) | 2831 | 34.39 | 30.91 | 0.00 |
+| best | 300 | 1 auto + OSD | 4358 | 34.39 | 30.91 | 0.00 |
+| best | 300 | 4 single column | 3512 | 40.75 | 50.00 | 0.00 |
+| best | 300 | 6 single block | 2666 | 40.75 | 50.00 | 0.00 |
+| best | 400 | 3 auto (default) | 3199 | 34.39 | 30.91 | 0.00 |
+| best | 400 | 1 auto + OSD | 4879 | 34.39 | 30.91 | 0.00 |
+| best | 400 | 4 single column | 3876 | 40.75 | 50.00 | 0.00 |
+| best | 400 | 6 single block | 2875 | 40.75 | 50.00 | 0.00 |
+| fast | 300 | 3 auto (default) | 1221 | 34.39 | 30.91 | 0.00 |
+| fast | 300 | 1 auto + OSD | 2075 | 34.39 | 30.91 | 0.00 |
+| fast | 300 | 4 single column | 1172 | 40.90 | 50.91 | 0.91 |
+| fast | 300 | 6 single block | 973 | 40.90 | 50.91 | 0.91 |
+| fast | 400 | 3 auto (default) | 1658 | 34.39 | 30.91 | 0.00 |
+| fast | 400 | 1 auto + OSD | 2403 | 34.39 | 30.91 | 0.00 |
+| fast | 400 | 4 single column | 1430 | 40.90 | 50.91 | 0.91 |
+| fast | 400 | 6 single block | 1162 | 40.75 | 50.00 | 0.00 |
