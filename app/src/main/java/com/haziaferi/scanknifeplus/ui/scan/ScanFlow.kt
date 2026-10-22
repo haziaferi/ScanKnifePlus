@@ -211,7 +211,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         }, onDismiss = { saveOptions = false })
     }
     if (folderBlocked && chooseAgain != null) {
-        FolderBlockedDialog(folder?.name, onChooseAgain = {
+        FolderBlockedDialog(folder.name, onChooseAgain = {
             folderBlocked = false
             chooseAgain()
         }, onPicker = {

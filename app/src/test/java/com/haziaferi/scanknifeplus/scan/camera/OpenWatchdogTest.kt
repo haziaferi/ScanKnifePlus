@@ -10,7 +10,7 @@ class OpenWatchdogTest {
     private val timeout = 5_000_000L
 
     // Like the controller, a retry releases the camera (pause) and binds again (opening).
-    private lateinit var watchdog: OpenWatchdog
+    private val watchdog: OpenWatchdog
 
     init {
         watchdog = OpenWatchdog(
