@@ -1,0 +1,2 @@
+set	page	model	dpi	psm	lang	source	source_dpi	width	height	init_ms	recognise_ms	native_base_kb	native_peak_kb	pss_base_kb	pss_peak_kb	vm_hwm_kb	mean_conf	words	flavor
+6t-printed	e-layout	best	400	1	eng	photo	394	3307	4677	168	4518	31691	128203	352044	467704	551056	94	110	openmp

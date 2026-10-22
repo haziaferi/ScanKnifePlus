@@ -1,2 +1,2 @@
 set	page	model	dpi	psm	lang	source	source_dpi	width	height	init_ms	recognise_ms	native_base_kb	native_peak_kb	pss_base_kb	pss_peak_kb	vm_hwm_kb	mean_conf	words	flavor
-clean	e-layout	best	300	6	eng	render	300	2480	3508	172	3228	31042	65966	226792	270064	335516	95	110	openmp
+clean	e-layout	best	300	6	eng	render	300	2480	3508	170	2666	31687	66720	234368	278120	327928	95	110	openmp
