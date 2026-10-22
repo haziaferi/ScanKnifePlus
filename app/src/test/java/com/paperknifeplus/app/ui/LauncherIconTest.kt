@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.R
 import java.io.File
 import kotlin.math.pow
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -51,6 +52,35 @@ class LauncherIconTest {
         return (hi + 0.05) / (lo + 0.05)
     }
 
+    /** The beam where it crosses open tile, left of the dart, against the tile just above it. */
+    private fun beamContrast(icon: Bitmap): Double {
+        val beam = (0..8).map { icon.at(28.0, 51.0 + it * 0.75) }.maxBy { luminance(it) }
+        return contrast(beam, icon.at(28.0, 49.0 - 54.0 / icon.width))
+    }
+
+    // Android 7.0 and 7.1 show drawable/ic_launcher(_round), which wrap this art. Robolectric only draws on API 26 and up,
+    // where drawable-v26 wins, so the art is drawn here by its own name.
+    @Test
+    fun `Android 7 draws the whole icon in a rounded square and a circle`() {
+        for ((id, name) in listOf(R.drawable.ic_launcher_legacy to "legacy", R.drawable.ic_launcher_legacy_round to "legacy-round")) {
+            for (px in listOf(144, 48)) {
+                val bitmap = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+                ContextCompat.getDrawable(context, id)!!.apply { setBounds(0, 0, px, px) }.draw(Canvas(bitmap))
+                File(out, "$name-$px.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                assertEquals("$name $px px: the corner is clipped away", 0, Color.alpha(bitmap.getPixel(1, 1)))
+                val ratio = beamContrast(bitmap)
+                assertTrue("$name beam at $px px: ${"%.2f".format(ratio)}:1", ratio >= 3.0)
+                if (px == 144) {
+                    val red = bitmap.at(54.0, 45.7)
+                    assertTrue("$name red half ${Integer.toHexString(red)}", Color.red(red) > Color.green(red) + 60)
+                    val steel = bitmap.at(54.0, 62.3)
+                    assertTrue("$name steel half ${Integer.toHexString(steel)}",
+                        listOf(Color.red(steel), Color.green(steel), Color.blue(steel)).let { it.max() - it.min() } < 40)
+                }
+            }
+        }
+    }
+
     @Test
     fun `the icon is an adaptive icon with background, foreground and themed layers`() {
         val icon = icon()
@@ -63,10 +93,7 @@ class LauncherIconTest {
     @Test
     fun `the scan beam stands out from the tile at home-screen and small sizes`() {
         for (px in listOf(144, 48)) {
-            val icon = render(px, "icon")
-            // Where the beam crosses open tile, left of the dart, against the tile just above it.
-            val beam = (0..8).map { icon.at(28.0, 51.0 + it * 0.75) }.maxBy { luminance(it) }
-            val ratio = contrast(beam, icon.at(28.0, 49.0 - 54.0 / px))
+            val ratio = beamContrast(render(px, "icon"))
             assertTrue("beam at $px px: ${"%.2f".format(ratio)}:1", ratio >= 3.0)
         }
     }

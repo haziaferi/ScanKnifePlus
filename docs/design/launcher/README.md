@@ -31,8 +31,10 @@ The script writes these files under `app/src/main/res/`:
 - `drawable/ic_launcher_monochrome.xml`: the themed icon on Android 13 and later. One colour can't draw the beam over the dart, so
   inside the dart the beam is cut out of it.
 - `drawable-v26/ic_launcher.xml` and `drawable-v26/ic_launcher_round.xml`: the adaptive icon that combines the three layers above.
-- `drawable/ic_launcher.xml` and `drawable/ic_launcher_round.xml`: the whole icon in a rounded square and a circle, for Android 7.0
-  and 7.1, which have no adaptive icons.
+- `drawable/ic_launcher_legacy.xml` and `drawable/ic_launcher_legacy_round.xml`: the whole icon in a rounded square and a circle,
+  for Android 7.0 and 7.1, which have no adaptive icons. `drawable/ic_launcher.xml` and `drawable/ic_launcher_round.xml` wrap
+  them, so `LauncherIconTest` can draw the art by its own name. The test tool only draws on Android 8.0 and up, where the
+  adaptive icon replaces those two files.
 
 It also writes `drawable/brand_mark_light.xml` and `drawable/brand_mark_dark.xml`: the mark without its tile, for the wordmark.
 

@@ -3,7 +3,6 @@ package com.paperknifeplus.app.ui.components
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.res.AssetManager
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -67,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import kotlinx.coroutines.Dispatchers
@@ -203,7 +203,7 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
                 onClick = {
                     onDismiss()
                     try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
                     } catch (e: ActivityNotFoundException) {
                         Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
                     }
