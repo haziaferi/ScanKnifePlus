@@ -1,0 +1,10 @@
+# Text files are stored and checked out with LF line endings on every platform.
+* text=auto eol=lf
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.ttf binary
+*.pdf binary
+*.jar binary
+*.traineddata binary
