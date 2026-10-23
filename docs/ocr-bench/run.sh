@@ -14,7 +14,8 @@
 #   --images SET=DIR  images mode: the images listed in DIR/images.tsv (made by docs/scanner-bench/bench.py) are recognised as they are, without
 #                 detection, scaling or OSD. Runs imagesFast and imagesBest (IMAGES_METHODS overrides), IMAGES_CHUNK images per instrumentation
 #                 (default 16), collects into the git-ignored docs/ocr-bench/images-out/SET/ and writes IMAGES_OUT (default
-#                 docs/scanner-bench/ocr-results.md). The clean baseline only runs when plain sets are given too.
+#                 docs/scanner-bench/ocr-results.md; "none" skips scoring). IMAGES_METHODS=imagesOsd runs orientation detection on
+#                 every image turned 0/90/180/270 instead. The clean baseline only runs when plain sets are given too.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WT="$(cd "$HERE/../.." && pwd)"
@@ -24,6 +25,9 @@ export ANDROID_SERIAL="${ANDROID_SERIAL:-8ad59cbb}"
 adb() { MSYS_NO_PATHCONV=1 command adb "$@"; }
 host() { cygpath -w "$1" 2>/dev/null || echo "$1"; }
 DEVICE_DIR=/sdcard/Android/data/com.haziaferi.scanknifeplus/files/ocr-bench
+# device-test.sh takes the shared device lock only for the test itself; pushing while another worktree's run holds it lets that run's
+# uninstall delete the pushed files (the test then skips). Waiting for the lock to be free first leaves only a short race.
+await_device() { while [ -d /c/Users/User/Downloads/Builds/wt/_locks/device.lock ]; do sleep 20; done; }
 CAMERA_DIR=/sdcard/DCIM/Camera
 
 python "$HERE/fetch_tessdata.py"
@@ -69,6 +73,7 @@ if [ "${#FIELD_SETS[@]}" -gt 0 ]; then
       [ -f "$DIR/field.tsv" ] && cp "$DIR/field.tsv" "$OUT/$SET/field.tsv"
       mapfile -t PHOTOS < <(ls "$DIR" | grep -i -E '^[^.]+\.photo\.(jpe?g|png)$' | sort)
       for ((i = 0; i < ${#PHOTOS[@]}; i += CHUNK)); do
+        await_device
         adb shell rm -rf "$DEVICE_DIR"
         adb shell mkdir -p "$DEVICE_DIR/field/$SET"
         [ -f "$DIR/field.tsv" ] && adb push "$(host "$DIR/field.tsv")" "$DEVICE_DIR/field/$SET/field.tsv" >/dev/null
@@ -106,6 +111,7 @@ if [ "${#IMAGE_SETS[@]}" -gt 0 ]; then
       SET="${pair%%=*}"; DIR="${pair#*=}"
       mapfile -t IMAGES < <(tail -n +2 "$DIR/images.tsv" | cut -f1 | tr -d '\r')
       for ((i = 0; i < ${#IMAGES[@]}; i += CHUNK)); do
+        await_device
         adb shell rm -rf "$DEVICE_DIR"
         adb shell mkdir -p "$DEVICE_DIR/images/$SET"
         adb push "$(host "$DIR/images.tsv")" "$DEVICE_DIR/images/$SET/images.tsv" >/dev/null
@@ -122,7 +128,8 @@ if [ "${#IMAGE_SETS[@]}" -gt 0 ]; then
     done
   done
   adb shell rm -rf "$DEVICE_DIR"
-  python "$HERE/score.py" --images "$OUT" --out "${IMAGES_OUT:-$WT/docs/scanner-bench/ocr-results.md}"
+  # IMAGES_OUT=none leaves the scoring to the caller (docs/ocr-bench/questions.py scores its own sets).
+  [ "${IMAGES_OUT:-}" = none ] || python "$HERE/score.py" --images "$OUT" --out "${IMAGES_OUT:-$WT/docs/scanner-bench/ocr-results.md}"
   [ "${#SETS[@]}" -gt 1 ] || exit 0
 fi
 
@@ -138,6 +145,7 @@ mkdir -p "$HERE/results"
 # The uninstall after each run removes the pushed images, so they are pushed again every time.
 PULLED="$WT/app/build/outputs/connected_android_test_additional_output"
 for method in fast300 fast400 best300 best400 layoutPsm; do
+  await_device
   adb shell rm -rf "$DEVICE_DIR"
   adb shell mkdir -p "$DEVICE_DIR/in"
   adb push "$(host "$HERE/corpus/pages.tsv")" "$DEVICE_DIR/pages.tsv" >/dev/null

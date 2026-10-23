@@ -550,45 +550,75 @@ class OcrBenchmarkTest {
         return Input.Ready(out, if (swap) h else w, if (swap) w else h, input.source, input.sourceDpi)
     }
 
-    // Images mode: page images already warped, filtered and turned upright on the PC (docs/scanner-bench), pushed by `run.sh --images` into
-    // `ocr-bench/images/<set>/` with their images.tsv (image, page, variant, lang, dpi, order). Each is recognised exactly as it is: no
-    // detection, no scaling, no OSD. Output goes to `ocr-images/<set>/<model>/`, one file set per image.
+    // Images mode: page images already warped, filtered and turned upright on the PC (docs/scanner-bench, docs/ocr-bench/questions.py), pushed
+    // by `run.sh --images` into `ocr-bench/images/<set>/` with their images.tsv (image, page, variant, lang, dpi, order, optional psm). Each is
+    // recognised exactly as it is: no detection, no scaling, no OSD. Output goes to `ocr-images/<set>/<model>/`, one file set per image.
 
     @Test fun imagesFast() = images("fast")
 
     @Test fun imagesBest() = images("best")
 
     private fun images(model: String) {
+        val dataPath = installModel(model)
+        forEachImage(model) { set, dir, c, stem, input ->
+            val (lang, dpi) = c[3] to c[4].toInt()
+            val psm = c.getOrNull(6)?.takeIf { it.isNotBlank() }?.toInt() ?: PSM_DEFAULT
+            val r = recognise(dataPath, lang, input, dpi, psm)
+            File(dir, "$stem.txt").writeText(r.text + "\n")
+            File(dir, "$stem.words.tsv").writeText(r.words)
+            File(dir, "$stem.lines.tsv").writeText(r.lines)
+            writeTable(
+                File(dir, "$stem.runs.tsv"),
+                "set\timage\tpage\tvariant\tmodel\tlang\tdpi\tpsm\twidth\theight\tinit_ms\trecognise_ms\tnative_base_kb\tnative_peak_kb\t" +
+                    "pss_base_kb\tpss_peak_kb\tvm_hwm_kb\tmean_conf\twords\tflavor",
+                "$set\t${c[0]}\t${c[1]}\t${c[2]}\t$model\t$lang\t$dpi\t$psm\t${input.width}\t${input.height}\t${r.initMs}\t${r.recogniseMs}\t" +
+                    "${r.nativeBaseKb}\t${r.nativePeakKb}\t${r.pssBaseKb}\t${r.pssPeakKb}\t${r.hwmKb}\t${r.meanConfidence}\t${r.wordCount}\t${r.flavor}",
+            )
+            Log.i(TAG, "images $set/${c[0]} $model: ${r.recogniseMs} ms, ${r.wordCount} words")
+        }
+    }
+
+    /**
+     * Orientation detection on every image turned clockwise by 0, 90, 180 and 270 degrees (the images are upright), each turn on a fresh OSD
+     * instance with the manifest's DPI. Rows go to `ocr-images/<set>/osd/<image>.osd.tsv`; `rotate` is what OSD says to turn the page by.
+     */
+    @Test fun imagesOsd() {
+        val dataPath = installModel("fast")
+        forEachImage("osd") { set, dir, c, stem, input ->
+            val rows = (0 until 360 step 90).joinToString("\n") { turn ->
+                val osd = orientation(dataPath, if (turn == 0) input else rotated(input, turn), c[4].toInt())
+                val o = osd.result
+                "$set\t${c[0]}\t${c[1]}\t${c[2]}\t$turn\t${o?.orientation ?: ""}\t${o?.rotateClockwise ?: ""}\t" +
+                    "${o?.let { "%.2f".format(Locale.ROOT, it.orientationConfidence) }.orEmpty()}\t${o?.script.orEmpty()}\t" +
+                    "${o?.let { "%.2f".format(Locale.ROOT, it.scriptConfidence) }.orEmpty()}\t${osd.error.orEmpty()}\t${osd.ms}"
+            }
+            writeTable(File(dir, "$stem.osd.tsv"), OSD_HEADER, rows)
+            Log.i(TAG, "osd $set/${c[0]} done")
+        }
+    }
+
+    /**
+     * Runs [block] on every pushed image of every set's images.tsv with the set name, the output directory `ocr-images/<set>/<sub>/`, the
+     * manifest columns, the output stem and the decoded grey image. run.sh pushes the manifest whole but the images a chunk at a time, so
+     * images that are not on the phone are skipped.
+     */
+    private fun forEachImage(sub: String, block: (String, File, List<String>, String, Input.Ready) -> Unit) {
         val root = context.getExternalFilesDir(null)?.let { File(it, "ocr-bench/images") }
         val sets = root?.listFiles().orEmpty().filter { File(it, "images.tsv").isFile }.sortedBy { it.name }
         assumeTrue("no image sets pushed to ocr-bench/images", sets.isNotEmpty())
-        val dataPath = installModel(model)
         for (set in sets) {
-            val dir = File(outputRoot(), "ocr-images/${set.name}/$model").apply { mkdirs() }
+            val dir = File(outputRoot(), "ocr-images/${set.name}/$sub").apply { mkdirs() }
             for (line in File(set, "images.tsv").readLines().drop(1).filter { it.isNotBlank() }) {
                 val c = line.split('\t')
                 val image = File(set, c[0])
-                // run.sh pushes the manifest whole but the images a chunk at a time.
                 if (!image.isFile) continue
                 val stem = c[0].substringBeforeLast('.')
-                val (lang, dpi) = c[3] to c[4].toInt()
                 val input = asIs(image)
                 if (input == null) {
-                    writeTable(File(dir, "$stem.failures.tsv"), "set\timage\tmodel\treason", "${set.name}\t${c[0]}\t$model\tcannot decode")
+                    writeTable(File(dir, "$stem.failures.tsv"), "set\timage\tsub\treason", "${set.name}\t${c[0]}\t$sub\tcannot decode")
                     continue
                 }
-                val r = recognise(dataPath, lang, input, dpi, PSM_DEFAULT)
-                File(dir, "$stem.txt").writeText(r.text + "\n")
-                File(dir, "$stem.words.tsv").writeText(r.words)
-                File(dir, "$stem.lines.tsv").writeText(r.lines)
-                writeTable(
-                    File(dir, "$stem.runs.tsv"),
-                    "set\timage\tpage\tvariant\tmodel\tlang\tdpi\twidth\theight\tinit_ms\trecognise_ms\tnative_base_kb\tnative_peak_kb\t" +
-                        "pss_base_kb\tpss_peak_kb\tvm_hwm_kb\tmean_conf\twords\tflavor",
-                    "${set.name}\t${c[0]}\t${c[1]}\t${c[2]}\t$model\t$lang\t$dpi\t${input.width}\t${input.height}\t${r.initMs}\t${r.recogniseMs}\t" +
-                        "${r.nativeBaseKb}\t${r.nativePeakKb}\t${r.pssBaseKb}\t${r.pssPeakKb}\t${r.hwmKb}\t${r.meanConfidence}\t${r.wordCount}\t${r.flavor}",
-                )
-                Log.i(TAG, "images ${set.name}/${c[0]} $model: ${r.recogniseMs} ms, ${r.wordCount} words")
+                block(set.name, dir, c, stem, input)
             }
         }
     }
@@ -691,6 +721,7 @@ class OcrBenchmarkTest {
         const val FIELD_RUNS_HEADER = "set\tpage\tmodel\tdpi\tlang\tvariant\tinput\tlong_mm\tphoto\tquad\tquad_area_pct\tnatural\tsource_dpi\twidth\theight\t" +
             "prep_ms\tosd_ms\tosd_deg\trotate\tosd_conf\tscript\tscript_conf\tosd_error\tinit_ms\trecognise_ms\tnative_base_kb\tnative_peak_kb\t" +
             "pss_base_kb\tpss_peak_kb\tvm_hwm_kb\tmean_conf\twords\tflavor"
+        const val OSD_HEADER = "set\timage\tpage\tvariant\tturn\tosd_deg\trotate\tosd_conf\tscript\tscript_conf\tosd_error\tosd_ms"
         const val MM_PER_INCH = 25.4
         const val LAYOUT_PAGE = "e-layout"
         val PSM_DEFAULT = PageSegMode.PSM_AUTO

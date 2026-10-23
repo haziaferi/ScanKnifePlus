@@ -20,6 +20,7 @@ Results: [results.md](results.md).
 | `results/` | Raw output of the last run: per set and configuration the recognised text, words.tsv, runs.tsv and failures.tsv. |
 | `field-results.md` | Field mode results (real photos without ground truth); the raw output stays in the git-ignored `field-out/`. |
 | `images-out/` | Images mode output (git-ignored): pre-processed images recognised as they are, see "Images mode". |
+| `questions.py` | Prepares the image sets for the open OCR questions (resolution, model, layout, confidence filter, rotation, crop, handwriting, input image) and scores them into `questions-results.md`; the answers are in [questions.md](questions.md). |
 
 ## Corpus
 
@@ -140,3 +141,11 @@ For images prepared elsewhere, at the resolution they should be read at (the sca
     bash docs/ocr-bench/run.sh --images <name>=<folder>
 
 The folder holds the images and an `images.tsv` (`image`, `page`, `variant`, `lang`, `dpi`, `order`). `imagesFast` and `imagesBest` recognise each image exactly as it is, in grey, with PSM 3 and `user_defined_dpi` from the manifest: no detection, scaling or OSD. Besides the text, words.tsv and a runs row they write lines.tsv (confidence and raw text per text line). `run.sh` pushes `IMAGES_CHUNK` images (default 16) per instrumentation into `ocr-bench/images/<name>/`, collects into the git-ignored `images-out/<name>/<model>/`, and `score.py --images` writes `docs/scanner-bench/ocr-results.md`: the blocks of each page stitched in manifest order, scored against the corpus truth when the page is a corpus page, word counts and mean confidence otherwise.
+
+## Open questions
+
+[questions.md](questions.md) answers eight design questions from runs of images mode: `questions.py prepare` writes each set (pages warped with the hand-marked quads, the PDF pages as simulated scans) into a work folder outside git, `run.sh --images` reads it on the phone (`IMAGES_OUT=none`, since `questions.py score` does its own scoring), and `questions.py score` writes the full tables to [questions-results.md](questions-results.md). Two harness additions serve it: an optional `psm` column in images.tsv, and `imagesOsd`, which runs orientation detection on every image turned 0, 90, 180 and 270 degrees.
+
+    python docs/ocr-bench/questions.py prepare --work WORK --photos PHOTOS --labels LABELS --detect DETECT --set q1-clean
+    IMAGES_OUT=none bash docs/ocr-bench/run.sh --images q1-clean=WORK/img/q1-clean
+    python docs/ocr-bench/questions.py score --work WORK
