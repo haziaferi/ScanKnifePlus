@@ -215,8 +215,9 @@ def fmt(v, d=1):
 def score_detection(inv, labels, work):
     oss = load_json(os.path.join(work, "detect-oss.json"), {})
     ours = load_json(os.path.join(work, "detect-ours.json"), {})
-    methods = [("ours", "ScanKnife+ (DocumentDetector.detectFromRgba)"), ("oss", "OSS-DocumentScanner (scanPoint, one-shot path)"),
-               ("hybrid", "hybrid: our candidates, their score")]
+    methods = [("new", "ScanKnife+ (DocumentDetector.detectFromRgba)"), ("old", "ScanKnife+ before the port (OpenScan candidates only)"),
+               ("oss", "OSS-DocumentScanner (scanPoint, one-shot path)"), ("hybrid", "hybrid: old candidates, their score"),
+               ("newLive", "ScanKnife+ live path (640x480 frame)"), ("oldLive", "before the port, live path")]
     per = []
     for r in inv:
         if r["id"] not in labels:
@@ -234,7 +235,9 @@ def score_detection(inv, labels, work):
            "matching, as % of the label's longer diagonal. Time is PC time for detection on the decoded photo (decode excluded), "
            "Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0. Photos whose label cannot score "
            "an outline (page filling the frame, no paper edge, a folded page, a bottle-shaped sachet) are left out of the set rows and "
-           "counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in.", ""]
+           "counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in. "
+           "The live rows shrink the photo to a 640x480 luminance frame and reduce it as the app's live path does (FrameAdapter, 320 px); "
+           "their time includes that shrink from the full photo.", ""]
     out += ["| Set | Photos | Method | Correct | Found | Median IoU | Median corner error % | Median PC ms |", "|---|---|---|---|---|---|---|---|"]
     for set_name in ("books", "corpus", "shots", "all", "unsuitable"):
         if set_name == "unsuitable":
@@ -250,7 +253,8 @@ def score_detection(inv, labels, work):
             out.append(f"| {set_name} | {len(ran)} | {title} | {sum(m['iou'] >= CORRECT_IOU for m in ran)} | {sum(m['found'] for m in ran)} | "
                        f"{fmt(median([m['iou'] for m in ran]), 2)} | {fmt(median([m['err'] for m in ran if m['err'] is not None]))} | "
                        f"{fmt(median([m['ms'] for m in ran if m['ms'] is not None]), 0)} |")
-    out += ["", "Per photo (IoU / corner error %; `-` = no quad):", "", "| Photo | Label | Ours | Theirs | Hybrid |", "|---|---|---|---|---|"]
+    out += ["", "Per photo (IoU / corner error %; `-` = no quad):", "",
+            "| Photo | Label | Ours | Before | Theirs | Hybrid | Live | Live before |", "|---|---|---|---|---|---|---|---|"]
     for p in per:
         cells = []
         for key, _ in methods:
@@ -258,6 +262,33 @@ def score_detection(inv, labels, work):
             cells.append("not run" if not m["ran"] else (f"{m['iou']:.2f} / {fmt(m['err'])}" if m["found"] else "-"))
         note = f" (unsuitable: {p['unsuitable']})" if p["unsuitable"] else ""
         out.append(f"| {p['id']} | {p['label']}{note} | " + " | ".join(cells) + " |")
+    timing = load_json(os.path.join(work, "live-time.json"))
+    if timing:
+        out += ["", f"Live path, JVM ms per frame: FrameAdapter's reduction to 320 px plus detection, on {timing['frames']} luminance frames made "
+                f"from the photos, each detected {timing['repeats']} times in a row by a worker that keeps its previous quad, after two "
+                "warm-up passes (ScannerBenchTest.liveFrameTime). PC time, not device time.", "",
+                "| Analysis frame | Detector | Median ms | p90 ms | Max ms |", "|---|---|---|---|---|"]
+        for size, t in timing["sizes"].items():
+            for key, title in (("old", "before the port"), ("new", "ScanKnife+")):
+                out.append(f"| {size} | {title} | {t[key]['median']:.1f} | {t[key]['p90']:.1f} | {t[key]['max']:.1f} |")
+    device = os.path.join(work, "device-timing.tsv")
+    if os.path.isfile(device):
+        with open(device, encoding="utf-8") as f:
+            rows = list(csv.DictReader(f, delimiter="\t"))
+        out += ["", "On the phone (OnePlus 6T, Android 11; DetectorTimingDeviceTest, opt-in, its timing.tsv and frames.tsv copied into WORK as "
+                "device-timing.tsv and device-frames.tsv): ms per call, the one-shot path on the full photo and the live path (FrameAdapter's "
+                "reduction plus detection) on luminance frames made from the photos, each call warmed up once, then timed "
+                f"{rows[0]['calls'] if rows else '?'} times in all over {rows[0]['frames'] if rows else '?'} photos.", "",
+                "| Path | Median ms | p90 ms | Max ms |", "|---|---|---|---|"]
+        out += [f"| {r['path']} | {r['median_ms']} | {r['p90_ms']} | {r['max_ms']} |" for r in rows]
+        frames = os.path.join(work, "device-frames.tsv")
+        if os.path.isfile(frames):
+            with open(frames, encoding="utf-8") as f:
+                fr = list(csv.DictReader(f, delimiter="\t"))
+            cols = [c for c in fr[0] if c != "photo"] if fr else []
+            out += ["", "Photos where OSS-DocumentScanner's search found nothing and OpenScan's candidates answered (presumably the slow calls; 7-9 of 29 photos, about the top 25-30% of calls): " +
+                    "; ".join(f"{c.replace('_fallback', '').replace('_', ' ')} {sum(r[c] == 'true' for r in fr)} of {len(fr)} "
+                              f"({', '.join(r['photo'] for r in fr if r[c] == 'true')})" for c in cols) + "."]
     return out + [""], per
 
 

@@ -11,6 +11,8 @@ import com.haziaferi.scanknifeplus.scanner.cv.RgbaImage
 import com.haziaferi.scanknifeplus.scanner.dartRound
 import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
 import com.haziaferi.scanknifeplus.scanner.live.AutoCaptureDetector
+import com.haziaferi.scanknifeplus.scanner.live.FrameAdapter
+import com.haziaferi.scanknifeplus.scanner.live.LiveDetectionWorker
 import com.haziaferi.scanknifeplus.scanner.live.MicrosClock
 import com.haziaferi.scanknifeplus.scanner.live.QuadSmoother
 import com.haziaferi.scanknifeplus.scanner.store.StoredImage
@@ -27,6 +29,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
@@ -42,47 +45,192 @@ class ScannerBenchTest {
         return work!!
     }
 
-    /** Our one-shot detection and the hybrid (our candidates ranked by their score) on every upright photo. */
+    /**
+     * Every upright photo detected five ways: the shipped detector one-shot (`new`) and on a simulated live frame (`newLive`), the detector
+     * before the OSS-DocumentScanner port the same two ways (`old`, `oldLive`), and the hybrid (the old candidates ranked by their score).
+     */
     @Test fun detection() {
         val dir = workDir()
         val json = StringBuilder("{\n")
         for ((index, row) in inventory(dir).withIndex()) {
             val image = readRgba(File(dir, "upright/${row.id}.png"))
             StoredImage.flattenOntoWhite(image.pixels)
-            val t0 = System.nanoTime()
-            val ours = (DocumentDetector.detectFromRgba(image.pixels, image.width, image.height) as? DetectionResult.Success)?.quad
-            val oursMs = (System.nanoTime() - t0) / 1e6
-            val t1 = System.nanoTime()
-            val hybrid = hybridDetect(image)
-            val hybridMs = (System.nanoTime() - t1) / 1e6
+            val parts = ArrayList<String>()
+            fun run(key: String, detect: () -> Quad?) {
+                val t0 = System.nanoTime()
+                val quad = detect()
+                parts += "\"$key\": ${result(quad, (System.nanoTime() - t0) / 1e6)}"
+            }
+            run("new") { (DocumentDetector.detectFromRgba(image.pixels, image.width, image.height) as? DetectionResult.Success)?.quad }
+            run("old") { oldDetect(image) }
+            run("newLive") { liveDetect(image) { gray, w, h -> DocumentDetector.detectQuadFromGrayscale(gray, w, h) } }
+            run("oldLive") { liveDetect(image) { gray, w, h -> Contours.pickBestQuad(oldCandidates(gray, w, h), w, h) } }
+            run("hybrid") { hybridDetect(image) }
             if (index > 0) json.append(",\n")
-            json.append(" \"${row.id}\": {\"ours\": ${result(ours, oursMs)}, \"hybrid\": ${result(hybrid, hybridMs)}}")
-            println("[bench] detection ${row.id}: ours ${ours != null} ${oursMs.roundToInt()} ms, hybrid ${hybrid != null}")
+            json.append(" \"${row.id}\": {${parts.joinToString(", ")}}")
+            println("[bench] detection ${row.id}")
         }
         File(dir, "detect-ours.json").writeText(json.append("\n}\n").toString())
     }
 
     /**
-     * Our detector's own candidate pool (DocumentDetector.detectQuadFromGrayscale at its working size), ranked by OSS-DocumentScanner's
-     * getContourSortFactor instead of our clustering score: area + weight * (1 - maxCos), with their per-mask weights (3000000, then one
-     * less per mask) and the area converted to their 300 px working scale so the two terms keep their balance.
+     * Guards speed work on the detector: every photo through every path (one-shot on B, G, R; live on 640 x 480 and 1280 x 960 frames, with
+     * no previous quad and with the found quad fed back), with every corner written at full precision. The first run records
+     * detector-reference.tsv in the work folder; later runs fail on any quad that differs from it. Delete the file to record again.
      */
-    private fun hybridDetect(image: RgbaImage): Quad? {
+    @Test fun detectorIdentity() {
+        val dir = workDir()
+        val lines = ArrayList<String>()
+        fun record(id: String, path: String, quad: Quad?) {
+            lines += "$id\t$path\t${quad?.points?.joinToString(" ") { "${it.x} ${it.y}" } ?: "none"}"
+        }
+        for (row in inventory(dir)) {
+            val image = readRgba(File(dir, "upright/${row.id}.png"))
+            StoredImage.flattenOntoWhite(image.pixels)
+            record(row.id, "one-shot", (DocumentDetector.detectFromRgba(image.pixels, image.width, image.height) as? DetectionResult.Success)?.quad)
+            for ((fw, fh) in listOf(640 to 480, 1280 to 960)) {
+                val (w, h) = FrameAdapter.downsampledSize(fw, fh)!!
+                val gray = FrameAdapter.grayscaleFromYPlane(landscapeLuma(image, fw, fh), fw, fw, fh)!!
+                val quad = DocumentDetector.detectQuadFromGrayscale(gray, w, h)
+                record(row.id, "live ${fw}x$fh", quad)
+                record(row.id, "live ${fw}x$fh previous", DocumentDetector.detectQuadFromGrayscale(gray, w, h, quad))
+            }
+        }
+        val reference = File(dir, "detector-reference.tsv")
+        if (!reference.isFile) {
+            reference.writeText(lines.joinToString("\n", postfix = "\n"))
+            println("[bench] identity: recorded ${lines.size} quads")
+            return
+        }
+        val expected = reference.readLines().filter { it.isNotBlank() }
+        val differing = expected.zip(lines).filter { (e, a) -> e != a }.map { it.first.substringBeforeLast('\t') }
+        println("[bench] identity: ${lines.size} quads, ${differing.size} differ")
+        assertEquals("paths", expected.size, lines.size)
+        assertEquals("quads that differ from detector-reference.tsv", emptyList<String>(), differing)
+    }
+
+    /**
+     * JVM time per live frame, FrameAdapter's reduction included, for the shipped detector and the old one, on luminance frames made from
+     * the photos at CameraX's 640 x 480 analysis size and at 1280 x 960. Each frame is detected [TIMED_REPEATS] times in a row through a
+     * worker that keeps its previous quad, as a held camera would; the first [WARMUP_PASSES] passes over all frames are not counted.
+     * Writes live-time.json. PC time, not device time.
+     */
+    @Test fun liveFrameTime() {
+        val dir = workDir()
+        val sizes = listOf(640 to 480, 1280 to 960)
+        val frames = inventory(dir).map { row ->
+            val image = readRgba(File(dir, "upright/${row.id}.png"))
+            sizes.map { (w, h) -> landscapeLuma(image, w, h) }
+        }
+        val json = StringBuilder("{\n \"frames\": ${frames.size}, \"repeats\": $TIMED_REPEATS,\n \"sizes\": {\n")
+        for ((s, size) in sizes.withIndex()) {
+            val (fw, fh) = size
+            val (w, h) = FrameAdapter.downsampledSize(fw, fh)!!
+            val times = mapOf("new" to ArrayList<Double>(), "old" to ArrayList())
+            for (pass in 0 until WARMUP_PASSES + 1) {
+                for (frame in frames.map { it[s] }) {
+                    val newWorker = LiveDetectionWorker()
+                    var oldPrevious: Quad? = null
+                    repeat(TIMED_REPEATS) {
+                        var t0 = System.nanoTime()
+                        newWorker.process(FrameAdapter.grayscaleFromYPlane(frame, fw, fw, fh)!!, w, h)
+                        val newMs = (System.nanoTime() - t0) / 1e6
+                        t0 = System.nanoTime()
+                        val gray = FrameAdapter.grayscaleFromYPlane(frame, fw, fw, fh)!!
+                        oldPrevious = Contours.pickBestQuad(oldCandidates(gray, w, h), w, h, oldPrevious) ?: oldPrevious
+                        val oldMs = (System.nanoTime() - t0) / 1e6
+                        if (pass >= WARMUP_PASSES) {
+                            times.getValue("new") += newMs
+                            times.getValue("old") += oldMs
+                        }
+                    }
+                }
+            }
+            if (s > 0) json.append(",\n")
+            json.append("  \"${fw}x$fh\": {")
+            json.append(times.entries.joinToString(", ") { (k, v) -> "\"$k\": ${stats(v)}" })
+            json.append("}")
+            println("[bench] live ${fw}x$fh: new ${stats(times.getValue("new"))}, old ${stats(times.getValue("old"))}")
+        }
+        File(dir, "live-time.json").writeText(json.append("\n }\n}\n").toString())
+    }
+
+    private fun stats(v: List<Double>): String {
+        val s = v.sorted()
+        fun q(p: Double) = s[((s.size - 1) * p).roundToInt()]
+        return "{\"median\": ${"%.2f".format(Locale.ROOT, q(0.5))}, \"p90\": ${"%.2f".format(Locale.ROOT, q(0.9))}, " +
+            "\"max\": ${"%.2f".format(Locale.ROOT, s.last())}}"
+    }
+
+    /** A sensor-native (landscape) luminance frame of [w] x [h] from a photo, turned a quarter if the photo is portrait, nearest sampling. */
+    private fun landscapeLuma(image: RgbaImage, w: Int, h: Int): ByteArray {
+        val portrait = image.height > image.width
+        val out = ByteArray(w * h)
+        val p = image.pixels
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val sx = if (portrait) (h - 1 - y) * image.width / h else x * image.width / w
+                val sy = if (portrait) x * image.height / w else y * image.height / h
+                val i = (sy * image.width + sx) * 4
+                out[y * w + x] = dartRound(0.2126 * (p[i].toInt() and 0xFF) + 0.7152 * (p[i + 1].toInt() and 0xFF) +
+                    0.0722 * (p[i + 2].toInt() and 0xFF)).toByte()
+            }
+        }
+        return out
+    }
+
+    /** The detector before the port: OpenScan's candidates ([oldCandidates]) ranked by [Contours.pickBestQuad], at its 700 px working size. */
+    private fun oldDetect(image: RgbaImage): Quad? {
+        val (w, h, gray) = workingGray(image)
+        return Contours.pickBestQuad(oldCandidates(gray, w, h), w, h)?.scaled(image.width.toDouble() / w, image.height.toDouble() / h)
+    }
+
+    /**
+     * The live path on a photo: shrunk to CameraX's 640 x 480 analysis frame (as luminance), reduced by [FrameAdapter.grayscaleFromYPlane]
+     * as LiveScanPipeline does, then detected by [detect]; the quad comes back in photo coordinates.
+     */
+    private fun liveDetect(image: RgbaImage, detect: (ByteArray, Int, Int) -> Quad?): Quad? {
+        val fs = 640.0 / max(image.width, image.height)
+        val fw = dartRound(image.width * fs)
+        val fh = dartRound(image.height * fs)
+        val frame = EdgeDetection.rgbaToGrayscale(DocumentDetector.downscaleRgba(image.pixels, image.width, image.height, fw, fh), fw, fh)
+        val (w, h) = FrameAdapter.downsampledSize(fw, fh)!!
+        return detect(FrameAdapter.grayscaleFromYPlane(frame, fw, fw, fh)!!, w, h)?.scaled(image.width.toDouble() / w, image.height.toDouble() / h)
+    }
+
+    private fun workingGray(image: RgbaImage): Triple<Int, Int, ByteArray> {
         val longest = max(image.width, image.height).toDouble()
         val scale = if (longest > DocumentDetector.DETECTION_MAX_DIMENSION) DocumentDetector.DETECTION_MAX_DIMENSION / longest else 1.0
         val w = max(1, dartRound(image.width * scale))
         val h = max(1, dartRound(image.height * scale))
-        val gray = EdgeDetection.rgbaToGrayscale(DocumentDetector.downscaleRgba(image.pixels, image.width, image.height, w, h), w, h)
+        return Triple(w, h, EdgeDetection.rgbaToGrayscale(DocumentDetector.downscaleRgba(image.pixels, image.width, image.height, w, h), w, h))
+    }
+
+    /** The old detector's candidate pool: three Sobel-Otsu masks, dilated, quads from their largest components. */
+    private fun oldCandidates(gray: ByteArray, w: Int, h: Int): List<Quad> = oldCandidatesByMask(gray, w, h).flatten()
+
+    private fun oldCandidatesByMask(gray: ByteArray, w: Int, h: Int): List<List<Quad>> {
         val magnitude = EdgeDetection.sobelMagnitude(EdgeDetection.gaussianBlur3(gray, w, h), w, h)
         val base = EdgeDetection.otsuThreshold(magnitude)
+        return THRESHOLD_MULTIPLIERS.map { multiplier ->
+            val binary = EdgeDetection.threshold(magnitude, dartRound(base * multiplier).coerceIn(0, 255))
+            Contours.findDocumentQuadCandidates(EdgeDetection.dilate(binary, w, h, 4), w, h)
+        }
+    }
+
+    /**
+     * The old detector's candidate pool ([oldCandidatesByMask]), ranked by OSS-DocumentScanner's getContourSortFactor instead of our
+     * clustering score: area + weight * (1 - maxCos), with their per-mask weights (3000000, then one less per mask) and the area converted
+     * to their 300 px working scale so the two terms keep their balance.
+     */
+    private fun hybridDetect(image: RgbaImage): Quad? {
+        val (w, h, gray) = workingGray(image)
         val areaToTheirs = (OSS_WORKING_EDGE / max(w, h).toDouble()).let { it * it }
         var best: Quad? = null
         var bestScore = Double.NEGATIVE_INFINITY
-        for ((mask, multiplier) in THRESHOLD_MULTIPLIERS.withIndex()) {
-            val binary = EdgeDetection.threshold(magnitude, dartRound(base * multiplier).coerceIn(0, 255))
-            val dilated = EdgeDetection.dilate(binary, w, h, 4)
+        for ((mask, candidates) in oldCandidatesByMask(gray, w, h).withIndex()) {
             val weight = 3_000_000 - mask
-            for (quad in Contours.findDocumentQuadCandidates(dilated, w, h)) {
+            for (quad in candidates) {
                 val score = area(quad) * areaToTheirs + weight * (1 - maxCosine(quad))
                 if (score > bestScore) {
                     bestScore = score
@@ -275,11 +423,13 @@ class ScannerBenchTest {
     private fun quote(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
     private companion object {
-        /** DocumentDetector's private THRESHOLD_MULTIPLIERS, in the same order. */
+        /** The old detector's THRESHOLD_MULTIPLIERS, in the same order. */
         val THRESHOLD_MULTIPLIERS = doubleArrayOf(0.7, 1.0, 1.3)
 
         /** Their one-shot path's working long edge (resizeThreshold 300). */
         const val OSS_WORKING_EDGE = 300.0
+        const val WARMUP_PASSES = 2
+        const val TIMED_REPEATS = 5
         const val A4_300_WIDTH = 2480
         const val A4_300_HEIGHT = 3508
         const val RUNS = 20
