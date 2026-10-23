@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.scanner.live
 
 import com.haziaferi.scanknifeplus.scanner.ParityCase
 import com.haziaferi.scanknifeplus.scanner.ParityFixture
+import com.haziaferi.scanknifeplus.scanner.cv.DocumentDetector
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.cv.format
 import com.haziaferi.scanknifeplus.scanner.cv.parseQuad
@@ -14,7 +15,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Replays OpenScan's scripted live-scan scenarios through the Kotlin smoother, auto-capture detector and live worker (fixture: parity/live.tsv). */
+/**
+ * Replays OpenScan's scripted live-scan scenarios through the Kotlin smoother, auto-capture detector and live worker (fixture: parity/live.tsv).
+ * The detector itself no longer matches OpenScan's (it searches OSS-DocumentScanner's candidates first), so the live worker's quads are checked
+ * against the shipped detector under the worker's previous-quad rule; which frames find a quad, and the notifications, still match OpenScan.
+ */
 class LiveScanParityTest {
     private val cases = ParityFixture.load("live.tsv")
     private val smootherCases = cases.filter { it.name.startsWith("smoother_") }
@@ -85,11 +90,31 @@ class LiveScanParityTest {
         }
     }
 
+    /**
+     * What the worker should publish for [frameNames]: the shipped detector with the last quad fed back as `previousQuad` and dropped after
+     * [LiveDetectionWorker.FORGET_PREVIOUS_AFTER_MISSES] misses, rotated for portrait.
+     */
+    private fun expectedResults(c: ParityCase, frameNames: List<String>): List<String> {
+        var previous: Quad? = null
+        var misses = 0
+        return frameNames.map { name ->
+            val quad = DocumentDetector.detectQuadFromGrayscale(c.bytes("frame_$name"), 320, 240, previous)
+            if (quad != null) {
+                previous = quad
+                misses = 0
+            } else if (++misses >= LiveDetectionWorker.FORGET_PREVIOUS_AFTER_MISSES) {
+                previous = null
+            }
+            "$name=${quad?.let { rotateQuadForPortrait(it, 320, 240) }.format()}"
+        }
+    }
+
     @Test
-    fun `live worker and controller match OpenScan, including forgetting the previous quad`() {
+    fun `live worker and controller feed the previous quad back and find a quad on the same frames as OpenScan`() {
         val c = cases.single { it.name == "live_worker" }
         val frameNames = c.raw("frames").split(',')
-        val expected = c.raw("results").split('|')
+        val expected = expectedResults(c, frameNames)
+        assertEquals(c.raw("results").split('|').map { it.endsWith("=null") }, expected.map { it.endsWith("=null") })
 
         // The worker on its own.
         val worker = LiveDetectionWorker()
@@ -126,7 +151,7 @@ class LiveScanParityTest {
     fun `controller copies the frame so the caller can reuse its buffer`() {
         val c = cases.single { it.name == "live_worker" }
         val frameNames = c.raw("frames").split(',')
-        val expected = c.raw("results").split('|')
+        val expected = expectedResults(c, frameNames)
         val docIndex = frameNames.indexOf("doc131")
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)

@@ -6,59 +6,83 @@ Photos: 29 (books 11, corpus 5, shots 13); hand-marked: 29.
 
 ## 1. Outline detection
 
-IoU of the detected quad with the hand-marked one (correct at IoU >= 0.9) and the largest corner error under the best corner matching, as % of the label's longer diagonal. Time is PC time for detection on the decoded photo (decode excluded), Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0. Photos whose label cannot score an outline (page filling the frame, no paper edge, a folded page, a bottle-shaped sachet) are left out of the set rows and counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in.
+IoU of the detected quad with the hand-marked one (correct at IoU >= 0.9) and the largest corner error under the best corner matching, as % of the label's longer diagonal. Time is PC time for detection on the decoded photo (decode excluded), Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0. Photos whose label cannot score an outline (page filling the frame, no paper edge, a folded page, a bottle-shaped sachet) are left out of the set rows and counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in. The live rows shrink the photo to a 640x480 luminance frame and reduce it as the app's live path does (FrameAdapter, 320 px); their time includes that shrink from the full photo.
 
 | Set | Photos | Method | Correct | Found | Median IoU | Median corner error % | Median PC ms |
 |---|---|---|---|---|---|---|---|
-| books | 7 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 7 | 0.83 | 13.0 | 75 |
+| books | 7 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 7 | 0.82 | 9.8 | 212 |
+| books | 7 | ScanKnife+ before the port (OpenScan candidates only) | 2 | 7 | 0.83 | 13.0 | 71 |
 | books | 7 | OSS-DocumentScanner (scanPoint, one-shot path) | 2 | 6 | 0.82 | 9.5 | 48 |
-| books | 7 | hybrid: our candidates, their score | 2 | 7 | 0.83 | 13.0 | 82 |
-| corpus | 5 | ScanKnife+ (DocumentDetector.detectFromRgba) | 5 | 5 | 0.93 | 4.2 | 48 |
+| books | 7 | hybrid: old candidates, their score | 2 | 7 | 0.83 | 13.0 | 64 |
+| books | 7 | ScanKnife+ live path (640x480 frame) | 3 | 7 | 0.89 | 5.3 | 15 |
+| books | 7 | before the port, live path | 3 | 7 | 0.90 | 5.5 | 22 |
+| corpus | 5 | ScanKnife+ (DocumentDetector.detectFromRgba) | 5 | 5 | 0.94 | 5.0 | 134 |
+| corpus | 5 | ScanKnife+ before the port (OpenScan candidates only) | 5 | 5 | 0.93 | 4.2 | 50 |
 | corpus | 5 | OSS-DocumentScanner (scanPoint, one-shot path) | 5 | 5 | 0.94 | 5.0 | 42 |
-| corpus | 5 | hybrid: our candidates, their score | 5 | 5 | 0.93 | 3.7 | 47 |
-| shots | 11 | ScanKnife+ (DocumentDetector.detectFromRgba) | 7 | 11 | 0.93 | 5.4 | 58 |
+| corpus | 5 | hybrid: old candidates, their score | 5 | 5 | 0.93 | 3.7 | 52 |
+| corpus | 5 | ScanKnife+ live path (640x480 frame) | 5 | 5 | 0.97 | 0.9 | 12 |
+| corpus | 5 | before the port, live path | 4 | 5 | 0.92 | 4.2 | 15 |
+| shots | 11 | ScanKnife+ (DocumentDetector.detectFromRgba) | 9 | 11 | 0.96 | 1.4 | 163 |
+| shots | 11 | ScanKnife+ before the port (OpenScan candidates only) | 7 | 11 | 0.93 | 5.4 | 68 |
 | shots | 11 | OSS-DocumentScanner (scanPoint, one-shot path) | 8 | 8 | 0.96 | 1.3 | 46 |
-| shots | 11 | hybrid: our candidates, their score | 7 | 11 | 0.92 | 5.5 | 64 |
-| all | 23 | ScanKnife+ (DocumentDetector.detectFromRgba) | 14 | 23 | 0.92 | 4.7 | 59 |
+| shots | 11 | hybrid: old candidates, their score | 7 | 11 | 0.92 | 5.5 | 64 |
+| shots | 11 | ScanKnife+ live path (640x480 frame) | 7 | 11 | 0.94 | 2.6 | 16 |
+| shots | 11 | before the port, live path | 1 | 11 | 0.87 | 9.0 | 20 |
+| all | 23 | ScanKnife+ (DocumentDetector.detectFromRgba) | 16 | 23 | 0.94 | 4.6 | 163 |
+| all | 23 | ScanKnife+ before the port (OpenScan candidates only) | 14 | 23 | 0.92 | 4.7 | 68 |
 | all | 23 | OSS-DocumentScanner (scanPoint, one-shot path) | 15 | 19 | 0.94 | 4.3 | 44 |
-| all | 23 | hybrid: our candidates, their score | 14 | 23 | 0.92 | 4.7 | 62 |
-| unsuitable | 6 | ScanKnife+ (DocumentDetector.detectFromRgba) | 1 | 6 | 0.63 | 30.2 | 88 |
+| all | 23 | hybrid: old candidates, their score | 14 | 23 | 0.92 | 4.7 | 64 |
+| all | 23 | ScanKnife+ live path (640x480 frame) | 15 | 23 | 0.94 | 2.6 | 14 |
+| all | 23 | before the port, live path | 8 | 23 | 0.88 | 5.5 | 19 |
+| unsuitable | 6 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 6 | 0.71 | 19.0 | 212 |
+| unsuitable | 6 | ScanKnife+ before the port (OpenScan candidates only) | 1 | 6 | 0.63 | 30.2 | 66 |
 | unsuitable | 6 | OSS-DocumentScanner (scanPoint, one-shot path) | 2 | 3 | 0.24 | 4.6 | 67 |
-| unsuitable | 6 | hybrid: our candidates, their score | 1 | 6 | 0.45 | 32.4 | 78 |
+| unsuitable | 6 | hybrid: old candidates, their score | 1 | 6 | 0.45 | 32.4 | 70 |
+| unsuitable | 6 | ScanKnife+ live path (640x480 frame) | 2 | 6 | 0.79 | 13.7 | 23 |
+| unsuitable | 6 | before the port, live path | 0 | 6 | 0.77 | 13.7 | 17 |
 
 Per photo (IoU / corner error %; `-` = no quad):
 
-| Photo | Label | Ours | Theirs | Hybrid |
+| Photo | Label | Ours | Before | Theirs | Hybrid | Live | Live before |
+|---|---|---|---|---|---|---|---|
+| book-01 | textbook A, two-column page with a two-panel labelled figure, upright | 0.91 / 4.3 | 0.19 / 45.4 | 0.91 / 4.3 | 0.13 / 53.1 | 0.91 / 4.8 | 0.41 / 34.9 |
+| book-02 | textbook A, two-column page with a labelled figure, upright | 0.82 / 9.2 | 0.92 / 4.7 | 0.82 / 9.1 | 0.92 / 4.7 | 0.82 / 8.1 | 0.91 / 5.5 |
+| book-03 | textbook A, two-page spread with photo, chart and figures, shot sideways | 0.48 / 41.1 | 0.56 / 35.9 | 0.48 / 41.1 | 0.19 / 52.3 | 0.48 / 41.1 | 0.33 / 46.0 |
+| book-04 | textbook A, two-column page with a labelled diagram and italic caption, upright | 0.82 / 9.8 | 0.20 / 42.6 | 0.82 / 9.8 | 0.10 / 57.4 | 0.89 / 5.0 | 0.63 / 11.9 |
+| book-05 | textbook A, two-column page with a labelled figure and a shaded box, upright | 0.77 / 14.1 | 0.90 / 5.7 | 0.77 / 14.1 | 0.90 / 5.7 | 0.87 / 7.2 | 0.90 / 4.9 |
+| book-06 | textbook B, single-column dense prose, upright (unsuitable: page fills the frame, label = frame) | 0.60 / 15.9 | 0.60 / 15.9 | - | 0.60 / 15.9 | 0.77 / 13.2 | 0.77 / 13.2 |
+| book-07 | textbook B, two-page spread of prose, shot sideways (unsuitable: page fills the frame, label = frame) | 0.48 / 40.5 | 0.30 / 42.6 | 0.48 / 40.6 | 0.30 / 42.5 | 0.48 / 40.8 | 0.77 / 9.3 |
+| book-08 | textbook B, spread: prose page sideways, facing page a landscape table (upright in the photo) (unsuitable: page fills the frame, label = frame) | 0.67 / 38.2 | 0.67 / 38.2 | - | 0.28 / 42.5 | 0.81 / 14.1 | 0.81 / 14.1 |
+| book-09 | textbook B, large landscape table, shot sideways (unsuitable: no paper edge, label = frame) | 0.93 / 4.6 | 0.07 / 55.3 | 0.93 / 4.6 | 0.07 / 55.9 | 0.93 / 5.1 | 0.69 / 18.6 |
+| hand-01 | handwritten notes, block capitals, lined A4 sheet | 0.83 / 13.0 | 0.83 / 13.0 | - | 0.83 / 13.0 | 0.94 / 5.3 | 0.94 / 5.3 |
+| hand-02 | handwritten notes, block capitals, lined A4 sheet | 0.95 / 4.8 | 0.97 / 1.1 | 0.95 / 4.8 | 0.97 / 1.1 | 0.97 / 0.9 | 0.94 / 1.9 |
+| a-english | printed corpus page a-english | 0.97 / 2.3 | 0.92 / 4.3 | 0.97 / 2.3 | 0.92 / 4.3 | 0.97 / 0.9 | 0.91 / 4.2 |
+| b-italian | printed corpus page b-italian | 0.97 / 1.2 | 0.94 / 3.7 | 0.97 / 1.2 | 0.94 / 3.7 | 0.97 / 0.9 | 0.92 / 4.2 |
+| c-footnotes | printed corpus page c-footnotes | 0.94 / 5.6 | 0.93 / 4.2 | 0.94 / 5.6 | 0.94 / 4.2 | 0.97 / 1.4 | 0.88 / 5.4 |
+| d-receipt | printed corpus page d-receipt | 0.93 / 5.9 | 0.93 / 3.7 | 0.93 / 5.9 | 0.92 / 3.7 | 0.97 / 1.1 | 0.93 / 2.4 |
+| e-layout | printed corpus page e-layout | 0.94 / 5.0 | 0.91 / 4.5 | 0.94 / 5.0 | 0.93 / 3.6 | 0.97 / 0.9 | 0.93 / 3.6 |
+| IMG_20261023_122844 | receipt | 0.97 / 1.2 | 0.94 / 1.9 | 0.97 / 1.2 | 0.95 / 1.2 | 0.98 / 0.9 | 0.89 / 2.6 |
+| IMG_20261023_122917 | book back cover | 0.63 / 25.7 | 0.63 / 25.7 | - | 0.21 / 44.6 | 0.52 / 26.6 | 0.52 / 26.6 |
+| IMG_20261023_123110 | plastic card | 0.96 / 1.7 | 0.93 / 2.9 | 0.96 / 1.7 | 0.93 / 3.7 | 0.91 / 2.6 | 0.92 / 3.5 |
+| IMG_20261023_123313 | red book cover | 0.93 / 3.0 | 0.93 / 5.4 | 0.93 / 3.0 | 0.92 / 5.5 | 0.87 / 6.6 | 0.87 / 6.6 |
+| IMG_20261023_123334 | red book cover (2) | 0.97 / 1.4 | 0.97 / 1.4 | - | 0.97 / 1.0 | 0.87 / 9.0 | 0.87 / 9.0 |
+| IMG_20261023_123600 | page on light surface | 0.20 / 38.3 | 0.20 / 38.3 | - | 0.24 / 34.7 | 0.39 / 34.0 | 0.39 / 34.0 |
+| IMG_20261023_123743 | page on wood | 0.96 / 1.4 | 0.74 / 14.1 | 0.96 / 1.4 | 0.63 / 13.8 | 0.96 / 1.3 | 0.73 / 14.6 |
+| IMG_20261023_123746 | page on wood (2) | 0.99 / 0.5 | 0.74 / 13.9 | 0.99 / 0.5 | 0.74 / 13.9 | 0.96 / 1.2 | 0.73 / 14.4 |
+| IMG_20261023_123837 | page held by hand | 0.96 / 1.1 | 0.93 / 3.1 | 0.96 / 1.1 | 0.94 / 3.2 | 0.96 / 1.3 | 0.87 / 5.5 |
+| IMG_20261023_123852 | pen across page | 0.95 / 4.6 | 0.92 / 5.4 | 0.95 / 4.6 | 0.91 / 5.7 | 0.94 / 5.4 | 0.82 / 14.2 |
+| IMG_20261023_124558 | folded page (unsuitable: folded page: two planes) | 0.99 / 0.5 | 0.96 / 1.4 | 0.99 / 0.5 | 0.96 / 1.3 | 0.96 / 1.4 | 0.89 / 5.9 |
+| 2026_10_23_12_26_45 | GlassCam: ticket with QR | 0.99 / 0.8 | 0.95 / 1.3 | 0.99 / 0.8 | 0.95 / 1.4 | 0.97 / 1.0 | 0.89 / 3.4 |
+| 2026_10_23_12_27_40 | GlassCam: reflective sachet (unsuitable: bottle-shaped sachet) | 0.76 / 22.2 | 0.76 / 22.2 | - | 0.75 / 22.2 | 0.77 / 21.4 | 0.77 / 21.4 |
+
+Live path, JVM ms per frame: FrameAdapter's reduction to 320 px plus detection, on 29 luminance frames made from the photos, each detected 5 times in a row by a worker that keeps its previous quad, after two warm-up passes (ScannerBenchTest.liveFrameTime). PC time, not device time.
+
+| Analysis frame | Detector | Median ms | p90 ms | Max ms |
 |---|---|---|---|---|
-| book-01 | textbook A, two-column page with a two-panel labelled figure, upright | 0.19 / 45.4 | 0.91 / 4.3 | 0.13 / 53.1 |
-| book-02 | textbook A, two-column page with a labelled figure, upright | 0.92 / 4.7 | 0.82 / 9.1 | 0.92 / 4.7 |
-| book-03 | textbook A, two-page spread with photo, chart and figures, shot sideways | 0.56 / 35.9 | 0.48 / 41.1 | 0.19 / 52.3 |
-| book-04 | textbook A, two-column page with a labelled diagram and italic caption, upright | 0.20 / 42.6 | 0.82 / 9.8 | 0.10 / 57.4 |
-| book-05 | textbook A, two-column page with a labelled figure and a shaded box, upright | 0.90 / 5.7 | 0.77 / 14.1 | 0.90 / 5.7 |
-| book-06 | textbook B, single-column dense prose, upright (unsuitable: page fills the frame, label = frame) | 0.60 / 15.9 | - | 0.60 / 15.9 |
-| book-07 | textbook B, two-page spread of prose, shot sideways (unsuitable: page fills the frame, label = frame) | 0.30 / 42.6 | 0.48 / 40.6 | 0.30 / 42.5 |
-| book-08 | textbook B, spread: prose page sideways, facing page a landscape table (upright in the photo) (unsuitable: page fills the frame, label = frame) | 0.67 / 38.2 | - | 0.28 / 42.5 |
-| book-09 | textbook B, large landscape table, shot sideways (unsuitable: no paper edge, label = frame) | 0.07 / 55.3 | 0.93 / 4.6 | 0.07 / 55.9 |
-| hand-01 | handwritten notes, block capitals, lined A4 sheet | 0.83 / 13.0 | - | 0.83 / 13.0 |
-| hand-02 | handwritten notes, block capitals, lined A4 sheet | 0.97 / 1.1 | 0.95 / 4.8 | 0.97 / 1.1 |
-| a-english | printed corpus page a-english | 0.92 / 4.3 | 0.97 / 2.3 | 0.92 / 4.3 |
-| b-italian | printed corpus page b-italian | 0.94 / 3.7 | 0.97 / 1.2 | 0.94 / 3.7 |
-| c-footnotes | printed corpus page c-footnotes | 0.93 / 4.2 | 0.94 / 5.6 | 0.94 / 4.2 |
-| d-receipt | printed corpus page d-receipt | 0.93 / 3.7 | 0.93 / 5.9 | 0.92 / 3.7 |
-| e-layout | printed corpus page e-layout | 0.91 / 4.5 | 0.94 / 5.0 | 0.93 / 3.6 |
-| IMG_20261023_122844 | receipt | 0.94 / 1.9 | 0.97 / 1.2 | 0.95 / 1.2 |
-| IMG_20261023_122917 | book back cover | 0.63 / 25.7 | - | 0.21 / 44.6 |
-| IMG_20261023_123110 | plastic card | 0.93 / 2.9 | 0.96 / 1.7 | 0.93 / 3.7 |
-| IMG_20261023_123313 | red book cover | 0.93 / 5.4 | 0.93 / 3.0 | 0.92 / 5.5 |
-| IMG_20261023_123334 | red book cover (2) | 0.97 / 1.4 | - | 0.97 / 1.0 |
-| IMG_20261023_123600 | page on light surface | 0.20 / 38.3 | - | 0.24 / 34.7 |
-| IMG_20261023_123743 | page on wood | 0.74 / 14.1 | 0.96 / 1.4 | 0.63 / 13.8 |
-| IMG_20261023_123746 | page on wood (2) | 0.74 / 13.9 | 0.99 / 0.5 | 0.74 / 13.9 |
-| IMG_20261023_123837 | page held by hand | 0.93 / 3.1 | 0.96 / 1.1 | 0.94 / 3.2 |
-| IMG_20261023_123852 | pen across page | 0.92 / 5.4 | 0.95 / 4.6 | 0.91 / 5.7 |
-| IMG_20261023_124558 | folded page (unsuitable: folded page: two planes) | 0.96 / 1.4 | 0.99 / 0.5 | 0.96 / 1.3 |
-| 2026_10_23_12_26_45 | GlassCam: ticket with QR | 0.95 / 1.3 | 0.99 / 0.8 | 0.95 / 1.4 |
-| 2026_10_23_12_27_40 | GlassCam: reflective sachet (unsuitable: bottle-shaped sachet) | 0.76 / 22.2 | - | 0.75 / 22.2 |
+| 640x480 | before the port | 14.1 | 18.2 | 26.1 |
+| 640x480 | ScanKnife+ | 8.7 | 29.5 | 40.8 |
+| 1280x960 | before the port | 16.0 | 21.2 | 47.3 |
+| 1280x960 | ScanKnife+ | 10.5 | 34.4 | 49.6 |
 
 ## 2. Gutter
 

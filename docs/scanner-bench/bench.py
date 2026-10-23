@@ -215,8 +215,9 @@ def fmt(v, d=1):
 def score_detection(inv, labels, work):
     oss = load_json(os.path.join(work, "detect-oss.json"), {})
     ours = load_json(os.path.join(work, "detect-ours.json"), {})
-    methods = [("ours", "ScanKnife+ (DocumentDetector.detectFromRgba)"), ("oss", "OSS-DocumentScanner (scanPoint, one-shot path)"),
-               ("hybrid", "hybrid: our candidates, their score")]
+    methods = [("new", "ScanKnife+ (DocumentDetector.detectFromRgba)"), ("old", "ScanKnife+ before the port (OpenScan candidates only)"),
+               ("oss", "OSS-DocumentScanner (scanPoint, one-shot path)"), ("hybrid", "hybrid: old candidates, their score"),
+               ("newLive", "ScanKnife+ live path (640x480 frame)"), ("oldLive", "before the port, live path")]
     per = []
     for r in inv:
         if r["id"] not in labels:
@@ -234,7 +235,9 @@ def score_detection(inv, labels, work):
            "matching, as % of the label's longer diagonal. Time is PC time for detection on the decoded photo (decode excluded), "
            "Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0. Photos whose label cannot score "
            "an outline (page filling the frame, no paper edge, a folded page, a bottle-shaped sachet) are left out of the set rows and "
-           "counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in.", ""]
+           "counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in. "
+           "The live rows shrink the photo to a 640x480 luminance frame and reduce it as the app's live path does (FrameAdapter, 320 px); "
+           "their time includes that shrink from the full photo.", ""]
     out += ["| Set | Photos | Method | Correct | Found | Median IoU | Median corner error % | Median PC ms |", "|---|---|---|---|---|---|---|---|"]
     for set_name in ("books", "corpus", "shots", "all", "unsuitable"):
         if set_name == "unsuitable":
@@ -250,7 +253,8 @@ def score_detection(inv, labels, work):
             out.append(f"| {set_name} | {len(ran)} | {title} | {sum(m['iou'] >= CORRECT_IOU for m in ran)} | {sum(m['found'] for m in ran)} | "
                        f"{fmt(median([m['iou'] for m in ran]), 2)} | {fmt(median([m['err'] for m in ran if m['err'] is not None]))} | "
                        f"{fmt(median([m['ms'] for m in ran if m['ms'] is not None]), 0)} |")
-    out += ["", "Per photo (IoU / corner error %; `-` = no quad):", "", "| Photo | Label | Ours | Theirs | Hybrid |", "|---|---|---|---|---|"]
+    out += ["", "Per photo (IoU / corner error %; `-` = no quad):", "",
+            "| Photo | Label | Ours | Before | Theirs | Hybrid | Live | Live before |", "|---|---|---|---|---|---|---|---|"]
     for p in per:
         cells = []
         for key, _ in methods:
@@ -258,6 +262,15 @@ def score_detection(inv, labels, work):
             cells.append("not run" if not m["ran"] else (f"{m['iou']:.2f} / {fmt(m['err'])}" if m["found"] else "-"))
         note = f" (unsuitable: {p['unsuitable']})" if p["unsuitable"] else ""
         out.append(f"| {p['id']} | {p['label']}{note} | " + " | ".join(cells) + " |")
+    timing = load_json(os.path.join(work, "live-time.json"))
+    if timing:
+        out += ["", f"Live path, JVM ms per frame: FrameAdapter's reduction to 320 px plus detection, on {timing['frames']} luminance frames made "
+                f"from the photos, each detected {timing['repeats']} times in a row by a worker that keeps its previous quad, after two "
+                "warm-up passes (ScannerBenchTest.liveFrameTime). PC time, not device time.", "",
+                "| Analysis frame | Detector | Median ms | p90 ms | Max ms |", "|---|---|---|---|---|"]
+        for size, t in timing["sizes"].items():
+            for key, title in (("old", "before the port"), ("new", "ScanKnife+")):
+                out.append(f"| {size} | {title} | {t[key]['median']:.1f} | {t[key]['p90']:.1f} | {t[key]['max']:.1f} |")
     return out + [""], per
 
 
