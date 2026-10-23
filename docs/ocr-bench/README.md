@@ -20,6 +20,7 @@ Results: [results.md](results.md).
 | `results/` | Raw output of the last run: per set and configuration the recognised text, words.tsv, runs.tsv and failures.tsv. |
 | `native/tess_osd.c`, `.../ocr/TessOsd.kt` | Field mode only: JNI shim that exposes Tesseract's orientation detection (see "Field mode"). |
 | `field-results.md` | Field mode results (real photos without ground truth); the raw output stays in the git-ignored `field-out/`. |
+| `images-out/` | Images mode output (git-ignored): pre-processed images recognised as they are, see "Images mode". |
 
 ## Corpus
 
@@ -132,3 +133,11 @@ Eleven photos: nine pages of two Italian textbooks (single pages, two-page sprea
 - eng+ita instead of ita changes about 1% of characters on Italian pages and costs 15-90% more time.
 
 `score.py --field` reports per photo: detection and OSD (rotation, confidence, script); per configuration time, memory, word count and mean word confidence; how many words each confidence threshold 10-90 would drop; agreement between configurations as CER/WER of fast against best at the same DPI and of 300 against 400 for the same model (a proxy for accuracy: disagreement shows errors, agreement does not prove correctness); turned vs unturned outputs; and primary vs a second language. Its edit distance is a bit-vector implementation of the same Levenshtein distance, fast enough for whole spreads.
+
+## Images mode
+
+For images prepared elsewhere, at the resolution they should be read at (the scanner benchmark's filtered and pre-processed pages, docs/scanner-bench/README.md):
+
+    bash docs/ocr-bench/run.sh --images <name>=<folder>
+
+The folder holds the images and an `images.tsv` (`image`, `page`, `variant`, `lang`, `dpi`, `order`). `imagesFast` and `imagesBest` recognise each image exactly as it is, in grey, with PSM 3 and `user_defined_dpi` from the manifest: no detection, scaling or OSD. Besides the text, words.tsv and a runs row they write lines.tsv (confidence and raw text per text line). `run.sh` pushes `IMAGES_CHUNK` images (default 16) per instrumentation into `ocr-bench/images/<name>/`, collects into the git-ignored `images-out/<name>/<model>/`, and `score.py --images` writes `docs/scanner-bench/ocr-results.md`: the blocks of each page stitched in manifest order, scored against the corpus truth when the page is a corpus page, word counts and mean confidence otherwise.

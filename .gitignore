@@ -36,3 +36,5 @@ keystore.properties
 # OCR benchmark field mode (docs/ocr-bench/run.sh --field): recognised text and previews of the user's photos, and the OSD shim build
 /docs/ocr-bench/field-out/
 /app/src/androidTest/jniLibs/
+# OCR benchmark images mode (docs/ocr-bench/run.sh --images): recognised text of the scanner benchmark's pages
+/docs/ocr-bench/images-out/

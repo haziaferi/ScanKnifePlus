@@ -41,6 +41,7 @@ import org.junit.runner.RunWith
  * pulls to `app/build/outputs/connected_android_test_additional_output/`; pages that cannot be prepared go to failures.tsv instead.
  *
  * The `field*` methods are field mode: real photos without ground truth in `ocr-bench/field/<set>/`, with orientation detection first.
+ * The `images*` methods recognise images prepared on the PC by the scanner benchmark exactly as they are, from `ocr-bench/images/<set>/`.
  */
 @RunWith(AndroidJUnit4::class)
 class OcrBenchmarkTest {
@@ -225,8 +226,9 @@ class OcrBenchmarkTest {
     private fun luma(r: Int, g: Int, b: Int): Byte = ((299 * r + 587 * g + 114 * b + 500) / 1000).toByte()
 
     private class Result(
-        val text: String, val words: String, val initMs: Long, val recogniseMs: Long, val nativeBaseKb: Long, val nativePeakKb: Long,
-        val pssBaseKb: Long, val pssPeakKb: Long, val hwmKb: Long, val meanConfidence: Int, val wordCount: Int, val flavor: String,
+        val text: String, val words: String, val lines: String, val initMs: Long, val recogniseMs: Long, val nativeBaseKb: Long,
+        val nativePeakKb: Long, val pssBaseKb: Long, val pssPeakKb: Long, val hwmKb: Long, val meanConfidence: Int, val wordCount: Int,
+        val flavor: String,
     )
 
     /** Blocking: one fresh Tesseract instance per page so each memory baseline is clean. */
@@ -248,7 +250,7 @@ class OcrBenchmarkTest {
             sampler.finish()
             val (words, count) = words(tess)
             return Result(
-                text, words, initMs, recogniseMs, sampler.nativeBaseKb, sampler.nativePeakKb, sampler.pssBaseKb, sampler.pssPeakKb, peakRssKb(),
+                text, words, lines(tess), initMs, recogniseMs, sampler.nativeBaseKb, sampler.nativePeakKb, sampler.pssBaseKb, sampler.pssPeakKb, peakRssKb(),
                 tess.meanConfidence(), count, tess.libraryFlavor,
             )
         } finally {
@@ -281,6 +283,26 @@ class OcrBenchmarkTest {
             iter.delete()
         }
         return sb.toString() to count
+    }
+
+    /**
+     * lines.tsv rows: confidence and raw text (trailing newline included, escaped as `\n`, tabs as `\t`) of every text line, the level
+     * OSS-DocumentScanner's OCR filters its results at (docs/scanner-bench).
+     */
+    private fun lines(tess: TessBaseAPI): String {
+        val sb = StringBuilder("conf\ttext\n")
+        val iter = tess.resultIterator ?: return sb.toString()
+        try {
+            iter.begin()
+            do {
+                val text = iter.getUTF8Text(PageIteratorLevel.RIL_TEXTLINE) ?: continue
+                sb.append("%.2f".format(Locale.ROOT, iter.confidence(PageIteratorLevel.RIL_TEXTLINE))).append('\t')
+                    .append(text.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n")).append('\n')
+            } while (iter.next(PageIteratorLevel.RIL_TEXTLINE))
+        } finally {
+            iter.delete()
+        }
+        return sb.toString()
     }
 
     private fun appendRow(file: File, header: String, row: String) {
@@ -525,6 +547,65 @@ class OcrBenchmarkTest {
         }
         val swap = degrees != 180
         return Input.Ready(out, if (swap) h else w, if (swap) w else h, input.source, input.sourceDpi)
+    }
+
+    // Images mode: page images already warped, filtered and turned upright on the PC (docs/scanner-bench), pushed by `run.sh --images` into
+    // `ocr-bench/images/<set>/` with their images.tsv (image, page, variant, lang, dpi, order). Each is recognised exactly as it is: no
+    // detection, no scaling, no OSD. Output goes to `ocr-images/<set>/<model>/`, one file set per image.
+
+    @Test fun imagesFast() = images("fast")
+
+    @Test fun imagesBest() = images("best")
+
+    private fun images(model: String) {
+        val root = context.getExternalFilesDir(null)?.let { File(it, "ocr-bench/images") }
+        val sets = root?.listFiles().orEmpty().filter { File(it, "images.tsv").isFile }.sortedBy { it.name }
+        assumeTrue("no image sets pushed to ocr-bench/images", sets.isNotEmpty())
+        val dataPath = installModel(model)
+        for (set in sets) {
+            val dir = File(outputRoot(), "ocr-images/${set.name}/$model").apply { mkdirs() }
+            for (line in File(set, "images.tsv").readLines().drop(1).filter { it.isNotBlank() }) {
+                val c = line.split('\t')
+                val image = File(set, c[0])
+                // run.sh pushes the manifest whole but the images a chunk at a time.
+                if (!image.isFile) continue
+                val stem = c[0].substringBeforeLast('.')
+                val (lang, dpi) = c[3] to c[4].toInt()
+                val input = asIs(image)
+                if (input == null) {
+                    writeTable(File(dir, "$stem.failures.tsv"), "set\timage\tmodel\treason", "${set.name}\t${c[0]}\t$model\tcannot decode")
+                    continue
+                }
+                val r = recognise(dataPath, lang, input, dpi, PSM_DEFAULT)
+                File(dir, "$stem.txt").writeText(r.text + "\n")
+                File(dir, "$stem.words.tsv").writeText(r.words)
+                File(dir, "$stem.lines.tsv").writeText(r.lines)
+                writeTable(
+                    File(dir, "$stem.runs.tsv"),
+                    "set\timage\tpage\tvariant\tmodel\tlang\tdpi\twidth\theight\tinit_ms\trecognise_ms\tnative_base_kb\tnative_peak_kb\t" +
+                        "pss_base_kb\tpss_peak_kb\tvm_hwm_kb\tmean_conf\twords\tflavor",
+                    "${set.name}\t${c[0]}\t${c[1]}\t${c[2]}\t$model\t$lang\t$dpi\t${input.width}\t${input.height}\t${r.initMs}\t${r.recogniseMs}\t" +
+                        "${r.nativeBaseKb}\t${r.nativePeakKb}\t${r.pssBaseKb}\t${r.pssPeakKb}\t${r.hwmKb}\t${r.meanConfidence}\t${r.wordCount}\t${r.flavor}",
+                )
+                Log.i(TAG, "images ${set.name}/${c[0]} $model: ${r.recogniseMs} ms, ${r.wordCount} words")
+            }
+        }
+    }
+
+    /** The image's BT.601 grey at its own size, or null if it cannot be decoded. */
+    private fun asIs(image: File): Input.Ready? {
+        val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        val bitmap = BitmapFactory.decodeFile(image.path, options) ?: return null
+        val w = bitmap.width
+        val h = bitmap.height
+        val grey = ByteArray(w * h)
+        val row = IntArray(w)
+        for (y in 0 until h) {
+            bitmap.getPixels(row, 0, w, 0, y, w, 1)
+            for (x in 0 until w) grey[y * w + x] = luma(row[x] shr 16 and 0xff, row[x] shr 8 and 0xff, row[x] and 0xff)
+        }
+        bitmap.recycle()
+        return Input.Ready(grey, w, h, "as-is", Double.NaN)
     }
 
     private fun outcome(found: DetectionResult): String = when (found) {

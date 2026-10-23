@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: docs/ocr-bench/run.sh [--camera SET] [SET=image-folder ...]
 #        docs/ocr-bench/run.sh --field SET=photo-folder [--field SET2=folder2 ...]
+#        docs/ocr-bench/run.sh --images SET=image-folder [--images SET2=folder2 ...]
 # Fetches and verifies the language data, pushes page image sets to the phone, runs OcrBenchmarkTest through the shared device-test.sh,
 # collects the pulled output into docs/ocr-bench/results/ and scores it into docs/ocr-bench/results.md.
 #   --camera SET  copies the five newest photos from the phone's Camera folder, oldest first as pages a to e, into scans/SET/ as raw
@@ -10,6 +11,10 @@
 #                 Runs fieldDetect and the four field configurations, FIELD_CHUNK photos per instrumentation (default 4), collects into the
 #                 git-ignored docs/ocr-bench/field-out/SET/ and writes docs/ocr-bench/field-results.md. FIELD_METHODS overrides the method list.
 #                 The clean baseline only runs when plain sets are given too.
+#   --images SET=DIR  images mode: the images listed in DIR/images.tsv (made by docs/scanner-bench/bench.py) are recognised as they are, without
+#                 detection, scaling or OSD. Runs imagesFast and imagesBest (IMAGES_METHODS overrides), IMAGES_CHUNK images per instrumentation
+#                 (default 16), collects into the git-ignored docs/ocr-bench/images-out/SET/ and writes IMAGES_OUT (default
+#                 docs/scanner-bench/ocr-results.md). The clean baseline only runs when plain sets are given too.
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WT="$(cd "$HERE/../.." && pwd)"
@@ -25,9 +30,11 @@ python "$HERE/fetch_tessdata.py"
 
 SETS=("clean=$HERE/corpus/clean")
 FIELD_SETS=()
+IMAGE_SETS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --field) FIELD_SETS+=("$2"); shift 2 ;;
+    --images) IMAGE_SETS+=("$2"); shift 2 ;;
     --camera)
       SET="$2"; shift 2
       DEST="$HERE/scans/$SET"
@@ -87,6 +94,43 @@ if [ "${#FIELD_SETS[@]}" -gt 0 ]; then
   done
   adb shell rm -rf "$DEVICE_DIR"
   python "$HERE/score.py" --field "$OUT" --out "$HERE/field-results.md"
+  [ "${#SETS[@]}" -gt 1 ] || exit 0
+fi
+
+# Images mode. The manifest goes up whole with every chunk; the test skips the images that were not pushed.
+if [ "${#IMAGE_SETS[@]}" -gt 0 ]; then
+  OUT="$HERE/images-out"
+  PULLED="$WT/app/build/outputs/connected_android_test_additional_output"
+  CHUNK="${IMAGES_CHUNK:-16}"
+  for pair in "${IMAGE_SETS[@]}"; do
+    SET="${pair%%=*}"; DIR="${pair#*=}"
+    [ -f "$DIR/images.tsv" ] || { echo "no images.tsv in $DIR"; exit 1; }
+    rm -rf "${OUT:?}/$SET"
+    mkdir -p "$OUT/$SET"
+    cp "$DIR/images.tsv" "$OUT/$SET/images.tsv"
+  done
+  for method in ${IMAGES_METHODS:-imagesFast imagesBest}; do
+    for pair in "${IMAGE_SETS[@]}"; do
+      SET="${pair%%=*}"; DIR="${pair#*=}"
+      mapfile -t IMAGES < <(tail -n +2 "$DIR/images.tsv" | cut -f1 | tr -d '\r')
+      for ((i = 0; i < ${#IMAGES[@]}; i += CHUNK)); do
+        adb shell rm -rf "$DEVICE_DIR"
+        adb shell mkdir -p "$DEVICE_DIR/images/$SET"
+        adb push "$(host "$DIR/images.tsv")" "$DEVICE_DIR/images/$SET/images.tsv" >/dev/null
+        for image in "${IMAGES[@]:i:CHUNK}"; do
+          adb push "$(host "$DIR/$image")" "$DEVICE_DIR/images/$SET/$image" >/dev/null
+        done
+        echo "[images] $method $SET: from image $((i + 1)) of ${#IMAGES[@]}"
+        rm -rf "$PULLED"
+        bash "$BRIEFS/device-test.sh" "$WT" "com.haziaferi.scanknifeplus.ocr.OcrBenchmarkTest#$method"
+        SRC="$(find "$PULLED" -type d -name ocr-images | head -1)"
+        [ -n "$SRC" ] || { echo "no ocr-images output pulled from the device for $method"; exit 1; }
+        cp -r "$SRC"/. "$OUT/"
+      done
+    done
+  done
+  adb shell rm -rf "$DEVICE_DIR"
+  python "$HERE/score.py" --images "$OUT" --out "${IMAGES_OUT:-$WT/docs/scanner-bench/ocr-results.md}"
   [ "${#SETS[@]}" -gt 1 ] || exit 0
 fi
 

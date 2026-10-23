@@ -4,6 +4,7 @@ Usage:
   python score.py [--results DIR] [--truth DIR] [--out FILE]
   python score.py --check-images DIR     list which images in DIR match a ground-truth page (for adding real scans)
   python score.py --field DIR [--out FILE]   field mode (photos without ground truth, run.sh --field): writes field-results.md
+  python score.py --images DIR [--out FILE]  images mode (run.sh --images): writes docs/scanner-bench/ocr-results.md
 
 DIR (results) is the pulled `ocr-bench/` folder: <set>/<model>-<dpi>/ with runs.tsv, <page>.txt, <page>.words.tsv and optional
 failures.tsv, and the page segmentation runs as <set>/psm/<model>-<dpi>-psm<n>/. Text is NFC-normalised and whitespace-collapsed before scoring;
@@ -472,6 +473,100 @@ def field_report(field_dir, out_path):
     print(f"wrote {out_path}")
 
 
+def unescape_line(text):
+    """Undoes OcrBenchmarkTest.lines(): backslash-n, backslash-t and a doubled backslash back to the characters."""
+    out, i = [], 0
+    while i < len(text):
+        if text[i] == "\\" and i + 1 < len(text):
+            out.append({"n": "\n", "t": "\t", "\\": "\\"}.get(text[i + 1], text[i + 1]))
+            i += 2
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def images_set(set_dir, set_name, truth):
+    """One images-mode set: per page and variant, the stitched text (blocks in manifest order) scored against the truth, or word stats."""
+    from oss_ocr_filter import filtered_text
+
+    manifest = read_tsv(os.path.join(set_dir, "images.tsv"))
+    models = sorted(d for d in os.listdir(set_dir) if os.path.isdir(os.path.join(set_dir, d)))
+    out = [f"## Set `{set_name}`", ""]
+    for model in models:
+        mdir = os.path.join(set_dir, model)
+        groups = defaultdict(list)
+        for r in manifest:
+            groups[(r["page"], r["variant"])].append(r)
+        rows = []
+        for (page, variant), entries in groups.items():
+            entries.sort(key=lambda r: int(r["order"]))
+            stems = [os.path.splitext(r["image"])[0] for r in entries]
+            if not all(os.path.isfile(os.path.join(mdir, s + ".txt")) for s in stems):
+                continue
+            raw = "\n".join(read_text(os.path.join(mdir, s + ".txt")) for s in stems)
+            blocks = [[(float(l["conf"]), unescape_line(l["text"])) for l in read_tsv(os.path.join(mdir, s + ".lines.tsv"))] for s in stems]
+            runs = [r for s in stems for r in read_tsv(os.path.join(mdir, s + ".runs.tsv"))]
+            words = [w for s in stems for w in read_words(os.path.join(mdir, s + ".words.tsv"))]
+            ms = sum(int(r["recognise_ms"]) for r in runs)
+            texts = [("as recognised", raw)]
+            if variant.startswith("ossocr"):
+                texts.append(("their line filter", filtered_text(blocks)))
+            for how, text in texts:
+                rows.append((page, variant, how, ms, text, words))
+        scored = [r for r in rows if r[0] in truth]
+        if scored:
+            out += [f"### {model}: pages with ground truth", "",
+                    "CER/WER/missed words in %, summed over the pages of each variant (micro average); best first. Seconds are the total "
+                    "recognition time per page (all blocks).", "",
+                    "| Variant | Text | Pages | CER | WER | Missed words | Mean s/page |", "|---|---|---|---|---|---|---|"]
+            agg = defaultdict(lambda: [Score(), 0, 0])
+            for page, variant, how, ms, text, _ in scored:
+                a = agg[(variant, how)]
+                a[0].add(truth[page], text)
+                a[1] += 1
+                a[2] += ms
+            for (variant, how), (s, pages, ms) in sorted(agg.items(), key=lambda kv: kv[1][0].cer()):
+                out.append(f"| {variant} | {how} | {pages} | {fmt(s.cer())} | {fmt(s.wer())} | {fmt(s.missed())} | {ms / pages / 1000:.1f} |")
+            out.append("")
+        other = [r for r in rows if r[0] not in truth]
+        if other:
+            out += [f"### {model}: pages without ground truth", "",
+                    "Words and mean word confidence from words.tsv (all blocks); for their line filter, the words left in the filtered text.", "",
+                    "| Variant | Text | Pages | Words | Mean word conf | Mean s/page |", "|---|---|---|---|---|---|"]
+            agg = defaultdict(lambda: [0, 0, 0.0, 0, 0])
+            for page, variant, how, ms, text, words in other:
+                a = agg[(variant, how)]
+                a[0] += 1
+                a[1] += len(words) if how == "as recognised" else len(normalise(text).split())
+                a[2] += sum(c for c, _ in words)
+                a[3] += len(words)
+                a[4] += ms
+            for (variant, how), (pages, nwords, conf, nconf, ms) in sorted(agg.items()):
+                out.append(f"| {variant} | {how} | {pages} | {nwords} | {fmt(conf / nconf if nconf else float('nan'), 1)} | "
+                           f"{ms / pages / 1000:.1f} |")
+            out.append("")
+    return out
+
+
+def images_report(images_dir, truth_dir, out_path):
+    # The OSS-DocumentScanner line filter is a port with its own licence header, kept beside the other ports.
+    sys.path.insert(0, os.path.join(HERE, "..", "scanner-bench"))
+    truth = {os.path.splitext(n)[0]: read_text(os.path.join(truth_dir, n)) for n in os.listdir(truth_dir) if n.endswith(".txt")}
+    out = ["# Scanner benchmark: OCR of the prepared images", "",
+           "Generated by `docs/ocr-bench/score.py --images` from `run.sh --images` (method: docs/scanner-bench/README.md). Every image was "
+           "recognised exactly as prepared on the PC: PSM 3, LSTM, `user_defined_dpi` from images.tsv, no detection, scaling or OSD. Variants "
+           "`ours-*` and `oss-*` are the colour filters; `ossocr-app` is OSS-DocumentScanner's OCR input as its app sends it (adaptive threshold, "
+           "whole page), `ossocr-blocks` the same with the header-default text-block contours, blocks stitched in their order.", ""]
+    for set_name in sorted(os.listdir(images_dir)):
+        set_dir = os.path.join(images_dir, set_name)
+        if os.path.isfile(os.path.join(set_dir, "images.tsv")):
+            out += images_set(set_dir, set_name, truth)
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(out).rstrip() + "\n")
+    print(f"wrote {out_path}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=os.path.join(HERE, "results"))
@@ -479,7 +574,13 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "results.md"))
     ap.add_argument("--check-images", metavar="DIR")
     ap.add_argument("--field", metavar="DIR", help="score field-mode output (run.sh --field) instead; --out defaults to field-results.md")
+    ap.add_argument("--images", metavar="DIR", help="score images-mode output (run.sh --images); --out defaults to "
+                    "docs/scanner-bench/ocr-results.md")
     args = ap.parse_args()
+    if args.images:
+        out = args.out if args.out != ap.get_default("out") else os.path.join(HERE, "..", "scanner-bench", "ocr-results.md")
+        images_report(args.images, args.truth, out)
+        return
     if args.check_images:
         sys.exit(0 if check_images(args.check_images, args.truth) else 1)
     if args.field:
