@@ -84,6 +84,19 @@ Live path, JVM ms per frame: FrameAdapter's reduction to 320 px plus detection, 
 | 1280x960 | before the port | 16.0 | 21.2 | 47.3 |
 | 1280x960 | ScanKnife+ | 10.5 | 34.4 | 49.6 |
 
+On the phone (OnePlus 6T, Android 11; DetectorTimingDeviceTest, opt-in, its timing.tsv and frames.tsv copied into WORK as device-timing.tsv and device-frames.tsv): ms per call, the one-shot path on the full photo and the live path (FrameAdapter's reduction plus detection) on luminance frames made from the photos, each call warmed up once, then timed 145 times in all over 29 photos.
+
+| Path | Median ms | p90 ms | Max ms |
+|---|---|---|---|
+| one-shot new | 764.8 | 1204.6 | 1255.7 |
+| one-shot old | 391.5 | 419.0 | 465.7 |
+| live 640x480 new | 35.9 | 128.0 | 133.5 |
+| live 640x480 old | 89.1 | 94.0 | 103.1 |
+| live 1280x960 new | 36.1 | 127.6 | 133.3 |
+| live 1280x960 old | 88.9 | 94.0 | 103.4 |
+
+Photos where OSS-DocumentScanner's search found nothing and OpenScan's candidates answered (presumably the slow calls; 7-9 of 29 photos, about the top 25-30% of calls): one shot 7 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123334, IMG_20261023_123600, book-06, book-08, hand-01); live 640x480 8 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123313, IMG_20261023_123334, IMG_20261023_123600, book-06, book-08, hand-01); live 1280x960 9 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123313, IMG_20261023_123334, IMG_20261023_123600, IMG_20261023_123837, book-06, book-08, hand-01).
+
 ## 2. Gutter
 
 Two-page spreads (labels whose marked fold lies in the middle half of the quad; folds nearer an edge mark a single page with the facing page's edge and are skipped), warped with the labelled quad (turned so the fold is vertical). Error = |predicted - marked fold| as % of the spread's width; the marked fold is the mean x of the two fold points after the warp. Theirs runs as in their desktop test app (long edge 300 px plus a 10 px border, minPageWidthRatio 0.4); the app itself never calls it.

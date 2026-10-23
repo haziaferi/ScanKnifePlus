@@ -271,6 +271,24 @@ def score_detection(inv, labels, work):
         for size, t in timing["sizes"].items():
             for key, title in (("old", "before the port"), ("new", "ScanKnife+")):
                 out.append(f"| {size} | {title} | {t[key]['median']:.1f} | {t[key]['p90']:.1f} | {t[key]['max']:.1f} |")
+    device = os.path.join(work, "device-timing.tsv")
+    if os.path.isfile(device):
+        with open(device, encoding="utf-8") as f:
+            rows = list(csv.DictReader(f, delimiter="\t"))
+        out += ["", "On the phone (OnePlus 6T, Android 11; DetectorTimingDeviceTest, opt-in, its timing.tsv and frames.tsv copied into WORK as "
+                "device-timing.tsv and device-frames.tsv): ms per call, the one-shot path on the full photo and the live path (FrameAdapter's "
+                "reduction plus detection) on luminance frames made from the photos, each call warmed up once, then timed "
+                f"{rows[0]['calls'] if rows else '?'} times in all over {rows[0]['frames'] if rows else '?'} photos.", "",
+                "| Path | Median ms | p90 ms | Max ms |", "|---|---|---|---|"]
+        out += [f"| {r['path']} | {r['median_ms']} | {r['p90_ms']} | {r['max_ms']} |" for r in rows]
+        frames = os.path.join(work, "device-frames.tsv")
+        if os.path.isfile(frames):
+            with open(frames, encoding="utf-8") as f:
+                fr = list(csv.DictReader(f, delimiter="\t"))
+            cols = [c for c in fr[0] if c != "photo"] if fr else []
+            out += ["", "Photos where OSS-DocumentScanner's search found nothing and OpenScan's candidates answered (presumably the slow calls; 7-9 of 29 photos, about the top 25-30% of calls): " +
+                    "; ".join(f"{c.replace('_fallback', '').replace('_', ' ')} {sum(r[c] == 'true' for r in fr)} of {len(fr)} "
+                              f"({', '.join(r['photo'] for r in fr if r[c] == 'true')})" for c in cols) + "."]
     return out + [""], per
 
 
