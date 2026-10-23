@@ -36,9 +36,12 @@ SHOT_LABELS = {
     "2026_10_23_12_27_40": "GlassCam: reflective sachet",
 }
 
-# Clockwise quarter turns that make the text of a labelled page read upright after the warp (the warp keeps the photo's orientation).
-# Only pages that are OCR'd need one; judged from previews, like the orientation column of field-results.md.
-READING_TURNS = {"book-03": 3, "book-07": 3, "book-08": 3, "book-09": 1}
+# Photos whose label cannot score an outline detector (the labeller's notes): kept out of the headline detection numbers, shown apart.
+UNSUITABLE = {
+    "book-06": "page fills the frame, label = frame", "book-07": "page fills the frame, label = frame",
+    "book-08": "page fills the frame, label = frame", "book-09": "no paper edge, label = frame",
+    "IMG_20261023_124558": "folded page: two planes", "2026_10_23_12_27_40": "bottle-shaped sachet",
+}
 CORPUS_LANGS = {"a-english": "eng", "b-italian": "ita", "c-footnotes": "eng+ita", "d-receipt": "ita", "e-layout": "eng"}
 A4_300 = (2480, 3508)
 OUR_FILTERS = ["Original", "Auto", "Lighten", "Grayscale", "B&W", "Whiteboard"]
@@ -219,7 +222,7 @@ def score_detection(inv, labels, work):
         if r["id"] not in labels:
             continue
         label = labels[r["id"]]["quad"]
-        row = {"id": r["id"], "set": r["set"], "label": r["label"]}
+        row = {"id": r["id"], "set": r["set"], "label": r["label"], "unsuitable": UNSUITABLE.get(r["id"])}
         for key, _ in methods:
             src = oss.get(r["id"]) if key == "oss" else (ours.get(r["id"]) or {}).get(key)
             quad = src.get("quad") if src else None
@@ -229,10 +232,15 @@ def score_detection(inv, labels, work):
     out = ["## 1. Outline detection", "",
            "IoU of the detected quad with the hand-marked one (correct at IoU >= 0.9) and the largest corner error under the best corner "
            "matching, as % of the label's longer diagonal. Time is PC time for detection on the decoded photo (decode excluded), "
-           "Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0.", ""]
+           "Python/OpenCV for theirs and the JVM for ours; it is not device time. No quad counts as IoU 0. Photos whose label cannot score "
+           "an outline (page filling the frame, no paper edge, a folded page, a bottle-shaped sachet) are left out of the set rows and "
+           "counted in the `unsuitable` rows; book-01..05 and the two notes are cut off by the frame (corners on the frame edge) and stay in.", ""]
     out += ["| Set | Photos | Method | Correct | Found | Median IoU | Median corner error % | Median PC ms |", "|---|---|---|---|---|---|---|---|"]
-    for set_name in ("books", "corpus", "shots", "all"):
-        rows = [p for p in per if set_name == "all" or p["set"] == set_name]
+    for set_name in ("books", "corpus", "shots", "all", "unsuitable"):
+        if set_name == "unsuitable":
+            rows = [p for p in per if p["unsuitable"]]
+        else:
+            rows = [p for p in per if not p["unsuitable"] and (set_name == "all" or p["set"] == set_name)]
         if not rows:
             continue
         for key, title in methods:
@@ -248,7 +256,8 @@ def score_detection(inv, labels, work):
         for key, _ in methods:
             m = p[key]
             cells.append("not run" if not m["ran"] else (f"{m['iou']:.2f} / {fmt(m['err'])}" if m["found"] else "-"))
-        out.append(f"| {p['id']} | {p['label']} | " + " | ".join(cells) + " |")
+        note = f" (unsuitable: {p['unsuitable']})" if p["unsuitable"] else ""
+        out.append(f"| {p['id']} | {p['label']}{note} | " + " | ".join(cells) + " |")
     return out + [""], per
 
 
@@ -282,6 +291,9 @@ def score_gutter(inv, labels, work):
             fold = np.array([[h - y, x] for x, y in fold])
             h, w = w, h
         truth = float(fold[:, 0].mean()) / w
+        if not 0.25 <= truth <= 0.75:
+            print(f"[gutter] {r['id']}: fold at {truth:.3f}, not a spread", flush=True)
+            continue
         # As in their desktop test app (cpp/cpp_test_app/scanner.cpp:159, 780-782): resizeImageMax at 300 with a 10 px black border,
         # then detectGutterAndSplit(resized, 0.4).
         coef = max(w, h) / 300.0
@@ -295,7 +307,8 @@ def score_gutter(inv, labels, work):
         rows.append({"id": r["id"], "label": r["label"], "truth": truth, "pred": pred, "found": found, "ms": ms})
         print(f"[gutter] {r['id']}: fold {truth:.3f}, theirs {pred}", flush=True)
     out = ["## 2. Gutter", "",
-           "Book spreads with a marked fold, warped with the labelled quad (turned so the fold is vertical). Error = |predicted - marked "
+           "Two-page spreads (labels whose marked fold lies in the middle half of the quad; folds nearer an edge mark a single page with "
+           "the facing page's edge and are skipped), warped with the labelled quad (turned so the fold is vertical). Error = |predicted - marked "
            "fold| as % of the spread's width; the marked fold is the mean x of the two fold points after the warp. Theirs runs as in their "
            "desktop test app (long edge 300 px plus a 10 px border, minPageWidthRatio 0.4); the app itself never calls it.", ""]
     if not rows:
@@ -317,18 +330,20 @@ def lab_l(rgb):
 
 
 def page_masks(original):
-    """Paper = above the page's own Otsu threshold (on the unfiltered warp), eroded; ink = the rest, eroded the same way."""
+    """Paper = above the page's own Otsu threshold (on the unfiltered warp), eroded 5x5; ink = the rest, not eroded (text strokes are only a
+    few pixels wide at 300 DPI, so an erosion would leave only figures and shadows)."""
     grey = cv2.cvtColor(original, cv2.COLOR_RGB2GRAY)
     _, paper = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     k = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    return cv2.erode(paper, k) > 0, cv2.erode(255 - paper, k) > 0
+    return cv2.erode(paper, k) > 0, paper == 0
 
 
 def filter_metrics(img, paper, ink):
     l = lab_l(img)
     lp, li = l[paper], l[ink]
     return {"std": float(lp.std()) if lp.size else None, "spread": float(np.percentile(lp, 95) - np.percentile(lp, 5)) if lp.size else None,
-            "contrast": float(np.median(lp) - np.median(li)) if lp.size and li.size else None}
+            "contrast": float(np.median(lp) - np.median(li)) if lp.size and li.size else None,
+            "core": float(np.median(lp) - np.percentile(li, 10)) if lp.size and li.size else None}
 
 
 def score_filters(inv, labels, work):
@@ -361,9 +376,11 @@ def score_filters(inv, labels, work):
            "Every labelled photo warped with its hand-marked quad by our PerspectiveCrop (corpus pages to A4 at 300 DPI, others to their natural "
            "size capped at 3508 px), so detection plays no part. Ours run on the JVM, theirs (default options, as the app's transform list "
            "applies them) in Python/OpenCV. L* is CIELAB lightness (0-100). Paper = pixels above the unfiltered page's Otsu threshold, "
-           "eroded 5x5; ink = the rest, eroded the same. Uniformity: standard deviation and p5-p95 spread of paper L* (lower is flatter). "
-           "Contrast: median paper L* minus median ink L* (higher is crisper). Medians over pages; PC ms is median time per page, not device time.", ""]
-    out += ["| Filter | Pages | Paper L* std | Paper L* p5-p95 | Ink/paper contrast L* | Median PC ms |", "|---|---|---|---|---|---|"]
+           "eroded 5x5; ink = the rest (not eroded, so thin strokes count). Uniformity: standard deviation and p5-p95 spread of paper L* (lower is flatter). "
+           "Contrast: median paper L* minus median ink L* (higher is crisper); stroke cores: median paper L* minus the 10th percentile of ink L*, "
+           "which still sees text a filter has thinned. Medians over pages; PC ms is median time per page, not device time.", ""]
+    out += ["| Filter | Pages | Paper L* std | Paper L* p5-p95 | Ink/paper contrast L* | Stroke-core contrast L* | Median PC ms |",
+            "|---|---|---|---|---|---|---|"]
     for set_name in ("all",):
         for k in keys:
             vals = [metrics[p][k] for p in metrics if k in metrics[p]]
@@ -371,7 +388,7 @@ def score_filters(inv, labels, work):
                 continue
             g = lambda f: median([v[f] for v in vals if v.get(f) is not None])
             name = ("ours " if k.startswith("ours") else "theirs ") + k.split(":", 1)[1]
-            out.append(f"| {name} | {len(vals)} | {fmt(g('std'))} | {fmt(g('spread'))} | {fmt(g('contrast'))} | {fmt(g('ms'), 0)} |")
+            out.append(f"| {name} | {len(vals)} | {fmt(g('std'))} | {fmt(g('spread'))} | {fmt(g('contrast'))} | {fmt(g('core'))} | {fmt(g('ms'), 0)} |")
     out += ["", "By set (median paper L* std / contrast):", "", "| Filter | " + " | ".join(("books", "corpus", "shots")) + " |", "|---|---|---|---|"]
     sets = {r["id"]: r["set"] for r in inv}
     for k in keys:
@@ -389,14 +406,9 @@ def to_grey(rgb):
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
 
-def turn(img, quarter):
-    return {0: img, 1: cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE), 2: cv2.rotate(img, cv2.ROTATE_180),
-            3: cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)}[quarter % 4]
-
-
 def prepare_ocr(inv, labels, work):
     """Image sets for `docs/ocr-bench/run.sh --images` (no detection, no OSD on the device): every filter of every corpus page, book page
-    and handwritten sheet, upright and grey, plus their OCR preprocessing (whole binarised page as the app sends it, and the text-block
+    and handwritten sheet in grey (the labels give the corners in reading order, so every warp is upright), plus their OCR preprocessing (whole binarised page as the app sends it, and the text-block
     crops of the header defaults) with an order manifest."""
     root = os.path.join(work, "ocr")
     shutil.rmtree(root, ignore_errors=True)
@@ -408,16 +420,15 @@ def prepare_ocr(inv, labels, work):
             continue
         set_name = "sb-corpus" if r["set"] == "corpus" else "sb-books"
         lang = CORPUS_LANGS.get(r["id"], "ita")
-        quarter = READING_TURNS.get(r["id"], 0)
         variants = [("ours-" + n.replace("&", ""), os.path.join(pdir, n.replace("&", "") + ".png")) for n in OUR_FILTERS]
         variants += [("oss-" + n, os.path.join(pdir, "oss-" + n + ".png")) for n in OSS_FILTERS]
         for variant, src in variants:
             if not os.path.isfile(src):
                 continue
             name = f"{r['id']}~{variant}.png"
-            write_png(os.path.join(root, set_name, name), turn(to_grey(read_rgb(src)), quarter), rgb=False)
+            write_png(os.path.join(root, set_name, name), to_grey(read_rgb(src)), rgb=False)
             sets[set_name].append((name, r["id"], variant, lang, 300, 0))
-        original = turn(read_rgb(os.path.join(pdir, "Original.png")), quarter)
+        original = read_rgb(os.path.join(pdir, "Original.png"))
         for variant, contours in (("ossocr-app", False), ("ossocr-blocks", True)):
             for i, (_, block) in enumerate(oss_port.ocr_blocks(original, contours)):
                 name = f"{r['id']}~{variant}~{i:03d}.png"
@@ -445,7 +456,7 @@ def score_autocapture(work):
             "Theirs median ms |", "|---|---|---|---|---|---|---|---|---|---|"]
     for s in data["scenarios"]:
         o, t, t2 = s["ours"], s["theirs"], s["theirs2"]
-        out.append(f"| {s['name']} | {'yes' if s['shouldCapture'] else 'no'} | {o['runsCaptured']}/{s['runs']} | {fmt(o['medianMs'], 0)} | "
+        out.append(f"| {s['name']} | { {True: 'yes', False: 'no'}.get(s['shouldCapture'], '-') } | {o['runsCaptured']}/{s['runs']} | {fmt(o['medianMs'], 0)} | "
                    f"{o['meanCaptures']:.2f} | {t['runsCaptured']}/{s['runs']} | {fmt(t['medianMs'], 0)} | {t['meanCaptures']:.2f} | "
                    f"{t2['runsCaptured']}/{s['runs']} | {fmt(t2['medianMs'], 0)} |")
     out += ["", "Summary: " + data["summary"], ""]
@@ -466,7 +477,7 @@ def score(args):
     fil, _ = score_filters(inv, labels, work)
     counts = prepare_ocr(inv, labels, work)
     ocr = ["## 4. OCR", "",
-           "Device step, run by hand (README, \"OCR on the phone\"); the scores land in [ocr-results.md](ocr-results.md). Images prepared: " +
+           "Device step, run by hand (README, \"Running\"); the scores land in [ocr-results.md](ocr-results.md). Images prepared: " +
            ", ".join(f"`{k}` {v}" for k, v in counts.items()) + ".", ""]
     lines += det + gut + fil + ocr + score_autocapture(work)
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
