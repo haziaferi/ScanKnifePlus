@@ -47,14 +47,6 @@ done
 
 # Field mode. Photos are pushed a chunk at a time: one instrumentation per method and chunk keeps each run short enough for BgDetect.
 if [ "${#FIELD_SETS[@]}" -gt 0 ]; then
-  # The OSD shim (native/tess_osd.c) goes into the git-ignored androidTest jniLibs, so only the test APK carries it.
-  SDK="$(sed -n 's/^sdk\.dir=//p' "$WT/local.properties" 2>/dev/null | tr -d '\r' | sed 's/\\:/:/g; s/\\\\/\//g')"
-  SDK="${SDK:-${ANDROID_HOME:-}}"
-  NDK="$(ls -d "$SDK"/ndk/*/ 2>/dev/null | sort -V | tail -1)"
-  CLANG="$(ls "$NDK"toolchains/llvm/prebuilt/*/bin/aarch64-linux-android24-clang{.cmd,} 2>/dev/null | head -1)"
-  [ -n "$CLANG" ] || { echo "no NDK clang for arm64 under $SDK/ndk: the OSD shim cannot be built"; exit 1; }
-  mkdir -p "$WT/app/src/androidTest/jniLibs/arm64-v8a"
-  "$CLANG" -shared -fPIC -O2 -Wall -o "$WT/app/src/androidTest/jniLibs/arm64-v8a/libtessosd.so" "$HERE/native/tess_osd.c" -ldl
   OUT="$HERE/field-out"
   PULLED="$WT/app/build/outputs/connected_android_test_additional_output"
   CHUNK="${FIELD_CHUNK:-4}"
