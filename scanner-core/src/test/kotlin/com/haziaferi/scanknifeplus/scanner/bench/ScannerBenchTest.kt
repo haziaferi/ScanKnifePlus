@@ -28,6 +28,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import org.junit.Assert.assertEquals
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 
@@ -69,6 +70,42 @@ class ScannerBenchTest {
             println("[bench] detection ${row.id}")
         }
         File(dir, "detect-ours.json").writeText(json.append("\n}\n").toString())
+    }
+
+    /**
+     * Guards speed work on the detector: every photo through every path (one-shot on B, G, R; live on 640 x 480 and 1280 x 960 frames, with
+     * no previous quad and with the found quad fed back), with every corner written at full precision. The first run records
+     * detector-reference.tsv in the work folder; later runs fail on any quad that differs from it. Delete the file to record again.
+     */
+    @Test fun detectorIdentity() {
+        val dir = workDir()
+        val lines = ArrayList<String>()
+        fun record(id: String, path: String, quad: Quad?) {
+            lines += "$id\t$path\t${quad?.points?.joinToString(" ") { "${it.x} ${it.y}" } ?: "none"}"
+        }
+        for (row in inventory(dir)) {
+            val image = readRgba(File(dir, "upright/${row.id}.png"))
+            StoredImage.flattenOntoWhite(image.pixels)
+            record(row.id, "one-shot", (DocumentDetector.detectFromRgba(image.pixels, image.width, image.height) as? DetectionResult.Success)?.quad)
+            for ((fw, fh) in listOf(640 to 480, 1280 to 960)) {
+                val (w, h) = FrameAdapter.downsampledSize(fw, fh)!!
+                val gray = FrameAdapter.grayscaleFromYPlane(landscapeLuma(image, fw, fh), fw, fw, fh)!!
+                val quad = DocumentDetector.detectQuadFromGrayscale(gray, w, h)
+                record(row.id, "live ${fw}x$fh", quad)
+                record(row.id, "live ${fw}x$fh previous", DocumentDetector.detectQuadFromGrayscale(gray, w, h, quad))
+            }
+        }
+        val reference = File(dir, "detector-reference.tsv")
+        if (!reference.isFile) {
+            reference.writeText(lines.joinToString("\n", postfix = "\n"))
+            println("[bench] identity: recorded ${lines.size} quads")
+            return
+        }
+        val expected = reference.readLines().filter { it.isNotBlank() }
+        val differing = expected.zip(lines).filter { (e, a) -> e != a }.map { it.first.substringBeforeLast('\t') }
+        println("[bench] identity: ${lines.size} quads, ${differing.size} differ")
+        assertEquals("paths", expected.size, lines.size)
+        assertEquals("quads that differ from detector-reference.tsv", emptyList<String>(), differing)
     }
 
     /**
