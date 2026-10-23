@@ -40,6 +40,9 @@ internal object SquareFinder {
     private const val MIN_AREA_FACTOR = 0.1
     private const val MIN_ARC_LENGTH = 100.0
 
+    /** Each step of a traced border is at most sqrt(2) long, so a border of fewer pixels than this is shorter than [MIN_ARC_LENGTH]. */
+    private const val MIN_CHAIN_POINTS = 71
+
     /** A contour covering 92% of the frame inside the border or more is the frame itself, not a page. */
     private const val MAX_AREA_FACTOR = 0.92
 
@@ -81,7 +84,7 @@ internal object SquareFinder {
     private fun collectSquares(mask: ByteArray, width: Int, height: Int, weight: Int, out: MutableList<Square>) {
         val minArea = width.toDouble() * height * MIN_AREA_FACTOR
         val maxArea = (width - 2.0 * BORDER) * (height - 2.0 * BORDER) * MAX_AREA_FACTOR
-        for (contour in ContourTracing.findContours(mask, width, height)) {
+        for (contour in ContourTracing.findContours(mask, width, height, MIN_CHAIN_POINTS, minArea)) {
             val arc = ContourTracing.arcLength(contour)
             val area = ContourTracing.area(contour)
             if (arc < MIN_ARC_LENGTH || area < minArea || area >= maxArea) continue
@@ -127,9 +130,10 @@ internal object ContourTracing {
 
     /**
      * Every outer and hole border of the 0/1 [mask], each compressed to the points where its direction changes. Pixels outside the mask
-     * count as 0.
+     * count as 0. Borders of fewer than [minPoints] pixels, or whose bounding box is smaller than [minBoxArea], are traced (tracing marks the
+     * image) but not returned.
      */
-    fun findContours(mask: ByteArray, width: Int, height: Int): List<IntArray> {
+    fun findContours(mask: ByteArray, width: Int, height: Int, minPoints: Int = 0, minBoxArea: Double = 0.0): List<IntArray> {
         val w = width + 2
         val f = IntArray(w * (height + 2))
         for (y in 0 until height) {
@@ -155,12 +159,6 @@ internal object ContourTracing {
                 nbd++
                 var n = 0
 
-                fun add(q: Int) {
-                    if (n + 2 > chain.size) chain = chain.copyOf(chain.size * 2)
-                    chain[n++] = q % w - 1
-                    chain[n++] = q / w - 1
-                }
-
                 // Clockwise from the start direction for the first non-zero neighbour.
                 var d1 = -1
                 for (k in 0 until 8) {
@@ -172,15 +170,16 @@ internal object ContourTracing {
                 }
                 if (d1 < 0) {
                     f[p] = -nbd
-                    add(p)
-                    contours += chain.copyOf(n)
+                    if (minPoints <= 1 && minBoxArea <= 0.0) contours += intArrayOf(x - 1, y - 1)
                     continue
                 }
                 val p1 = p + offsets[d1]
                 var cur = p
                 var dirToPrev = d1
                 while (true) {
-                    add(cur)
+                    if (n + 2 > chain.size) chain = chain.copyOf(chain.size * 2)
+                    chain[n++] = cur % w - 1
+                    chain[n++] = cur / w - 1
                     // Counter-clockwise from the neighbour after the previous pixel for the next non-zero neighbour.
                     var eastZero = false
                     var dNext = -1
@@ -202,10 +201,25 @@ internal object ContourTracing {
                     dirToPrev = (dNext + 4) % 8
                     cur = next
                 }
-                contours += compress(chain, n)
+                if (n / 2 >= minPoints && boxArea(chain, n) >= minBoxArea) contours += compress(chain, n)
             }
         }
         return contours
+    }
+
+    /** Area of the bounding box of the first [n] / 2 points of [chain]: no polygon through them is larger. */
+    private fun boxArea(chain: IntArray, n: Int): Double {
+        var minX = Int.MAX_VALUE
+        var maxX = Int.MIN_VALUE
+        var minY = Int.MAX_VALUE
+        var maxY = Int.MIN_VALUE
+        for (i in 0 until n step 2) {
+            if (chain[i] < minX) minX = chain[i]
+            if (chain[i] > maxX) maxX = chain[i]
+            if (chain[i + 1] < minY) minY = chain[i + 1]
+            if (chain[i + 1] > maxY) maxY = chain[i + 1]
+        }
+        return (maxX - minX).toDouble() * (maxY - minY)
     }
 
     /** CHAIN_APPROX_SIMPLE: keeps the first point and every point where the step direction changes. */

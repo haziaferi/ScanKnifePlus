@@ -10,36 +10,36 @@ IoU of the detected quad with the hand-marked one (correct at IoU >= 0.9) and th
 
 | Set | Photos | Method | Correct | Found | Median IoU | Median corner error % | Median PC ms |
 |---|---|---|---|---|---|---|---|
-| books | 7 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 7 | 0.82 | 9.8 | 212 |
-| books | 7 | ScanKnife+ before the port (OpenScan candidates only) | 2 | 7 | 0.83 | 13.0 | 71 |
+| books | 7 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 7 | 0.82 | 9.8 | 201 |
+| books | 7 | ScanKnife+ before the port (OpenScan candidates only) | 2 | 7 | 0.83 | 13.0 | 58 |
 | books | 7 | OSS-DocumentScanner (scanPoint, one-shot path) | 2 | 6 | 0.82 | 9.5 | 48 |
-| books | 7 | hybrid: old candidates, their score | 2 | 7 | 0.83 | 13.0 | 64 |
-| books | 7 | ScanKnife+ live path (640x480 frame) | 3 | 7 | 0.89 | 5.3 | 15 |
-| books | 7 | before the port, live path | 3 | 7 | 0.90 | 5.5 | 22 |
-| corpus | 5 | ScanKnife+ (DocumentDetector.detectFromRgba) | 5 | 5 | 0.94 | 5.0 | 134 |
-| corpus | 5 | ScanKnife+ before the port (OpenScan candidates only) | 5 | 5 | 0.93 | 4.2 | 50 |
+| books | 7 | hybrid: old candidates, their score | 2 | 7 | 0.83 | 13.0 | 56 |
+| books | 7 | ScanKnife+ live path (640x480 frame) | 3 | 7 | 0.89 | 5.3 | 23 |
+| books | 7 | before the port, live path | 3 | 7 | 0.90 | 5.5 | 18 |
+| corpus | 5 | ScanKnife+ (DocumentDetector.detectFromRgba) | 5 | 5 | 0.94 | 5.0 | 146 |
+| corpus | 5 | ScanKnife+ before the port (OpenScan candidates only) | 5 | 5 | 0.93 | 4.2 | 31 |
 | corpus | 5 | OSS-DocumentScanner (scanPoint, one-shot path) | 5 | 5 | 0.94 | 5.0 | 42 |
-| corpus | 5 | hybrid: old candidates, their score | 5 | 5 | 0.93 | 3.7 | 52 |
-| corpus | 5 | ScanKnife+ live path (640x480 frame) | 5 | 5 | 0.97 | 0.9 | 12 |
-| corpus | 5 | before the port, live path | 4 | 5 | 0.92 | 4.2 | 15 |
-| shots | 11 | ScanKnife+ (DocumentDetector.detectFromRgba) | 9 | 11 | 0.96 | 1.4 | 163 |
-| shots | 11 | ScanKnife+ before the port (OpenScan candidates only) | 7 | 11 | 0.93 | 5.4 | 68 |
+| corpus | 5 | hybrid: old candidates, their score | 5 | 5 | 0.93 | 3.7 | 24 |
+| corpus | 5 | ScanKnife+ live path (640x480 frame) | 5 | 5 | 0.97 | 0.9 | 14 |
+| corpus | 5 | before the port, live path | 4 | 5 | 0.92 | 4.2 | 12 |
+| shots | 11 | ScanKnife+ (DocumentDetector.detectFromRgba) | 9 | 11 | 0.96 | 1.4 | 155 |
+| shots | 11 | ScanKnife+ before the port (OpenScan candidates only) | 7 | 11 | 0.93 | 5.4 | 34 |
 | shots | 11 | OSS-DocumentScanner (scanPoint, one-shot path) | 8 | 8 | 0.96 | 1.3 | 46 |
-| shots | 11 | hybrid: old candidates, their score | 7 | 11 | 0.92 | 5.5 | 64 |
-| shots | 11 | ScanKnife+ live path (640x480 frame) | 7 | 11 | 0.94 | 2.6 | 16 |
-| shots | 11 | before the port, live path | 1 | 11 | 0.87 | 9.0 | 20 |
-| all | 23 | ScanKnife+ (DocumentDetector.detectFromRgba) | 16 | 23 | 0.94 | 4.6 | 163 |
-| all | 23 | ScanKnife+ before the port (OpenScan candidates only) | 14 | 23 | 0.92 | 4.7 | 68 |
+| shots | 11 | hybrid: old candidates, their score | 7 | 11 | 0.92 | 5.5 | 34 |
+| shots | 11 | ScanKnife+ live path (640x480 frame) | 7 | 11 | 0.94 | 2.6 | 17 |
+| shots | 11 | before the port, live path | 1 | 11 | 0.87 | 9.0 | 13 |
+| all | 23 | ScanKnife+ (DocumentDetector.detectFromRgba) | 16 | 23 | 0.94 | 4.6 | 164 |
+| all | 23 | ScanKnife+ before the port (OpenScan candidates only) | 14 | 23 | 0.92 | 4.7 | 36 |
 | all | 23 | OSS-DocumentScanner (scanPoint, one-shot path) | 15 | 19 | 0.94 | 4.3 | 44 |
-| all | 23 | hybrid: old candidates, their score | 14 | 23 | 0.92 | 4.7 | 64 |
-| all | 23 | ScanKnife+ live path (640x480 frame) | 15 | 23 | 0.94 | 2.6 | 14 |
-| all | 23 | before the port, live path | 8 | 23 | 0.88 | 5.5 | 19 |
-| unsuitable | 6 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 6 | 0.71 | 19.0 | 212 |
-| unsuitable | 6 | ScanKnife+ before the port (OpenScan candidates only) | 1 | 6 | 0.63 | 30.2 | 66 |
+| all | 23 | hybrid: old candidates, their score | 14 | 23 | 0.92 | 4.7 | 35 |
+| all | 23 | ScanKnife+ live path (640x480 frame) | 15 | 23 | 0.94 | 2.6 | 15 |
+| all | 23 | before the port, live path | 8 | 23 | 0.88 | 5.5 | 13 |
+| unsuitable | 6 | ScanKnife+ (DocumentDetector.detectFromRgba) | 2 | 6 | 0.71 | 19.0 | 192 |
+| unsuitable | 6 | ScanKnife+ before the port (OpenScan candidates only) | 1 | 6 | 0.63 | 30.2 | 42 |
 | unsuitable | 6 | OSS-DocumentScanner (scanPoint, one-shot path) | 2 | 3 | 0.24 | 4.6 | 67 |
-| unsuitable | 6 | hybrid: old candidates, their score | 1 | 6 | 0.45 | 32.4 | 70 |
-| unsuitable | 6 | ScanKnife+ live path (640x480 frame) | 2 | 6 | 0.79 | 13.7 | 23 |
-| unsuitable | 6 | before the port, live path | 0 | 6 | 0.77 | 13.7 | 17 |
+| unsuitable | 6 | hybrid: old candidates, their score | 1 | 6 | 0.45 | 32.4 | 38 |
+| unsuitable | 6 | ScanKnife+ live path (640x480 frame) | 2 | 6 | 0.79 | 13.7 | 20 |
+| unsuitable | 6 | before the port, live path | 0 | 6 | 0.77 | 13.7 | 15 |
 
 Per photo (IoU / corner error %; `-` = no quad):
 
@@ -79,21 +79,21 @@ Live path, JVM ms per frame: FrameAdapter's reduction to 320 px plus detection, 
 
 | Analysis frame | Detector | Median ms | p90 ms | Max ms |
 |---|---|---|---|---|
-| 640x480 | before the port | 14.1 | 18.2 | 26.1 |
-| 640x480 | ScanKnife+ | 8.7 | 29.5 | 40.8 |
-| 1280x960 | before the port | 16.0 | 21.2 | 47.3 |
-| 1280x960 | ScanKnife+ | 10.5 | 34.4 | 49.6 |
+| 640x480 | before the port | 9.1 | 11.6 | 13.3 |
+| 640x480 | ScanKnife+ | 10.2 | 25.4 | 32.4 |
+| 1280x960 | before the port | 9.1 | 17.5 | 94.2 |
+| 1280x960 | ScanKnife+ | 12.1 | 25.6 | 69.9 |
 
 On the phone (OnePlus 6T, Android 11; DetectorTimingDeviceTest, opt-in, its timing.tsv and frames.tsv copied into WORK as device-timing.tsv and device-frames.tsv): ms per call, the one-shot path on the full photo and the live path (FrameAdapter's reduction plus detection) on luminance frames made from the photos, each call warmed up once, then timed 145 times in all over 29 photos.
 
 | Path | Median ms | p90 ms | Max ms |
 |---|---|---|---|
-| one-shot new | 764.8 | 1204.6 | 1255.7 |
-| one-shot old | 391.5 | 419.0 | 465.7 |
-| live 640x480 new | 35.9 | 128.0 | 133.5 |
-| live 640x480 old | 89.1 | 94.0 | 103.1 |
-| live 1280x960 new | 36.1 | 127.6 | 133.3 |
-| live 1280x960 old | 88.9 | 94.0 | 103.4 |
+| one-shot new | 144.6 | 387.0 | 407.6 |
+| one-shot old | 171.6 | 185.7 | 195.1 |
+| live 640x480 new | 35.5 | 81.1 | 85.1 |
+| live 640x480 old | 42.9 | 45.2 | 48.3 |
+| live 1280x960 new | 35.6 | 80.9 | 86.0 |
+| live 1280x960 old | 42.9 | 45.1 | 47.8 |
 
 Photos where OSS-DocumentScanner's search found nothing and OpenScan's candidates answered (presumably the slow calls; 7-9 of 29 photos, about the top 25-30% of calls): one shot 7 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123334, IMG_20261023_123600, book-06, book-08, hand-01); live 640x480 8 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123313, IMG_20261023_123334, IMG_20261023_123600, book-06, book-08, hand-01); live 1280x960 9 of 29 (2026_10_23_12_27_40, IMG_20261023_122917, IMG_20261023_123313, IMG_20261023_123334, IMG_20261023_123600, IMG_20261023_123837, book-06, book-08, hand-01).
 

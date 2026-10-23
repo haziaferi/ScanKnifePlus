@@ -16,29 +16,66 @@ import kotlin.math.roundToInt
  */
 internal object EdgeMasks {
     /**
-     * Area-average shrink of the channels at [offsets] of [src] ([stride] bytes per pixel) to [dstW] x [dstH], like OpenCV's `INTER_AREA`:
-     * each output pixel is the mean of the source area it covers, source pixels on a cell boundary weighted by their share. One pass over
-     * the source for all channels; [dstW] and [dstH] must not exceed the source size.
+     * Area-average shrink of the channels at [offsets] (one or three) of [src] ([stride] bytes per pixel) to [dstW] x [dstH], like OpenCV's
+     * `INTER_AREA`: each output pixel is the mean of the source area it covers, source pixels on a cell boundary weighted by their share. One
+     * pass over the source for all channels; [dstW] and [dstH] must not exceed the source size.
      */
     fun areaResample(src: ByteArray, srcW: Int, srcH: Int, stride: Int, offsets: IntArray, dstW: Int, dstH: Int): List<ByteArray> {
+        require(offsets.size == 1 || offsets.size == 3) { "one or three channels" }
         val xs = Split(srcW, dstW)
         val ys = Split(srcH, dstH)
         val channels = offsets.size
+        val o0 = offsets[0]
+        val o1 = offsets[if (channels == 3) 1 else 0]
+        val o2 = offsets[if (channels == 3) 2 else 0]
+        val first = xs.first
+        val firstWeight = xs.firstWeight
         val row = DoubleArray(dstW * channels)
         val acc = DoubleArray(dstW * dstH * channels)
         for (y in 0 until srcH) {
-            row.fill(0.0)
+            // Each output cell sums its source pixels left to right in local accumulators: the share of a boundary pixel that belongs to the
+            // next cell is carried over and starts that cell's sum, the same additions in the same order as summing into the row directly.
             var p = y * srcW * stride
-            for (x in 0 until srcW) {
-                val d0 = xs.first[x] * channels
-                val w0 = xs.firstWeight[x]
-                val w1 = 1 - w0
-                for (c in 0 until channels) {
-                    val v = src.u8(p + offsets[c]).toDouble()
-                    row[d0 + c] += v * w0
-                    if (w1 > 0) row[d0 + channels + c] += v * w1
+            var x = 0
+            var carry0 = 0.0
+            var carry1 = 0.0
+            var carry2 = 0.0
+            for (d in 0 until dstW) {
+                var a0 = carry0
+                var a1 = carry1
+                var a2 = carry2
+                carry0 = 0.0
+                carry1 = 0.0
+                carry2 = 0.0
+                while (x < srcW && first[x] == d) {
+                    val w0 = firstWeight[x]
+                    val v0 = (src[p + o0].toInt() and 0xFF).toDouble()
+                    val v1 = (src[p + o1].toInt() and 0xFF).toDouble()
+                    val v2 = (src[p + o2].toInt() and 0xFF).toDouble()
+                    if (w0 == 1.0) {
+                        // v * 1.0 is v exactly, so whole pixels skip the multiply without changing a bit of the sum.
+                        a0 += v0
+                        a1 += v1
+                        a2 += v2
+                    } else {
+                        a0 += v0 * w0
+                        a1 += v1 * w0
+                        a2 += v2 * w0
+                        val w1 = 1 - w0
+                        if (w1 > 0) {
+                            carry0 = v0 * w1
+                            carry1 = v1 * w1
+                            carry2 = v2 * w1
+                        }
+                    }
+                    p += stride
+                    x++
                 }
-                p += stride
+                row[d * channels] = a0
+                if (channels == 3) {
+                    row[d * 3 + 1] = a1
+                    row[d * 3 + 2] = a2
+                }
             }
             val wy0 = ys.firstWeight[y]
             val base0 = ys.first[y] * dstW * channels
@@ -169,6 +206,10 @@ internal object EdgeMasks {
         /** Whether each pixel is a local maximum of the magnitude across its edge (before the low threshold). */
         private val localMax = BooleanArray(width * height)
 
+        /** Hysteresis buffers, reused by every [edges] call: 0 = not an edge, 1 = weak (a local maximum above low), 2 = edge. */
+        private val state = ByteArray(width * height)
+        private val stack = IntArray(width * height)
+
         init {
             val dxs = IntArray(width * height)
             val dys = IntArray(width * height)
@@ -213,9 +254,7 @@ internal object EdgeMasks {
         /** The 0/1 edge mask: local maxima above [low] that are 8-connected to one above [high]. */
         fun edges(low: Int, high: Int): ByteArray {
             val n = width * height
-            // 0 = not an edge, 1 = weak (a local maximum above low), 2 = edge.
-            val state = ByteArray(n)
-            val stack = IntArray(n)
+            state.fill(0)
             var top = 0
             for (i in 0 until n) {
                 val m = mag[i]

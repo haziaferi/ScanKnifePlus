@@ -18,9 +18,10 @@ class EdgeMasksTest {
         assertArrayEquals(byteArrayOf(30, 150.toByte()), EdgeMasks.areaResample(three, 3, 1, 1, intArrayOf(0), 2, 1).single())
         // Channels of an RGBA buffer, in the order asked for.
         val rgba = byteArrayOf(10, 20, 30, 0, 50, 60, 70, 0)
-        val (b, g) = EdgeMasks.areaResample(rgba, 2, 1, 4, intArrayOf(2, 1), 1, 1)
+        val (b, g, r) = EdgeMasks.areaResample(rgba, 2, 1, 4, intArrayOf(2, 1, 0), 1, 1)
         assertArrayEquals(byteArrayOf(50), b)
         assertArrayEquals(byteArrayOf(40), g)
+        assertArrayEquals(byteArrayOf(30), r)
     }
 
     @Test

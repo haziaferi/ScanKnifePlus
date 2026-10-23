@@ -28,21 +28,21 @@ object EdgeDetection {
         return gray
     }
 
-    /** A 3x3 Gaussian blur (approximating OpenCV's `GaussianBlur(3x3)`). */
+    /** A 3x3 Gaussian blur (approximating OpenCV's `GaussianBlur(3x3)`), edges replicated. */
     fun gaussianBlur3(gray: ByteArray, width: Int, height: Int): ByteArray {
         val out = ByteArray(width * height)
         for (y in 0 until height) {
+            val up = (y - 1).coerceAtLeast(0) * width
+            val mid = y * width
+            val down = (y + 1).coerceAtMost(height - 1) * width
             for (x in 0 until width) {
-                var sum = 0
-                var k = 0
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
-                        val sx = (x + dx).coerceIn(0, width - 1)
-                        val sy = (y + dy).coerceIn(0, height - 1)
-                        sum += gray.u8(sy * width + sx) * BLUR_KERNEL[k++]
-                    }
-                }
-                out.setU8(y * width + x, dartRound(sum.toDouble() / BLUR_KERNEL_SUM).coerceIn(0, 255))
+                val l = if (x > 0) x - 1 else 0
+                val r = if (x < width - 1) x + 1 else width - 1
+                val sum = gray.u8(up + l) + 2 * gray.u8(up + x) + gray.u8(up + r) +
+                    2 * gray.u8(mid + l) + 4 * gray.u8(mid + x) + 2 * gray.u8(mid + r) +
+                    gray.u8(down + l) + 2 * gray.u8(down + x) + gray.u8(down + r)
+                // Dart's round(sum / 16) on a non-negative sum: half rounds up.
+                out.setU8(mid + x, (sum + BLUR_KERNEL_SUM / 2) / BLUR_KERNEL_SUM)
             }
         }
         return out
@@ -54,21 +54,20 @@ object EdgeDetection {
      */
     fun sobelMagnitude(gray: ByteArray, width: Int, height: Int): ByteArray {
         val out = ByteArray(width * height)
-
-        fun at(x: Int, y: Int): Int {
-            val cx = x.coerceIn(0, width - 1)
-            val cy = y.coerceIn(0, height - 1)
-            return gray.u8(cy * width + cx)
-        }
-
+        val roundedRoot = ROUNDED_ROOT
         for (y in 0 until height) {
+            val up = (y - 1).coerceAtLeast(0) * width
+            val mid = y * width
+            val down = (y + 1).coerceAtMost(height - 1) * width
             for (x in 0 until width) {
-                val gx = -at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1) +
-                    at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)
-                val gy = -at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1) +
-                    at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)
-                val mag = sqrt((gx * gx + gy * gy).toDouble())
-                out.setU8(y * width + x, dartRound(mag.dartClamp(0.0, 255.0)))
+                val l = if (x > 0) x - 1 else 0
+                val r = if (x < width - 1) x + 1 else width - 1
+                val gx = -gray.u8(up + l) - 2 * gray.u8(mid + l) - gray.u8(down + l) +
+                    gray.u8(up + r) + 2 * gray.u8(mid + r) + gray.u8(down + r)
+                val gy = -gray.u8(up + l) - 2 * gray.u8(up + x) - gray.u8(up + r) +
+                    gray.u8(down + l) + 2 * gray.u8(down + x) + gray.u8(down + r)
+                val s = gx * gx + gy * gy
+                out.setU8(mid + x, if (s < roundedRoot.size) roundedRoot[s] else 255)
             }
         }
         return out
@@ -121,40 +120,40 @@ object EdgeDetection {
     }
 
     /**
-     * Binary dilation with a roughly `(2*radius+1)` square structuring element, implemented as two separable max-filter passes
-     * (O(n*radius) instead of O(n*radius^2)); stands in for OpenCV's `dilate(9x9)`.
+     * Binary dilation with a `(2*radius+1)` square structuring element as two separable passes, each a sliding count of the set pixels in the
+     * window; stands in for OpenCV's `dilate(9x9)`. Pixels outside the mask count as unset.
      */
     fun dilate(mask: ByteArray, width: Int, height: Int, radius: Int): ByteArray {
         val rowPass = ByteArray(width * height)
         for (y in 0 until height) {
+            val base = y * width
+            var count = 0
+            for (x in 0..minOf(radius, width - 1)) count += mask.isSet(base + x)
             for (x in 0 until width) {
-                var v: Byte = 0
-                var dx = -radius
-                while (dx <= radius && v.toInt() == 0) {
-                    val sx = x + dx
-                    if (sx in 0 until width && mask[y * width + sx].toInt() == 1) v = 1
-                    dx++
-                }
-                rowPass[y * width + x] = v
+                if (count > 0) rowPass[base + x] = 1
+                if (x - radius >= 0) count -= mask.isSet(base + x - radius)
+                if (x + radius + 1 < width) count += mask.isSet(base + x + radius + 1)
             }
         }
 
         val out = ByteArray(width * height)
         for (x in 0 until width) {
+            var count = 0
+            for (y in 0..minOf(radius, height - 1)) count += rowPass[y * width + x].toInt()
             for (y in 0 until height) {
-                var v: Byte = 0
-                var dy = -radius
-                while (dy <= radius && v.toInt() == 0) {
-                    val sy = y + dy
-                    if (sy in 0 until height && rowPass[sy * width + x].toInt() == 1) v = 1
-                    dy++
-                }
-                out[y * width + x] = v
+                if (count > 0) out[y * width + x] = 1
+                if (y - radius >= 0) count -= rowPass[(y - radius) * width + x].toInt()
+                if (y + radius + 1 < height) count += rowPass[(y + radius + 1) * width + x].toInt()
             }
         }
         return out
     }
 
-    private val BLUR_KERNEL = intArrayOf(1, 2, 1, 2, 4, 2, 1, 2, 1)
     private const val BLUR_KERNEL_SUM = 16
+
+    /** 1 if the mask pixel is exactly 1 (set), else 0, as the original dilation tests it. */
+    private fun ByteArray.isSet(i: Int): Int = if (this[i].toInt() == 1) 1 else 0
+
+    /** `round(min(sqrt(s), 255))` for every squared gradient magnitude `s` up to 255 squared; anything larger rounds to 255. */
+    private val ROUNDED_ROOT = IntArray(255 * 255 + 1) { dartRound(sqrt(it.toDouble()).dartClamp(0.0, 255.0)) }
 }

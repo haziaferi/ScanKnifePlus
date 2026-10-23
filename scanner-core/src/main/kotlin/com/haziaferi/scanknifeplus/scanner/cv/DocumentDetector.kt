@@ -38,12 +38,12 @@ object DocumentDetector {
      */
     fun detectFromRgba(rgba: ByteArray, width: Int, height: Int): DetectionResult = try {
         val (workWidth, workHeight) = fitted(width, height, DETECTION_MAX_DIMENSION)
-        val small = downscaleRgba(rgba, width, height, workWidth, workHeight)
-        val gray = EdgeDetection.rgbaToGrayscale(small, workWidth, workHeight)
         val (pw, ph) = fitted(width, height, OUTLINE_MAX_DIMENSION)
         // B, G, R: the order OSS-DocumentScanner's loop visits an Android RGBA bitmap's channels in.
         val planes = EdgeMasks.areaResample(rgba, width, height, 4, intArrayOf(2, 1, 0), pw, ph)
-        val quad = detect(gray, workWidth, workHeight, planes, pw, ph, null)
+        val quad = detect(workWidth, workHeight, planes, pw, ph, null) {
+            EdgeDetection.rgbaToGrayscale(downscaleRgba(rgba, width, height, workWidth, workHeight), workWidth, workHeight)
+        }
         if (quad == null) {
             DetectionResult.NotFound(width, height)
         } else {
@@ -64,20 +64,20 @@ object DocumentDetector {
     fun detectQuadFromGrayscale(gray: ByteArray, width: Int, height: Int, previousQuad: Quad? = null): Quad? {
         val (pw, ph) = fitted(width, height, OUTLINE_MAX_DIMENSION)
         val planes = if (pw == width && ph == height) listOf(gray) else EdgeMasks.areaResample(gray, width, height, 1, intArrayOf(0), pw, ph)
-        return detect(gray, width, height, planes, pw, ph, previousQuad)
+        return detect(width, height, planes, pw, ph, previousQuad) { gray }
     }
 
     /**
-     * OSS-DocumentScanner's best square from [planes] ([pw] x [ph]) when there is one, else OpenScan's candidates from [gray] ranked by
-     * [Contours.pickBestQuad]. The quad is in [gray]'s coordinates.
+     * OSS-DocumentScanner's best square from [planes] ([pw] x [ph]) when there is one, else OpenScan's candidates from [gray] ([width] x
+     * [height], made only when needed) ranked by [Contours.pickBestQuad]. The quad is in [gray]'s coordinates.
      */
-    private fun detect(gray: ByteArray, width: Int, height: Int, planes: List<ByteArray>, pw: Int, ph: Int, previousQuad: Quad?): Quad? {
+    private fun detect(width: Int, height: Int, planes: List<ByteArray>, pw: Int, ph: Int, previousQuad: Quad?, gray: () -> ByteArray): Quad? {
         val bw = pw + 2 * SquareFinder.BORDER
         val bh = ph + 2 * SquareFinder.BORDER
         val prepared = planes.map { EdgeMasks.medianBlur3(EdgeMasks.addBorder(it, pw, ph, SquareFinder.BORDER), bw, bh) }
         val square = SquareFinder.findBest(prepared, bw, bh)
         if (square != null) return square.toQuad(SquareFinder.BORDER, width.toDouble() / pw, height.toDouble() / ph)
-        return Contours.pickBestQuad(edgeCandidates(gray, width, height), width, height, previousQuad)
+        return Contours.pickBestQuad(edgeCandidates(gray(), width, height), width, height, previousQuad)
     }
 
     /** OpenScan's candidates: blur, Sobel, three thresholds around Otsu's, dilate, quads from the largest components. */

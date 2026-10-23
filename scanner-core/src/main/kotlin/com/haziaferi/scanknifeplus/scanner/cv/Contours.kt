@@ -55,17 +55,19 @@ object Contours {
      * Kept separate from [pickBestQuad] so the live-scan pipeline can pool candidates from several differently-thresholded masks before scoring.
      */
     fun findDocumentQuadCandidates(mask: ByteArray, width: Int, height: Int): List<Quad> {
-        val components = connectedComponents(mask, width, height)
-        components.dartSort { a, b -> b.size.compareTo(a.size) }
+        val components = Components(mask, width, height)
+        val order = MutableList(components.count) { it }
+        order.dartSort { a, b -> components.sizes[b].compareTo(components.sizes[a]) }
 
-        val candidateCount = if (components.size < 5) components.size else 5
+        val candidateCount = if (order.size < 5) order.size else 5
+        val top = order.subList(0, candidateCount)
+        val hulls = components.columnHulls(top)
         val results = ArrayList<Quad>()
 
         for (i in 0 until candidateCount) {
-            val members = components[i]
-            if (members.size < 4) continue
+            if (components.sizes[top[i]] < 4) continue
 
-            val hull = convexHull(members)
+            val hull = hulls[i]
             if (hull.size < 4) continue
 
             val split = if (hull.size > 4) ClosedPolygonSplit(hull) else null
@@ -210,44 +212,75 @@ object Contours {
         )
     }
 
-    /** 8-connected flood fill over the binary mask, returning member pixels per connected component (BFS via an index queue, safe on large masks). */
-    private fun connectedComponents(mask: ByteArray, width: Int, height: Int): MutableList<List<Pt>> {
-        val visited = BooleanArray(width * height)
-        val components = ArrayList<List<Pt>>()
-        val queue = IntArray(width * height)
+    /**
+     * The 8-connected components of a binary mask (pixels equal to 1), numbered in raster order of their first pixel, with their sizes and
+     * column ranges. Labels instead of member lists: the hull needs only each column's top and bottom pixel.
+     */
+    private class Components(mask: ByteArray, private val width: Int, height: Int) {
+        /** Component of each pixel plus one, 0 for background. */
+        private val labels = IntArray(width * height)
+        var count = 0
+            private set
+        var sizes = IntArray(16)
+            private set
+        private var minXs = IntArray(16)
+        private var maxXs = IntArray(16)
 
-        for (start in mask.indices) {
-            if (mask[start].toInt() != 1 || visited[start]) continue
-
-            val members = ArrayList<Pt>()
-            var tail = 0
-            queue[tail++] = start
-            visited[start] = true
-            var head = 0
-
-            while (head < tail) {
-                val idx = queue[head++]
-                val x = idx % width
-                val y = idx / width
-                members += Pt(x.toDouble(), y.toDouble())
-
-                for (dy in -1..1) {
-                    for (dx in -1..1) {
-                        if (dx == 0 && dy == 0) continue
-                        val nx = x + dx
-                        val ny = y + dy
-                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
-                        val nIdx = ny * width + nx
-                        if (mask[nIdx].toInt() == 1 && !visited[nIdx]) {
-                            visited[nIdx] = true
-                            queue[tail++] = nIdx
+        init {
+            val queue = IntArray(width * height)
+            for (start in mask.indices) {
+                if (mask[start].toInt() != 1 || labels[start] != 0) continue
+                if (count == sizes.size) {
+                    sizes = sizes.copyOf(count * 2)
+                    minXs = minXs.copyOf(count * 2)
+                    maxXs = maxXs.copyOf(count * 2)
+                }
+                val label = count + 1
+                var minX = Int.MAX_VALUE
+                var maxX = Int.MIN_VALUE
+                var tail = 0
+                queue[tail++] = start
+                labels[start] = label
+                var head = 0
+                while (head < tail) {
+                    val idx = queue[head++]
+                    val x = idx % width
+                    val y = idx / width
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    for (ny in maxOf(0, y - 1)..minOf(height - 1, y + 1)) {
+                        for (nx in maxOf(0, x - 1)..minOf(width - 1, x + 1)) {
+                            val n = ny * width + nx
+                            if (mask[n].toInt() == 1 && labels[n] == 0) {
+                                labels[n] = label
+                                queue[tail++] = n
+                            }
                         }
                     }
                 }
+                sizes[count] = tail
+                minXs[count] = minX
+                maxXs[count] = maxX
+                count++
             }
-            components += members
         }
-        return components
+
+        /** The convex hull of each component in [ids], from one pass collecting each column's topmost and bottommost pixel. */
+        fun columnHulls(ids: List<Int>): List<List<Pt>> {
+            val slotOf = IntArray(count + 1) { -1 }
+            ids.forEachIndexed { slot, id -> slotOf[id + 1] = slot }
+            val yMin = Array(ids.size) { IntArray(maxXs[ids[it]] - minXs[ids[it]] + 1) { Int.MAX_VALUE } }
+            val yMax = Array(ids.size) { IntArray(maxXs[ids[it]] - minXs[ids[it]] + 1) { Int.MIN_VALUE } }
+            for (i in labels.indices) {
+                val slot = slotOf[labels[i]]
+                if (slot < 0) continue
+                val c = i % width - minXs[ids[slot]]
+                val y = i / width
+                if (y < yMin[slot][c]) yMin[slot][c] = y
+                if (y > yMax[slot][c]) yMax[slot][c] = y
+            }
+            return ids.indices.map { hullFromColumns(minXs[ids[it]], yMin[it], yMax[it]) }
+        }
     }
 
     /**
@@ -271,6 +304,12 @@ object Contours {
             if (y < yMin[c]) yMin[c] = y
             if (y > yMax[c]) yMax[c] = y
         }
+        return hullFromColumns(minX, yMin, yMax)
+    }
+
+    /** The monotone chain over each column's top ([yMin]) and bottom ([yMax]) pixel, columns from [minX]; empty columns hold Int.MAX_VALUE. */
+    private fun hullFromColumns(minX: Int, yMin: IntArray, yMax: IntArray): List<Pt> {
+        val columns = yMin.size
         val pts = ArrayList<Pt>(2 * columns)
         for (c in 0 until columns) {
             if (yMin[c] == Int.MAX_VALUE) continue
