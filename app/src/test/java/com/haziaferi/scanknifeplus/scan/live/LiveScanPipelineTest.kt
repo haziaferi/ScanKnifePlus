@@ -389,11 +389,20 @@ class LiveScanPipelineTest {
     }
 
     @Test
+    fun `a page still drifting at 15% of the frame per second is not auto-captured`() {
+        for (step in 0 until 40) {
+            val dx = 0.015 * step
+            detect(Quad(Pt(0.05 + dx, 0.15), Pt(0.4 + dx, 0.15), Pt(0.4 + dx, 0.85), Pt(0.05 + dx, 0.85)))
+        }
+        assertEquals(0, recorder.captures.size)
+    }
+
+    @Test
     fun `a moving document is not holding steady`() {
         val card = Quad(Pt(0.1, 0.3), Pt(0.4, 0.3), Pt(0.4, 0.6), Pt(0.1, 0.6))
         detect(card, times = 2)
         assertTrue(pipeline.isHoldingSteady)
-        // 0.05 per result: under the smoother's jump threshold, so the track follows, and well over the 0.02 tolerance once it has caught up.
+        // 0.05 per result: under the smoother's jump threshold, so the track follows, and far from the detector's recent mean once it has caught up.
         for (step in 1..8) {
             val dx = 0.05 * step
             detect(Quad(Pt(0.1 + dx, 0.3), Pt(0.4 + dx, 0.3), Pt(0.4 + dx, 0.6), Pt(0.1 + dx, 0.6)))
