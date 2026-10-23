@@ -18,7 +18,6 @@ Results: [results.md](results.md).
 | `run.sh` | Fetches the data, pushes image sets, runs each test method through the shared `device-test.sh`, collects and scores. |
 | `score.py` | CER/WER, the threshold sweep and the page segmentation table; writes `results.md`. Standard library only. |
 | `results/` | Raw output of the last run: per set and configuration the recognised text, words.tsv, runs.tsv and failures.tsv. |
-| `native/tess_osd.c`, `.../ocr/TessOsd.kt` | Field mode only: JNI shim that exposes Tesseract's orientation detection (see "Field mode"). |
 | `field-results.md` | Field mode results (real photos without ground truth); the raw output stays in the git-ignored `field-out/`. |
 | `images-out/` | Images mode output (git-ignored): pre-processed images recognised as they are, see "Images mode". |
 
@@ -52,7 +51,7 @@ Not in git. `fetch_tessdata.py` (run by `run.sh`) downloads the raw files of the
 
 ## Library
 
-`com.github.haziaferi.Tesseract4Android:tesseract4android-openmp:4.10.1` from JitPack (Tesseract 5.5.3, Leptonica 1.87.0). The fork's README says the OpenMP variant is faster on multi-core processors when one Tesseract instance is used, which is the app's case; the standard variant is meant for parallel instances. JitPack is limited to that group in `settings.gradle.kts`.
+`com.github.haziaferi.Tesseract4Android:tesseract4android-openmp:4.11.0` from JitPack (Tesseract 5.5.3, Leptonica 1.87.0). The fork's README says the OpenMP variant is faster on multi-core processors when one Tesseract instance is used, which is the app's case; the standard variant is meant for parallel instances. JitPack is limited to that group in `settings.gradle.kts`.
 
 ## Method
 
@@ -117,7 +116,7 @@ The folder holds raw camera photos named `<page>.photo.jpg` (any name before `.p
 Per photo, `fieldDetect` records the scanner's one-shot detection (outcome, quad, its share of the photo, natural size) and writes previews: the photo with the quad, the warped page, and (from the fast 300 run) the upright grey page. Then `fieldFast300` … `fieldBest400`, per photo:
 
 1. Decode, detect and warp as in the main runs; the page size comes from the quad's own aspect and `long_mm` at the target DPI. With `input` = `frame` the whole upright photo is scaled to `long_mm` at the target DPI instead.
-2. **Orientation**: Tesseract OSD (legacy engine, `osd.traineddata`, a fresh instance) on the warped grey page. Tesseract4Android does not expose OSD to Java, so a small JNI shim (`native/tess_osd.c`) calls the C API function `TessBaseAPIDetectOrientationScript` that `libtesseract.so` exports, on the `TessBaseAPI` behind the Java object. `run.sh --field` builds it with the NDK into the git-ignored `app/src/androidTest/jniLibs/`, so it reaches the test APK only. The page is turned clockwise by Tesseract's own "Rotate" value (`(360 - orientation) % 360`) before recognition.
+2. **Orientation**: Tesseract OSD (legacy engine, `osd.traineddata`, a fresh instance) on the warped grey page. It is called through `TessBaseAPI.detectOrientationScript()`, which the fork added in 4.11.0. The results below were measured on 4.10.1 with a test-only JNI shim that called the same Tesseract function. The page is turned clockwise by Tesseract's own "Rotate" value (`(360 - orientation) % 360`) before recognition.
 3. Recognition in every manifest language with PSM 3, measured as in the main runs (time, native heap growth, PSS, VmHWM, words.tsv). A page OSD turned is also recognised unturned (primary language), to show what the turn is worth.
 
 `run.sh` pushes `FIELD_CHUNK` photos (default 4) per instrumentation and runs each method per chunk, so no run is long enough for BgDetect; `FIELD_METHODS` limits the methods (e.g. `FIELD_METHODS=fieldDetect` to check detection first and then fill in `field.tsv`). Everything lands in the git-ignored `docs/ocr-bench/field-out/<name>/`: `detect/` (detection rows and previews) and `<model>-<dpi>/` with `<page>.<lang>.txt`, `<page>.<lang>.words.tsv`, `<page>.<lang>.norot.txt` for turned pages, and `<page>.runs.tsv`. The photos are pushed from their folder and not copied into the repository.

@@ -33,8 +33,7 @@ keystore.properties
 /app/src/androidTest/assets/tessdata/
 # Camera photos pulled for the OCR benchmark (docs/ocr-bench/run.sh --camera)
 /docs/ocr-bench/scans/
-# OCR benchmark field mode (docs/ocr-bench/run.sh --field): recognised text and previews of the user's photos, and the OSD shim build
+# OCR benchmark field mode (docs/ocr-bench/run.sh --field): recognised text and previews of the user's photos
 /docs/ocr-bench/field-out/
-/app/src/androidTest/jniLibs/
 # OCR benchmark images mode (docs/ocr-bench/run.sh --images): recognised text of the scanner benchmark's pages
 /docs/ocr-bench/images-out/

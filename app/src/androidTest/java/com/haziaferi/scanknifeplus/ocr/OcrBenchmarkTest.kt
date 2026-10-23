@@ -425,8 +425,9 @@ class OcrBenchmarkTest {
                 "$set\t$page\t$model\t$dpi\t$lang\t$variant\t${if (entry.frame) "frame" else "quad"}\t${entry.longMm}\t" +
                     "${prepared.photoWidth}x${prepared.photoHeight}\t${prepared.quad?.let(::quadText).orEmpty()}\t" +
                     "${"%.1f".format(Locale.ROOT, prepared.quadAreaPct)}\t${prepared.naturalWidth}x${prepared.naturalHeight}\t" +
-                    "${prepared.sourceDpi.roundToInt()}\t${input.width}\t${input.height}\t$prepMs\t${osd.ms}\t${o?.degrees ?: ""}\t$rotate\t" +
-                    "${o?.confidence ?: ""}\t${o?.script ?: ""}\t${o?.scriptConfidence ?: ""}\t${osd.error.orEmpty()}\t${r.initMs}\t${r.recogniseMs}\t" +
+                    "${prepared.sourceDpi.roundToInt()}\t${input.width}\t${input.height}\t$prepMs\t${osd.ms}\t${o?.orientation ?: ""}\t$rotate\t" +
+                    "${o?.let { "%.2f".format(Locale.ROOT, it.orientationConfidence) }.orEmpty()}\t${o?.script.orEmpty()}\t" +
+                    "${o?.let { "%.2f".format(Locale.ROOT, it.scriptConfidence) }.orEmpty()}\t${osd.error.orEmpty()}\t${r.initMs}\t${r.recogniseMs}\t" +
                     "${r.nativeBaseKb}\t${r.nativePeakKb}\t${r.pssBaseKb}\t${r.pssPeakKb}\t${r.hwmKb}\t${r.meanConfidence}\t${r.wordCount}\t${r.flavor}\n",
             )
             Log.i(TAG, "field $set/$page $model-$dpi $lang $variant: ${r.recogniseMs} ms, ${r.wordCount} words")
@@ -512,7 +513,7 @@ class OcrBenchmarkTest {
         FieldInput.Failed("out of memory")
     }
 
-    private class Osd(val result: TessOsd.Result?, val error: String?, val ms: Long)
+    private class Osd(val result: TessBaseAPI.OrientationScript?, val error: String?, val ms: Long)
 
     /** Tesseract OSD (legacy engine, osd.traineddata) on the warped grey page; one fresh instance, timed without the init. */
     private fun orientation(dataPath: String, input: Input.Ready, dpi: Int): Osd {
@@ -523,8 +524,8 @@ class OcrBenchmarkTest {
             tess.setPageSegMode(PageSegMode.PSM_OSD_ONLY)
             val start = SystemClock.elapsedRealtime()
             tess.setImage(input.grey, input.width, input.height, 1, input.width)
-            val (result, error) = TessOsd.detect(tess)
-            return Osd(result, error, SystemClock.elapsedRealtime() - start)
+            val result = tess.detectOrientationScript()
+            return Osd(result, if (result == null) "detection failed (too few characters?)" else null, SystemClock.elapsedRealtime() - start)
         } finally {
             tess.recycle()
         }
