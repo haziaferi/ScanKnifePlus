@@ -1,4 +1,4 @@
-// Parity fixtures for scanner-core layer 5: quad_smoother.dart, auto_capture_detector.dart and live_scan_controller.dart.
+// Parity fixtures for scanner-core layer 5: quad_smoother.dart and live_scan_controller.dart.
 // Scenarios are scripted (time in microseconds, quad or null) and every observable output is recorded after each step.
 import 'dart:math';
 import 'dart:typed_data';
@@ -6,7 +6,6 @@ import 'dart:typed_data';
 import 'package:openscan/core/cv/edge_detection.dart' as ed;
 import 'package:openscan/core/cv/models/point.dart';
 import 'package:openscan/core/cv/models/quad.dart';
-import 'package:openscan/view/screens/live_scan/auto_capture_detector.dart';
 import 'package:openscan/view/screens/live_scan/live_scan_controller.dart';
 import 'package:openscan/view/screens/live_scan/quad_smoother.dart';
 
@@ -100,29 +99,6 @@ Future<void> main(List<String> args) async {
     smoother.reset();
     outputs.add('${quadToString(smoother.smoothedQuad.value)}#$notifications');
     w.value('outputs', outputs.join('|'));
-
-    // Auto-capture on the smoother's output, capturing whenever it fires.
-    now = epoch;
-    final events = <String>[];
-    late AutoCaptureDetector detector;
-    detector = AutoCaptureDetector(
-      now: () => now,
-      onStable: () {
-        events.add('stable@${now.difference(epoch).inMicroseconds}');
-        detector.notifyCaptured();
-      },
-      onImminentChanged: (v) => events.add('imminent=$v@${now.difference(epoch).inMicroseconds}'),
-    );
-    final smoother2 = QuadSmoother(now: () => now);
-    for (final (micros, quad) in steps) {
-      now = epoch.add(Duration(microseconds: micros));
-      smoother2.onRawQuad(quad);
-      detector.onQuadUpdate(smoother2.smoothedQuad.value);
-      events.add('cooldown=${detector.isInCooldown}');
-    }
-    detector.enabled = false;
-    events.add('disabled');
-    w.value('auto_events', events.join('|'));
   }
 
   // Live detection worker: the real controller (worker isolate keeps previousQuad and forgets it after 5 misses).

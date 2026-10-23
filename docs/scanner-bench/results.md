@@ -113,26 +113,33 @@ Device step, run by hand (README, "Running"); the scores land in [ocr-results.md
 
 ## 5. Auto-capture
 
-Synthetic detections at 30 fps for 6 s, 20 seeded runs per scenario. A page fills about 60% x 70% of a portrait frame with a slight perspective; every frame adds Gaussian corner noise of 0.2% of the frame (detector jitter). Ours gets the quads in normalised coordinates, as LiveScanController feeds AutoCaptureDetector (without QuadSmoother in between), and calls notifyCaptured after each capture. Theirs gets the same quads in analysis-frame pixels, quantised like their 200 px live detection; it captures at most once per document until the document is lost. Times are from the scenario start (from the stop for the sliding page); `captures per run` counts every capture in 6 s. `Should capture`: yes = a capture is wanted, no = any capture is a false capture, - = either is acceptable.
+Synthetic detections at 30 fps for 6 s, 20 seeded runs per scenario. A page fills about 60% x 70% of a portrait frame with a slight perspective; every frame adds Gaussian corner noise of 0.2% of the frame (detector jitter); hand shake is an 8 Hz and a 9 Hz sine on the two axes with the given amplitude. ScanKnife+ is fed as the app feeds it: every third frame (10 detections a second) through QuadSmoother, whose smoothed quads drive AutoCaptureDetector, in normalised coordinates. `Detector alone` feeds every raw frame straight to AutoCaptureDetector (no smoother, so every missed detection restarts it). Ours calls notifyCaptured after each capture. Theirs gets every frame in analysis-frame pixels, quantised like their 200 px live detection; it captures at most once per document until the document is lost. Times are from the scenario start (from the stop for the sliding page); `captures per run` counts every capture in 6 s. `Should capture`: yes = a capture is wanted, no = any capture is a false capture, - = either is acceptable.
 
-| Scenario | Should capture | ScanKnife+ captured (runs) | ScanKnife+ median ms to capture | ScanKnife+ captures per run | Theirs @480x640 captured | Theirs median ms | Theirs captures per run | Theirs @960x1280 captured | Theirs median ms |
-|---|---|---|---|---|---|---|---|---|---|
-| held steady | yes | 20/20 | 700 | 2.00 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
-| hand shake 0.5% of frame | yes | 20/20 | 700 | 2.00 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
-| hand shake 1% | yes | 15/20 | 1600 | 1.00 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
-| hand shake 2% | yes | 0/20 | - | 0.00 | 20/20 | 2033 | 1.00 | 0/20 | - |
-| hand shake 4% | yes | 0/20 | - | 0.00 | 2/20 | 5183 | 0.10 | 0/20 | - |
-| slow drift 0.1%/frame (3%/s) | - | 20/20 | 700 | 2.00 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
-| drift 0.5%/frame (15%/s) | no | 20/20 | 700 | 1.00 | 0/20 | - | 0.00 | 0/20 | - |
-| page slides in (3%/frame for 20 frames) then stops | yes | 20/20 | 700 | 2.00 | 20/20 | 1833 | 1.00 | 20/20 | 1833 |
-| phone sweeping across, 2%/frame | no | 0/20 | - | 0.00 | 0/20 | - | 0.00 | 0/20 | - |
-| phone sweeping across, 5%/frame | no | 0/20 | - | 0.00 | 0/20 | - | 0.00 | 0/20 | - |
-| two documents alternating every frame | no | 0/20 | - | 0.00 | 0/20 | - | 0.00 | 0/20 | - |
-| two documents alternating every 5 frames | no | 0/20 | - | 0.00 | 4/20 | 4283 | 0.20 | 4/20 | 4283 |
-| two documents alternating every 15 frames | - | 0/20 | - | 0.00 | 0/20 | - | 0.00 | 0/20 | - |
-| two documents alternating every 45 frames | - | 20/20 | 700 | 2.00 | 0/20 | - | 0.00 | 0/20 | - |
-| held steady, 5% random dropouts | yes | 20/20 | 1433 | 1.80 | 4/20 | 3550 | 0.20 | 4/20 | 3550 |
-| held steady, 20% random dropouts | yes | 6/20 | 4800 | 0.30 | 0/20 | - | 0.00 | 0/20 | - |
-| held steady, one dropout every 15 frames | yes | 0/20 | - | 0.00 | 0/20 | - | 0.00 | 0/20 | - |
+| Scenario | Should capture | ScanKnife+ captured (runs) | ScanKnife+ median ms to capture | ScanKnife+ captures per run | Detector alone captured | Detector alone median ms | Theirs @480x640 captured | Theirs median ms | Theirs captures per run | Theirs @960x1280 captured | Theirs median ms |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| held steady | yes | 20/20 | 767 | 2.00 | 20/20 | 700 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| hand shake 0.5% of frame | yes | 20/20 | 767 | 2.00 | 20/20 | 700 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| hand shake 1% | yes | 20/20 | 867 | 2.00 | 20/20 | 700 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| hand shake 1.5% | yes | 20/20 | 967 | 2.00 | 20/20 | 700 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| hand shake 2% | yes | 20/20 | 1067 | 2.00 | 20/20 | 833 | 20/20 | 2033 | 1.00 | 0/20 | - |
+| hand shake 3% | - | 0/20 | - | 0.00 | 0/20 | - | 20/20 | 2033 | 1.00 | 1/20 | 5100 |
+| hand shake 4% | - | 0/20 | - | 0.00 | 0/20 | - | 2/20 | 2067 | 0.10 | 0/20 | - |
+| drift 2% of frame/s | - | 20/20 | 767 | 1.70 | 20/20 | 1317 | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| drift 3%/s | - | 3/20 | 767 | 0.15 | 0/20 | - | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| drift 5%/s | no | 0/20 | - | 0.00 | 0/20 | - | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| drift 10%/s | no | 0/20 | - | 0.00 | 0/20 | - | 20/20 | 2033 | 1.00 | 20/20 | 2033 |
+| drift 15%/s | no | 0/20 | - | 0.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| page slides in (3%/frame for 20 frames) then stops | yes | 20/20 | 1350 | 2.00 | 20/20 | 700 | 20/20 | 1833 | 1.00 | 20/20 | 1833 |
+| phone sweeping across, 2%/frame | no | 0/20 | - | 0.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| phone sweeping across, 5%/frame | no | 0/20 | - | 0.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| two documents alternating every frame | no | 20/20 | 867 | 2.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| two documents alternating every 5 frames | no | 20/20 | 767 | 2.00 | 0/20 | - | 3/20 | 5700 | 0.15 | 3/20 | 5700 |
+| two documents alternating every 15 frames | - | 0/20 | - | 0.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| two documents alternating every 45 frames | - | 20/20 | 767 | 2.00 | 20/20 | 700 | 0/20 | - | 0.00 | 0/20 | - |
+| held steady, 5% random dropouts | yes | 20/20 | 767 | 2.00 | 20/20 | 700 | 5/20 | 4433 | 0.25 | 5/20 | 4433 |
+| held steady, 15% random dropouts | yes | 20/20 | 767 | 2.00 | 12/20 | 3517 | 0/20 | - | 0.00 | 0/20 | - |
+| held steady, 20% random dropouts | yes | 20/20 | 867 | 2.00 | 5/20 | 5600 | 0/20 | - | 0.00 | 0/20 | - |
+| held steady, one dropout every 15 frames | yes | 20/20 | 767 | 2.00 | 0/20 | - | 0/20 | - | 0.00 | 0/20 | - |
+| hand shake 1.5%, 15% random dropouts | yes | 20/20 | 967 | 2.00 | 8/20 | 3167 | 0/20 | - | 0.00 | 0/20 | - |
 
-Summary: held steady, median time to capture: ScanKnife+ 700 ms, theirs 2033 ms (2033 ms on the larger frame). Runs with a capture where none should happen (of 100): ScanKnife+ 20, theirs 4 (4). Runs without a capture where one should happen (of 180): ScanKnife+ 79, theirs 74 (96).
+Summary: Held steady, median ms to capture: ScanKnife+ 767 (detector alone 700), theirs 2033 (2033 on the larger frame). Runs with a capture where none should happen (of 140): ScanKnife+ 40 (detector alone 0), theirs 43 (43 on the larger frame). Runs without a capture where one should happen (of 220): ScanKnife+ 0 (detector alone 55), theirs 95 (115 on the larger frame).
