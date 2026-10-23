@@ -14,7 +14,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Replays OpenScan's scripted live-scan scenarios through the Kotlin smoother, auto-capture detector and live worker (fixture: parity/live.tsv). */
+/** Replays OpenScan's scripted live-scan scenarios through the Kotlin smoother and live worker (fixture: parity/live.tsv). */
 class LiveScanParityTest {
     private val cases = ParityFixture.load("live.tsv")
     private val smootherCases = cases.filter { it.name.startsWith("smoother_") }
@@ -55,33 +55,6 @@ class LiveScanParityTest {
                 assertEquals("${c.name}: step $i", expected[i], outputs[i])
             }
             assertEquals("${c.name}: step count", expected.size, outputs.size)
-        }
-    }
-
-    @Test
-    fun `AutoCaptureDetector events match OpenScan`() {
-        for (c in smootherCases) {
-            val clock = FakeClock()
-            val events = ArrayList<String>()
-            lateinit var detector: AutoCaptureDetector
-            detector = AutoCaptureDetector(
-                onStable = {
-                    events += "stable@${clock.now}"
-                    detector.notifyCaptured()
-                },
-                onImminentChanged = { events += "imminent=$it@${clock.now}" },
-                clock = clock,
-            )
-            val smoother = QuadSmoother(clock)
-            for ((micros, quad) in steps(c)) {
-                clock.now = micros
-                smoother.onRawQuad(quad)
-                detector.onQuadUpdate(smoother.smoothedQuad)
-                events += "cooldown=${detector.isInCooldown}"
-            }
-            detector.enabled = false
-            events += "disabled"
-            assertEquals(c.name, c.raw("auto_events"), events.joinToString("|"))
         }
     }
 

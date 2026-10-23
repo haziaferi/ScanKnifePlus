@@ -12,6 +12,7 @@ import com.haziaferi.scanknifeplus.scanner.dartRound
 import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
 import com.haziaferi.scanknifeplus.scanner.live.AutoCaptureDetector
 import com.haziaferi.scanknifeplus.scanner.live.MicrosClock
+import com.haziaferi.scanknifeplus.scanner.live.QuadSmoother
 import com.haziaferi.scanknifeplus.scanner.store.StoredImage
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferByte
@@ -132,23 +133,22 @@ class ScannerBenchTest {
     }
 
     /**
-     * Synthetic quad sequences at 30 fps through our [AutoCaptureDetector] (real defaults, virtual [MicrosClock]) and through
-     * [AutoScanHandlerDouble] (their defaults: distance 50 px, pre-delay 1000 ms, duration 1000 ms) on two analysis frame sizes. Seeded and
-     * deterministic. Writes autocapture.json.
+     * Synthetic quad sequences at 30 fps through our [AutoCaptureDetector] (real defaults, virtual [MicrosClock]) two ways, as the app runs it
+     * (every third frame through [QuadSmoother]) and on its own (every raw frame), and through [AutoScanHandlerDouble] (their defaults:
+     * distance 50 px, pre-delay 1000 ms, duration 1000 ms) on two analysis frame sizes. Seeded and deterministic. Writes autocapture.json.
      */
     @Test fun autoCapture() {
         val dir = workDir()
         val results = SCENARIOS.map { scenario ->
-            val ours = Tally()
-            val theirs = Tally()
-            val theirs2 = Tally()
+            val tallies = List(4) { Tally() }
             for (run in 0 until RUNS) {
                 val frames = scenario.frames(Random(1000L * SCENARIOS.indexOf(scenario) + run))
-                ours.add(runOurs(frames), scenario.scoreFromFrame)
-                theirs.add(runTheirs(frames, FRAME_SIZES[0]), scenario.scoreFromFrame)
-                theirs2.add(runTheirs(frames, FRAME_SIZES[1]), scenario.scoreFromFrame)
+                tallies[0].add(runOursAsApp(frames), scenario.scoreFromFrame)
+                tallies[1].add(runOursAlone(frames), scenario.scoreFromFrame)
+                tallies[2].add(runTheirs(frames, FRAME_SIZES[0]), scenario.scoreFromFrame)
+                tallies[3].add(runTheirs(frames, FRAME_SIZES[1]), scenario.scoreFromFrame)
             }
-            scenario to listOf(ours, theirs, theirs2)
+            scenario to tallies
         }
         val json = StringBuilder("{\n")
         json.append(" \"method\": ${quote(AUTO_METHOD)},\n")
@@ -158,14 +158,39 @@ class ScannerBenchTest {
         json.append(
             results.joinToString(",\n") { (s, t) ->
                 "  {\"name\": ${quote(s.name)}, \"shouldCapture\": ${s.shouldCapture}, \"runs\": $RUNS, \"ours\": ${t[0].json()}, " +
-                    "\"theirs\": ${t[1].json()}, \"theirs2\": ${t[2].json()}}"
+                    "\"oursAlone\": ${t[1].json()}, \"theirs\": ${t[2].json()}, \"theirs2\": ${t[3].json()}}"
             },
         )
         File(dir, "autocapture.json").writeText(json.append("\n ]\n}\n").toString())
     }
 
-    /** Capture times (ms from the scenario start) of our detector; the caller's [AutoCaptureDetector.notifyCaptured] follows each capture. */
-    private fun runOurs(frames: List<Quad?>): List<Double> {
+    /**
+     * Capture times (ms from the scenario start) of our detector fed as LiveScanPipeline feeds it: every third frame goes to [QuadSmoother]
+     * and every smoothed quad it publishes to the detector; each capture is followed by notifyCaptured and a smoother reset.
+     */
+    private fun runOursAsApp(frames: List<Quad?>): List<Double> {
+        var nowMicros = 0L
+        val captures = ArrayList<Double>()
+        var captured = false
+        val clock = MicrosClock { nowMicros }
+        val detector = AutoCaptureDetector(onStable = { captured = true }, clock = clock)
+        val smoother = QuadSmoother(clock) { detector.onQuadUpdate(it) }
+        for ((i, quad) in frames.withIndex()) {
+            if (i % APP_FRAME_STRIDE != APP_FRAME_STRIDE - 1) continue
+            nowMicros = (i * FRAME_MICROS).toLong()
+            smoother.onRawQuad(quad)
+            if (captured) {
+                captured = false
+                captures += nowMicros / 1000.0
+                detector.notifyCaptured()
+                smoother.reset()
+            }
+        }
+        return captures
+    }
+
+    /** Capture times (ms from the scenario start) of our detector alone on every raw frame; notifyCaptured follows each capture. */
+    private fun runOursAlone(frames: List<Quad?>): List<Double> {
         var nowMicros = 0L
         val captures = ArrayList<Double>()
         lateinit var detector: AutoCaptureDetector
@@ -230,9 +255,10 @@ class ScannerBenchTest {
         fun lostRuns(i: Int) = results.filter { it.first.shouldCapture == true }.sumOf { it.second[i].runs - it.second[i].runsCaptured }
         val no = results.filter { it.first.shouldCapture == false }.sumOf { it.second[0].runs }
         val yes = results.filter { it.first.shouldCapture == true }.sumOf { it.second[0].runs }
-        return "held steady, median time to capture: ScanKnife+ ${steady(0)} ms, theirs ${steady(1)} ms (${steady(2)} ms on the larger frame). " +
-            "Runs with a capture where none should happen (of $no): ScanKnife+ ${falseRuns(0)}, theirs ${falseRuns(1)} (${falseRuns(2)}). " +
-            "Runs without a capture where one should happen (of $yes): ScanKnife+ ${lostRuns(0)}, theirs ${lostRuns(1)} (${lostRuns(2)})."
+        fun line(what: String, f: (Int) -> Int?) = "$what: ScanKnife+ ${f(0)} (detector alone ${f(1)}), theirs ${f(2)} (${f(3)} on the larger frame)."
+        return line("Held steady, median ms to capture", ::steady) + " " +
+            line("Runs with a capture where none should happen (of $no)", ::falseRuns) + " " +
+            line("Runs without a capture where one should happen (of $yes)", ::lostRuns)
     }
 
     private data class Photo(val id: String, val set: String)
@@ -265,13 +291,17 @@ class ScannerBenchTest {
         /** Portrait analysis frames: CameraX's default 640x480 analysis size, and twice that for the threshold's sensitivity. */
         val FRAME_SIZES = listOf(480 to 640, 960 to 1280)
 
+        /** LiveScanPipeline sends every third camera frame for detection. */
+        const val APP_FRAME_STRIDE = 3
+
         const val AUTO_METHOD = "Synthetic detections at 30 fps for 6 s, 20 seeded runs per scenario. A page fills about 60% x 70% of a portrait " +
-            "frame with a slight perspective; every frame adds Gaussian corner noise of 0.2% of the frame (detector jitter). Ours gets the quads " +
-            "in normalised coordinates, as LiveScanController feeds AutoCaptureDetector (without QuadSmoother in between), and calls notifyCaptured " +
-            "after each capture. Theirs gets the same quads in analysis-frame pixels, quantised like their 200 px live detection; it captures at " +
-            "most once per document until the document is lost. Times are from the scenario start (from the stop for the sliding page); " +
-            "`captures per run` counts every capture in 6 s. `Should capture`: yes = a capture is wanted, no = any capture is a false capture, " +
-            "- = either is acceptable."
+            "frame with a slight perspective; every frame adds Gaussian corner noise of 0.2% of the frame (detector jitter); hand shake is an 8 Hz " +
+            "and a 9 Hz sine on the two axes with the given amplitude. ScanKnife+ is fed as the app feeds it: every third frame (10 detections a " +
+            "second) through QuadSmoother, whose smoothed quads drive AutoCaptureDetector, in normalised coordinates. `Detector alone` feeds every " +
+            "raw frame straight to AutoCaptureDetector (no smoother, so every missed detection restarts it). Ours calls notifyCaptured after each " +
+            "capture. Theirs gets every frame in analysis-frame pixels, quantised like their 200 px live detection; it captures at most once per " +
+            "document until the document is lost. Times are from the scenario start (from the stop for the sliding page); `captures per run` " +
+            "counts every capture in 6 s. `Should capture`: yes = a capture is wanted, no = any capture is a false capture, - = either is acceptable."
 
         private val BASE = Quad(Pt(0.21, 0.16), Pt(0.79, 0.15), Pt(0.81, 0.86), Pt(0.19, 0.85))
         private val OTHER = Quad(Pt(0.30, 0.25), Pt(0.95, 0.27), Pt(0.93, 0.70), Pt(0.32, 0.72))
@@ -295,13 +325,14 @@ class ScannerBenchTest {
 
         private fun seq(block: (Int, Random) -> Quad?): (Random) -> List<Quad?> = { r -> List(N) { i -> block(i, r) } }
 
-        private fun shake(amplitude: Double) = seq { i, r ->
+        private fun shake(amplitude: Double, dropout: Double = 0.0) = seq { i, r ->
             // Physiological tremor: about 8-9 Hz, independent phase per axis, amplitude as a fraction of the frame.
             val t = i / FPS.toDouble()
-            BASE.shift(amplitude * sin(2 * PI * 8 * t + 1.3), amplitude * sin(2 * PI * 9 * t + 0.4)).jitter(r)
+            val quad = BASE.shift(amplitude * sin(2 * PI * 8 * t + 1.3), amplitude * sin(2 * PI * 9 * t + 0.4)).jitter(r)
+            quad.takeIf { dropout == 0.0 || r.nextDouble() >= dropout }
         }
 
-        private fun drift(perFrame: Double) = seq { i, r -> BASE.shift(-0.1 + perFrame * i, 0.0).jitter(r).ifInFrame() }
+        private fun drift(perSecond: Double) = seq { i, r -> BASE.shift(-0.1 + perSecond * i / FPS, 0.0).jitter(r).ifInFrame() }
 
         private fun sweep(perFrame: Double) = seq { i, r ->
             // Back and forth across the frame (a triangle wave), the page detected only while wholly in view.
@@ -320,10 +351,15 @@ class ScannerBenchTest {
             Scenario(STEADY, true, frames = seq { _, r -> BASE.jitter(r) }),
             Scenario("hand shake 0.5% of frame", true, frames = shake(0.005)),
             Scenario("hand shake 1%", true, frames = shake(0.01)),
+            Scenario("hand shake 1.5%", true, frames = shake(0.015)),
             Scenario("hand shake 2%", true, frames = shake(0.02)),
-            Scenario("hand shake 4%", true, frames = shake(0.04)),
-            Scenario("slow drift 0.1%/frame (3%/s)", null, frames = drift(0.001)),
-            Scenario("drift 0.5%/frame (15%/s)", false, frames = drift(0.005)),
+            Scenario("hand shake 3%", null, frames = shake(0.03)),
+            Scenario("hand shake 4%", null, frames = shake(0.04)),
+            Scenario("drift 2% of frame/s", null, frames = drift(0.02)),
+            Scenario("drift 3%/s", null, frames = drift(0.03)),
+            Scenario("drift 5%/s", false, frames = drift(0.05)),
+            Scenario("drift 10%/s", false, frames = drift(0.10)),
+            Scenario("drift 15%/s", false, frames = drift(0.15)),
             Scenario("page slides in (3%/frame for 20 frames) then stops", true, SLIDE_FRAMES, seq { i, r ->
                 BASE.shift(-0.03 * (SLIDE_FRAMES - min(i, SLIDE_FRAMES)), 0.0).jitter(r).ifInFrame()
             }),
@@ -334,8 +370,10 @@ class ScannerBenchTest {
             Scenario("two documents alternating every 15 frames", null, frames = alternate(15)),
             Scenario("two documents alternating every 45 frames", null, frames = alternate(45)),
             Scenario("held steady, 5% random dropouts", true, frames = dropouts(0.05)),
+            Scenario("held steady, 15% random dropouts", true, frames = dropouts(0.15)),
             Scenario("held steady, 20% random dropouts", true, frames = dropouts(0.20)),
             Scenario("held steady, one dropout every 15 frames", true, frames = seq { i, r -> BASE.jitter(r).takeIf { i % 15 != 14 } }),
+            Scenario("hand shake 1.5%, 15% random dropouts", true, frames = shake(0.015, 0.15)),
         )
 
         /** Shoelace area. */

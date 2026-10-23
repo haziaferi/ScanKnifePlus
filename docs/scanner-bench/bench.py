@@ -452,12 +452,14 @@ def score_autocapture(work):
         return out + ["Not run.", ""]
     out += [data["method"], "",
             "| Scenario | Should capture | ScanKnife+ captured (runs) | ScanKnife+ median ms to capture | ScanKnife+ captures per run | "
+            "Detector alone captured | Detector alone median ms | "
             f"Theirs @{data['frames'][0]} captured | Theirs median ms | Theirs captures per run | Theirs @{data['frames'][1]} captured | "
-            "Theirs median ms |", "|---|---|---|---|---|---|---|---|---|---|"]
+            "Theirs median ms |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for s in data["scenarios"]:
-        o, t, t2 = s["ours"], s["theirs"], s["theirs2"]
+        o, a, t, t2 = s["ours"], s["oursAlone"], s["theirs"], s["theirs2"]
         out.append(f"| {s['name']} | { {True: 'yes', False: 'no'}.get(s['shouldCapture'], '-') } | {o['runsCaptured']}/{s['runs']} | {fmt(o['medianMs'], 0)} | "
-                   f"{o['meanCaptures']:.2f} | {t['runsCaptured']}/{s['runs']} | {fmt(t['medianMs'], 0)} | {t['meanCaptures']:.2f} | "
+                   f"{o['meanCaptures']:.2f} | {a['runsCaptured']}/{s['runs']} | {fmt(a['medianMs'], 0)} | "
+                   f"{t['runsCaptured']}/{s['runs']} | {fmt(t['medianMs'], 0)} | {t['meanCaptures']:.2f} | "
                    f"{t2['runsCaptured']}/{s['runs']} | {fmt(t2['medianMs'], 0)} |")
     out += ["", "Summary: " + data["summary"], ""]
     return out

@@ -19,7 +19,7 @@ cp "$OPENSCAN"/lib/core/image_filter/filters/filters.dart "$OPENSCAN"/lib/core/i
 
 cp "$OPENSCAN"/lib/core/data/document_naming.dart "$HERE/lib/core/data/"
 
-for f in quad_smoother auto_capture_detector live_scan_controller; do cp "$OPENSCAN/lib/view/screens/live_scan/$f.dart" "$HERE/lib/view/screens/live_scan/"; done
+for f in quad_smoother live_scan_controller; do cp "$OPENSCAN/lib/view/screens/live_scan/$f.dart" "$HERE/lib/view/screens/live_scan/"; done
 
 echo "OpenScan commit: $(git -C "$OPENSCAN" rev-parse HEAD)"
 cd "$HERE"

@@ -16,7 +16,6 @@ import java.nio.Buffer
 import java.nio.ByteBuffer
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.math.abs
 
 /** A capture the pipeline has started: [quad] is the boundary on screen as the shutter fires (portrait, [0,1]), or null to keep the whole photo. */
 class CaptureRequest(val quad: Quad?)
@@ -104,16 +103,12 @@ class LiveScanPipeline internal constructor(
         private set
 
     /**
-     * Whether the document has stayed still for [HOLDING_STEADY_QUADS] smoothed quads in a row, with auto-capture on and out of its cooldown;
-     * the value last passed to [Listener.onHoldingSteadyChanged].
+     * Whether auto-capture's current hold has reached [HOLDING_STEADY_QUADS] smoothed quads (so it is on and out of its cooldown) and no capture
+     * is under way; the value last passed to [Listener.onHoldingSteadyChanged].
      */
     @Volatile
     var isHoldingSteady = false
         private set
-
-    // Under lock: the last smoothed quad of the current still run and the run's length.
-    private var steadyQuad: Quad? = null
-    private var steadyRun = 0
 
     /** Whether a capture is in progress, from [beginCapture] (or an auto-capture) until [endCapture]. */
     val isCapturing: Boolean get() = capturing
@@ -238,30 +233,13 @@ class LiveScanPipeline internal constructor(
         smoothedQuad = quad
         listener.onSmoothedQuadChanged(quad)
         if (zooming || disposed) return
-        // Before the detector, whose onStable may begin the capture that ends the cue.
-        updateHoldingSteady(quad)
-        if (disposed) return
+        // An auto-capture begins inside this call and ends the cue itself, so the cue is read from the detector afterwards.
         autoCapture.onQuadUpdate(quad)
-    }
-
-    // Under lock. Counts only where the detector counts: a tracked quad, auto-capture on, no cooldown, no capture under way.
-    private fun updateHoldingSteady(quad: Quad?) {
-        if (quad == null || capturing || !autoCapture.enabled || autoCapture.isInCooldown) {
-            resetHoldingSteady()
-            return
-        }
-        val last = steadyQuad
-        steadyRun = if (last != null && isStill(last, quad)) steadyRun + 1 else 1
-        steadyQuad = quad
-        setHoldingSteady(steadyRun >= HOLDING_STEADY_QUADS)
+        setHoldingSteady(!capturing && autoCapture.stillQuadCount >= HOLDING_STEADY_QUADS)
     }
 
     // Under lock.
-    private fun resetHoldingSteady() {
-        steadyQuad = null
-        steadyRun = 0
-        setHoldingSteady(false)
-    }
+    private fun resetHoldingSteady() = setHoldingSteady(false)
 
     private fun setHoldingSteady(steady: Boolean) {
         if (disposed || isHoldingSteady == steady) return
@@ -284,15 +262,10 @@ class LiveScanPipeline internal constructor(
 }
 
 /**
- * Smoothed quads in a row, each within [AutoCaptureDetector.POSITION_TOLERANCE_FRACTION] of the last, that count as holding steady: two is the
- * first evidence the page has stopped (about 100 ms), so the cue shows for most of the detector's [AutoCaptureDetector.MIN_STABLE_DURATION_MICROS].
+ * Smoothed quads in auto-capture's current hold ([AutoCaptureDetector.stillQuadCount]) that count as holding steady: two is the first evidence
+ * the page has stopped (about 100 ms), so the cue shows for most of the detector's [AutoCaptureDetector.MIN_STABLE_DURATION_MICROS].
  */
 internal const val HOLDING_STEADY_QUADS = 2
-
-// The detector's own per-corner check, which is private to scanner-core.
-private fun isStill(a: Quad, b: Quad): Boolean = a.points.zip(b.points).all { (p, q) ->
-    abs(p.x - q.x) <= AutoCaptureDetector.POSITION_TOLERANCE_FRACTION && abs(p.y - q.y) <= AutoCaptureDetector.POSITION_TOLERANCE_FRACTION
-}
 
 /**
  * How a frame's detected quad maps onto the still. scanner-core's portrait rotation assumes OpenScan's 90-degree back camera; one mounted at
