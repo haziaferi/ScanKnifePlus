@@ -37,3 +37,5 @@ keystore.properties
 /docs/ocr-bench/field-out/
 # OCR benchmark images mode (docs/ocr-bench/run.sh --images): recognised text of the scanner benchmark's pages
 /docs/ocr-bench/images-out/
+# Python bytecode from the benchmark and design scripts (docs/ocr-bench, docs/scanner-bench, docs/design/launcher)
+__pycache__/
