@@ -249,6 +249,22 @@ object TestPdfs {
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
+    /**
+     * [withForms], but with one resources dictionary, naming every form the pages draw, for all [pages]: set on each page, or only on the
+     * Pages root when [onPagesNode], so every page inherits it.
+     */
+    fun sharedResources(forms: Map<String, String>, pages: List<String>, onPagesNode: Boolean = false): ByteArray = PDDocument().use { doc ->
+        val resources = LayeredResources(doc, forms).of(pages.joinToString(" "))
+        for (content in pages) {
+            val page = PDPage(PDRectangle.LETTER)
+            page.setContents(PDStream(doc, content.byteInputStream()))
+            if (!onPagesNode) page.cosObject.setItem(COSName.RESOURCES, resources)
+            doc.addPage(page)
+        }
+        if (onPagesNode) doc.pages.cosObject.setItem(COSName.RESOURCES, resources)
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
     private class LayeredResources(doc: PDDocument, private val forms: Map<String, String>) {
         private val fonts = COSDictionary().apply {
             setItem(LAYERED_FONT, COSDictionary().apply {

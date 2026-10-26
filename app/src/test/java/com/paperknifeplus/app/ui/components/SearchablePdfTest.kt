@@ -231,6 +231,18 @@ class SearchablePdfTest {
     }
 
     @Test
+    fun `redoing pages that draw one form with their old layer finds each page's new text once`() {
+        val source = TestPdfs.withForms(mapOf("Fx1" to "BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET"), "/Fx1 Do", "/Fx1 Do")
+        val (_, out) = run(source, searchable = options.copy(redo = true))
+        PDDocument.load(out).use { doc ->
+            for (page in 1..2) {
+                val text = PDFTextStripper().apply { startPage = page; endPage = page }.getText(doc)
+                assertEquals(listOf("page", "$page"), text.split(Regex("""\s+""")).filter { it.isNotEmpty() })
+            }
+        }
+    }
+
+    @Test
     fun `a redone page whose content cannot be read keeps it and still gets the new layer`() {
         val broken = PDDocument.load(TestPdfs.layered("BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")).use { doc ->
             val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray
