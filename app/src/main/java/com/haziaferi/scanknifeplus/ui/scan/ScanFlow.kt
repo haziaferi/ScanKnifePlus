@@ -24,15 +24,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import androidx.core.os.ConfigurationCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -50,7 +50,6 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderBlockedDialog
 import com.haziaferi.scanknifeplus.ui.folder.rememberFolderPicker
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.PlusJakartaSans
-import java.util.Locale
 
 /**
  * The document scanner: Scanner (or Review of the picked [importUris]), then Review, then a PDF saved into the user's [folder], or with the
@@ -107,8 +106,9 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     var leaving by remember { mutableStateOf(false) }
     var retakePrompt by remember { mutableStateOf(false) }
     var folderBlocked by remember { mutableStateOf(false) }
+    val resources = LocalResources.current
     val saved = {
-        handwrittenNotice(context.resources, model.handwritten)?.let { Toast.makeText(context.applicationContext, it, Toast.LENGTH_LONG).show() }
+        handwrittenNotice(resources, model.handwritten)?.let { Toast.makeText(context.applicationContext, it, Toast.LENGTH_LONG).show() }
         holder.model = null
         onSaved()
     }
@@ -225,7 +225,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         val yourFolder = stringResource(R.string.folder_your_folder)
         val into = folder?.takeIf { state != null && state != FolderState.NotChosen }?.let { it.name ?: yourFolder }
         val prefs = remember(context) { ScanPreferences(context) }
-        val locale = ConfigurationCompat.getLocales(LocalConfiguration.current)[0] ?: Locale.getDefault()
+        val locale = LocalLocale.current.platformLocale
         SaveDialog(folder = into, searchable = prefs.searchable, txt = prefs.saveText, language = defaultOcrLanguage(locale), onSave = { options ->
             saveOptions = false
             prefs.searchable = options.text != null
