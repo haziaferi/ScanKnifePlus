@@ -20,10 +20,18 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -344,6 +352,42 @@ class SearchablePdfTest {
         assertEquals(1, engine.closes)
         assertFalse(out.exists())
         assertEquals(emptyList<String>(), searchableWorkDir(context).list()!!.toList())
+    }
+
+    @Test
+    fun `a cancel reaches the engine even when it comes before the run's other work was dispatched`() {
+        // Lets the run start, then holds back every later dispatch until the page being read has cancelled the run: the order a busy
+        // phone can produce.
+        val pool = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
+        val held = ConcurrentLinkedQueue<Runnable>()
+        val passed = AtomicInteger()
+        val holding = AtomicBoolean(true)
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding.get() && passed.getAndIncrement() > 0) held += block else pool.dispatch(context, block)
+            }
+        }
+        val out = File(dir, "cancelled-early.pdf").apply { delete() }
+        lateinit var job: Job
+        engine.onRead = {
+            job.cancel()
+            holding.set(false)
+            generateSequence { held.poll() }.forEach { pool.dispatch(EmptyCoroutineContext, it) }
+            val end = System.currentTimeMillis() + 2_000
+            while (engine.cancels == 0 && System.currentTimeMillis() < end) Thread.sleep(10)
+        }
+        try {
+            job = CoroutineScope(Dispatchers.Default).launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                makeSearchable(context, TestPdfs.write(dir, TestPdfs.plain(2)), "", Uri.fromFile(out), options, ::openEngine, running,
+                    renders = { _, _ -> renders }, dispatcher = dispatcher)
+            }
+            runBlocking { job.join() }
+            assertEquals(1, engine.cancels)
+            assertEquals(listOf("page 1"), engine.reads.map { it.text })
+            assertFalse(out.exists())
+        } finally {
+            pool.close()
+        }
     }
 
     @Test
