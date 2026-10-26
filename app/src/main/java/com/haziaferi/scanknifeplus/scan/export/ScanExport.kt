@@ -7,9 +7,11 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.util.Log
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DocumentScanner
+import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.library.ScanDocument
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
@@ -21,6 +23,7 @@ import com.paperknifeplus.app.ui.components.SessionManager
 import com.paperknifeplus.app.ui.components.getUriDetails
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 
 /** A PDF saved where the user chose: [uri] as the system file picker returned it, holding [pages] pages. */
 data class SavedPdf(val uri: Uri, val pages: Int)
@@ -41,9 +44,24 @@ class ScanExport(
     fun fileName(document: ScanDocument): String = ExportNames.exportFileName(document.displayName, document.id) + ".pdf"
 
     /**
+     * The file name to suggest for the .txt copy of [document]'s PDF saved at [pdf]: the name the user gave the PDF in the picker with `.txt` for
+     * `.pdf`, or the suggested PDF name's when the provider does not say. Blocking, briefly.
+     */
+    fun textFileName(pdf: Uri, document: ScanDocument): String {
+        val name = try {
+            context.contentResolver.query(pdf, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        } ?: fileName(document)
+        return name.removeSuffix(".pdf").removeSuffix(".PDF") + ".txt"
+    }
+
+    /**
      * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History; a
-     * [password] encrypts it as in [ScanPdfExporter.writePdf]. Returns what was saved, or null on failure, in which case the empty document the
-     * picker created is deleted again.
+     * [password] encrypts it as in [ScanPdfExporter.writePdf], and pages read in [text] get their text layer. Returns what was saved, or null on
+     * failure, in which case the empty document the picker created is deleted again.
      */
     fun save(
         id: String,
@@ -53,29 +71,50 @@ class ScanExport(
         pageIds: Set<String>? = null,
         password: String? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        text: Map<String, OcrPage> = emptyMap(),
     ): SavedPdf? {
-        val resolver = context.contentResolver
-        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress) { pdf ->
-            // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
-            val out = (try {
-                resolver.openOutputStream(dest, "wt")
-            } catch (e: IllegalArgumentException) {
-                null
-            } catch (e: UnsupportedOperationException) {
-                null
-            } ?: resolver.openOutputStream(dest, "w")) ?: throw IOException("Cannot write to $dest")
-            out.use { o -> pdf.inputStream().use { it.copyTo(o) } }
+        val pages = exporter.writePdf(id, pageIds, quality, size, password, onProgress, text) { pdf ->
+            openTruncated(dest).use { o -> pdf.inputStream().use { it.copyTo(o) } }
             true
         }
         if (pages == null) {
-            try {
-                if (DocumentsContract.isDocumentUri(context, dest)) DocumentsContract.deleteDocument(resolver, dest)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not remove the unfinished $dest", e)
-            }
+            drop(dest)
             return null
         }
         return SavedPdf(dest, pages).also(onSaved)
+    }
+
+    /**
+     * Writes [text] as UTF-8 into [dest], a document the system file picker just created for a scan's .txt copy; false on failure, in which case
+     * the empty document is deleted again.
+     */
+    fun saveText(dest: Uri, text: String): Boolean = try {
+        openTruncated(dest).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        true
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not write the text to $dest", e)
+        drop(dest)
+        false
+    }
+
+    // "wt" truncates, in case the picker handed back an existing file; not every provider supports it, so fall back to "w".
+    private fun openTruncated(dest: Uri): OutputStream {
+        val resolver = context.contentResolver
+        return (try {
+            resolver.openOutputStream(dest, "wt")
+        } catch (e: IllegalArgumentException) {
+            null
+        } catch (e: UnsupportedOperationException) {
+            null
+        } ?: resolver.openOutputStream(dest, "w")) ?: throw IOException("Cannot write to $dest")
+    }
+
+    private fun drop(dest: Uri) {
+        try {
+            if (DocumentsContract.isDocumentUri(context, dest)) DocumentsContract.deleteDocument(context.contentResolver, dest)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not remove the unfinished $dest", e)
+        }
     }
 
     /**

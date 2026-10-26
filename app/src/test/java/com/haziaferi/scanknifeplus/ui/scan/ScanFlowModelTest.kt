@@ -3,10 +3,13 @@ package com.haziaferi.scanknifeplus.ui.scan
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.haziaferi.scanknifeplus.ocr.OcrLanguage
+import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scan.ScanPreferences
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredBook
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
+import com.haziaferi.scanknifeplus.scan.export.FakeOcrEngine
 import com.haziaferi.scanknifeplus.scan.export.PdfAssembler
 import com.haziaferi.scanknifeplus.scan.export.SavedPdf
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
@@ -88,8 +91,11 @@ class ScanFlowModelTest {
     private val library = ScanLibrary(root.resolve("library"), clock = { now++ }, capture = writer, images = images, bookCapture = bookWriter)
     private var sessions = 0
     @Volatile private var assemblyFails = false
-    private val assembler = PdfAssembler { pages, _, _, dest, password ->
+    private val texts = Collections.synchronizedList(mutableListOf<List<String?>>())
+    private val engine = FakeOcrEngine()
+    private val assembler = PdfAssembler { pages, _, _, dest, password, text ->
         written += password
+        texts += pages.indices.map { text.getOrNull(it)?.text() }
         dest.writeText(pages.joinToString("|") { it.readText() })
         !assemblyFails
     }
@@ -111,6 +117,7 @@ class ScanFlowModelTest {
         main = Dispatchers.Unconfined,
         io = io,
         takePicture = takePicture,
+        openEngine = { engine },
     ).also { models += it }
 
     /** Runs its work at once, like Unconfined, except while [held]; [release] then runs what waited, in order. */
@@ -282,7 +289,7 @@ class ScanFlowModelTest {
 
         val dest = root.resolve("out.pdf").apply { createNewFile() }
         var result: SavedPdf? = null
-        m.save(Uri.fromFile(dest), PdfPageSize.FIT, password = "") { result = it }
+        m.save(Uri.fromFile(dest), SaveOptions(PdfPageSize.FIT, "")) { result = it }
         assertEquals("b", dest.readText())
         assertEquals(listOf<String?>(null), written)
         assertEquals(1, result!!.pages)
@@ -413,10 +420,10 @@ class ScanFlowModelTest {
         m.shoot("a")
         m.shoot("b")
         waitUntil("two pages") { m.pages.size == 2 && m.canSave }
-        m.pendingSave = PdfPageSize.FIT to "secret"
+        m.pendingSave = SaveOptions(PdfPageSize.FIT, "secret")
 
         var result: WriteResult? = null
-        m.saveToFolder(scanFolder(dir), PdfPageSize.FIT, "secret") { result = it }
+        m.saveToFolder(scanFolder(dir), SaveOptions(PdfPageSize.FIT, "secret")) { result = it }
         val name = (result as WriteResult.Written).name
         assertEquals("a|b", dir.resolve("$name.pdf").readText())
         assertTrue(dir.resolve("Scan sources/$name/document.json").isFile)
@@ -435,7 +442,7 @@ class ScanFlowModelTest {
         waitUntil("the page") { m.pages.size == 1 && m.canSave }
 
         var result: WriteResult? = null
-        m.saveToFolder(scanFolder(gone), PdfPageSize.A4, "") { result = it }
+        m.saveToFolder(scanFolder(gone), SaveOptions(PdfPageSize.A4, "")) { result = it }
         assertEquals(WriteResult.FolderUnavailable, result)
         assertNull("the caller asks for the folder again", m.notice)
         assertFalse(m.busy)
@@ -443,7 +450,7 @@ class ScanFlowModelTest {
         assertTrue("the session still runs", m.canSave)
 
         assemblyFails = true
-        m.saveToFolder(scanFolder(root.resolve("folder").apply { mkdirs() }), PdfPageSize.A4, "") { result = it }
+        m.saveToFolder(scanFolder(root.resolve("folder").apply { mkdirs() }), SaveOptions(PdfPageSize.A4, "")) { result = it }
         assertEquals(WriteResult.Failed, result)
         assertEquals(ScanNotice.SAVE_FAILED, m.notice)
         assertEquals(1, m.pages.size)
@@ -452,12 +459,12 @@ class ScanFlowModelTest {
     @Test
     fun `the save options wait in the flow's model while the picker is open`() {
         val m = model()
-        m.pendingSave = PdfPageSize.LEGAL to "secret"
-        assertEquals(PdfPageSize.LEGAL to "secret", m.pendingSave)
+        m.pendingSave = SaveOptions(PdfPageSize.LEGAL, "secret")
+        assertEquals(SaveOptions(PdfPageSize.LEGAL, "secret"), m.pendingSave)
         m.shoot("a")
         waitUntil("the page") { m.pages.size == 1 && m.canSave }
         val dest = root.resolve("out.pdf").apply { createNewFile() }
-        m.save(Uri.fromFile(dest), PdfPageSize.LEGAL, "secret") {}
+        m.save(Uri.fromFile(dest), SaveOptions(PdfPageSize.LEGAL, "secret")) {}
         assertNull("the options are used once", m.pendingSave)
         assertEquals(listOf<String?>("secret"), written)
     }
@@ -510,6 +517,136 @@ class ScanFlowModelTest {
         assertFalse(m.autoCapture)
         assertFalse(ScanPreferences(context).autoCapture)
         assertFalse(model().autoCapture)
+    }
+
+    private val searchable = TextOptions(OcrLanguage.ENGLISH, OcrReading.RECEIPTS, txt = false)
+
+    /** A Multi page flow with a page per text, stored and ready to save. */
+    private fun ready(vararg pages: String): ScanFlowModel {
+        val m = model()
+        m.chooseMode(CaptureMode.MULTI)
+        for (p in pages) m.shoot(p)
+        waitUntil("the pages") { m.pages.size == pages.size && m.canSave }
+        return m
+    }
+
+    private fun out(name: String = "out.pdf"): Uri = Uri.fromFile(root.resolve(name).apply { createNewFile() })
+
+    private fun cached(m: ScanFlowModel): List<String> = root.resolve("library/${m.document!!.id}").list().orEmpty().filter { it.startsWith("ocr_") }
+
+    @Test
+    fun `a searchable save reads every page with the chosen settings, counting them, and gives each page its text`() {
+        val m = ready("a", "b", "c")
+        val seen = mutableListOf<ReadingProgress?>()
+        engine.onRead = { seen += m.reading }
+        var result: SavedPdf? = null
+        m.save(out(), SaveOptions(PdfPageSize.LEGAL, "", searchable)) { result = it }
+        assertEquals(3, result!!.pages)
+        assertEquals(listOf(ReadingProgress(1, 3), ReadingProgress(2, 3), ReadingProgress(3, 3)), seen)
+        assertEquals(setOf(355.6 to OcrReading.RECEIPTS), engine.reads.map { it.longEdgeMm to it.reading }.toSet())
+        assertEquals(setOf(OcrLanguage.ENGLISH), engine.reads.map { it.language }.toSet())
+        assertEquals(listOf(listOf<String?>("a", "b", "c")), texts)
+        assertNull(m.reading)
+        assertEquals("one engine per save, closed after", 1, engine.closes)
+        assertTrue("the cache goes once the PDF is saved", cached(m).isEmpty())
+        assertNull("no .txt asked for", m.textToSave)
+    }
+
+    @Test
+    fun `without Make searchable nothing is read`() {
+        val m = ready("a")
+        m.save(out(), SaveOptions(PdfPageSize.A4, "")) {}
+        assertTrue(engine.reads.isEmpty())
+        assertEquals(listOf(listOf<String?>(null)), texts)
+    }
+
+    @Test
+    fun `Save without text cancels the page being read and saves the PDF without a text layer or txt`() {
+        val m = ready("a", "b")
+        engine.onRead = { if (it == "a") m.saveWithoutText() }
+        var result: SavedPdf? = null
+        m.save(out(), SaveOptions(PdfPageSize.A4, "", searchable.copy(txt = true))) { result = it }
+        assertEquals(2, result!!.pages)
+        assertEquals(1, engine.cancels)
+        assertEquals(listOf("a"), engine.reads.map { it.text })
+        assertEquals(listOf(listOf<String?>(null, null)), texts)
+        assertNull(m.textToSave)
+        assertTrue(m.handwritten.isEmpty())
+    }
+
+    @Test
+    fun `going to the background lets the page being read finish, then waits, and coming back resumes`() {
+        val m = ready("a", "b", "c")
+        engine.onRead = { if (it == "a") m.pauseReading() }
+        var result: SavedPdf? = null
+        m.save(out(), SaveOptions(PdfPageSize.A4, "", searchable)) { result = it }
+        assertEquals(listOf("a"), engine.reads.map { it.text })
+        assertEquals(0, engine.cancels)
+        assertTrue(m.busy)
+        assertNull(result)
+        assertEquals("page a was the last one started", ReadingProgress(1, 3), m.reading)
+        assertEquals("page a is kept for a restart", 1, cached(m).size)
+        m.resumeReading()
+        assertEquals(listOf("a", "b", "c"), engine.reads.map { it.text })
+        assertEquals(3, result!!.pages)
+    }
+
+    @Test
+    fun `a save that fails keeps the pages read, and the next one reads only the rest`() {
+        val m = ready("a", "b")
+        assemblyFails = true
+        m.save(out(), SaveOptions(PdfPageSize.A4, "", searchable)) {}
+        assertEquals(ScanNotice.SAVE_FAILED, m.notice)
+        assertEquals(2, cached(m).size)
+        assemblyFails = false
+        m.save(out("again.pdf"), SaveOptions(PdfPageSize.A4, "", searchable)) {}
+        assertEquals("nothing read twice", 2, engine.reads.size)
+        assertEquals(listOf<String?>("a", "b"), texts.last())
+    }
+
+    @Test
+    fun `with the txt option the picker save waits for a second picker, whose file gets the text of every page`() {
+        val m = ready("a", "scribble")
+        var saved = 0
+        m.save(out(), SaveOptions(PdfPageSize.A4, "", searchable.copy(txt = true))) { saved++ }
+        assertEquals(1, saved)
+        val (name, text) = m.textToSave!!
+        assertEquals("${m.document!!.id}.txt", name)
+        assertEquals("words below 40 stay out of the txt", "a\n\u000C", text)
+        assertEquals("the page that looks handwritten", listOf(2), m.handwritten)
+        val txt = root.resolve("out.txt").apply { createNewFile() }
+        var done = 0
+        m.saveText(Uri.fromFile(txt)) { done++ }
+        assertEquals(1, done)
+        assertEquals(text, txt.readText())
+        assertNull(m.textToSave)
+    }
+
+    @Test
+    fun `cancelling the txt picker just skips the txt`() {
+        val m = ready("a")
+        m.save(out(), SaveOptions(PdfPageSize.A4, "", searchable.copy(txt = true))) {}
+        m.skipText()
+        assertNull(m.textToSave)
+        assertEquals("the session ended keeping the document", listOf("a"), m.storedTexts())
+    }
+
+    @Test
+    fun `a folder save writes the txt beside the PDF, with the same base name, only when asked`() {
+        val dir = root.resolve("folder").apply { mkdirs() }
+        val m = ready("a", "b")
+        var result: WriteResult? = null
+        m.saveToFolder(scanFolder(dir), SaveOptions(PdfPageSize.A4, "", searchable.copy(txt = true))) { result = it }
+        val name = (result as WriteResult.Written).name
+        assertEquals(listOf<String?>("a", "b"), texts.single())
+        assertEquals("a\n\u000Cb\n", dir.resolve("$name.txt").readText())
+        assertTrue(dir.resolve("$name.pdf").isFile)
+        assertTrue(cached(m).isEmpty())
+
+        val other = root.resolve("other").apply { mkdirs() }
+        val n = ready("c")
+        n.saveToFolder(scanFolder(other), SaveOptions(PdfPageSize.A4, "", searchable)) { result = it }
+        assertEquals(listOf("${(result as WriteResult.Written).name}.pdf"), other.list()!!.filter { !it.startsWith("Scan") })
     }
 
     private companion object {

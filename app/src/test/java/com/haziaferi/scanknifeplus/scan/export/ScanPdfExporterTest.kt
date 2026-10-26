@@ -2,6 +2,7 @@ package com.haziaferi.scanknifeplus.scan.export
 
 import android.net.Uri
 import android.os.Looper
+import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
@@ -68,9 +69,11 @@ class ScanPdfExporterTest {
         var workDirs = mutableListOf<File>()
         val passwords = mutableListOf<String?>()
         var fail = false
+        var text: List<OcrPage?>? = null
 
-        override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?): Boolean {
+        override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?, text: List<OcrPage?>): Boolean {
             this.pages = pages.map { it.readText() }
+            this.text = text
             this.size = size
             passwords += password
             workDirs += workDir

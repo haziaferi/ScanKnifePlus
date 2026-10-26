@@ -12,13 +12,21 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.haziaferi.scanknifeplus.ocr.OcrEngine
+import com.haziaferi.scanknifeplus.ocr.OcrLanguage
+import com.haziaferi.scanknifeplus.ocr.OcrReading
+import com.haziaferi.scanknifeplus.ocr.TesseractOcrEngine
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.ScanPreferences
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraController
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraState
+import com.haziaferi.scanknifeplus.scan.export.OcrCache
+import com.haziaferi.scanknifeplus.scan.export.OcrSettings
 import com.haziaferi.scanknifeplus.scan.export.SavedPdf
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.haziaferi.scanknifeplus.scan.export.ScanPdfExporter
+import com.haziaferi.scanknifeplus.scan.export.ScanText
+import com.haziaferi.scanknifeplus.scan.export.ScanTextReader
 import com.haziaferi.scanknifeplus.scan.library.ScanDocument
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scan.library.ScanPage
@@ -40,6 +48,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,6 +62,15 @@ internal enum class ScanPhase { SCANNER, REVIEW }
 
 /** A short message the flow shows until the next action; none of them blocks scanning. */
 internal enum class ScanNotice { SHOT_FAILED, EDIT_FAILED, SAVE_FAILED }
+
+/** What the Save dialog chose: page [size], a [password] (empty for none) and, when Make searchable is on, how to read the [text]. */
+internal data class SaveOptions(val size: PdfPageSize, val password: String, val text: TextOptions? = null)
+
+/** Make searchable's choices: the OCR [language] and [reading], and whether to also save the text as a .txt copy ([txt]). */
+internal data class TextOptions(val language: OcrLanguage, val reading: OcrReading, val txt: Boolean)
+
+/** A save reading its pages: page [page] of [total] is being read. */
+internal data class ReadingProgress(val page: Int, val total: Int)
 
 /** A page deleted in Review that Undo can still bring back: it stays in the library until [ScanFlowModel.commitDelete]. */
 internal data class DeletedPage(val page: ScanPage, val number: Int)
@@ -78,6 +96,7 @@ internal class ScanFlowModel(
     private val io: CoroutineContext = Dispatchers.IO,
     takePicture: (suspend (File) -> File?)? = null,
     private val beforeSession: suspend () -> Unit = {},
+    private val openEngine: () -> OcrEngine = { TesseractOcrEngine.open(context.applicationContext) },
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + main)
@@ -141,9 +160,27 @@ internal class ScanFlowModel(
         private set
 
     /** The save options chosen before the system file picker opened; kept here so they outlive a recreated activity. Never written to disk. */
-    var pendingSave: Pair<PdfPageSize, String>? = null
+    var pendingSave: SaveOptions? = null
     var busy by mutableStateOf(false)
         private set
+
+    /** Which page a searchable save is reading, while it reads; null otherwise. */
+    var reading by mutableStateOf<ReadingProgress?>(null)
+        private set
+
+    /** The numbers of the pages the last save found looking handwritten, for the notice after it. */
+    var handwritten: List<Int> = emptyList()
+        private set
+
+    /** A saved PDF's .txt copy awaiting its own picker, as (name to suggest, text); the flow stays open until [saveText] or [skipText]. */
+    var textToSave: Pair<String, String>? = null
+        private set
+
+    // False while the app is in the background: a save's OCR then stops after the page it is reading.
+    private val foreground = MutableStateFlow(true)
+    private var reader: ScanTextReader? = null
+    private var withoutText = false
+
     var notice by mutableStateOf<ScanNotice?>(null)
 
     /** The clockwise quarter turns that bring the device's current hold upright; set by the screen, read at the shutter in Book mode. */
@@ -385,45 +422,75 @@ internal class ScanFlowModel(
     }
 
     /**
-     * Writes the document as a PDF into [dest] (a document the system picker created) with page [size] and, unless empty, [password], then ends
-     * the session keeping its pages, and hands the result to [onSaved]. A failure leaves Review as it was, with [ScanNotice.SAVE_FAILED].
+     * Writes the document as a PDF into [dest] (a document the system picker created) with the [options]' page size and password (unless empty),
+     * searchable when they say so, then ends the session keeping its pages, and hands the result to [onSaved]. A .txt copy asked for waits in
+     * [textToSave], and the flow stays open until it is saved or skipped. A failure leaves Review as it was, with [ScanNotice.SAVE_FAILED].
      */
-    fun save(dest: Uri, size: PdfPageSize, password: String, onSaved: (SavedPdf) -> Unit) {
+    fun save(dest: Uri, options: SaveOptions, onSaved: (SavedPdf) -> Unit) {
         pendingSave = null
         commitDelete()
         busy = true
         scope.launch {
-            val saved = edits.withLock {
-                val id = document?.id
-                if (id == null) null else withContext(io) { export.save(id, dest, size = size, password = password.ifEmpty { null }) }
+            val outcome = edits.withLock {
+                val doc = document ?: return@withLock null
+                val text = readText(doc.id, options)
+                withContext(io) {
+                    val password = options.password.ifEmpty { null }
+                    val pdf = export.save(doc.id, dest, size = options.size, password = password, text = text?.read.orEmpty())
+                    val txt = text?.takeIf { options.text?.txt == true }?.let { export.textFileName(dest, doc) to it.txt() }
+                    pdf?.let { PickerSave(it, text, txt) }
+                }
             }
-            if (saved == null) {
+            if (outcome == null) {
                 busy = false
                 notice = ScanNotice.SAVE_FAILED
                 return@launch
             }
-            end(keep = true)
+            textToSave = outcome.txt
+            afterSave(outcome.text)
+            end(keep = true, close = outcome.txt == null)
             busy = false
-            onSaved(saved)
+            onSaved(outcome.pdf)
         }
     }
 
+    /** Writes the waiting .txt copy into [dest], the document its file picker created, then closes the flow and calls [onDone]. */
+    fun saveText(dest: Uri, onDone: () -> Unit) {
+        val (_, text) = textToSave ?: return
+        textToSave = null
+        scope.launch {
+            withContext(io) { export.saveText(dest, text) }
+            close()
+            onDone()
+        }
+    }
+
+    /** Drops the waiting .txt copy (its picker was cancelled) and closes the flow. */
+    fun skipText() {
+        textToSave = null
+        close()
+    }
+
     /**
-     * Writes the document back into the user's [folder] ([ScanFolder.writeBack]: its PDF at the top level with page [size] and, unless empty,
-     * [password], its sources under `Scan sources/`), then ends the session keeping its pages, which the launch sweep removes once the folder
-     * holds them. [onDone] gets the result; on anything but [WriteResult.Written] Review stays as it was, with [ScanNotice.SAVE_FAILED] unless
-     * the folder could not be reached, which the caller handles.
+     * Writes the document back into the user's [folder] ([ScanFolder.writeBack]: its PDF at the top level with the [options]' page size and
+     * password (unless empty), searchable and with a .txt beside it when they say so, its sources under `Scan sources/`), then ends the session
+     * keeping its pages, which the launch sweep removes once the folder holds them. [onDone] gets the result; on anything but
+     * [WriteResult.Written] Review stays as it was, with [ScanNotice.SAVE_FAILED] unless the folder could not be reached, which the caller handles.
      */
-    fun saveToFolder(folder: ScanFolder, size: PdfPageSize, password: String, onDone: (WriteResult) -> Unit) {
+    fun saveToFolder(folder: ScanFolder, options: SaveOptions, onDone: (WriteResult) -> Unit) {
         pendingSave = null
         commitDelete()
         busy = true
         scope.launch {
-            val result = edits.withLock {
-                val id = document?.id
-                if (id == null) WriteResult.Failed else withContext(io) { folder.writeBack(id, exporter.pdfMaker(size, password.ifEmpty { null })) }
+            val (result, text) = edits.withLock {
+                val id = document?.id ?: return@withLock WriteResult.Failed to null
+                val text = readText(id, options)
+                val pdf = exporter.pdfMaker(options.size, options.password.ifEmpty { null }, text?.read.orEmpty())
+                val txt = text?.takeIf { options.text?.txt == true }?.let { t -> { doc: ScanDocument -> t.txt(doc.pages) } }
+                withContext(io) { folder.writeBack(id, pdf, txt) } to text
             }
             if (result is WriteResult.Written) {
+                afterSave(text)
                 end(keep = true)
             } else if (result != WriteResult.FolderUnavailable) {
                 notice = ScanNotice.SAVE_FAILED
@@ -431,6 +498,49 @@ internal class ScanFlowModel(
             busy = false
             onDone(result)
         }
+    }
+
+    /** Pauses a save's OCR after the page it is reading, as the app goes to the background (decision of 2026-10-20, item 6). */
+    fun pauseReading() {
+        foreground.value = false
+    }
+
+    /** Resumes a save's OCR paused by [pauseReading], as the app comes back. */
+    fun resumeReading() {
+        foreground.value = true
+    }
+
+    /** Save without text: stops a save's OCR (the page being read is cancelled) and saves the PDF without a text layer or .txt copy. */
+    fun saveWithoutText() {
+        withoutText = true
+        reader?.stop()
+    }
+
+    /**
+     * Reads the pages of document [id] for a searchable save, showing the progress in [reading]: null when [options] are not searchable or
+     * [saveWithoutText] stopped it. Pages read earlier with the same settings come from the cache.
+     */
+    private suspend fun readText(id: String, options: SaveOptions): ScanText? {
+        val text = options.text ?: return null
+        withoutText = false
+        val pages = withContext(io) { library.document(id) }?.pages ?: return null
+        val settings = OcrSettings(text.language, text.reading, OcrSettings.longEdgeMm(options.size))
+        val r = ScanTextReader(library, openEngine, io, foreground)
+        reader = r
+        return try {
+            val read = if (withoutText) null else r.read(id, pages, settings) { page, total -> reading = ReadingProgress(page, total) }
+            read?.let { ScanText(pages, it) }
+        } finally {
+            reader = null
+            reading = null
+        }
+    }
+
+    /** After a save that succeeded: notes its handwritten-looking pages and drops the document's cached reads. */
+    private suspend fun afterSave(text: ScanText?) {
+        handwritten = text?.handwritten.orEmpty()
+        val id = document?.id ?: return
+        withContext(io) { OcrCache(library, id).clear() }
     }
 
     /** Deletes [dest], a document the save picker created for options that were lost (the app was killed meanwhile), so no empty PDF stays. */
@@ -456,13 +566,13 @@ internal class ScanFlowModel(
         }
     }
 
-    /** Ends the session ([ScanSession.finish] or [ScanSession.cancel]) once pending edits are written, and releases the camera. */
-    private suspend fun end(keep: Boolean) {
+    /** Ends the session ([ScanSession.finish] or [ScanSession.cancel]) once pending edits are written, then, unless not to [close], closes. */
+    private suspend fun end(keep: Boolean, close: Boolean = true) {
         val s = synchronized(sessionLock) { session }
         edits.withLock {
             if (s != null) withContext(io) { if (keep) s.finish() else s.cancel() }
         }
-        close()
+        if (close) close()
     }
 
     /** Releases the camera and detection and stops the flow's work; a session still running is left to [abandon] or [end]. */
@@ -472,6 +582,7 @@ internal class ScanFlowModel(
             closed = true
         }
         mainHandler.removeCallbacksAndMessages(null)
+        reader?.stop()
         controller.release()
         pipeline.dispose()
         scope.cancel()
@@ -547,6 +658,9 @@ internal class ScanFlowModel(
         const val TAG = "ScanFlow"
     }
 }
+
+/** A PDF saved through the picker, with the [text] it was made searchable with and the .txt copy (file name and text) still to save. */
+private class PickerSave(val pdf: SavedPdf, val text: ScanText?, val txt: Pair<String, String>?)
 
 /** Keeps the flow's [model] across configuration changes; a flow the activity drops without leaving it keeps its pages ([ScanFlowModel.abandon]). */
 internal class ScanFlowHolder : ViewModel() {

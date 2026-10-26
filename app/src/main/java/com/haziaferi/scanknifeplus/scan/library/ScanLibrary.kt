@@ -112,9 +112,17 @@ class ScanLibrary(
      * for the whole image) and, if [keepOriginal], the uncropped original. A [filter] other than Original is then applied, as OpenScan applies its
      * default filter to new pages; if that fails the page stays unfiltered. Returns the updated document with the new page's id, or null if the
      * document does not exist, no page could be stored, or the record could not be updated; in every null case the new files are removed again.
+     * With [markUncropped] (a camera shot) a page stored whole, without an outline or after a failed warp, is marked [ScanPage.checkCrop].
      */
-    fun addCapture(id: String, source: ImageSource, quad: Quad?, keepOriginal: Boolean, filter: String? = null): AddedPage? {
-        val added = addPages(id, 1, keepOriginal, filter, quad) { pages, originals ->
+    fun addCapture(
+        id: String,
+        source: ImageSource,
+        quad: Quad?,
+        keepOriginal: Boolean,
+        filter: String? = null,
+        markUncropped: Boolean = false,
+    ): AddedPage? {
+        val added = addPages(id, 1, keepOriginal, filter, quad, { markUncropped && !it.cropped }) { pages, originals ->
             capture.store(source, quad, pages[0], originals?.get(0))?.let { listOf(it to null) }
         } ?: return null
         return AddedPage(added.document, added.pageIds.single())
@@ -124,7 +132,8 @@ class ScanLibrary(
      * Stores a photo of an open book as the two new last pages of document [id], left then right, both or neither: [spread] (fractional
      * portrait coordinates, or null for the whole image) is split [split] of the way along its top and bottom edges (see BookSplit.page), with
      * the book upright once the photo is turned clockwise by [quarterTurns]. With [keepOriginal] each page gets its own copy of the original
-     * and records the turn and its [BookCrop] for [resplitBook]; [filter] and the null cases are as in [addCapture].
+     * and records the turn and its [BookCrop] for [resplitBook]; [filter] and the null cases are as in [addCapture]. With [markUncropped] both
+     * pages of a spread without an outline are marked [ScanPage.checkCrop].
      */
     fun addBookCapture(
         id: String,
@@ -134,7 +143,8 @@ class ScanLibrary(
         quarterTurns: Int,
         keepOriginal: Boolean,
         filter: String? = null,
-    ): AddedPages? = addPages(id, 2, keepOriginal, filter, quad = null) { pages, originals ->
+        markUncropped: Boolean = false,
+    ): AddedPages? = addPages(id, 2, keepOriginal, filter, quad = null, { markUncropped && spread == null }) { pages, originals ->
         bookCapture.store(source, spread, split, quarterTurns, pages[0] to pages[1], originals?.let { it[0] to it[1] })?.let { book ->
             book.pages.zip(BookPage.entries) { page, side -> page to BookCrop(book.spread, split, side, quarterTurns.mod(4)) }
         }
@@ -143,7 +153,7 @@ class ScanLibrary(
     /**
      * Reserves [count] new page files (and originals, if [keepOriginal]) in document [id], has [store] write them, and adds the pages it
      * stored, in order, to the record in one update; a page that kept its original records its [BookCrop], if any, and that crop's turn, or
-     * else the [quad] it was cropped to.
+     * else the [quad] it was cropped to, and a page [uncropped] accepts is marked [ScanPage.checkCrop].
      * Then applies [filter] as [addCapture] describes. Null, with the new files removed, if [store] fails or the record cannot be updated.
      */
     private fun addPages(
@@ -152,6 +162,7 @@ class ScanLibrary(
         keepOriginal: Boolean,
         filter: String?,
         quad: Quad?,
+        uncropped: (StoredCapture) -> Boolean,
         store: (pages: List<File>, originals: List<File>?) -> List<Pair<StoredCapture, BookCrop?>>?,
     ): AddedPages? {
         val (pageFiles, originalFiles) = synchronized(LOCK) {
@@ -186,7 +197,10 @@ class ScanLibrary(
                     val book = crop?.takeIf { capture.original != null }?.copy(shot = "p${pageFiles[0].nameWithoutExtension}")
                     val pageId = "p${file.nameWithoutExtension}"
                     val pageQuad = quad?.takeIf { crop == null && capture.original != null && capture.cropped }
-                    ScanPage(pageId, file.name, original = capture.original?.name, quarterTurns = book?.turns ?: 0, book = book, quad = pageQuad)
+                    ScanPage(
+                        pageId, file.name, original = capture.original?.name, quarterTurns = book?.turns ?: 0, book = book, quad = pageQuad,
+                        checkCrop = uncropped(capture),
+                    )
                 }
                 try {
                     AddedPages(update(doc.copy(pages = doc.pages + pages)), pages.map { it.id })
@@ -242,8 +256,8 @@ class ScanLibrary(
      * Re-crops page [pageId] to [quad] (fractions of the source's upright size), turned clockwise by [quarterTurns] (null keeps the page's
      * recorded [ScanPage.quarterTurns]), as OpenScan's crop step does: from the kept original (else the unfiltered copy, else the page), so crops
      * never compound, giving a page without an original one first; the new page is fitted to the page cap, filter-free and records [quad] as
-     * its [ScanPage.quad], and a Book mode page becomes a plain page (its [ScanPage.book] is dropped). Returns the updated document, or null if
-     * nothing changed; where OpenScan stores an unnormalized copy when normalizing fails, the re-crop fails here.
+     * its [ScanPage.quad] (clearing [ScanPage.checkCrop]), and a Book mode page becomes a plain page (its [ScanPage.book] is dropped). Returns
+     * the updated document, or null if nothing changed; where OpenScan stores an unnormalized copy when normalizing fails, the re-crop fails here.
      */
     fun recropPage(id: String, pageId: String, quad: Quad, quarterTurns: Int? = null): ScanDocument? {
         val (_, page) = snapshot(id, pageId) ?: return null
@@ -261,7 +275,8 @@ class ScanLibrary(
             if (!images.crop(source, quad, turns, cropped)) return discard(reserved)
             val original = page.original ?: promoted!!.name
             val edited = page.copy(
-                image = cropped.name, original = original, unfiltered = null, filter = null, quarterTurns = turns, book = null, quad = quad
+                image = cropped.name, original = original, unfiltered = null, filter = null, quarterTurns = turns, book = null, quad = quad,
+                checkCrop = false,
             )
             return commit(id, page, edited, reserved, listOfNotNull(page.image, page.unfiltered))
         } finally {
