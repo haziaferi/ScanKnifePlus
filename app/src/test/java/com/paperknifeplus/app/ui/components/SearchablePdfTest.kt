@@ -12,9 +12,13 @@ import com.haziaferi.scanknifeplus.ocr.TesseractOcrEngine
 import com.haziaferi.scanknifeplus.scan.export.FakeOcrEngine
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -187,6 +191,45 @@ class SearchablePdfTest {
         assertEquals(listOf("page 1", "page 2", "page 3"), engine.reads.map { it.text })
         val second = PDDocument.load(again).use { PDFTextStripper().apply { startPage = 2; endPage = 2 }.getText(it) }
         assertTrue(second, TestPdfs.textMarker(2) in second && "page 2" in second)
+    }
+
+    @Test
+    fun `redoing a page replaces its old invisible text, keeping its image and visible text, also when redone twice`() {
+        val source = TestPdfs.layered("q 100 0 0 100 72 72 cm /Im1 Do Q", "BT /F1 12 Tf 72 700 Td (VISIBLE) Tj ET",
+            "BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")
+        val redo = options.copy(redo = true)
+        val (_, once) = run(source, searchable = redo)
+        val first = File(dir, "once.pdf").apply { writeBytes(once.readBytes()) }
+        val (_, twice) = run(first.readBytes(), searchable = redo)
+        for ((name, bytes) in listOf("once" to first.readBytes(), "twice" to twice.readBytes())) {
+            PDDocument.load(bytes).use { doc ->
+                val words = PDFTextStripper().getText(doc).split(Regex("""\s+""")).filter { it.isNotEmpty() }
+                assertEquals(name, listOf("VISIBLE", "page", "1"), words)
+                val content = String(doc.getPage(0).contents.readBytes(), Charsets.ISO_8859_1)
+                assertTrue(content, "/Im1 Do" in content)
+            }
+        }
+    }
+
+    @Test
+    fun `a redone page whose content cannot be read keeps it and still gets the new layer`() {
+        val broken = PDDocument.load(TestPdfs.layered("BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")).use { doc ->
+            val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray
+            (contents.getObject(0) as COSStream).setItem(COSName.FILTER, COSName.getPDFName("Bogus"))
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val (result, out) = run(broken, searchable = options.copy(redo = true))
+        assertEquals(1, result.read)
+        PDDocument.load(out).use { doc ->
+            val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray
+            val kept = (0 until contents.size()).filter {
+                (contents.getObject(it) as COSStream).getDictionaryObject(COSName.FILTER) == COSName.getPDFName("Bogus")
+            }
+            assertEquals(1, kept.size)
+            // Without the unreadable stream, the rest of the page reads as the new layer.
+            contents.remove(kept.single())
+            assertEquals("page 1", PDFTextStripper().getText(doc).trim())
+        }
     }
 
     @Test

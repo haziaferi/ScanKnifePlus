@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
@@ -215,6 +216,45 @@ object TestPdfs {
                 it.endText()
             }
         }
+    }
+
+    /** The names of [layered]'s Helvetica font, Type 3 font and 2 x 2 gray image in its page resources. */
+    val LAYERED_FONT: COSName = COSName.getPDFName("F1")
+    val LAYERED_TYPE3_FONT: COSName = COSName.getPDFName("F3")
+    val LAYERED_IMAGE: COSName = COSName.getPDFName("Im1")
+
+    /** One Letter page whose content is [streams], in order, with [LAYERED_FONT], [LAYERED_TYPE3_FONT] and [LAYERED_IMAGE] in its resources. */
+    fun layered(vararg streams: String): ByteArray = PDDocument().use { doc ->
+        val page = PDPage(PDRectangle.LETTER)
+        doc.addPage(page)
+        val contents = COSArray()
+        streams.forEach { contents.add(PDStream(doc, it.byteInputStream()).cosObject) }
+        page.cosObject.setItem(COSName.CONTENTS, contents)
+        val helvetica = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.FONT)
+            setItem(COSName.SUBTYPE, COSName.TYPE1)
+            setItem(COSName.BASE_FONT, COSName.getPDFName("Helvetica"))
+        }
+        val type3 = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.FONT)
+            setItem(COSName.SUBTYPE, COSName.TYPE3)
+        }
+        val image = PDStream(doc, byteArrayOf(0, 64, -128, -1).inputStream()).cosObject.apply {
+            setItem(COSName.TYPE, COSName.XOBJECT)
+            setItem(COSName.SUBTYPE, COSName.IMAGE)
+            setInt(COSName.WIDTH, 2)
+            setInt(COSName.HEIGHT, 2)
+            setItem(COSName.COLORSPACE, COSName.DEVICEGRAY)
+            setInt(COSName.BITS_PER_COMPONENT, 8)
+        }
+        page.cosObject.setItem(COSName.RESOURCES, COSDictionary().apply {
+            setItem(COSName.FONT, COSDictionary().apply {
+                setItem(LAYERED_FONT, helvetica)
+                setItem(LAYERED_TYPE3_FONT, type3)
+            })
+            setItem(COSName.XOBJECT, COSDictionary().apply { setItem(LAYERED_IMAGE, image) })
+        })
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
     /** Writes [bytes] to [dir]/[name] and returns its file:// URI. */
