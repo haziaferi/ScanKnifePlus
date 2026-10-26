@@ -212,6 +212,17 @@ class SearchablePdfTest {
     }
 
     @Test
+    fun `redoing a page whose old layer is in a form of its own, as OCRmyPDF writes it, replaces that layer`() {
+        val source = TestPdfs.withForms(mapOf("Fx1" to "BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET"), "q 100 0 0 100 72 72 cm /Im1 Do Q /Fx1 Do")
+        val (_, out) = run(source, searchable = options.copy(redo = true))
+        PDDocument.load(out).use { doc ->
+            assertEquals(listOf("page", "1"), PDFTextStripper().getText(doc).split(Regex("""\s+""")).filter { it.isNotEmpty() })
+            val content = String(doc.getPage(0).contents.readBytes(), Charsets.ISO_8859_1)
+            assertTrue(content, "/Im1 Do" in content && "/Fx1 Do" in content)
+        }
+    }
+
+    @Test
     fun `a redone page whose content cannot be read keeps it and still gets the new layer`() {
         val broken = PDDocument.load(TestPdfs.layered("BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")).use { doc ->
             val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray

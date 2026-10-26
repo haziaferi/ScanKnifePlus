@@ -6,10 +6,13 @@ import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.contentstream.operator.Operator
 import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdfparser.PDFStreamParser
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import java.io.ByteArrayOutputStream
@@ -31,9 +34,12 @@ class InvisibleTextTest {
     /** A Helvetica line showing [word] at height [y] in rendering mode [mode] (none set when null). */
     private fun line(word: String, y: Int, mode: Int? = null) = "BT ${mode?.let { "$it Tr " }.orEmpty()}/F1 12 Tf 72 $y Td ($word) Tj ET"
 
-    private fun stripped(vararg streams: String): Pair<Boolean, PDDocument> {
-        val doc = PDDocument.load(TestPdfs.layered(*streams))
-        val removed = stripInvisibleText(doc, doc.getPage(0))
+    private fun stripped(vararg streams: String): Pair<Boolean, PDDocument> = strippedPage(TestPdfs.layered(*streams))
+
+    /** [pdf] with its first page stripped, saved and loaded again. */
+    private fun strippedPage(pdf: ByteArray): Pair<Boolean, PDDocument> {
+        val doc = PDDocument.load(pdf)
+        val removed = InvisibleTextStripper(doc).strip(0)
         // Saved and loaded again, so the test reads what a file would hold.
         val bytes = ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
         doc.close()
@@ -167,9 +173,86 @@ class InvisibleTextTest {
         doc.use {
             val stream = (it.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray).getObject(0) as COSStream
             stream.setItem(COSName.FILTER, COSName.getPDFName("Bogus"))
-            assertFalse(stripInvisibleText(it, it.getPage(0)))
+            assertFalse(InvisibleTextStripper(it).strip(0))
             assertTrue(it.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) is COSArray)
             assertEquals(COSName.getPDFName("Bogus"), stream.getDictionaryObject(COSName.FILTER))
+        }
+    }
+
+    /** The decoded content of form [name] in page [page]'s resources. */
+    private fun PDDocument.form(name: String, page: Int = 0): String {
+        val form = getPage(page).resources.getXObject(COSName.getPDFName(name)).cosObject as COSStream
+        return String(form.createInputStream().use { it.readBytes() }, Charsets.ISO_8859_1)
+    }
+
+    @Test
+    fun `a nested form only this page draws loses its invisible text, and the form around it stays as it is`() {
+        val pdf = TestPdfs.withForms(mapOf("Fx1" to "q /Fx2 Do Q", "Fx2" to line("OLDOCR", 650, mode = 3)), "/Fx1 Do " + line("VISIBLE", 700))
+        val (removed, doc) = strippedPage(pdf)
+        doc.use {
+            assertTrue(removed)
+            assertEquals(listOf("VISIBLE"), it.words())
+            assertEquals("q /Fx2 Do Q", it.form("Fx1"))
+            assertEquals("/Fx1 Do " + line("VISIBLE", 700), String(it.getPage(0).contents.readBytes(), Charsets.ISO_8859_1))
+        }
+    }
+
+    @Test
+    fun `a form another page or an annotation also uses keeps its text`() {
+        val forms = mapOf("Fx1" to line("OLDOCR", 650, mode = 3))
+        val (removed, doc) = strippedPage(TestPdfs.withForms(forms, "/Fx1 Do", "/Fx1 Do"))
+        doc.use {
+            assertFalse(removed)
+            assertEquals(line("OLDOCR", 650, mode = 3), it.form("Fx1"))
+        }
+        val annotated = PDDocument.load(TestPdfs.withForms(forms, "/Fx1 Do")).use { d ->
+            val page = d.getPage(0)
+            val form = page.resources.getXObject(COSName.getPDFName("Fx1")).cosObject
+            page.annotations = listOf(PDAnnotationLink().apply {
+                rectangle = PDRectangle(72f, 72f, 100f, 20f)
+                cosObject.setItem(COSName.AP, COSDictionary().apply { setItem(COSName.N, form) })
+            })
+            ByteArrayOutputStream().also { d.save(it) }.toByteArray()
+        }
+        val (fromAnnotation, kept) = strippedPage(annotated)
+        kept.use {
+            assertFalse(fromAnnotation)
+            assertEquals(line("OLDOCR", 650, mode = 3), it.form("Fx1"))
+        }
+    }
+
+    @Test
+    fun `a form inherits the rendering mode its caller draws it in`() {
+        val forms = mapOf("Fx1" to "BT /F1 12 Tf 72 650 Td (INHERITED) Tj ET")
+        val (hidden, doc) = strippedPage(TestPdfs.withForms(forms, "3 Tr /Fx1 Do"))
+        doc.use {
+            assertTrue(hidden)
+            assertEquals(emptyList<String>(), it.words())
+        }
+        for (page in listOf("0 Tr /Fx1 Do", "q 3 Tr Q /Fx1 Do", "3 Tr /Fx1 Do 0 Tr /Fx1 Do")) {
+            val (removed, kept) = strippedPage(TestPdfs.withForms(forms, page))
+            kept.use {
+                assertFalse(page, removed)
+                assertEquals(page, forms.getValue("Fx1"), it.form("Fx1"))
+            }
+        }
+    }
+
+    @Test
+    fun `a form that draws itself is stripped once, and an unreadable form stays as it was`() {
+        val (removed, doc) = strippedPage(TestPdfs.withForms(mapOf("Fx1" to "/Fx1 Do " + line("OLDOCR", 650, mode = 3)), "/Fx1 Do"))
+        doc.use {
+            assertTrue(removed)
+            assertFalse("OLDOCR" in it.form("Fx1"))
+        }
+        val broken = PDDocument.load(TestPdfs.withForms(mapOf("Fx1" to line("OLDFORM", 650, mode = 3)), "/Fx1 Do " + line("OLDPAGE", 700, mode = 3)))
+        broken.use {
+            val form = it.getPage(0).resources.getXObject(COSName.getPDFName("Fx1")).cosObject as COSStream
+            form.setItem(COSName.FILTER, COSName.getPDFName("Bogus"))
+            assertTrue(InvisibleTextStripper(it).strip(0))
+            val content = String(it.getPage(0).contents.readBytes(), Charsets.ISO_8859_1)
+            assertTrue(content, "/Fx1 Do" in content && "OLDPAGE" !in content)
+            assertEquals(COSName.getPDFName("Bogus"), form.getDictionaryObject(COSName.FILTER))
         }
     }
 }
