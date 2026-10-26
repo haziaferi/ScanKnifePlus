@@ -57,11 +57,23 @@ android {
             excludes += "/META-INF/proguard/*"
         }
     }
+    // One APK per ABI for releases (the native OCR libraries are most of the size), plus a universal APK for debugging. An app bundle is
+    // split per device by the store instead, and AGP cannot bundle with ABI splits and resource shrinking on, so -PnoAbiSplits turns them off.
+    splits {
+        abi {
+            isEnable = !project.hasProperty("noAbiSplits")
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
+    // The OCR benchmark's corpus (clean renders and their truth) is also the OCR engine's device test pages.
+    sourceSets.getByName("androidTest").assets.srcDir("../docs/ocr-bench/corpus")
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
     testOptions { unitTests.isIncludeAndroidResources = true }
 }
@@ -94,6 +106,7 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     implementation(libs.pdfbox.android)
     implementation(libs.coil.compose)
+    implementation(libs.tesseract4android.openmp)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
@@ -101,8 +114,6 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.rules)
-    // OCR benchmark only (OcrBenchmarkTest); no OCR ships to users yet.
-    androidTestImplementation(libs.tesseract4android.openmp)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }

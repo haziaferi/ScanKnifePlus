@@ -35,7 +35,9 @@ jobs:
 
     - name: Test, lint and build release APK and AAB
       run: |
-        ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
+        ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease --stacktrace --no-daemon --console=plain
+        # The bundle is built without ABI splits (app/build.gradle.kts), so in its own run.
+        ./gradlew bundleRelease -PnoAbiSplits --stacktrace --no-daemon --console=plain
 
     # AGP's unsigned APK is already aligned (CameraX .so files at 16 KB); re-running zipalign -v 4 could break that.
     - name: Sign APK and AAB
@@ -49,13 +51,18 @@ jobs:
         BUILD_TOOLS=$ANDROID_HOME/build-tools/36.0.0
         trap 'rm -f keystore.jks' EXIT
         printf '%s' "$SIGNING_KEY" | base64 -d > keystore.jks
-        $BUILD_TOOLS/apksigner sign --ks keystore.jks \
-          --ks-key-alias "$KEY_ALIAS" \
-          --ks-pass env:KS_PASS \
-          --key-pass env:KEY_PASS \
-          --out app/build/outputs/apk/release/ScanKnife+.apk \
-          app/build/outputs/apk/release/app-release-unsigned.apk
-        $BUILD_TOOLS/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/ScanKnife+.apk
+        # Releases ship one APK per ABI (the universal APK is for debugging): app-<abi>-release-unsigned.apk is signed as ScanKnife+-<abi>.apk.
+        for APK in app/build/outputs/apk/release/app-*-release-unsigned.apk; do
+          case "$APK" in *-universal-*) continue ;; esac
+          ABI=${APK#app/build/outputs/apk/release/app-}
+          OUT=app/build/outputs/apk/release/ScanKnife+-${ABI%-release-unsigned.apk}.apk
+          $BUILD_TOOLS/apksigner sign --ks keystore.jks \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KS_PASS \
+            --key-pass env:KEY_PASS \
+            --out "$OUT" "$APK"
+          $BUILD_TOOLS/zipalign -c -P 16 -v 4 "$OUT"
+        done
         # App bundles are JAR-signed; apksigner does not sign them.
         jarsigner -keystore keystore.jks -storepass:env KS_PASS -keypass:env KEY_PASS \
           -signedjar app/build/outputs/bundle/release/ScanKnife+.aab \
@@ -72,11 +79,13 @@ jobs:
         echo "=== RELEASE APK SIZE ==="
         ls -lh app/build/outputs/apk/release/*.apk
 
-    - name: Upload Release APK
+    - name: Upload Release APKs
       uses: actions/upload-artifact@v4
       with:
-        name: ScanKnifePlus-Release-APK${{ env.HAS_SIGNING_KEY != 'true' && '-unsigned' || '' }}
-        path: app/build/outputs/apk/release/${{ env.HAS_SIGNING_KEY == 'true' && 'ScanKnife+.apk' || 'app-release-unsigned.apk' }}
+        name: ScanKnifePlus-Release-APKs${{ env.HAS_SIGNING_KEY != 'true' && '-unsigned' || '' }}
+        path: |
+          app/build/outputs/apk/release/${{ env.HAS_SIGNING_KEY == 'true' && 'ScanKnife+-*.apk' || 'app-*-release-unsigned.apk' }}
+          !app/build/outputs/apk/release/*universal*
 
     - name: Upload Release AAB
       uses: actions/upload-artifact@v4
