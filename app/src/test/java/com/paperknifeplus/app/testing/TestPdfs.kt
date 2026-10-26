@@ -15,12 +15,14 @@ import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDPageLabelRange
 import com.tom_roush.pdfbox.pdmodel.common.PDPageLabels
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
@@ -184,6 +186,35 @@ object TestPdfs {
         }
         pages[0].annotations = pages[0].annotations + links
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    /** Where [cropped]'s cropBox sits inside its larger mediaBox, in points. */
+    val CROP_BOX = PDRectangle(40f, 60f, 400f, 560f)
+
+    /** One page without text whose cropBox is [CROP_BOX], away from the mediaBox's origin, turned [rotation] degrees clockwise by /Rotate. */
+    fun cropped(rotation: Int = 0): ByteArray = PDDocument().use { doc ->
+        val page = PDPage(PDRectangle(0f, 0f, 500f, 700f))
+        page.cropBox = CROP_BOX
+        page.rotation = rotation
+        page.setContents(PDStream(doc, "0 0 0 rg 100 300 50 20 re f".byteInputStream()))
+        doc.addPage(page)
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    /** The text [someWithText] shows on page n (from 1). */
+    fun textMarker(page: Int) = "OLDTEXT$page"
+
+    /** [pages] pages as [plain] has them, those whose index (from 0) is in [withText] also showing [textMarker] in Helvetica. */
+    fun someWithText(pages: Int, withText: Set<Int>): ByteArray = build(pages) { doc ->
+        for (i in withText) {
+            PDPageContentStream(doc, doc.getPage(i), PDPageContentStream.AppendMode.APPEND, false).use {
+                it.beginText()
+                it.setFont(PDType1Font.HELVETICA, 12f)
+                it.newLineAtOffset(72f, 600f)
+                it.showText(textMarker(i + 1))
+                it.endText()
+            }
+        }
     }
 
     /** Writes [bytes] to [dir]/[name] and returns its file:// URI. */
