@@ -175,7 +175,19 @@ class ScanFolder(
     @WorkerThread
     fun writeBack(id: String, pdf: PdfMaker? = null): WriteResult = writeBack(id, pdf, mayDelete = true)
 
-    private fun writeBack(id: String, pdf: PdfMaker?, mayDelete: Boolean): WriteResult = synchronized(LOCK) {
+    /**
+     * [writeBack], and with [text] the PDF gets a `.txt` beside it of the same base name, made from the document as the PDF shows it and
+     * written as the PDF is.
+     */
+    @WorkerThread
+    fun writeBack(id: String, pdf: PdfMaker?, text: ((ScanDocument) -> String)?): WriteResult = writeBack(id, pdf, mayDelete = true, text)
+
+    private fun writeBack(
+        id: String,
+        pdf: PdfMaker?,
+        mayDelete: Boolean,
+        text: ((ScanDocument) -> String)? = null,
+    ): WriteResult = synchronized(LOCK) {
         // One read of record and bytes: what is written, and later confirmed, is exactly this version, whatever edits come after.
         val working = library.stored(id) ?: return WriteResult.Failed
         val doc = working.document
@@ -261,6 +273,7 @@ class ScanFolder(
                 pdfName = writtenName
                 pdfHash = writtenHash
                 bind(base, confirmed = WorkingCopies.sha256(current.bytes))
+                text?.let { writeText(writtenName.removeSuffix(PDF) + TXT, it(current.document)) }
             }
             WriteResult.Written(name, reports)
         } catch (e: IOException) {
@@ -402,6 +415,16 @@ class ScanFolder(
             }
         }
         return written.takeIf { delivered } ?: throw failure ?: IOException("No PDF for $id")
+    }
+
+    /**
+     * Writes [content] at the top level as [name], replacing the one there through `.bak` as the record is replaced: it is the text of the
+     * PDF beside it, which this scan's save has just written or replaced.
+     */
+    private fun writeText(name: String, content: String) {
+        val top = store.list(store.rootId)
+        val write: (OutputStream) -> Unit = { it.write(content.toByteArray(Charsets.UTF_8)) }
+        if (top.any { it.name == name && !it.isFolder }) replaceFile(store.rootId, name, top, write) else writeNew(store.rootId, name, top, write)
     }
 
     /** Settles conflict copies of top-level PDFs: the newer version keeps the name, the other is kept as `.lost-`. */
@@ -605,6 +628,7 @@ class ScanFolder(
     private companion object {
         const val TAG = "ScanFolder"
         const val PDF = ".pdf"
+        const val TXT = ".txt"
 
         /** One lock for every instance, as two over the same folder would race on its names. */
         val LOCK = Any()

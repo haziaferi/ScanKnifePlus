@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -53,6 +54,7 @@ class ReviewScreenTest {
         onDismissNotice = { calls += "dismiss" },
         onRetryStore = { calls += "retry" },
         onDismissStore = { calls += "dismiss store" },
+        onSaveWithoutText = { calls += "without text" },
     )
 
     private fun pages(n: Int) = (1..n).map { ReviewPage("p$it", File("page$it.jpg")) }
@@ -173,5 +175,37 @@ class ReviewScreenTest {
         rule.onNodeWithText("Undo").assertIsDisplayed()
         for (action in listOf("Rotate", "Crop", "Filter", "Delete")) rule.onNodeWithText(action).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("1").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a page detection stored whole is marked Check crop, which does not block Done`() {
+        val p = pages(2).mapIndexed { i, page -> page.copy(checkCrop = i == 0) }
+        show(ReviewUi(CaptureMode.MULTI, p, selectedId = "p1"))
+        rule.onNodeWithText("Check crop").assertIsDisplayed()
+        rule.onNodeWithText("Done").assertIsEnabled()
+        rule.onNodeWithText("2").performClick()
+        assertEquals(listOf("select p2"), calls)
+    }
+
+    @Test
+    fun `an unmarked page shows no Check crop`() {
+        show(ReviewUi(CaptureMode.SINGLE, pages(1)))
+        rule.onNodeWithText("Check crop").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a book page detection stored whole is marked under its label`() {
+        val p = pages(2).map { it.copy(checkCrop = true) }
+        show(ReviewUi(CaptureMode.BOOK, p, selectedId = "p1", spread = ReviewSpread(p[0], p[1], 1, 0.5f)))
+        assertEquals(2, rule.onAllNodesWithText("Check crop").fetchSemanticsNodes().size)
+    }
+
+    @Test
+    fun `a save reading its pages shows which page of how many on a determinate bar, with Save without text`() {
+        show(ReviewUi(CaptureMode.MULTI, pages(5), busy = true, canSave = false, reading = ReadingProgress(2, 5)))
+        rule.onNodeWithText("Reading page 2 of 5…").assertIsDisplayed()
+        rule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo(0.2f, 0f..1f))).assertExists()
+        rule.onNodeWithText("Save without text").performClick()
+        assertEquals(listOf("without text"), calls)
     }
 }

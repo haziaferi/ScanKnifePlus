@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,6 +23,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,11 +42,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.haziaferi.scanknifeplus.ocr.OcrLanguage
+import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import java.util.Locale
 
 /** The label of each of the scanner's filters, by their stable names (DocumentFilters.all, in picker order). */
 @StringRes
@@ -63,6 +69,23 @@ private fun sizeLabel(size: PdfPageSize): Int = when (size) {
     PdfPageSize.LEGAL -> R.string.scan_size_legal
     PdfPageSize.FIT -> R.string.scan_size_fit
 }
+
+@StringRes
+private fun languageLabel(language: OcrLanguage): Int = when (language) {
+    OcrLanguage.ENGLISH -> R.string.scan_ocr_english
+    OcrLanguage.ITALIAN -> R.string.scan_ocr_italian
+}
+
+@StringRes
+private fun readingLabel(reading: OcrReading): Int = when (reading) {
+    OcrReading.AUTOMATIC -> R.string.scan_ocr_automatic
+    OcrReading.TABLES -> R.string.scan_ocr_tables
+    OcrReading.RECEIPTS -> R.string.scan_ocr_receipts
+}
+
+/** The OCR language a save starts with: Italian on a phone set to Italian, else English. Not remembered: it follows the phone each time. */
+internal fun defaultOcrLanguage(locale: Locale): OcrLanguage =
+    if (locale.language == Locale.ITALIAN.language) OcrLanguage.ITALIAN else OcrLanguage.ENGLISH
 
 /** Picks one of the scanner's filters for the selected page; [current] is its applied filter (null: none). */
 @Composable
@@ -84,13 +107,26 @@ internal fun FilterDialog(current: String?, onPick: (String) -> Unit, onDismiss:
 }
 
 /**
- * The export options before saving: page size (Fit included) and an optional password, where empty means none (decision 6a). The PDF is
- * then saved into the user's [folder] when one is chosen (its name, shown here), else where the system file picker says.
+ * The export options before saving: page size (Fit included) and an optional password, where empty means none (decision 6a), then Make
+ * searchable ([searchable] to start with) and, while it is on, the OCR language ([language] to start with), the Reading layout (Automatic each
+ * time) and the .txt copy ([txt] to start with). The PDF is then saved into the user's [folder] when one is chosen (its name, shown here), else
+ * where the system file picker says.
  */
 @Composable
-internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> Unit, folder: String? = null) {
+internal fun SaveDialog(
+    onSave: (SaveOptions) -> Unit,
+    onDismiss: () -> Unit,
+    folder: String? = null,
+    searchable: Boolean = true,
+    txt: Boolean = false,
+    language: OcrLanguage = OcrLanguage.ENGLISH,
+) {
     var size by remember { mutableStateOf(PdfPageSize.DEFAULT) }
     var password by remember { mutableStateOf("") }
+    var makeSearchable by remember { mutableStateOf(searchable) }
+    var ocrLanguage by remember { mutableStateOf(language) }
+    var reading by remember { mutableStateOf(OcrReading.AUTOMATIC) }
+    var alsoTxt by remember { mutableStateOf(txt) }
     val usable = remember(password) { ScanExport.isUsablePassword(password) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -98,13 +134,7 @@ internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> 
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.scan_page_size), style = scanText(14, FontWeight.Bold))
-                FlowRow(
-                    Modifier.selectableGroup(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    for (option in PdfPageSize.entries) SizeChip(sizeLabel(option), option == size) { size = option }
-                }
+                ChipRow(PdfPageSize.entries, size, ::sizeLabel) { size = it }
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -116,12 +146,22 @@ internal fun SaveDialog(onSave: (PdfPageSize, String) -> Unit, onDismiss: () -> 
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     modifier = Modifier.fillMaxWidth()
                 )
+                SwitchRow(R.string.scan_ocr_searchable, R.string.scan_ocr_searchable_hint, makeSearchable) { makeSearchable = it }
+                if (makeSearchable) {
+                    Text(stringResource(R.string.scan_ocr_language), style = scanText(14, FontWeight.Bold))
+                    ChipRow(OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
+                    Text(stringResource(R.string.scan_ocr_reading), style = scanText(14, FontWeight.Bold))
+                    ChipRow(OcrReading.entries, reading, ::readingLabel) { reading = it }
+                    SwitchRow(R.string.scan_ocr_txt, null, alsoTxt) { alsoTxt = it }
+                }
                 val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
                 Text(where, style = scanText(13, FontWeight.Medium), color = LocalScanPalette.current.mu)
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(size, password) }, enabled = usable) {
+            TextButton(onClick = {
+                onSave(SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null))
+            }, enabled = usable) {
                 Text(stringResource(if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder))
             }
         },
@@ -158,8 +198,33 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
     }
 }
 
+/** One choice of [options] as a row of chips, [selected] marked. */
 @Composable
-private fun SizeChip(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {
+private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
+    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (option in options) OptionChip(label(option), option == selected) { onPick(option) }
+    }
+}
+
+/** A switch with its [title] and, if given, a [subtitle], the whole row toggling it. */
+@Composable
+private fun SwitchRow(@StringRes title: Int, @StringRes subtitle: Int?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    val c = LocalScanPalette.current
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(title), style = scanText(15, FontWeight.SemiBold), color = c.tx)
+            subtitle?.let { Text(stringResource(it), style = scanText(13, FontWeight.Medium), color = c.mu) }
+        }
+        Switch(checked = checked, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = c.acf, uncheckedBorderColor = c.bd))
+    }
+}
+
+@Composable
+private fun OptionChip(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {
     val c = LocalScanPalette.current
     val shape = RoundedCornerShape(24.dp)
     Box(

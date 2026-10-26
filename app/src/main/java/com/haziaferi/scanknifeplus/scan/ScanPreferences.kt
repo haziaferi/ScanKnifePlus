@@ -15,8 +15,20 @@ class ScanPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_AUTO_CAPTURE, true)
         set(value) = prefs.edit { putBoolean(KEY_AUTO_CAPTURE, value) }
 
+    /** Whether Save makes the PDF searchable (the default), reading its pages with OCR first. */
+    var searchable: Boolean
+        get() = prefs.getBoolean(KEY_SEARCHABLE, true)
+        set(value) = prefs.edit { putBoolean(KEY_SEARCHABLE, value) }
+
+    /** Whether a searchable save also saves the text as a .txt copy (off by default). */
+    var saveText: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_TEXT, false)
+        set(value) = prefs.edit { putBoolean(KEY_SAVE_TEXT, value) }
+
     private companion object {
         const val FILE = "scan_prefs"
         const val KEY_AUTO_CAPTURE = "auto_capture"
+        const val KEY_SEARCHABLE = "searchable"
+        const val KEY_SAVE_TEXT = "save_text"
     }
 }

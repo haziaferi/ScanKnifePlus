@@ -1,6 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.export
 
 import android.util.Log
+import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scanner.export.PdfLayout
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
@@ -18,26 +19,33 @@ import java.io.File
 fun interface PdfAssembler {
     /**
      * Writes [pages] to [dest] on [size] pages (for [PdfPageSize.FIT], each its image's shape), using [workDir] for scratch space, encrypted so
-     * it opens only with [password] unless that is null; false if it could not. Blocking.
+     * it opens only with [password] unless that is null; false if it could not. [text] runs parallel to [pages]: each page with a read page there
+     * gets it as a searchable text layer, a page past its end or with null gets none. Blocking.
      */
-    fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?): Boolean
+    fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?, text: List<OcrPage?>): Boolean
 }
 
 /**
  * OpenScan's createPdf with pdfbox: each JPEG is embedded as it is and drawn where [PdfLayout] puts it, buffered in temp files under the work
- * folder so a long scan cannot run out of heap; failures, including running out of memory and a password SASLprep rejects, return false.
- * Pages must be as the library stores them: upright without EXIF orientation, and 3-component JPEGs, since pdfbox labels every JPEG DeviceRGB.
+ * folder so a long scan cannot run out of heap, with the [PdfTextLayer] over it where there is text; failures, including running out of memory
+ * and a password SASLprep rejects, return false. Pages must be as the library stores them: upright without EXIF orientation, and 3-component
+ * JPEGs, since pdfbox labels every JPEG DeviceRGB.
  */
 object PdfBoxAssembler : PdfAssembler {
-    override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?): Boolean = try {
+    override fun write(pages: List<File>, size: PdfPageSize, workDir: File, dest: File, password: String?, text: List<OcrPage?>): Boolean = try {
         PDDocument(MemoryUsageSetting.setupTempFileOnly().setTempDir(workDir)).use { doc ->
-            for (file in pages) {
+            // Loaded once, and only for a PDF that has text, so a PDF without any stays as it was.
+            val font by lazy { PdfTextLayer.loadFont(doc) }
+            for ((i, file) in pages.withIndex()) {
                 val image = file.inputStream().use { JPEGFactory.createFromStream(doc, it) }
                 val box = size.pageFor(image.width, image.height)
                 val page = PDPage(PDRectangle(box.width.toFloat(), box.height.toFloat()))
                 doc.addPage(page)
                 val r = PdfLayout.imageRect(size, image.width, image.height)
-                PDPageContentStream(doc, page).use { it.drawImage(image, r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat()) }
+                PDPageContentStream(doc, page).use { stream ->
+                    stream.drawImage(image, r.x.toFloat(), r.y.toFloat(), r.width.toFloat(), r.height.toFloat())
+                    text.getOrNull(i)?.takeIf { it.words.isNotEmpty() }?.let { PdfTextLayer.draw(stream, font, it, r) }
+                }
             }
             if (password != null) protect(doc, password)
             doc.save(dest)

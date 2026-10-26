@@ -19,7 +19,8 @@ data class BookCrop(val spread: Quad, val split: Double, val side: BookPage, val
  * [original] is the uncropped capture for re-crops, [unfiltered] keeps filters from compounding, and [filter] names the applied filter. A re-crop
  * keeps [quarterTurns], the clockwise turn from [original] (0 without one); [book] is set on a Book mode page with an original until it is
  * re-cropped by hand. [quad] is where the page sits in [original] (fractions of its upright size), detected at capture or set by a re-crop, so
- * a later crop starts from it; null for a Book mode page, a page without an original, or one stored uncropped.
+ * a later crop starts from it; null for a Book mode page, a page without an original, or one stored uncropped. [checkCrop] marks a camera page
+ * stored whole because detection found no outline or the warp failed, until the user crops it.
  */
 data class ScanPage(
     val id: String,
@@ -30,6 +31,7 @@ data class ScanPage(
     val quarterTurns: Int = 0,
     val book: BookCrop? = null,
     val quad: Quad? = null,
+    val checkCrop: Boolean = false,
 ) {
     /** Every file this page owns. */
     val files: List<String> get() = listOfNotNull(image, original, unfiltered).distinct()
@@ -65,12 +67,13 @@ data class ScanDocument(
                 .apply { if (p.quarterTurns != 0) put("quarterTurns", p.quarterTurns) }
                 .apply { p.book?.let { put("book", bookJson(it)) } }
                 .apply { p.quad?.let { put("quad", quadJson(it)) } }
+                .apply { if (p.checkCrop) put("checkCrop", true) }
         }))
 
     internal companion object {
         /**
          * Written for future migrations; records are read best-effort whatever their version, since every field read here is required in v1
-         * except the optional `quarterTurns`, `book` and `quad`.
+         * except the optional `quarterTurns`, `book`, `quad` and `checkCrop`.
          */
         const val FORMAT_VERSION = 1
 
@@ -92,6 +95,7 @@ data class ScanDocument(
                         quarterTurns = p.optInt("quarterTurns", 0).mod(4),
                         book = p.optJSONObject("book")?.let { readBook(it) },
                         quad = p.optJSONArray("quad")?.let { readQuad(it) },
+                        checkCrop = p.optBoolean("checkCrop", false),
                     )
                 },
             )

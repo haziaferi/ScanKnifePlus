@@ -26,4 +26,15 @@ class ScanPreferencesTest {
         ScanPreferences(app).autoCapture = true
         assertTrue(ScanPreferences(app).autoCapture)
     }
+
+    @Test
+    fun `Make searchable is on and the txt copy off by default, and both are remembered`() {
+        val prefs = ScanPreferences(app)
+        assertTrue(prefs.searchable)
+        assertFalse(prefs.saveText)
+        prefs.searchable = false
+        prefs.saveText = true
+        assertFalse(ScanPreferences(app).searchable)
+        assertTrue(ScanPreferences(app).saveText)
+    }
 }

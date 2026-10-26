@@ -1,6 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.export
 
 import android.util.Log
+import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.AndroidPageImages
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
@@ -26,7 +27,8 @@ class ScanPdfExporter(
     /**
      * Writes the pages [pageIds] of document [id] (all when null, in document order) as a PDF, encrypted like the Protect tool's if [password] is
      * neither null nor empty, reporting (pages ready, total) to [onProgress], and hands the file to [deliver], which must copy or move it before
-     * returning. Returns the number of pages written, or null if nothing was left to export, the PDF failed, or [deliver] returned false or threw.
+     * returning. [text] holds read pages by page image name: a page whose current image has one gets its text layer. Returns the number of pages
+     * written, or null if nothing was left to export, the PDF failed, or [deliver] returned false or threw.
      */
     fun writePdf(
         id: String,
@@ -35,6 +37,7 @@ class ScanPdfExporter(
         size: PdfPageSize,
         password: String? = null,
         onProgress: (Int, Int) -> Unit = { _, _ -> },
+        text: Map<String, OcrPage> = emptyMap(),
         deliver: (File) -> Boolean,
     ): Int? {
         pruneStale()
@@ -48,7 +51,7 @@ class ScanPdfExporter(
                 val pages = selectedPages(id, pageIds) ?: return null
                 val staged = stage(id, pages, quality, work, onProgress) ?: return@repeat
                 val pdf = File(work, "export.pdf")
-                if (!assembler.write(staged, size, work, pdf, password?.ifEmpty { null })) return null
+                if (!assembler.write(staged, size, work, pdf, password?.ifEmpty { null }, pages.map { text[it.image] })) return null
                 return if (deliver(pdf)) pages.size else null
             }
             return null

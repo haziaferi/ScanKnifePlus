@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -86,13 +87,16 @@ import com.paperknifeplus.app.ui.theme.ScanPalette
 import java.io.File
 import kotlin.math.roundToInt
 
-/** A page as Review shows it: its id and the file of its current image. */
-internal data class ReviewPage(val id: String, val image: File)
+/** A page as Review shows it: its id, the file of its current image, and whether it is marked Check crop (stored whole, see ScanPage). */
+internal data class ReviewPage(val id: String, val image: File, val checkCrop: Boolean = false)
 
 /** The spread Review shows for a Book mode shot: its two pages, the number of the left one and the split line (0 to 1). */
 internal data class ReviewSpread(val left: ReviewPage, val right: ReviewPage, val leftNumber: Int, val split: Float)
 
-/** What Review shows, in plain values. [pages] excludes a page deleted and awaiting Undo, whose number is [deletedNumber]. */
+/**
+ * What Review shows, in plain values. [pages] excludes a page deleted and awaiting Undo, whose number is [deletedNumber]; [reading] is a save's
+ * OCR progress while it reads.
+ */
 internal data class ReviewUi(
     val mode: CaptureMode,
     val pages: List<ReviewPage>,
@@ -104,6 +108,7 @@ internal data class ReviewUi(
     val canSave: Boolean = pages.isNotEmpty(),
     @StringRes val notice: Int? = null,
     val storeFailed: Boolean = false,
+    val reading: ReadingProgress? = null,
 ) {
     val selectedIndex: Int get() = pages.indexOfFirst { it.id == selectedId }.takeIf { it >= 0 } ?: pages.lastIndex
 }
@@ -124,6 +129,7 @@ internal class ReviewActions(
     val onDismissNotice: () -> Unit = {},
     val onRetryStore: () -> Unit = {},
     val onDismissStore: () -> Unit = {},
+    val onSaveWithoutText: () -> Unit = {},
 )
 
 /**
@@ -136,7 +142,11 @@ internal fun ReviewScreen(ui: ReviewUi, actions: ReviewActions) {
     val c = LocalScanPalette.current
     Column(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.statusBars)) {
         Header(ui, actions.onBack)
-        if (ui.busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = c.acf, trackColor = c.sf2)
+        val reading = ui.reading
+        when {
+            reading != null -> ReadingBar(reading, actions.onSaveWithoutText)
+            ui.busy -> LinearProgressIndicator(Modifier.fillMaxWidth(), color = c.acf, trackColor = c.sf2)
+        }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             val spread = ui.spread
             if (ui.mode == CaptureMode.BOOK && spread != null) {
@@ -145,10 +155,13 @@ internal fun ReviewScreen(ui: ReviewUi, actions: ReviewActions) {
                 PageBox {
                     val page = ui.pages.getOrNull(ui.selectedIndex)
                     when {
-                        page != null -> AsyncImage(
-                            model = page.image, contentDescription = stringResource(R.string.scan_page_label, ui.selectedIndex + 1),
-                            contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(16.dp)
-                        )
+                        page != null -> {
+                            AsyncImage(
+                                model = page.image, contentDescription = stringResource(R.string.scan_page_label, ui.selectedIndex + 1),
+                                contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(16.dp)
+                            )
+                            if (page.checkCrop) CheckCropMark(Modifier.align(Alignment.TopStart).padding(12.dp))
+                        }
                         ui.storing -> CircularProgressIndicator(color = c.acf)
                         else -> EmptyText(if (ui.mode == CaptureMode.SINGLE) R.string.scan_page_deleted else R.string.scan_no_pages)
                     }
@@ -194,7 +207,7 @@ private fun Header(ui: ReviewUi, onBack: () -> Unit) {
 }
 
 @Composable
-private fun PageBox(content: @Composable () -> Unit) {
+private fun PageBox(content: @Composable BoxScope.() -> Unit) {
     Box(
         Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp).fillMaxWidth().height(300.dp).clip(RoundedCornerShape(18.dp))
             .background(LocalScanPalette.current.sf2),
@@ -249,8 +262,11 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
         }
     }
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), horizontalArrangement = Arrangement.SpaceAround) {
-        for (n in listOf(spread.leftNumber, spread.leftNumber + 1)) {
-            Text(stringResource(R.string.scan_page_label, n), style = scanText(13, FontWeight.Bold), color = c.mu)
+        for ((n, page) in listOf(spread.leftNumber to spread.left, spread.leftNumber + 1 to spread.right)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.scan_page_label, n), style = scanText(13, FontWeight.Bold), color = c.mu)
+                if (page.checkCrop) CheckCropMark()
+            }
         }
     }
     Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -325,6 +341,40 @@ private fun RowScope.ActionButton(
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
         Text(stringResource(label), style = scanText(12, FontWeight.SemiBold), color = color, textAlign = TextAlign.Center)
+    }
+}
+
+/** The Check crop mark on a page detection stored whole; it goes once the page is cropped, and never holds up Save. */
+@Composable
+private fun CheckCropMark(modifier: Modifier = Modifier) {
+    val c = LocalScanPalette.current
+    Text(
+        stringResource(R.string.scan_check_crop), style = scanText(13, FontWeight.Bold), color = c.warnFg,
+        modifier = modifier.clip(RoundedCornerShape(8.dp)).background(c.warnBg).padding(horizontal = 10.dp, vertical = 4.dp)
+    )
+}
+
+/** A save's OCR progress, "Reading page 2 of 5…" over a determinate bar, with Save without text beside it. */
+@Composable
+private fun ReadingBar(progress: ReadingProgress, onSaveWithoutText: () -> Unit) {
+    val c = LocalScanPalette.current
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.scan_ocr_progress, progress.page, progress.total), style = scanText(14, FontWeight.SemiBold), color = c.tx,
+                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
+            )
+            Box(
+                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSaveWithoutText)
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(stringResource(R.string.scan_ocr_without_text), style = scanText(14, FontWeight.ExtraBold), color = c.ac)
+            }
+        }
+        LinearProgressIndicator(
+            progress = { (progress.page - 1).toFloat() / progress.total }, modifier = Modifier.fillMaxWidth(), color = c.acf, trackColor = c.sf2
+        )
     }
 }
 

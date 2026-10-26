@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.res.Resources
 import android.net.Uri
 import android.provider.Settings
 import android.view.OrientationEventListener
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -32,7 +36,9 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LifecycleStartEffect
 import com.haziaferi.scanknifeplus.scan.CameraPermission
+import com.haziaferi.scanknifeplus.scan.ScanPreferences
 import com.haziaferi.scanknifeplus.scan.camera.CameraError
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraState
 import com.haziaferi.scanknifeplus.storage.FolderState
@@ -88,6 +94,11 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         granted = CameraPermission.isGranted(context)
         onPauseOrDispose {}
     }
+    // A save's OCR finishes the page it is reading and waits while the app is in the background (decision of 2026-10-20, item 6).
+    LifecycleStartEffect(model) {
+        model.resumeReading()
+        onStopOrDispose { model.pauseReading() }
+    }
 
     var cropping by remember { mutableStateOf(false) }
     var filtering by remember { mutableStateOf(false) }
@@ -95,9 +106,22 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     var leaving by remember { mutableStateOf(false) }
     var retakePrompt by remember { mutableStateOf(false) }
     var folderBlocked by remember { mutableStateOf(false) }
+    val resources = LocalResources.current
     val saved = {
+        handwrittenNotice(resources, model.handwritten)?.let { Toast.makeText(context.applicationContext, it, Toast.LENGTH_LONG).show() }
         holder.model = null
         onSaved()
+    }
+    // The .txt copy waits in the model too; cancelling its picker just skips it.
+    val textPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(TXT_MIME)) { uri ->
+        when {
+            model.textToSave == null -> uri?.let(model::dropTarget)
+            uri == null -> {
+                model.skipText()
+                saved()
+            }
+            else -> model.saveText(uri) { saved() }
+        }
     }
     // The options wait in the model, which outlives an activity recreated while the picker is open; saved state could reach the disk.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME)) { uri ->
@@ -106,7 +130,10 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         when {
             uri == null -> {}
             options == null -> model.dropTarget(uri)
-            else -> model.save(uri, options.first, options.second) { saved() }
+            else -> model.save(uri, options) {
+                val text = model.textToSave
+                if (text != null) textPicker.launch(text.first) else saved()
+            }
         }
     }
 
@@ -114,7 +141,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
     val saveToFolder: (ScanFolder) -> Unit = { target ->
         val options = model.pendingSave
         if (options != null) {
-            model.saveToFolder(target, options.first, options.second) { result ->
+            model.saveToFolder(target, options) { result ->
                 when (result) {
                     is WriteResult.Written -> {
                         folder?.report(result.conflicts)
@@ -197,11 +224,15 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         val state = folder?.state
         val yourFolder = stringResource(R.string.folder_your_folder)
         val into = folder?.takeIf { state != null && state != FolderState.NotChosen }?.let { it.name ?: yourFolder }
-        SaveDialog(folder = into, onSave = { size, password ->
+        val prefs = remember(context) { ScanPreferences(context) }
+        val locale = LocalLocale.current.platformLocale
+        SaveDialog(folder = into, searchable = prefs.searchable, txt = prefs.saveText, language = defaultOcrLanguage(locale), onSave = { options ->
             saveOptions = false
+            prefs.searchable = options.text != null
+            options.text?.let { prefs.saveText = it.txt }
             val name = model.pdfName
             if (name != null) {
-                model.pendingSave = size to password
+                model.pendingSave = options
                 when (state) {
                     is FolderState.Ready -> saveToFolder(state.folder)
                     FolderState.ChooseAgain -> folderBlocked = true
@@ -314,7 +345,7 @@ private fun Scanner(
 
 @Composable
 private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit, onFilter: () -> Unit, onDone: () -> Unit) {
-    val pages = model.pages.mapNotNull { page -> model.fileOf(page.image)?.let { ReviewPage(page.id, it) } }
+    val pages = model.pages.mapNotNull { page -> model.fileOf(page.image)?.let { ReviewPage(page.id, it, page.checkCrop) } }
     val spread = model.spread?.let { s ->
         val left = pages.firstOrNull { it.id == s.left.id }
         val right = pages.firstOrNull { it.id == s.right.id }
@@ -332,6 +363,7 @@ private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit,
             canSave = model.canSave,
             notice = noticeText(model.notice),
             storeFailed = model.failure != null,
+            reading = model.reading,
         ),
         actions = ReviewActions(
             onBack = onBack,
@@ -348,8 +380,18 @@ private fun Review(model: ScanFlowModel, onBack: () -> Unit, onCrop: () -> Unit,
             onDismissNotice = { model.notice = null },
             onRetryStore = { model.failure?.let(model::retry) },
             onDismissStore = { model.failure?.let(model::dismiss) },
+            onSaveWithoutText = model::saveWithoutText,
         ),
     )
+}
+
+/**
+ * The notice after a save whose [pages] (numbers from 1) look handwritten, shown as a toast as the folder's notices are, or null when none do.
+ */
+internal fun handwrittenNotice(res: Resources, pages: List<Int>): String? = when (pages.size) {
+    0 -> null
+    1 -> res.getString(R.string.scan_ocr_handwritten, pages[0])
+    else -> res.getQuantityString(R.plurals.scan_ocr_handwritten_pages, pages.size, pages.size)
 }
 
 @StringRes
@@ -423,4 +465,5 @@ internal fun scanText(size: Int, weight: FontWeight): TextStyle =
     TextStyle(fontFamily = PlusJakartaSans, fontWeight = weight, fontSize = size.sp, lineHeight = (size * LINE_HEIGHT).sp)
 
 private const val PDF_MIME = "application/pdf"
+private const val TXT_MIME = "text/plain"
 private const val LINE_HEIGHT = 1.45f

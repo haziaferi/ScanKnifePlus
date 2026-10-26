@@ -107,6 +107,26 @@
     </plurals>
     <string name="scan_keep">Keep</string>
     <string name="scan_discard">Discard</string>
+
+    <!-- Document scanner: text recognition when saving -->
+    <string name="scan_ocr_searchable">Make searchable</string>
+    <string name="scan_ocr_searchable_hint">Adds the recognised text so you can search and copy it</string>
+    <string name="scan_ocr_language">Language</string>
+    <string name="scan_ocr_english">English</string>
+    <string name="scan_ocr_italian">Italian</string>
+    <string name="scan_ocr_reading">Reading</string>
+    <string name="scan_ocr_automatic">Automatic</string>
+    <string name="scan_ocr_tables">Tables</string>
+    <string name="scan_ocr_receipts">Receipts</string>
+    <string name="scan_ocr_txt">Also save the text as .txt</string>
+    <string name="scan_ocr_progress">Reading page %1$d of %2$d…</string>
+    <string name="scan_ocr_without_text">Save without text</string>
+    <string name="scan_ocr_handwritten">Page %1$d looks handwritten. Its text may be incomplete or wrong.</string>
+    <plurals name="scan_ocr_handwritten_pages">
+        <item quantity="one">%1$d page looks handwritten. Its text may be incomplete or wrong.</item>
+        <item quantity="other">%1$d pages look handwritten. Their text may be incomplete or wrong.</item>
+    </plurals>
+    <string name="scan_check_crop">Check crop</string>
     <!-- Bottom bar -->
     <string name="nav_home">Home</string>
     <string name="nav_scan">Scan</string>

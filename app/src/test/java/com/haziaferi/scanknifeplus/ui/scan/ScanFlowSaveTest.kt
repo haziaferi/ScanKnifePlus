@@ -3,16 +3,25 @@ package com.haziaferi.scanknifeplus.ui.scan
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
+import com.haziaferi.scanknifeplus.ocr.OcrLanguage
+import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scan.ScanFiles
+import com.haziaferi.scanknifeplus.scan.ScanPreferences
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
 import com.haziaferi.scanknifeplus.scan.capture.PageImages
 import com.haziaferi.scanknifeplus.scan.capture.StoredCapture
+import com.haziaferi.scanknifeplus.scan.export.FakeOcrEngine
 import com.haziaferi.scanknifeplus.scan.export.PdfAssembler
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.haziaferi.scanknifeplus.scan.export.ScanPdfExporter
@@ -20,8 +29,10 @@ import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scan.session.ScanSession
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
+import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
 import com.haziaferi.scanknifeplus.storage.FolderAccess
+import com.haziaferi.scanknifeplus.storage.FolderState
 import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
 import com.haziaferi.scanknifeplus.ui.folder.AppFolder
 import com.haziaferi.scanknifeplus.ui.folder.pdfMaker
@@ -37,6 +48,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -44,6 +56,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
 
 /**
  * Where ScanFlow's Done saves: into the user's folder (a DocumentsProvider serving a folder named "Scans"), with the picker when none is
@@ -79,11 +93,12 @@ class ScanFlowSaveTest {
     }
 
     // A "PDF" of the pages' texts; one holding "fail" cannot be made.
-    private val assembler = PdfAssembler { pages, _, _, dest, _ ->
+    private val assembler = PdfAssembler { pages, _, _, dest, _, _ ->
         val text = pages.joinToString("|") { it.readText() }
         dest.writeText(text)
         "fail" !in text
     }
+    private val engine = FakeOcrEngine()
     private lateinit var library: ScanLibrary
     private lateinit var exporter: ScanPdfExporter
     private val models = mutableListOf<ScanFlowModel>()
@@ -110,7 +125,7 @@ class ScanFlowSaveTest {
      * emptied through it before the test ends.
      */
     private fun forgetFolder() {
-        for (name in listOf("scan_folder", "folder_setup")) context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+        for (name in listOf("scan_folder", "folder_setup", "scan_prefs")) context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
         File(context.filesDir, "scan-folder").deleteRecursively()
     }
 
@@ -150,6 +165,7 @@ class ScanFlowSaveTest {
             export = ScanExport(context, library, exporter, onSaved = {}),
             main = Dispatchers.Unconfined,
             io = io,
+            openEngine = { engine },
         ).also { models += it }
         model.chooseMode(CaptureMode.MULTI)
         val shots = File(root, "shots").apply { mkdirs() }
@@ -273,4 +289,92 @@ class ScanFlowSaveTest {
         assertEquals("the open scan's save is still waiting", setOf("Other.pdf"), pdfs())
         assertTrue(model.busy)
     }
+
+    private fun txts() = folderRoot.list().orEmpty().filter { it.endsWith(".txt") }.toSet()
+
+    @Test
+    fun `a searchable folder save with the txt option writes the txt beside the PDF and remembers the switches`() {
+        FolderAccess(context).adopt(treeUri)
+        flowInReview(appFolder().also { it.start() }, text = "receipt")
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Also save the text as .txt").performScrollTo().performClick()
+        rule.onNodeWithText("Save").performClick()
+        rule.waitUntil(10_000) { saved == 1 }
+        val pdf = pdfs().single()
+        assertEquals(setOf(pdf.removeSuffix(".pdf") + ".txt"), txts())
+        assertEquals("receipt\n", File(folderRoot, txts().single()).readText())
+        assertEquals(listOf("receipt"), engine.reads.map { it.text })
+        assertTrue(ScanPreferences(context).searchable)
+        assertTrue(ScanPreferences(context).saveText)
+        assertNull("no page looks handwritten", ShadowToast.getTextOfLatestToast())
+    }
+
+    @Test
+    fun `after the save a handwritten-looking page is named in a toast`() {
+        FolderAccess(context).adopt(treeUri)
+        flowInReview(appFolder().also { it.start() }, text = "scribble")
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Save").performClick()
+        rule.waitUntil(10_000) { saved == 1 }
+        assertEquals("Page 1 looks handwritten. Its text may be incomplete or wrong.", ShadowToast.getTextOfLatestToast())
+        assertTrue("no txt unless asked for", txts().isEmpty())
+    }
+
+    @Test
+    fun `the plural notice counts the pages`() {
+        val res = context.resources
+        assertNull(handwrittenNotice(res, emptyList()))
+        assertEquals("Page 3 looks handwritten. Its text may be incomplete or wrong.", handwrittenNotice(res, listOf(3)))
+        assertEquals("2 pages look handwritten. Their text may be incomplete or wrong.", handwrittenNotice(res, listOf(1, 4)))
+    }
+
+    @Test
+    fun `with the txt option the picker save opens a second picker for the txt, named after the PDF`() {
+        ScanPreferences(context).saveText = true
+        flowInReview(appFolder().also { it.start() })
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Also save the text as .txt").performScrollTo().assertIsOn()
+        rule.onNodeWithText("Choose where to save").performClick()
+        val pdfRequest = generateSequence { shadowOf(rule.activity).nextStartedActivityForResult }
+            .first { it.intent.action == Intent.ACTION_CREATE_DOCUMENT }
+        assertEquals("application/pdf", pdfRequest.intent.type)
+        val pdf = File(root, "picked.pdf").apply { createNewFile() }
+        rule.runOnUiThread { shadowOf(rule.activity).receiveResult(pdfRequest.intent, Activity.RESULT_OK, Intent().setData(Uri.fromFile(pdf))) }
+        rule.waitForIdle()
+        val txtRequest = generateSequence { shadowOf(rule.activity).nextStartedActivityForResult }
+            .first { it.intent.action == Intent.ACTION_CREATE_DOCUMENT }
+        assertEquals("text/plain", txtRequest.intent.type)
+        assertEquals(0, saved)
+        val txt = File(root, "picked.txt").apply { createNewFile() }
+        rule.runOnUiThread { shadowOf(rule.activity).receiveResult(txtRequest.intent, Activity.RESULT_OK, Intent().setData(Uri.fromFile(txt))) }
+        rule.waitUntil(10_000) { saved == 1 }
+        assertEquals("page\n", txt.readText())
+    }
+
+    @Test
+    fun `OCR waits while the activity is stopped and resumes when it starts again`() {
+        FolderAccess(context).adopt(treeUri)
+        val folder = appFolder().also { it.start() }
+        val model = flowInReview(folder, text = "late")
+        rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        val ready = folder.state as FolderState.Ready
+        rule.runOnUiThread {
+            model.saveToFolder(ready.folder, SaveOptions(PdfPageSize.A4, "", searchable)) {}
+        }
+        assertTrue("nothing read in the background", engine.reads.isEmpty())
+        assertTrue(model.busy)
+        rule.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        rule.waitUntil(10_000) { !model.busy }
+        assertEquals(listOf("late"), engine.reads.map { it.text })
+    }
+
+    @Test
+    @Config(qualifiers = "it-rIT")
+    fun `on an Italian phone the language starts as Italian`() {
+        flowInReview(appFolder().also { it.start() })
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Italian").performScrollTo().assertIsSelected()
+    }
+
+    private val searchable = TextOptions(OcrLanguage.ENGLISH, OcrReading.AUTOMATIC, txt = false)
 }

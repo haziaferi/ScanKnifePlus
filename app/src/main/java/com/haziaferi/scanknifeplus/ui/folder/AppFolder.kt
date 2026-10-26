@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.export.ScanPdfExporter
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
@@ -119,9 +120,9 @@ class PrefsCopyPending(context: Context) : CopyPending {
     }
 }
 
-/** [ScanPdfExporter.writePdf] as the storage layer's [PdfMaker], all pages at [size], encrypted for [password] if given. */
-fun ScanPdfExporter.pdfMaker(size: PdfPageSize = PdfPageSize.DEFAULT, password: String? = null): PdfMaker =
-    PdfMaker { id, deliver -> writePdf(id, null, ExportQuality.DEFAULT, size, password, deliver = deliver) != null }
+/** [ScanPdfExporter.writePdf] as the storage layer's [PdfMaker], all pages at [size], encrypted for [password] if given, with [text] layers. */
+fun ScanPdfExporter.pdfMaker(size: PdfPageSize = PdfPageSize.DEFAULT, password: String? = null, text: Map<String, OcrPage> = emptyMap()): PdfMaker =
+    PdfMaker { id, deliver -> writePdf(id, null, ExportQuality.DEFAULT, size, password, text = text, deliver = deliver) != null }
 
 /**
  * The app's view of the user's folder ([FolderAccess]) as Compose state: whether it can be used, its name, History's [listing] of it, and the

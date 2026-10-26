@@ -287,10 +287,13 @@ class ScanSession(
             created = true
         }
         val book = entry.book
+        // Only camera shots went through detection; a picked image is a whole page on purpose.
+        val camera = entry.origin == ShotOrigin.CAMERA
         val (doc, pageIds) = if (book == null) {
-            library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter)?.let { it.document to listOf(it.pageId) }
+            library.addCapture(id, entry.source, entry.quad, keepOriginal, defaultFilter, markUncropped = camera)
+                ?.let { it.document to listOf(it.pageId) }
         } else {
-            library.addBookCapture(id, entry.source, entry.quad, book.split, book.quarterTurns, keepOriginal, defaultFilter)
+            library.addBookCapture(id, entry.source, entry.quad, book.split, book.quarterTurns, keepOriginal, defaultFilter, markUncropped = camera)
                 ?.let { it.document to it.pageIds }
         } ?: return emptyList()
         return pageIds.filter { pageId -> doc.pages.any { it.id == pageId } }
