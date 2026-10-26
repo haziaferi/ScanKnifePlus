@@ -691,7 +691,7 @@
     <string name="protect_no_recovery">%1$s cannot recover lost passwords.</string>
     <string name="repair_note">%1$s will rebuild the PDF index and cross-reference table to restore accessibility.</string>
     <string name="rotate_tap_page">Tap a page to rotate it</string>
-    <!-- Make PDF searchable; its other words are the scanner's text recognition strings. The title, done and count lines are placeholders awaiting approval. -->
+    <!-- Make PDF searchable; its other words are the scanner's text recognition strings. -->
     <string name="searchable_redo">Redo pages that already have text</string>
     <string name="searchable_title">Searchable text for scanned PDFs and photos</string>
     <string name="searchable_done">PDF made searchable</string>
