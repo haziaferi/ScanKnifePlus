@@ -12,6 +12,7 @@ import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Draw
+import androidx.compose.material.icons.outlined.FindInPage
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.FormatListNumbered
@@ -97,6 +98,9 @@ object ToolCatalog {
         },
         Tool("pdf2text", R.string.tool_pdf2text, R.string.tool_pdf2text_desc, Icons.AutoMirrored.Outlined.Article, CONVERT) {
             PdfToTextView(initialUri = it.initialUri, onBack = it.onBack)
+        },
+        Tool("searchable", R.string.tool_searchable, R.string.scan_ocr_searchable_hint, Icons.Outlined.FindInPage, CONVERT) {
+            SearchableView(initialUri = it.initialUri, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
         }
     )
 

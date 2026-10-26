@@ -159,7 +159,8 @@ class ToolCatalogTest {
             "compress" to "Optimize PDF size", "grayscale" to "Convert PDF to B&W", "repair" to "Recover corrupt documents",
             "compare" to "Visual difference tool", "protect" to "Encrypt your document", "unlock" to "Remove PDF restrictions",
             "metadata" to "Edit document properties", "pdf2img" to "Native export engine", "img2pdf" to "JPG, PNG or WebP",
-            "pdf2zip" to "Pages to archive", "extract-images" to "Extract assets from PDFs", "pdf2text" to "Extract raw content"
+            "pdf2zip" to "Pages to archive", "extract-images" to "Extract assets from PDFs", "pdf2text" to "Extract raw content",
+            "searchable" to "Searchable text for scanned PDFs and photos"
         )
 
         /** The *View composables that are not tools: the shell's own screens and the tools' shared success screen. */

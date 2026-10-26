@@ -208,6 +208,7 @@
     <string name="tool_extract_images_desc">Save embedded images</string>
     <string name="tool_pdf2text">PDF to text</string>
     <string name="tool_pdf2text_desc">Extract text</string>
+    <string name="tool_searchable">Make PDF searchable</string>
 
     <!-- The user's folder: setup, Home's folder bar, notices -->
     <string name="folder_your_folder">your folder</string>
@@ -690,6 +691,18 @@
     <string name="protect_no_recovery">%1$s cannot recover lost passwords.</string>
     <string name="repair_note">%1$s will rebuild the PDF index and cross-reference table to restore accessibility.</string>
     <string name="rotate_tap_page">Tap a page to rotate it</string>
+    <!-- Make PDF searchable; its other words are the scanner's text recognition strings. -->
+    <string name="searchable_redo">Redo pages that already have text</string>
+    <string name="searchable_title">Searchable text for scanned PDFs and photos</string>
+    <string name="searchable_done">PDF made searchable</string>
+    <plurals name="searchable_read">
+        <item quantity="one">%1$d page read.</item>
+        <item quantity="other">%1$d pages read.</item>
+    </plurals>
+    <plurals name="searchable_kept">
+        <item quantity="one">%1$d page already had text and was kept as it was.</item>
+        <item quantity="other">%1$d pages already had text and were kept as they were.</item>
+    </plurals>
     <string name="sign_exported">Signature exported</string>
     <string name="action_close">Close</string>
     <string name="lightbox_next">Next page</string>
