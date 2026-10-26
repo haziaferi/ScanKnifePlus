@@ -12,14 +12,26 @@ import com.haziaferi.scanknifeplus.ocr.TesseractOcrEngine
 import com.haziaferi.scanknifeplus.scan.export.FakeOcrEngine
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -190,6 +202,56 @@ class SearchablePdfTest {
     }
 
     @Test
+    fun `redoing a page replaces its old invisible text, keeping its image and visible text, also when redone twice`() {
+        val source = TestPdfs.layered("q 100 0 0 100 72 72 cm /Im1 Do Q", "BT /F1 12 Tf 72 700 Td (VISIBLE) Tj ET",
+            "BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")
+        val redo = options.copy(redo = true)
+        val (_, once) = run(source, searchable = redo)
+        val first = File(dir, "once.pdf").apply { writeBytes(once.readBytes()) }
+        val (_, twice) = run(first.readBytes(), searchable = redo)
+        for ((name, bytes) in listOf("once" to first.readBytes(), "twice" to twice.readBytes())) {
+            PDDocument.load(bytes).use { doc ->
+                val words = PDFTextStripper().getText(doc).split(Regex("""\s+""")).filter { it.isNotEmpty() }
+                assertEquals(name, listOf("VISIBLE", "page", "1"), words)
+                val content = String(doc.getPage(0).contents.readBytes(), Charsets.ISO_8859_1)
+                assertTrue(content, "/Im1 Do" in content)
+            }
+        }
+    }
+
+    @Test
+    fun `redoing a page whose old layer is in a form of its own, as OCRmyPDF writes it, replaces that layer`() {
+        val source = TestPdfs.withForms(mapOf("Fx1" to "BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET"), "q 100 0 0 100 72 72 cm /Im1 Do Q /Fx1 Do")
+        val (_, out) = run(source, searchable = options.copy(redo = true))
+        PDDocument.load(out).use { doc ->
+            assertEquals(listOf("page", "1"), PDFTextStripper().getText(doc).split(Regex("""\s+""")).filter { it.isNotEmpty() })
+            val content = String(doc.getPage(0).contents.readBytes(), Charsets.ISO_8859_1)
+            assertTrue(content, "/Im1 Do" in content && "/Fx1 Do" in content)
+        }
+    }
+
+    @Test
+    fun `a redone page whose content cannot be read keeps it and still gets the new layer`() {
+        val broken = PDDocument.load(TestPdfs.layered("BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")).use { doc ->
+            val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray
+            (contents.getObject(0) as COSStream).setItem(COSName.FILTER, COSName.getPDFName("Bogus"))
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val (result, out) = run(broken, searchable = options.copy(redo = true))
+        assertEquals(1, result.read)
+        PDDocument.load(out).use { doc ->
+            val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray
+            val kept = (0 until contents.size()).filter {
+                (contents.getObject(it) as COSStream).getDictionaryObject(COSName.FILTER) == COSName.getPDFName("Bogus")
+            }
+            assertEquals(1, kept.size)
+            // Without the unreadable stream, the rest of the page reads as the new layer.
+            contents.remove(kept.single())
+            assertEquals("page 1", PDFTextStripper().getText(doc).trim())
+        }
+    }
+
+    @Test
     fun `a document whose pages all have text never opens an engine`() {
         val (result, out) = run(TestPdfs.someWithText(2, setOf(0, 1)))
         assertEquals(SearchableResult(2, 0, 2, emptyList()), result)
@@ -290,6 +352,42 @@ class SearchablePdfTest {
         assertEquals(1, engine.closes)
         assertFalse(out.exists())
         assertEquals(emptyList<String>(), searchableWorkDir(context).list()!!.toList())
+    }
+
+    @Test
+    fun `a cancel reaches the engine even when it comes before the run's other work was dispatched`() {
+        // Lets the run start, then holds back every later dispatch until the page being read has cancelled the run: the order a busy
+        // phone can produce.
+        val pool = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
+        val held = ConcurrentLinkedQueue<Runnable>()
+        val passed = AtomicInteger()
+        val holding = AtomicBoolean(true)
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                if (holding.get() && passed.getAndIncrement() > 0) held += block else pool.dispatch(context, block)
+            }
+        }
+        val out = File(dir, "cancelled-early.pdf").apply { delete() }
+        lateinit var job: Job
+        engine.onRead = {
+            job.cancel()
+            holding.set(false)
+            generateSequence { held.poll() }.forEach { pool.dispatch(EmptyCoroutineContext, it) }
+            val end = System.currentTimeMillis() + 2_000
+            while (engine.cancels == 0 && System.currentTimeMillis() < end) Thread.sleep(10)
+        }
+        try {
+            job = CoroutineScope(Dispatchers.Default).launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                makeSearchable(context, TestPdfs.write(dir, TestPdfs.plain(2)), "", Uri.fromFile(out), options, ::openEngine, running,
+                    renders = { _, _ -> renders }, dispatcher = dispatcher)
+            }
+            runBlocking { job.join() }
+            assertEquals(1, engine.cancels)
+            assertEquals(listOf("page 1"), engine.reads.map { it.text })
+            assertFalse(out.exists())
+        } finally {
+            pool.close()
+        }
     }
 
     @Test

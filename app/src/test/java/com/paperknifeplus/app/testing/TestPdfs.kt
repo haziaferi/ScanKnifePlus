@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
@@ -214,6 +215,79 @@ object TestPdfs {
                 it.showText(textMarker(i + 1))
                 it.endText()
             }
+        }
+    }
+
+    /** The names of [layered]'s Helvetica font, Type 3 font and 2 x 2 gray image in its page resources. */
+    val LAYERED_FONT: COSName = COSName.getPDFName("F1")
+    val LAYERED_TYPE3_FONT: COSName = COSName.getPDFName("F3")
+    val LAYERED_IMAGE: COSName = COSName.getPDFName("Im1")
+
+    /** One Letter page whose content is [streams], in order, with [LAYERED_FONT], [LAYERED_TYPE3_FONT] and [LAYERED_IMAGE] in its resources. */
+    fun layered(vararg streams: String): ByteArray = PDDocument().use { doc ->
+        val page = PDPage(PDRectangle.LETTER)
+        doc.addPage(page)
+        val contents = COSArray()
+        streams.forEach { contents.add(PDStream(doc, it.byteInputStream()).cosObject) }
+        page.cosObject.setItem(COSName.CONTENTS, contents)
+        page.cosObject.setItem(COSName.RESOURCES, LayeredResources(doc, emptyMap()).of(""))
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    /**
+     * Letter pages showing [pages], one content stream each, with [layered]'s resources plus the form XObjects of [forms] (name to content)
+     * whose `/name Do` the content holds. Forms get resources the same way, so they can nest; the same name is the same form on every page.
+     */
+    fun withForms(forms: Map<String, String>, vararg pages: String): ByteArray = PDDocument().use { doc ->
+        val resources = LayeredResources(doc, forms)
+        for (content in pages) {
+            val page = PDPage(PDRectangle.LETTER)
+            page.setContents(PDStream(doc, content.byteInputStream()))
+            page.cosObject.setItem(COSName.RESOURCES, resources.of(content))
+            doc.addPage(page)
+        }
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    private class LayeredResources(doc: PDDocument, private val forms: Map<String, String>) {
+        private val fonts = COSDictionary().apply {
+            setItem(LAYERED_FONT, COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.FONT)
+                setItem(COSName.SUBTYPE, COSName.TYPE1)
+                setItem(COSName.BASE_FONT, COSName.getPDFName("Helvetica"))
+            })
+            setItem(LAYERED_TYPE3_FONT, COSDictionary().apply {
+                setItem(COSName.TYPE, COSName.FONT)
+                setItem(COSName.SUBTYPE, COSName.TYPE3)
+            })
+        }
+        private val image = PDStream(doc, byteArrayOf(0, 64, -128, -1).inputStream()).cosObject.apply {
+            setItem(COSName.TYPE, COSName.XOBJECT)
+            setItem(COSName.SUBTYPE, COSName.IMAGE)
+            setInt(COSName.WIDTH, 2)
+            setInt(COSName.HEIGHT, 2)
+            setItem(COSName.COLORSPACE, COSName.DEVICEGRAY)
+            setInt(COSName.BITS_PER_COMPONENT, 8)
+        }
+        private val streams = forms.mapValues { (_, content) ->
+            PDStream(doc, content.byteInputStream()).cosObject.apply {
+                setItem(COSName.TYPE, COSName.XOBJECT)
+                setItem(COSName.SUBTYPE, COSName.FORM)
+                setItem(COSName.BBOX, PDRectangle.LETTER.cosArray)
+            }
+        }
+
+        init {
+            streams.forEach { (name, stream) -> stream.setItem(COSName.RESOURCES, of(forms.getValue(name))) }
+        }
+
+        /** Resources for [content]: the fonts, the image and the forms it draws. */
+        fun of(content: String) = COSDictionary().apply {
+            setItem(COSName.FONT, fonts)
+            setItem(COSName.XOBJECT, COSDictionary().apply {
+                setItem(LAYERED_IMAGE, image)
+                streams.forEach { (name, stream) -> if ("/$name Do" in content) setItem(name, stream) }
+            })
         }
     }
 

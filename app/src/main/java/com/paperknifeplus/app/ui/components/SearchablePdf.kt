@@ -26,6 +26,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
@@ -135,10 +137,11 @@ internal fun clearSearchableWork(context: Context) {
 /**
  * Writes [source], opened with [password] (empty for none), to [output] with the recognised text of its pages as an invisible layer over
  * them; its own content stays as it is, and a protected file stays as protected ([sameProtection]). A page that already has text is copied
- * unchanged unless [options] say to redo it, which keeps its text and adds the new layer on top. Each page is rendered at 200 DPI of its real
- * size ([longEdgeMm] overrides it, for photos) by [renders] and read by one engine from [openEngine], closed at the end. Between pages it waits
- * while [running] is false (the app in the background), after the page being read; cancelling cancels that read too. [onPage] gets each page
- * as its reading starts (number from 1, total). Throws on failure, and nothing is written then or on cancel.
+ * unchanged unless [options] say to redo it: then its old invisible text ([InvisibleTextStripper]) gives way to the new layer, and its visible
+ * text stays. Each page is rendered at 200 DPI of its real size ([longEdgeMm] overrides it, for photos) by [renders] and read by one engine
+ * from [openEngine], closed at the end. Between pages it waits while [running] is false (the app in the background), after the page being
+ * read; cancelling cancels that read too. [onPage] gets each page as its reading starts (number from 1, total). Throws on failure, and
+ * nothing is written then or on cancel. It runs on [dispatcher].
  */
 internal suspend fun makeSearchable(
     context: Context,
@@ -151,7 +154,8 @@ internal suspend fun makeSearchable(
     longEdgeMm: Double? = null,
     renders: (Uri, String?) -> PageRenders = { uri, pass -> NativePageRenders(context, uri, pass) },
     onPage: (Int, Int) -> Unit = { _, _ -> },
-): SearchableResult = withContext(Dispatchers.IO) {
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
+): SearchableResult = withContext(dispatcher) {
     val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
     context.contentResolver.requireInputStream(source).use { input ->
         PDDocument.load(input, password, memory).use { document ->
@@ -199,6 +203,7 @@ private class SearchableReader(
 ) {
     private val engine = AtomicReference<OcrEngine?>()
     private var font: PDFont? = null
+    private val stripper by lazy { InvisibleTextStripper(document) }
 
     suspend fun read(openEngine: () -> OcrEngine, running: StateFlow<Boolean>, onPage: (Int, Int) -> Unit): SearchableResult =
         coroutineScope {
@@ -208,7 +213,8 @@ private class SearchableReader(
             val handwritten = mutableListOf<Int>()
             // Tesseract blocks its thread while it reads, so a cancel reaches it through the engine rather than the coroutine.
             val finished = AtomicBoolean(false)
-            val watcher = launch {
+            // Started undispatched: a watcher still waiting to be dispatched when the run is cancelled would never run its finally block.
+            val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     awaitCancellation()
                 } finally {
@@ -259,9 +265,13 @@ private class SearchableReader(
         }
     }
 
-    /** Appends [ocr]'s words to page [index] as an invisible layer drawn as the page is displayed, over the whole displayed page. */
+    /**
+     * Appends [ocr]'s words to page [index] as an invisible layer drawn as the page is displayed, over the whole displayed page; when redoing,
+     * the page's old invisible text goes first, so searches and copies do not find it twice.
+     */
     private fun drawLayer(index: Int, ocr: OcrPage) {
         val page = document.getPage(index)
+        if (options.redo) stripper.strip(index)
         val box = PageBox.of(page)
         val f = font ?: PdfTextLayer.loadFont(document).also { font = it }
         document.appendTo(page).use { stream ->
