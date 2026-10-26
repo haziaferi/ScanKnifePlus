@@ -57,10 +57,11 @@ android {
             excludes += "/META-INF/proguard/*"
         }
     }
-    // One APK per ABI for releases (the native OCR libraries are most of the size), plus a universal APK for debugging.
+    // One APK per ABI for releases (the native OCR libraries are most of the size), plus a universal APK for debugging. An app bundle is
+    // split per device by the store instead, and AGP cannot bundle with ABI splits and resource shrinking on, so -PnoAbiSplits turns them off.
     splits {
         abi {
-            isEnable = true
+            isEnable = !project.hasProperty("noAbiSplits")
             reset()
             include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
             isUniversalApk = true
