@@ -35,7 +35,9 @@ jobs:
 
     - name: Test, lint and build release APK and AAB
       run: |
-        ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease bundleRelease --stacktrace --no-daemon --console=plain
+        ./gradlew :scanner-core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest assembleRelease --stacktrace --no-daemon --console=plain
+        # The bundle is built without ABI splits (app/build.gradle.kts), so in its own run.
+        ./gradlew bundleRelease -PnoAbiSplits --stacktrace --no-daemon --console=plain
 
     # AGP's unsigned APK is already aligned (CameraX .so files at 16 KB); re-running zipalign -v 4 could break that.
     - name: Sign APK and AAB

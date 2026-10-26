@@ -36,7 +36,8 @@ class NoticeAssetTest {
         val titles = sections.map { it.title }
         assertEquals("Notices and credits", titles.first())
         assertTrue("OpenScan license" in titles)
-        assertEquals(File(repoRoot, NOTICES_ASSET_DIR).list().orEmpty().sorted(), titles.takeLast(2))
+        val noticeFiles = File(repoRoot, NOTICES_ASSET_DIR).list().orEmpty().sorted()
+        assertEquals(noticeFiles, titles.takeLast(noticeFiles.size))
         assertTrue(sections.first { it.title == "OpenScan license" }.body.contains("Vijay T S"))
         val paperKnife = sections.first { it.title == "PaperKnife+" }.body
         assertTrue(paperKnife, paperKnife.contains("PaperKnife+ (https://github.com/potatameister/PaperKnifePlus) by potatameister"))

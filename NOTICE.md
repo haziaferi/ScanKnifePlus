@@ -180,6 +180,36 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+### Tesseract4Android
+
+[Tesseract4Android](https://github.com/haziaferi/Tesseract4Android) 4.11.0 (`tesseract4android-openmp`), the app owner's fork of [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) by Adaptech s.r.o. (Copyright 2019 Adaptech s.r.o., Robert Pösel), whose Java and JNI wrappers are based on [tess-two](https://github.com/rmtheis/tess-two) and [Tesseract Tools for Android](https://github.com/alanv/tesseract-android-tools). Licensed under the Apache License, Version 2.0, reproduced in [NOTICES/Apache-License-2.0.txt](NOTICES/Apache-License-2.0.txt). It bundles the native libraries below.
+
+### Tesseract OCR
+
+[Tesseract](https://github.com/tesseract-ocr/tesseract) 5.5.3, originally developed at Hewlett-Packard Laboratories, open-sourced by HP in 2005 and developed by Google from 2006 to 2017, now by the Tesseract contributors. Licensed under the Apache License, Version 2.0, reproduced in [NOTICES/Apache-License-2.0.txt](NOTICES/Apache-License-2.0.txt).
+
+### tessdata_fast
+
+The English, Italian and orientation (`osd`) language data from [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast), commit `87416418657359cb625c412a48b6e1d6d41c29bd`, by the Tesseract contributors. Licensed under the Apache License, Version 2.0, reproduced in [NOTICES/Apache-License-2.0.txt](NOTICES/Apache-License-2.0.txt).
+
+### Leptonica
+
+[Leptonica](http://www.leptonica.org/) 1.87.0 by Dan Bloomberg, used under the BSD 2-Clause License:
+
+Copyright (C) 2001-2020 Leptonica. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL ANY CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+### libjpeg and libpng
+
+Tesseract4Android's image libraries: this software is based in part on the work of the Independent JPEG Group (libjpeg 9f, copyright (C) 1991-2024, Thomas G. Lane, Guido Vollbeding), and it uses [libpng](http://www.libpng.org/pub/png/libpng.html) 1.6.59 under the PNG Reference Library License, reproduced in [NOTICES/libpng-1.6.59-LICENSE.txt](NOTICES/libpng-1.6.59-LICENSE.txt).
+
 ### Other libraries
 
 AndroidX (including Jetpack Compose, CameraX and ExifInterface), kotlinx, Coil, OkHttp and Okio are licensed under the Apache License, Version 2.0.
