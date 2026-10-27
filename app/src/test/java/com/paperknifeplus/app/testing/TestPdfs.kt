@@ -10,8 +10,11 @@ import android.os.ParcelFileDescriptor
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
 import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSObject
+import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
@@ -264,6 +267,17 @@ object TestPdfs {
         if (onPagesNode) doc.pages.cosObject.setItem(COSName.RESOURCES, resources)
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
+
+    /** Everything [value] holds, streams decoded, references followed except to parents and children; equal strings mean equal objects. */
+    fun describe(value: COSBase?): String = when (val v = if (value is COSObject) value.`object` else value) {
+        is COSStream -> "stream" + entries(v) + "{" + String(v.createInputStream().use { it.readBytes() }, Charsets.ISO_8859_1) + "}"
+        is COSDictionary -> entries(v)
+        is COSArray -> v.joinToString(",", "[", "]") { describe(it) }
+        else -> v.toString()
+    }
+
+    private fun entries(dict: COSDictionary): String = (dict.keySet() - setOf(COSName.PARENT, COSName.P, COSName.KIDS)).sortedBy { it.name }
+        .joinToString(" ", "<<", ">>") { "${it.name}=${describe(dict.getItem(it))}" }
 
     private class LayeredResources(doc: PDDocument, private val forms: Map<String, String>) {
         private val fonts = COSDictionary().apply {

@@ -6,10 +6,8 @@ import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.contentstream.operator.Operator
 import com.tom_roush.pdfbox.cos.COSArray
-import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
-import com.tom_roush.pdfbox.cos.COSObject
 import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdfparser.PDFStreamParser
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -205,17 +203,6 @@ class InvisibleTextTest {
 
     private fun COSStream.content(): String = String(createInputStream().use { it.readBytes() }, Charsets.ISO_8859_1)
 
-    /** Everything [value] holds, streams decoded, references followed except to parents and children; equal strings mean equal objects. */
-    private fun describe(value: COSBase?): String = when (val v = if (value is COSObject) value.`object` else value) {
-        is COSStream -> "stream" + entries(v) + "{" + v.content() + "}"
-        is COSDictionary -> entries(v)
-        is COSArray -> v.joinToString(",", "[", "]") { describe(it) }
-        else -> v.toString()
-    }
-
-    private fun entries(dict: COSDictionary): String = (dict.keySet() - setOf(COSName.PARENT, COSName.P, COSName.KIDS)).sortedBy { it.name }
-        .joinToString(" ", "<<", ">>") { "${it.name}=${describe(dict.getItem(it))}" }
-
     private fun PDDocument.pageText(page: Int): String = PDFTextStripper().apply {
         startPage = page + 1
         endPage = page + 1
@@ -227,7 +214,7 @@ class InvisibleTextTest {
     fun `forms in a resources dictionary every page shares are stripped in place when only one page draws each`() {
         val forms = mapOf("Fx1" to line("OLDONE", 650, mode = 3), "Fx2" to line("OLDTWO", 650, mode = 3))
         val pdf = TestPdfs.sharedResources(forms, listOf("/Fx1 Do", "/Fx2 Do"))
-        fun PDDocument.secondPage() = describe(getPage(1).cosObject.getItem(COSName.CONTENTS)) + describe(formStream("Fx2", page = 1))
+        fun PDDocument.secondPage() = TestPdfs.describe(getPage(1).cosObject.getItem(COSName.CONTENTS)) + TestPdfs.describe(formStream("Fx2", page = 1))
         val (secondPage, objects) = PDDocument.load(pdf).use {
             assertTrue(it.getPage(0).resources.cosObject === it.getPage(1).resources.cosObject)
             it.secondPage() to it.document.objects.size
@@ -248,14 +235,14 @@ class InvisibleTextTest {
     fun `a form another page also draws is copied for the redone page, and only when it loses text`() {
         val forms = mapOf("Fx1" to line("OLDOCR", 650, mode = 3))
         val pdf = TestPdfs.withForms(forms, "/Fx1 Do", "/Fx1 Do")
-        val secondPage = PDDocument.load(pdf).use { describe(it.getPage(1).cosObject) }
+        val secondPage = PDDocument.load(pdf).use { TestPdfs.describe(it.getPage(1).cosObject) }
         val (removed, doc) = strippedPage(pdf)
         doc.use {
             assertTrue(removed)
             assertEquals("", it.pageText(0))
             assertEquals("OLDOCR", it.pageText(1))
             assertTrue(it.formStream("Fx1") !== it.formStream("Fx1", page = 1))
-            assertEquals(secondPage, describe(it.getPage(1).cosObject))
+            assertEquals(secondPage, TestPdfs.describe(it.getPage(1).cosObject))
             assertEquals(2, it.formCount())
         }
         PDDocument.load(TestPdfs.withForms(mapOf("Fx1" to line("SHOWN", 650)), "/Fx1 Do", "/Fx1 Do")).use {
@@ -270,7 +257,7 @@ class InvisibleTextTest {
         val pdf = TestPdfs.sharedResources(mapOf("Fx1" to line("OLDOCR", 650, mode = 3)), listOf("/Fx1 Do", "/Fx1 Do"), onPagesNode = true)
         val (tree, secondPage) = PDDocument.load(pdf).use {
             assertFalse(it.getPage(0).cosObject.containsKey(COSName.RESOURCES))
-            describe(it.pages.cosObject) to describe(it.getPage(1).cosObject)
+            TestPdfs.describe(it.pages.cosObject) to TestPdfs.describe(it.getPage(1).cosObject)
         }
         val (removed, doc) = strippedPage(pdf)
         doc.use {
@@ -278,8 +265,8 @@ class InvisibleTextTest {
             assertEquals("", it.pageText(0))
             assertEquals("OLDOCR", it.pageText(1))
             assertTrue(it.getPage(0).cosObject.containsKey(COSName.RESOURCES))
-            assertEquals(tree, describe(it.pages.cosObject))
-            assertEquals(secondPage, describe(it.getPage(1).cosObject))
+            assertEquals(tree, TestPdfs.describe(it.pages.cosObject))
+            assertEquals(secondPage, TestPdfs.describe(it.getPage(1).cosObject))
         }
     }
 
@@ -305,7 +292,7 @@ class InvisibleTextTest {
     @Test
     fun `a shared form around this page's old layer is copied with it, so only this page's path changes`() {
         val pdf = TestPdfs.withForms(mapOf("Fx1" to "q /Fx2 Do Q", "Fx2" to line("OLDOCR", 650, mode = 3)), "/Fx1 Do", "/Fx1 Do")
-        val secondPage = PDDocument.load(pdf).use { describe(it.getPage(1).cosObject) }
+        val secondPage = PDDocument.load(pdf).use { TestPdfs.describe(it.getPage(1).cosObject) }
         val (removed, doc) = strippedPage(pdf)
         doc.use {
             assertTrue(removed)
@@ -314,7 +301,7 @@ class InvisibleTextTest {
             val outer = it.formStream("Fx1")
             assertTrue(outer !== it.formStream("Fx1", page = 1))
             assertEquals("q /Fx2 Do Q", outer.content())
-            assertEquals(secondPage, describe(it.getPage(1).cosObject))
+            assertEquals(secondPage, TestPdfs.describe(it.getPage(1).cosObject))
             assertEquals(4, it.formCount())
         }
     }
@@ -336,14 +323,14 @@ class InvisibleTextTest {
                 }
                 ByteArrayOutputStream().also { d.save(it) }.toByteArray()
             }
-        val (secondPage, forms) = PDDocument.load(pdf).use { describe(it.getPage(1).cosObject) to it.formCount() }
+        val (secondPage, forms) = PDDocument.load(pdf).use { TestPdfs.describe(it.getPage(1).cosObject) to it.formCount() }
         val (removed, doc) = strippedPage(pdf)
         doc.use {
             assertTrue(removed)
             assertEquals("", it.pageText(0))
             assertEquals("OLDTWO", it.pageText(1))
             assertTrue(it.formStream("Fx1") === it.formStream("Fx1", page = 1))
-            assertEquals(secondPage, describe(it.getPage(1).cosObject))
+            assertEquals(secondPage, TestPdfs.describe(it.getPage(1).cosObject))
             assertEquals(forms, it.formCount())
         }
     }

@@ -243,6 +243,22 @@ class SearchablePdfTest {
     }
 
     @Test
+    fun `the layer's font goes into resources of the page's own, never ones another page shares or inherits`() {
+        val pages = listOf("0 0 0 rg 72 700 100 20 re f", "BT /F1 12 Tf 72 700 Td (KEPT) Tj ET")
+        for (onPagesNode in listOf(false, true)) {
+            val source = TestPdfs.sharedResources(emptyMap(), pages, onPagesNode)
+            val (tree, second) = PDDocument.load(source).use { TestPdfs.describe(it.pages.cosObject) to TestPdfs.describe(it.getPage(1).cosObject) }
+            val (result, out) = run(source)
+            assertEquals(SearchableResult(2, 1, 1, emptyList()), result)
+            PDDocument.load(out).use { doc ->
+                assertEquals("page 1", PDFTextStripper().apply { startPage = 1; endPage = 1 }.getText(doc).trim())
+                assertEquals("$onPagesNode", tree, TestPdfs.describe(doc.pages.cosObject))
+                assertEquals("$onPagesNode", second, TestPdfs.describe(doc.getPage(1).cosObject))
+            }
+        }
+    }
+
+    @Test
     fun `a redone page whose content cannot be read keeps it and still gets the new layer`() {
         val broken = PDDocument.load(TestPdfs.layered("BT 3 Tr /F1 12 Tf 72 650 Td (OLDOCR) Tj ET")).use { doc ->
             val contents = doc.getPage(0).cosObject.getDictionaryObject(COSName.CONTENTS) as COSArray

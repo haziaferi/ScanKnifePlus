@@ -13,8 +13,12 @@ import com.haziaferi.scanknifeplus.ocr.TesseractOcrEngine
 import com.haziaferi.scanknifeplus.scan.export.PdfTextLayer
 import com.haziaferi.scanknifeplus.scanner.cv.PageSize
 import com.haziaferi.scanknifeplus.scanner.export.PdfImageRect
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.font.PDFont
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.util.Matrix
@@ -205,6 +209,18 @@ private class SearchableReader(
     private var font: PDFont? = null
     private val stripper by lazy { InvisibleTextStripper(document) }
 
+    /** The resources dictionaries, and /Font dictionaries in them, that more than one page uses, as the document was loaded. */
+    private val sharedResources by lazy {
+        val seen = identitySetOf<COSDictionary>()
+        val shared = identitySetOf<COSDictionary>()
+        for (page in document.pages) {
+            val resources = page.resources?.cosObject ?: continue
+            if (!seen.add(resources)) shared += resources
+            else (resources.getDictionaryObject(COSName.FONT) as? COSDictionary)?.let { if (!seen.add(it)) shared += it }
+        }
+        shared
+    }
+
     suspend fun read(openEngine: () -> OcrEngine, running: StateFlow<Boolean>, onPage: (Int, Int) -> Unit): SearchableResult =
         coroutineScope {
             val total = document.numberOfPages
@@ -271,12 +287,25 @@ private class SearchableReader(
      */
     private fun drawLayer(index: Int, ocr: OcrPage) {
         val page = document.getPage(index)
+        val shared = sharedResources
         if (options.redo) stripper.strip(index)
+        ownFonts(page, shared)
         val box = PageBox.of(page)
         val f = font ?: PdfTextLayer.loadFont(document).also { font = it }
         document.appendTo(page).use { stream ->
             stream.transform(box.displayMatrix())
             PdfTextLayer.draw(stream, f, ocr, PdfImageRect(0.0, 0.0, box.displayWidth.toDouble(), box.displayHeight.toDouble()))
         }
+    }
+
+    /**
+     * Gives [page] a /Font dictionary of its own before its layer adds a font there, when it inherits its resources or shares them, or their
+     * /Font dictionary, with another page ([shared]); other pages' resources stay as they are.
+     */
+    private fun ownFonts(page: PDPage, shared: Set<COSDictionary>) {
+        val resources = page.resources?.cosObject ?: return
+        val fonts = resources.getDictionaryObject(COSName.FONT) as? COSDictionary
+        if (!page.cosObject.containsKey(COSName.RESOURCES) || resources in shared) page.resources = PDResources(resources.copyWithOwn(COSName.FONT))
+        else if (fonts != null && fonts in shared) resources.setItem(COSName.FONT, COSDictionary(fonts))
     }
 }

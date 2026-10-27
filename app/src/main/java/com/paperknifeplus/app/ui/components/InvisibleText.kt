@@ -128,10 +128,9 @@ internal class InvisibleTextStripper(private val document: PDDocument) {
             newResources[resources] = resources
             val forms = drawn[resources].orEmpty()
             val swaps = forms.mapValues { (_, form) -> replacement(form) }.filter { (name, copy) -> copy !== forms[name] }
-            val result = if (swaps.isEmpty()) resources else COSDictionary(resources).apply {
-                val xobjects = COSDictionary(resources.getDictionaryObject(COSName.XOBJECT) as COSDictionary)
+            val result = if (swaps.isEmpty()) resources else resources.copyWithOwn(COSName.XOBJECT).apply {
+                val xobjects = getDictionaryObject(COSName.XOBJECT) as COSDictionary
                 swaps.forEach { (name, form) -> xobjects.setItem(name, form) }
-                setItem(COSName.XOBJECT, xobjects)
             }
             newResources[resources] = result
             return result
@@ -245,6 +244,11 @@ internal class InvisibleTextStripper(private val document: PDDocument) {
             }
         }
     }
+}
+
+/** A shallow copy of these resources whose [kind] dictionary (/XObject, /Font) is a shallow copy too, so either can change on its own. */
+internal fun COSDictionary.copyWithOwn(kind: COSName): COSDictionary = COSDictionary(this).also { copy ->
+    copy.setItem(kind, (getDictionaryObject(kind) as? COSDictionary)?.let(::COSDictionary) ?: COSDictionary())
 }
 
 private fun COSStream.isForm() = getCOSName(COSName.SUBTYPE) == COSName.FORM
