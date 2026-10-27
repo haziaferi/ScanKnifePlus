@@ -45,7 +45,7 @@ class TesseractOcrEngine private constructor(private val context: Context) : Ocr
         }
     }
 
-    /** Stops the recognition of a read in progress within a word or so; layout analysis and orientation detection run to their end first. */
+    /** Stops the recognition of a read in progress within a word or so, or before it starts; orientation detection runs to its end first. */
     override fun cancel() {
         cancelled = true
         synchronized(lock) { recogniser?.stop() }
@@ -99,8 +99,8 @@ class TesseractOcrEngine private constructor(private val context: Context) : Ocr
         tess.setVariable("user_defined_dpi", DPI.toString())
         tess.setPageSegMode(reading.pageSegMode)
         tess.setImage(grey.pixels, grey.width, grey.height, 1, grey.width)
-        // Recognition through the monitor that getHOCRText passes is the only kind TessBaseAPI.stop() can cancel; the text it returns is unused.
-        tess.getHOCRText(0)
+        // setImage clears a pending stop, so a cancel before it is caught here; one after it is held for recognize().
+        if (!cancelled) tess.recognize()
         val words = if (cancelled) emptyList() else rawWords(tess)
         tess.clear()
         return words
@@ -128,9 +128,7 @@ class TesseractOcrEngine private constructor(private val context: Context) : Ocr
 
     /** A Tesseract instance initialised with [language] from [path]; null, logged, if init fails. */
     private fun started(path: String, language: String, engineMode: Int): TessBaseAPI? {
-        // The progress callback runs on the reading thread during recognition, so a cancel that came before the monitor existed still stops it.
-        lateinit var tess: TessBaseAPI
-        tess = TessBaseAPI { if (cancelled) tess.stop() }
+        val tess = TessBaseAPI()
         if (tess.init(path, language, engineMode)) return tess
         Log.w(TAG, "Tesseract init failed for $language")
         tess.recycle()
