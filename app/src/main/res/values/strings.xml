@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ScanKnife+</string>
+    <string name="app_name" translatable="false">ScanKnife+</string>
 
     <!-- Document scanner: Scanner -->
     <string name="scan_close">Close scanner</string>
