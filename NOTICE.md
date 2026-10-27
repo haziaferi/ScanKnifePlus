@@ -182,7 +182,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### Tesseract4Android
 
-[Tesseract4Android](https://github.com/haziaferi/Tesseract4Android) 4.11.0 (`tesseract4android-openmp`), the app owner's fork of [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) by Adaptech s.r.o. (Copyright 2019 Adaptech s.r.o., Robert Pösel), whose Java and JNI wrappers are based on [tess-two](https://github.com/rmtheis/tess-two) and [Tesseract Tools for Android](https://github.com/alanv/tesseract-android-tools). Licensed under the Apache License, Version 2.0, reproduced in [NOTICES/Apache-License-2.0.txt](NOTICES/Apache-License-2.0.txt). It bundles the native libraries below.
+[Tesseract4Android](https://github.com/haziaferi/Tesseract4Android) 4.12.0 (`tesseract4android-openmp`), the app owner's fork of [Tesseract4Android](https://github.com/adaptech-cz/Tesseract4Android) by Adaptech s.r.o. (Copyright 2019 Adaptech s.r.o., Robert Pösel), whose Java and JNI wrappers are based on [tess-two](https://github.com/rmtheis/tess-two) and [Tesseract Tools for Android](https://github.com/alanv/tesseract-android-tools). Licensed under the Apache License, Version 2.0, reproduced in [NOTICES/Apache-License-2.0.txt](NOTICES/Apache-License-2.0.txt). It bundles the native libraries below.
 
 ### Tesseract OCR
 

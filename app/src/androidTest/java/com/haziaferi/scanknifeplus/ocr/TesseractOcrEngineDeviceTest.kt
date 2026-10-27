@@ -222,11 +222,11 @@ class TesseractOcrEngineDeviceTest {
         assertNull(engine.read(File(dir, "missing.jpg"), A4_LONG_MM, OcrLanguage.ENGLISH, OcrReading.AUTOMATIC))
     }
 
-    /** Measures the cancel approach: recognition through getHOCRText(0) gives the same words as getUTF8Text, at the logged extra cost. */
+    /** The cancellable recognize() gives the same words as getUTF8Text, at the logged cost. */
     @Test
-    fun hocrRecognitionGivesTheSameWordsAsPlainRecognition() {
+    fun cancellableRecognitionGivesTheSameWordsAsPlainRecognition() {
         val path = notNull(TessData.install(context)).absolutePath
-        val image = ImageCodec.decodeScaled(ImageSource.of(stored("hocr", corpus("b-italian"))), 0)!!
+        val image = ImageCodec.decodeScaled(ImageSource.of(stored("recognize", corpus("b-italian"))), 0)!!
         val grey = OcrImages.grey(image).let {
             val size = OcrImages.targetSize(it.width, it.height, A4_LONG_MM, TesseractOcrEngine.DPI)
             OcrImages.resized(it, size.width, size.height)
@@ -234,7 +234,7 @@ class TesseractOcrEngineDeviceTest {
         val tess = TessBaseAPI()
         try {
             assertTrue(tess.init(path, "ita", TessBaseAPI.OEM_LSTM_ONLY))
-            fun run(recognise: () -> Unit): Pair<Long, List<String>> {
+            fun run(recognise: () -> Any?): Pair<Long, List<String>> {
                 tess.setVariable("user_defined_dpi", "200")
                 tess.setPageSegMode(TessBaseAPI.PageSegMode.PSM_AUTO)
                 tess.setImage(grey.pixels, grey.width, grey.height, 1, grey.width)
@@ -254,11 +254,11 @@ class TesseractOcrEngineDeviceTest {
             val times = mutableListOf<Pair<Long, Long>>()
             repeat(3) {
                 val plain = run { tess.getUTF8Text() }
-                val hocr = run { tess.getHOCRText(0) }
-                assertEquals(plain.second, hocr.second)
-                times += plain.first to hocr.first
+                val cancellable = run { assertTrue(tess.recognize()) }
+                assertEquals(plain.second, cancellable.second)
+                times += plain.first to cancellable.first
             }
-            Log.i(TAG, "getUTF8Text vs getHOCRText(0) ms: $times")
+            Log.i(TAG, "getUTF8Text vs recognize() ms: $times")
         } finally {
             tess.recycle()
         }
