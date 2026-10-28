@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">ScanKnife+</string>
+    <string name="app_name" translatable="false">ScanKnife+</string>
 
     <!-- Document scanner: Scanner -->
     <string name="scan_close">Close scanner</string>
@@ -313,6 +313,9 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_oled">OLED</string>
     <string name="settings_palette">Colour palette</string>
+    <string name="palette_still_water">Still Water</string>
+    <string name="palette_rose">Rose</string>
+    <string name="palette_graphite_scholastic">Graphite Scholastic</string>
     <string name="settings_files">Files</string>
     <string name="settings_author">Default author</string>
     <string name="settings_author_body">This name is added to the Author field of every PDF you save.</string>
@@ -359,6 +362,13 @@
     <string name="about_ui_design">UI and design</string>
     <string name="about_media">Media</string>
     <string name="about_notices">Notices</string>
+    <string name="about_lib_pdfbox">The native heart of our engine</string>
+    <string name="about_lib_coroutines">Powering our multi-threaded rendering engine</string>
+    <string name="about_lib_openscan">Document scanner, ported from OpenScan. %1$s</string>
+    <string name="about_lib_compose">Modern UI toolkit for native Android</string>
+    <string name="about_lib_material">Modern design system implementation</string>
+    <string name="about_lib_coil">High-performance image loading engine</string>
+    <string name="about_lib_camerax">Camera capture for the document scanner</string>
     <!-- Reader -->
     <string name="reader_tools">Tools for this file</string>
 
@@ -410,9 +420,14 @@
     <string name="state_selected">Selected</string>
     <string name="tool_error">Error: %1$s</string>
     <string name="tool_field_title">Title</string>
-    <string name="tool_file_details">%1$s • %2$s pages</string>
+    <plurals name="tool_file_details">
+        <item quantity="one">%1$s • %2$d page</item>
+        <item quantity="other">%1$s • %2$d pages</item>
+    </plurals>
     <string name="tool_image_n">Image %1$s</string>
     <string name="tool_page_n">Page %1$s</string>
+    <string name="tool_unknown_size">Unknown size</string>
+    <string name="tool_document_cover">Document cover</string>
     <string name="tool_pick_images">Choose images</string>
     <string name="tool_pick_pdf">Choose PDF</string>
     <string name="tool_pick_pdfs">Choose PDFs</string>
@@ -460,6 +475,31 @@
     <string name="delete_selected_pages_were_removed">Selected pages were removed</string>
     <string name="delete_tip_pages_selected_in_grid">Tip: Pages selected in grid will be removed.</string>
     <string name="extract_images_assets">%1$s assets</string>
+    <plurals name="extract_found">
+        <item quantity="one">Found %d asset in document</item>
+        <item quantity="other">Found %d assets in document</item>
+    </plurals>
+    <plurals name="extract_saved_of">
+        <item quantity="one">Saved %1$d of %2$d images</item>
+        <item quantity="other">Saved %1$d of %2$d images</item>
+    </plurals>
+    <plurals name="extract_unreadable">
+        <item quantity="one">%d image could not be read</item>
+        <item quantity="other">%d images could not be read</item>
+    </plurals>
+    <plurals name="extract_too_small">
+        <item quantity="one">%d image below the minimum size left out</item>
+        <item quantity="other">%d images below the minimum size left out</item>
+    </plurals>
+    <plurals name="extract_none_readable">
+        <item quantity="one">The PDF has %d image, but it could not be read</item>
+        <item quantity="other">The PDF has %d images, but none could be read</item>
+    </plurals>
+    <plurals name="extract_all_too_small">
+        <item quantity="one">The PDF has %d image, below the minimum size</item>
+        <item quantity="other">All %d images of the PDF are below the minimum size</item>
+    </plurals>
+    <string name="extract_no_images">No images found in PDF</string>
     <string name="extract_images_extract_assets_from_pdf">Extract assets from PDF</string>
     <string name="extract_images_extract_assets_from_pdfs">Extract assets from PDFs</string>
     <string name="extract_images_extract_images_zip">Extract images (ZIP)</string>
@@ -636,7 +676,10 @@
     <string name="split_extract_pages_from_pdf">Extract pages from PDF</string>
     <string name="split_extracting_specified_pages">Extracting specified pages…</string>
     <string name="split_pages_extracted">%1$s pages extracted</string>
-    <string name="split_pages_selected">%1$s / %2$s pages selected</string>
+    <plurals name="split_pages_selected">
+        <item quantity="one">%1$d / %2$d page selected</item>
+        <item quantity="other">%1$d / %2$d pages selected</item>
+    </plurals>
     <string name="split_selected_pages_saved_successfully">Selected pages saved successfully</string>
     <string name="split_split_complete">Split complete</string>
     <string name="split_split_pdf_into_parts">Split PDF into parts</string>
@@ -660,6 +703,9 @@
     <string name="watermark_select_a_page_to_watermark">Select a page to watermark</string>
     <string name="watermark_select_watermark">Select watermark</string>
     <string name="watermark_templates">Templates</string>
+    <string name="watermark_draft">DRAFT</string>
+    <string name="watermark_confidential">CONFIDENTIAL</string>
+    <string name="watermark_approved">APPROVED</string>
     <string name="watermark_text_watermark">Text watermark</string>
     <string name="watermark_upload_image">Upload image</string>
     <string name="watermark_watermark_complete">Watermark complete</string>

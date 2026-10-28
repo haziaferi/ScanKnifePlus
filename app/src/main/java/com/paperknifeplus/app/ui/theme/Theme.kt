@@ -2,6 +2,7 @@ package com.paperknifeplus.app.ui.theme
 
 import android.app.Activity
 import android.os.Build
+import androidx.annotation.StringRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -15,12 +16,13 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.WindowCompat
+import com.paperknifeplus.app.R
 
 /** The colour palettes offered in Settings. [storageName] is the stable preference value; never change it. */
-enum class AppPalette(val storageName: String, val label: String, val light: ScanPalette, val oled: ScanPalette) {
-    STILL_WATER("still_water", "Still Water", StillWaterLight, StillWaterOled),
-    ROSE("rose", "Rose", RoseLight, RoseOled),
-    GRAPHITE_SCHOLASTIC("graphite_scholastic", "Graphite Scholastic", GraphiteLight, GraphiteOled);
+enum class AppPalette(val storageName: String, @StringRes val label: Int, val light: ScanPalette, val oled: ScanPalette) {
+    STILL_WATER("still_water", R.string.palette_still_water, StillWaterLight, StillWaterOled),
+    ROSE("rose", R.string.palette_rose, RoseLight, RoseOled),
+    GRAPHITE_SCHOLASTIC("graphite_scholastic", R.string.palette_graphite_scholastic, GraphiteLight, GraphiteOled);
 
     /** The OLED tokens when [oled], else the Light ones. */
     fun tokens(oled: Boolean): ScanPalette = if (oled) this.oled else light

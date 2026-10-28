@@ -147,7 +147,7 @@ fun SettingsView(
                     val theme = THEMES.firstOrNull { it.first.stored == currentTheme } ?: THEMES.first()
                     SettingsRow(Icons.Outlined.DarkMode, stringResource(R.string.settings_theme), stringResource(theme.second)) { sheet = SettingsSheet.THEME }
                     HorizontalDivider(color = colors.outline)
-                    SettingsRow(Icons.Outlined.Palette, stringResource(R.string.settings_palette), palette.label) { sheet = SettingsSheet.PALETTE }
+                    SettingsRow(Icons.Outlined.Palette, stringResource(R.string.settings_palette), stringResource(palette.label)) { sheet = SettingsSheet.PALETTE }
                 }
             }
 
@@ -210,7 +210,7 @@ fun SettingsView(
             }
         }
         SettingsSheet.PALETTE -> SettingsSheetFrame(stringResource(R.string.settings_palette), close) {
-            ChoiceList(AppPalette.entries, selected = { it == palette }, label = { it.label }) {
+            ChoiceList(AppPalette.entries, selected = { it == palette }, label = { stringResource(it.label) }) {
                 onPaletteChange(it)
                 close()
             }

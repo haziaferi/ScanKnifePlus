@@ -20,6 +20,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +35,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -298,7 +300,7 @@ fun WatermarkView(
                                 uri = selectedUri!!,
                                 password = unlockPassword.ifEmpty { null },
                                 name = fileName,
-                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedWatermarks = emptyList() },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
                             )
@@ -467,7 +469,7 @@ fun WatermarkView(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ToolSectionLabel(stringResource(R.string.watermark_templates))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("DRAFT", "CONFIDENTIAL", "APPROVED").forEach { template ->
+                        listOf(R.string.watermark_draft, R.string.watermark_confidential, R.string.watermark_approved).map { stringResource(it) }.forEach { template ->
                             Surface(
                                 onClick = {
                                     startPlacing(createTextBitmap(template, DocumentInk.TemplateGray), opacity = 0.5f)
@@ -478,7 +480,11 @@ fun WatermarkView(
                                 color = accentColor.copy(alpha = 0.05f),
                                 border = BorderStroke(1.dp, accentColor.copy(alpha = 0.1f))
                             ) {
-                                Text(template, fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center)
+                                // One line, shrinking to fit: a long stamp (CONFIDENTIAL, APPROVATO) would otherwise break mid-word in a third of the width.
+                                Text(
+                                    template, fontWeight = FontWeight.Black, color = accentColor, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center,
+                                    maxLines = 1, autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 12.sp)
+                                )
                             }
                         }
                     }

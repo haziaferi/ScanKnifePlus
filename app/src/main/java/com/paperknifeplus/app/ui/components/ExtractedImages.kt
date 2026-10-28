@@ -1,7 +1,9 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.util.Log
+import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSName
@@ -102,26 +104,23 @@ private fun colorSpaceName(space: COSBase?): String? = when (space) {
 /** Images written, images left out because they could not be decoded, and images [writeImages] filtered out as too small. */
 internal data class ExtractCounts(val written: Int, val skipped: Int, val filtered: Int = 0) {
     /** The result line: what was saved and, when some images could not be decoded or were too small, how many were left out. */
-    val summary: String
-        get() {
-            val saved = if (skipped == 0) {
-                "Found $written assets in document"
-            } else {
-                "Saved $written of ${written + skipped} images; ${images(skipped)} could not be read"
-            }
-            return if (filtered == 0) saved else "$saved; ${images(filtered)} below the minimum size left out"
+    fun summary(res: Resources): String {
+        val saved = if (skipped == 0) {
+            res.getQuantityString(R.plurals.extract_found, written, written)
+        } else {
+            res.getQuantityString(R.plurals.extract_saved_of, written, written, written + skipped) + "; " +
+                res.getQuantityString(R.plurals.extract_unreadable, skipped, skipped)
         }
+        return if (filtered == 0) saved else "$saved; " + res.getQuantityString(R.plurals.extract_too_small, filtered, filtered)
+    }
 
     /** Why the ZIP is empty, or null when it is not: the PDF has no images, none of them could be decoded, or all were too small. */
-    val emptyReason: String?
-        get() = when {
-            written > 0 -> null
-            skipped > 0 -> "The PDF has ${images(skipped)}, but none could be read"
-            filtered > 0 -> "All ${images(filtered)} of the PDF are below the minimum size"
-            else -> "No images found in PDF"
-        }
-
-    private fun images(count: Int) = if (count == 1) "1 image" else "$count images"
+    fun emptyReason(res: Resources): String? = when {
+        written > 0 -> null
+        skipped > 0 -> res.getQuantityString(R.plurals.extract_none_readable, skipped, skipped)
+        filtered > 0 -> res.getQuantityString(R.plurals.extract_all_too_small, filtered, filtered)
+        else -> res.getString(R.string.extract_no_images)
+    }
 }
 
 /**

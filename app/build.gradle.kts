@@ -24,6 +24,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Lists the app's languages (res/resources.properties names the default), so Android 13+ offers them under the app's Language setting.
+    androidResources {
+        generateLocaleConfig = true
+    }
+
     val shared = keystoreProperties?.let { props ->
         fun prop(key: String): String = requireNotNull(props.getProperty(key)?.takeIf { it.isNotBlank() }) { "keystore.properties has no $key" }
         signingConfigs.create("shared") {

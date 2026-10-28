@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSArray
@@ -16,6 +17,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.DeflaterOutputStream
@@ -24,6 +26,8 @@ import java.util.zip.ZipOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 class ExtractedImagesTest {
+    private val res = ApplicationProvider.getApplicationContext<Context>().resources
+
     @Before
     fun setUp() = PDFBoxResourceLoader.init(ApplicationProvider.getApplicationContext())
 
@@ -197,20 +201,30 @@ class ExtractedImagesTest {
 
     @Test
     fun `filtered images are named in the result and explain an empty ZIP`() {
-        assertEquals("Found 3 assets in document; 2 images below the minimum size left out", ExtractCounts(3, 0, 2).summary)
-        assertEquals("Saved 1 of 2 images; 1 image could not be read; 1 image below the minimum size left out", ExtractCounts(1, 1, 1).summary)
-        assertEquals("All 4 images of the PDF are below the minimum size", ExtractCounts(0, 0, 4).emptyReason)
-        assertEquals("The PDF has 1 image, but none could be read", ExtractCounts(0, 1, 3).emptyReason)
+        assertEquals("Found 3 assets in document; 2 images below the minimum size left out", ExtractCounts(3, 0, 2).summary(res))
+        assertEquals("Saved 1 of 2 images; 1 image could not be read; 1 image below the minimum size left out", ExtractCounts(1, 1, 1).summary(res))
+        assertEquals("All 4 images of the PDF are below the minimum size", ExtractCounts(0, 0, 4).emptyReason(res))
+        assertEquals("The PDF has 1 image, but it could not be read", ExtractCounts(0, 1, 3).emptyReason(res))
     }
 
     @Test
     fun `the result tells how many images were left out, and an empty ZIP says why`() {
-        assertEquals("Found 3 assets in document", ExtractCounts(3, 0).summary)
-        assertEquals("Saved 3 of 5 images; 2 images could not be read", ExtractCounts(3, 2).summary)
-        assertEquals("Saved 2 of 3 images; 1 image could not be read", ExtractCounts(2, 1).summary)
-        assertNull(ExtractCounts(1, 4).emptyReason)
-        assertEquals("No images found in PDF", ExtractCounts(0, 0).emptyReason)
-        assertEquals("The PDF has 2 images, but none could be read", ExtractCounts(0, 2).emptyReason)
+        assertEquals("Found 3 assets in document", ExtractCounts(3, 0).summary(res))
+        assertEquals("Saved 3 of 5 images; 2 images could not be read", ExtractCounts(3, 2).summary(res))
+        assertEquals("Saved 2 of 3 images; 1 image could not be read", ExtractCounts(2, 1).summary(res))
+        assertNull(ExtractCounts(1, 4).emptyReason(res))
+        assertEquals("No images found in PDF", ExtractCounts(0, 0).emptyReason(res))
+        assertEquals("The PDF has 2 images, but none could be read", ExtractCounts(0, 2).emptyReason(res))
+        assertEquals("Found 1 asset in document", ExtractCounts(1, 0).summary(res))
+    }
+
+    @Test
+    @Config(qualifiers = "it")
+    fun `on an Italian phone the result reads in Italian, singular and plural`() {
+        assertEquals("Salvata 1 immagine su 3; 2 immagini non sono leggibili", ExtractCounts(1, 2).summary(res))
+        assertEquals("Trovati 3 elementi nel documento; 1 immagine esclusa perché sotto la dimensione minima", ExtractCounts(3, 0, 1).summary(res))
+        assertEquals("Il PDF ha 1 immagine, ma non è leggibile", ExtractCounts(0, 1).emptyReason(res))
+        assertEquals("Nessuna immagine trovata nel PDF", ExtractCounts(0, 0).emptyReason(res))
     }
 
     private fun readZip(bytes: ByteArray): Map<String, ByteArray> {

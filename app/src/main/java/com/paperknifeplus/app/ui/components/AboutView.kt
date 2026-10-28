@@ -302,22 +302,22 @@ fun LibrariesPage(loadNotices: suspend () -> List<NoticeSection> = assetNoticeLo
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SectionHeader(Icons.Filled.Settings, stringResource(R.string.about_core_engine)) }
-        item { LibraryRow(Icons.Filled.Description, "PDFBox-Android", "Apache 2.0", "The native heart of our engine") }
-        item { LibraryRow(Icons.Filled.Bolt, "Kotlin Coroutines", "Apache 2.0", "Powering our multi-threaded rendering engine") }
+        item { LibraryRow(Icons.Filled.Description, "PDFBox-Android", "Apache 2.0", stringResource(R.string.about_lib_pdfbox)) }
+        item { LibraryRow(Icons.Filled.Bolt, "Kotlin Coroutines", "Apache 2.0", stringResource(R.string.about_lib_coroutines)) }
         item {
             LibraryRow(
                 Icons.Filled.DocumentScanner, "OpenScan", "BSD-3-Clause",
-                "Document scanner, ported from OpenScan. Copyright (c) 2021, Vijay T S and Vikram H"
+                stringResource(R.string.about_lib_openscan, "Copyright (c) 2021, Vijay T S and Vikram H")
             )
         }
 
         item { SectionHeader(Icons.Filled.Palette, stringResource(R.string.about_ui_design)) }
-        item { LibraryRow(Icons.Filled.TouchApp, "Jetpack Compose", "Apache 2.0", "Modern UI toolkit for native Android") }
-        item { LibraryRow(Icons.Filled.Style, "Material 3", "Apache 2.0", "Modern design system implementation") }
+        item { LibraryRow(Icons.Filled.TouchApp, "Jetpack Compose", "Apache 2.0", stringResource(R.string.about_lib_compose)) }
+        item { LibraryRow(Icons.Filled.Style, "Material 3", "Apache 2.0", stringResource(R.string.about_lib_material)) }
 
         item { SectionHeader(Icons.Filled.Image, stringResource(R.string.about_media)) }
-        item { LibraryRow(Icons.Filled.PhotoLibrary, "Coil", "Apache 2.0", "High-performance image loading engine") }
-        item { LibraryRow(Icons.Filled.PhotoCamera, "CameraX", "Apache 2.0", "Camera capture for the document scanner") }
+        item { LibraryRow(Icons.Filled.PhotoLibrary, "Coil", "Apache 2.0", stringResource(R.string.about_lib_coil)) }
+        item { LibraryRow(Icons.Filled.PhotoCamera, "CameraX", "Apache 2.0", stringResource(R.string.about_lib_camerax)) }
 
         item { SectionHeader(Icons.Filled.Gavel, stringResource(R.string.about_notices)) }
         items(notices) { notice ->

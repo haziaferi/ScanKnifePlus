@@ -14,6 +14,7 @@ import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.ThemeMode
@@ -143,7 +144,7 @@ object BitmapPool {
 @SuppressLint("Range")
 fun getUriDetails(context: Context, uri: Uri): UriDetails {
     var name = "Document.pdf"
-    var size = "Unknown size"
+    var size = context.getString(R.string.tool_unknown_size)
     var bytes: Long = 0
 
     try {

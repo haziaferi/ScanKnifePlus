@@ -372,8 +372,9 @@ class ScanFlowSaveTest {
     @Config(qualifiers = "it-rIT")
     fun `on an Italian phone the language starts as Italian`() {
         flowInReview(appFolder().also { it.start() })
-        rule.onNodeWithText("Done").performClick()
-        rule.onNodeWithText("Italian").performScrollTo().assertIsSelected()
+        // The phone's language is Italian, so the app reads in Italian too.
+        rule.onNodeWithText("Fine").performClick()
+        rule.onNodeWithText("Italiano").performScrollTo().assertIsSelected()
     }
 
     private val searchable = TextOptions(OcrLanguage.ENGLISH, OcrReading.AUTOMATIC, txt = false)
