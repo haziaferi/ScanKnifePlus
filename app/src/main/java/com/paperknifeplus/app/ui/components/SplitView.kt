@@ -181,7 +181,7 @@ fun SplitView(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    ToolStatusText(stringResource(R.string.split_pages_selected, selectedPages.size, pageCount))
+                                    ToolStatusText(pluralStringResource(R.plurals.split_pages_selected, pageCount, selectedPages.size, pageCount))
 
                                     TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                         Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)

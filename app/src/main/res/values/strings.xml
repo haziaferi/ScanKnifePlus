@@ -676,7 +676,10 @@
     <string name="split_extract_pages_from_pdf">Extract pages from PDF</string>
     <string name="split_extracting_specified_pages">Extracting specified pages…</string>
     <string name="split_pages_extracted">%1$s pages extracted</string>
-    <string name="split_pages_selected">%1$s / %2$s pages selected</string>
+    <plurals name="split_pages_selected">
+        <item quantity="one">%1$d / %2$d page selected</item>
+        <item quantity="other">%1$d / %2$d pages selected</item>
+    </plurals>
     <string name="split_selected_pages_saved_successfully">Selected pages saved successfully</string>
     <string name="split_split_complete">Split complete</string>
     <string name="split_split_pdf_into_parts">Split PDF into parts</string>

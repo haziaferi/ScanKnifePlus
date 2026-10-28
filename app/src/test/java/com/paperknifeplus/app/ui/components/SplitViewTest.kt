@@ -109,7 +109,7 @@ class SplitViewTest {
 
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
-        waitForPages("0 / 1 pages selected")
+        waitForPages("0 / 1 page selected")
         rule.waitUntil(10_000) { thumbnailCached(plain, null) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD))
     }
