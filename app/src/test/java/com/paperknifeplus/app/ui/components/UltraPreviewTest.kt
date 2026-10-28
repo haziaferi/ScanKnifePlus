@@ -200,7 +200,7 @@ class ToolHandOffTest {
         waitFor("2 pages")
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
-        waitFor("1 pages")
+        waitFor("• 1 page")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, THUMBNAIL_SCALE) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE))
     }
@@ -213,7 +213,7 @@ class ToolHandOffTest {
         waitFor("2 pages")
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
-        waitFor("1 pages")
+        waitFor("• 1 page")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
     }
