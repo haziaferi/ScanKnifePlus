@@ -17,6 +17,9 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -80,6 +83,10 @@ class ToolResultNameTest {
             }
         }
         rule.waitUntil(30_000) { rule.onAllNodes(hasContentDescription("Page 1") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        // A one-page file reads "1 page", not "1 pages".
+        rule.onNode(SemanticsMatcher("file details") { node ->
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text.endsWith("• 1 page") }
+        }).assertExists()
         rule.onNode(hasContentDescription("Page 1") and hasClickAction()).performSemanticsAction(SemanticsActions.OnClick)
         waitFor("Add watermark")
         rule.onNodeWithText("Add watermark").performClick()

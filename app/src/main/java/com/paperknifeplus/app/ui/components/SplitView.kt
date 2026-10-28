@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -165,7 +166,7 @@ fun SplitView(
                                 uri = selectedUri!!,
                                 password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
                                 name = fileName,
-                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = {
                                     dropDecryptedCopy()
                                     unlockPassword = ""

@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -159,7 +160,7 @@ fun PageNumbersView(
                                 uri = selectedUri!!,
                                 password = unlockPassword.ifEmpty { null },
                                 name = fileName,
-                                details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { selectedUri = null; currentState = ToolState.SELECTING },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
                             )

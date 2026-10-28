@@ -364,7 +364,7 @@
     <string name="about_fact_open_body">Chiunque può leggere e verificare il codice</string>
     <string name="about_credit_paperknife">%1$s è un fork di PaperKnife+ e ne conserva gli strumenti PDF.\nDi potatameister; i collaboratori sono elencati nella pagina GitHub del progetto.</string>
     <string name="about_credit_openscan">Lo scanner di documenti è un porting in Kotlin di OpenScan.\nDi Vijay T S e Vikram H (Ethereal Developers); i collaboratori sono elencati nella pagina GitHub del progetto.</string>
-    <string name="about_not_affiliated">%1$s è un fork indipendente e non è affiliato né approvato dai progetti PaperKnife+ e OpenScan o dai loro autori.</string>
+    <string name="about_not_affiliated">%1$s è un fork indipendente e non è affiliato ai progetti PaperKnife+ e OpenScan né approvato da loro o dai loro autori.</string>
     <string name="about_source_code">Codice sorgente</string>
     <string name="link_confirm_title">Aprire questo link nel browser?</string>
     <string name="about_core_engine">Motore principale</string>
@@ -429,7 +429,11 @@
     <string name="state_selected">Selezionata</string>
     <string name="tool_error">Errore: %1$s</string>
     <string name="tool_field_title">Titolo</string>
-    <string name="tool_file_details">%1$s • %2$s pagine</string>
+    <plurals name="tool_file_details">
+        <item quantity="one">%1$s • %2$d pagina</item>
+        <item quantity="many">%1$s • %2$d pagine</item>
+        <item quantity="other">%1$s • %2$d pagine</item>
+    </plurals>
     <string name="tool_image_n">Immagine %1$s</string>
     <string name="tool_page_n">Pagina %1$s</string>
     <string name="tool_unknown_size">Dimensione sconosciuta</string>

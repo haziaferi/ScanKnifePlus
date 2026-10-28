@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -162,7 +163,7 @@ fun RearrangeView(
                                 uri = selectedUri!!,
                                 password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
                                 name = fileName,
-                                details = stringResource(R.string.tool_file_details, fileSize, pageOrder.size),
+                                details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
                             )

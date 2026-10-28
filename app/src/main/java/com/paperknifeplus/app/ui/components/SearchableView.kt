@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -268,7 +269,7 @@ internal fun SearchableView(
                                     uri = source,
                                     password = unlockPassword.ifEmpty { null },
                                     name = fileName,
-                                    details = stringResource(R.string.tool_file_details, fileSize, pageCount),
+                                    details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                     onChange = { reset() },
                                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
                                 )

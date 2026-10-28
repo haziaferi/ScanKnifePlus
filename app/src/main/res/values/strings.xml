@@ -420,7 +420,10 @@
     <string name="state_selected">Selected</string>
     <string name="tool_error">Error: %1$s</string>
     <string name="tool_field_title">Title</string>
-    <string name="tool_file_details">%1$s • %2$s pages</string>
+    <plurals name="tool_file_details">
+        <item quantity="one">%1$s • %2$d page</item>
+        <item quantity="other">%1$s • %2$d pages</item>
+    </plurals>
     <string name="tool_image_n">Image %1$s</string>
     <string name="tool_page_n">Page %1$s</string>
     <string name="tool_unknown_size">Unknown size</string>
