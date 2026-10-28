@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +33,7 @@ fun ExtractImagesView(
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val outputs = rememberToolOutputs("extract-images")
     val accentColor = MaterialTheme.colorScheme.primary
@@ -99,13 +101,13 @@ fun ExtractImagesView(
                         }
                     }
                 }
-                counts.emptyReason?.let { throw IOException(it) }
+                counts.emptyReason(resources)?.let { throw IOException(it) }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
                     processingTime = timeStr
                     fileName = outputName
-                    resultSummary = counts.summary
+                    resultSummary = counts.summary(resources)
                     outputUri = uri
                     outputs.saved(uri, fileName, toolText(context, R.string.extract_images_assets, extractedCount), Icons.Filled.Collections)
                     currentState = ToolState.SUCCESS

@@ -467,7 +467,7 @@ fun WatermarkView(
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ToolSectionLabel(stringResource(R.string.watermark_templates))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("DRAFT", "CONFIDENTIAL", "APPROVED").forEach { template ->
+                        listOf(R.string.watermark_draft, R.string.watermark_confidential, R.string.watermark_approved).map { stringResource(it) }.forEach { template ->
                             Surface(
                                 onClick = {
                                     startPlacing(createTextBitmap(template, DocumentInk.TemplateGray), opacity = 0.5f)

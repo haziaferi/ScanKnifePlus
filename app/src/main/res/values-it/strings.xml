@@ -323,6 +323,9 @@
     <string name="settings_theme_light">Chiaro</string>
     <string name="settings_theme_oled">OLED</string>
     <string name="settings_palette">Tavolozza dei colori</string>
+    <string name="palette_still_water">Acqua ferma</string>
+    <string name="palette_rose">Rosa</string>
+    <string name="palette_graphite_scholastic">Grafite accademica</string>
     <string name="settings_files">File</string>
     <string name="settings_author">Autore predefinito</string>
     <string name="settings_author_body">Questo nome viene inserito nel campo Autore di ogni PDF che salvi.</string>
@@ -368,6 +371,13 @@
     <string name="about_ui_design">Interfaccia e design</string>
     <string name="about_media">Contenuti multimediali</string>
     <string name="about_notices">Avvisi</string>
+    <string name="about_lib_pdfbox">Il cuore nativo del nostro motore</string>
+    <string name="about_lib_coroutines">Alimenta il nostro motore di rendering multi-thread</string>
+    <string name="about_lib_openscan">Scanner di documenti, derivato da OpenScan. %1$s</string>
+    <string name="about_lib_compose">Toolkit moderno per interfacce Android native</string>
+    <string name="about_lib_material">Implementazione di un sistema di design moderno</string>
+    <string name="about_lib_coil">Motore di caricamento immagini ad alte prestazioni</string>
+    <string name="about_lib_camerax">Acquisizione dalla fotocamera per lo scanner di documenti</string>
     <!-- Reader -->
     <string name="reader_tools">Strumenti per questo file</string>
 
@@ -422,6 +432,8 @@
     <string name="tool_file_details">%1$s • %2$s pagine</string>
     <string name="tool_image_n">Immagine %1$s</string>
     <string name="tool_page_n">Pagina %1$s</string>
+    <string name="tool_unknown_size">Dimensione sconosciuta</string>
+    <string name="tool_document_cover">Copertina del documento</string>
     <string name="tool_pick_images">Scegli le immagini</string>
     <string name="tool_pick_pdf">Scegli il PDF</string>
     <string name="tool_pick_pdfs">Scegli i PDF</string>
@@ -469,6 +481,37 @@
     <string name="delete_selected_pages_were_removed">Le pagine selezionate sono state rimosse</string>
     <string name="delete_tip_pages_selected_in_grid">Suggerimento: le pagine selezionate nella griglia verranno rimosse.</string>
     <string name="extract_images_assets">%1$s elementi</string>
+    <plurals name="extract_found">
+        <item quantity="one">Trovato %d elemento nel documento</item>
+        <item quantity="many">Trovati %d elementi nel documento</item>
+        <item quantity="other">Trovati %d elementi nel documento</item>
+    </plurals>
+    <plurals name="extract_saved_of">
+        <item quantity="one">Salvata %1$d immagine su %2$d</item>
+        <item quantity="many">Salvate %1$d immagini su %2$d</item>
+        <item quantity="other">Salvate %1$d immagini su %2$d</item>
+    </plurals>
+    <plurals name="extract_unreadable">
+        <item quantity="one">%d immagine non è leggibile</item>
+        <item quantity="many">%d immagini non sono leggibili</item>
+        <item quantity="other">%d immagini non sono leggibili</item>
+    </plurals>
+    <plurals name="extract_too_small">
+        <item quantity="one">%d immagine esclusa perché sotto la dimensione minima</item>
+        <item quantity="many">%d immagini escluse perché sotto la dimensione minima</item>
+        <item quantity="other">%d immagini escluse perché sotto la dimensione minima</item>
+    </plurals>
+    <plurals name="extract_none_readable">
+        <item quantity="one">Il PDF ha %d immagine, ma non è leggibile</item>
+        <item quantity="many">Il PDF ha %d immagini, ma nessuna è leggibile</item>
+        <item quantity="other">Il PDF ha %d immagini, ma nessuna è leggibile</item>
+    </plurals>
+    <plurals name="extract_all_too_small">
+        <item quantity="one">Il PDF ha %d immagine, sotto la dimensione minima</item>
+        <item quantity="many">Tutte le %d immagini del PDF sono sotto la dimensione minima</item>
+        <item quantity="other">Tutte le %d immagini del PDF sono sotto la dimensione minima</item>
+    </plurals>
+    <string name="extract_no_images">Nessuna immagine trovata nel PDF</string>
     <string name="extract_images_extract_assets_from_pdf">Estrai gli elementi dal PDF</string>
     <string name="extract_images_extract_assets_from_pdfs">Estrai gli elementi dai PDF</string>
     <string name="extract_images_extract_images_zip">Estrai le immagini (ZIP)</string>
@@ -669,6 +712,9 @@
     <string name="watermark_select_a_page_to_watermark">Scegli una pagina su cui applicare la filigrana</string>
     <string name="watermark_select_watermark">Scegli la filigrana</string>
     <string name="watermark_templates">Modelli</string>
+    <string name="watermark_draft">BOZZA</string>
+    <string name="watermark_confidential">RISERVATO</string>
+    <string name="watermark_approved">APPROVATO</string>
     <string name="watermark_text_watermark">Filigrana di testo</string>
     <string name="watermark_upload_image">Carica un\'immagine</string>
     <string name="watermark_watermark_complete">Filigrana completata</string>

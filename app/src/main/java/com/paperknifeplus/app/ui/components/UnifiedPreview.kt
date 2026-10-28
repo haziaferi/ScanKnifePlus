@@ -22,12 +22,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 
@@ -78,7 +80,7 @@ fun UnifiedPdfPreview(
                     val painter = rememberAsyncImagePainter(request, imageLoader)
                     Image(
                         painter = painter,
-                        contentDescription = "Document Cover",
+                        contentDescription = stringResource(R.string.tool_document_cover),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                         colorFilter = if (isGrayscale) GrayscaleColorFilter else null
@@ -221,7 +223,7 @@ fun PdfPageItem(
     ) {
         val painter = rememberAsyncImagePainter(model = request, imageLoader = imageLoader)
         Image(
-            painter = painter, contentDescription = "Page ${index + 1}",
+            painter = painter, contentDescription = stringResource(R.string.tool_page_n, index + 1),
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit,
             colorFilter = if (isGrayscale) GrayscaleColorFilter else null
         )
