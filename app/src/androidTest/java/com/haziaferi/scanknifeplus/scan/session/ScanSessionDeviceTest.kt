@@ -1,6 +1,7 @@
 package com.haziaferi.scanknifeplus.scan.session
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -248,11 +249,16 @@ class ScanSessionDeviceTest {
         }
     }
 
+    /** Whether the platform decoder can read [file]'s size, i.e. it holds an image. */
+    private fun decodes(file: File): Boolean =
+        BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeFile(file.path, it) }.outWidth > 0
+
     @Test
     @SdkSuppress(minSdkVersion = Build.VERSION_CODES.P) // HEIF decoding and muxing
     fun aHeicPickIsStoredUpright() {
         val file = File(picks, "photo.heic")
-        assumeTrue("this device cannot encode a HEIC", heic(file, 512, 256, 90) && file.length() > 0)
+        // Decoded too: the 9 Pro's encoder starts the muxer, then writes a container with no image in it.
+        assumeTrue("this device cannot encode a HEIC", heic(file, 512, 256, 90) && decodes(file))
         val library = ScanLibrary(root)
         val session = ScanSession(library, shotDir)
         assertTrue(session.import(context.contentResolver, listOf(uri(file))))
