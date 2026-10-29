@@ -22,6 +22,7 @@ android {
         versionCode = 2
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["listener"] = "com.haziaferi.scanknifeplus.testing.ForegroundRunListener"
     }
 
     // Lists the app's languages (res/resources.properties names the default), so Android 13+ offers them under the app's Language setting.
