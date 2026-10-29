@@ -96,6 +96,6 @@ class ToolFilesTest {
 
     @Test
     fun `the version name comes from the package`() {
-        assertEquals("1.1", appVersionName(context))
+        assertEquals("2.0", appVersionName(context))
     }
 }
