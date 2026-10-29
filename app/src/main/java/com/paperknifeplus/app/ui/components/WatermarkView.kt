@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import androidx.core.graphics.createBitmap
 import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
@@ -571,7 +572,7 @@ fun createTextBitmap(text: String, color: Color): Bitmap {
         }
     }
     val width = textBitmapWidth(paint.measureText(text))
-    val bitmap = Bitmap.createBitmap(width, 400, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(width, 400)
     Canvas(bitmap).drawText(text, width / 2f, 220f, paint)
     return bitmap
 }

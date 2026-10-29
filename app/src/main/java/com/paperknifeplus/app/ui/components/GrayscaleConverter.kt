@@ -10,6 +10,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.graphics.createBitmap
 import com.tom_roush.pdfbox.contentstream.operator.Operator
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
@@ -676,7 +677,7 @@ internal class GrayscaleConverter(private val document: PDDocument, private val 
         page.cosObject.removeItem(COSName.CONTENTS)
         var layer: Bitmap? = null
         try {
-            layer = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            layer = createBitmap(bitmap.width, bitmap.height)
             PDFRenderer(document).apply { setAnnotationsFilter { a -> annotations.any { it.cosObject === a.cosObject } } }
                 .renderPageToGraphics(pageIndex, Paint(Paint.ANTI_ALIAS_FLAG), Canvas(layer), scale)
             Canvas(bitmap).drawBitmap(layer, 0f, 0f, null)
@@ -844,7 +845,7 @@ internal class NativePageRasterizer(private val context: Context, private val ur
 
     override fun render(pageIndex: Int, width: Int, height: Int): Bitmap {
         val opened = renderer ?: open().also { renderer = it }
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(width, height)
         bitmap.eraseColor(Color.WHITE)
         opened.openPage(pageIndex).use { it.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY) }
         return bitmap

@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.net.Uri
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scanner.cv.PageSize
 import com.haziaferi.scanknifeplus.scanner.cv.RgbaImage
@@ -128,7 +130,7 @@ object ImageCodec {
     fun writeJpeg(image: RgbaImage, dest: File, quality: Int): Boolean {
         var bitmap: Bitmap? = null
         return try {
-            val b = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888).also { bitmap = it }
+            val b = createBitmap(image.width, image.height).also { bitmap = it }
             b.copyPixelsFromBuffer(ByteBuffer.wrap(image.pixels))
             writeJpeg(b, dest, quality)
         } catch (e: Exception) {
@@ -204,7 +206,7 @@ object ImageCodec {
         var bitmap = decoded
         if (!matrix.isIdentity) bitmap = replaced(bitmap) { Bitmap.createBitmap(it, 0, 0, it.width, it.height, matrix, true) }
         if (bitmap.width != target.width || bitmap.height != target.height) {
-            bitmap = replaced(bitmap) { Bitmap.createScaledBitmap(it, target.width, target.height, true) }
+            bitmap = replaced(bitmap) { it.scale(target.width, target.height) }
         }
         return bitmap
     }

@@ -11,6 +11,9 @@ import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.core.content.edit
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
@@ -60,7 +63,7 @@ data class PdfLink(
 object PreferencesManager {
     fun setDefaultAuthor(context: Context, name: String) {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("default_author", name).apply()
+        prefs.edit { putString("default_author", name) }
     }
     fun getDefaultAuthor(context: Context): String {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
@@ -69,7 +72,7 @@ object PreferencesManager {
 
     fun setTheme(context: Context, mode: Int) {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putInt("theme_mode", mode).apply()
+        prefs.edit { putInt("theme_mode", mode) }
     }
     /** The stored [ThemeMode.stored] value: 0 System, 1 Light, 2 OLED. */
     fun getTheme(context: Context): Int {
@@ -79,7 +82,7 @@ object PreferencesManager {
 
     fun setPalette(context: Context, palette: AppPalette) {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("palette", palette.storageName).apply()
+        prefs.edit { putString("palette", palette.storageName) }
     }
     /** The chosen palette; Still Water when none was chosen or the stored name is unknown. */
     fun getPalette(context: Context): AppPalette {
@@ -122,7 +125,7 @@ object BitmapPool {
                 return bitmap
             }
         }
-        return Bitmap.createBitmap(width, height, config)
+        return createBitmap(width, height, config)
     }
 
     fun put(bitmap: Bitmap) {
@@ -245,7 +248,7 @@ internal fun compressImages(document: PDDocument, quality: Float, downscale: Flo
                         if (downscale < 1.0f) {
                             val w = (bitmap.width * downscale).toInt().coerceAtLeast(1)
                             val h = (bitmap.height * downscale).toInt().coerceAtLeast(1)
-                            val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+                            val scaled = bitmap.scale(w, h)
                             bitmap.recycle()
                             bitmap = scaled
                         }
@@ -425,7 +428,7 @@ suspend fun convertPdfToImages(
                             renderer.openPage(pageIdx).use { page ->
                                 val width = (page.width * scale).toInt().coerceAtLeast(1)
                                 val height = (page.height * scale).toInt().coerceAtLeast(1)
-                                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                val bitmap = createBitmap(width, height)
                                 Canvas(bitmap).drawColor(android.graphics.Color.WHITE)
                                 // Both modes, so content marked for screen only or for print only is in the image.
                                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)

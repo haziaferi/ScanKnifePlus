@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import androidx.core.graphics.createBitmap
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
@@ -632,7 +633,7 @@ internal fun renderSignatureBitmap(paths: List<Pair<Path, Color>>, strokePx: Flo
         bottom = maxOf(bottom, bounds.bottom)
     }
     val frame = if (paths.isEmpty()) signatureFrame(0f, 0f, 0f, 0f, strokePx) else signatureFrame(left, top, right, bottom, strokePx)
-    val bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(frame.width, frame.height)
     val canvas = Canvas(bitmap)
     val paint = Paint().apply {
         style = Paint.Style.STROKE
