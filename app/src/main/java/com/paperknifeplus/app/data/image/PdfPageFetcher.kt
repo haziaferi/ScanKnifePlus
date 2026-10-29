@@ -8,6 +8,7 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.core.graphics.drawable.toDrawable
 import coil.ImageLoader
 import coil.decode.DataSource
 import coil.fetch.DrawableResult
@@ -327,7 +328,7 @@ class PdfPageFetcher(
     private fun result(bitmap: Bitmap, scale: Float): DrawableResult {
         val finalBitmap = if (data.rotation != 0) applyRotation(bitmap, data.rotation) else bitmap
         return DrawableResult(
-            drawable = android.graphics.drawable.BitmapDrawable(context.resources, finalBitmap),
+            drawable = finalBitmap.toDrawable(context.resources),
             isSampled = data.scale < 1.0f || scale < data.scale,
             dataSource = DataSource.MEMORY
         )

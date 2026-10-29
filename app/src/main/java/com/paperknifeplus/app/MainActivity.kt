@@ -3,7 +3,6 @@ package com.paperknifeplus.app
 import android.content.ContentResolver
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -67,6 +66,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.lifecycleScope
@@ -156,7 +156,7 @@ class MainActivity : ComponentActivity() {
         // themes.xml can only hold the default palette; the stored one paints the first frame, so Rose and Graphite do not flash Still Water.
         val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         val startOled = ThemeMode.fromStored(PreferencesManager.getTheme(applicationContext)).isOled(systemDark)
-        window.setBackgroundDrawable(ColorDrawable(PreferencesManager.getPalette(applicationContext).tokens(startOled).bg.toArgb()))
+        window.setBackgroundDrawable(PreferencesManager.getPalette(applicationContext).tokens(startOled).bg.toArgb().toDrawable())
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext)
         // Only on a fresh start: after recreation getIntent() still holds the last 'Open with' intent, and handling it again would reopen a
         // reader the user may have closed; an open reader comes back from saved state instead.
