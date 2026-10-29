@@ -172,12 +172,16 @@ class NativeRenderer(val renderer: PdfRenderer, private val pfd: ParcelFileDescr
             context.contentResolver.openFileDescriptor(uri, "r")?.let { pfd ->
                 try {
                     NativeRenderer(PdfRenderer(pfd), pfd)
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     pfd.close()
                     throw e
                 }
             }
         } catch (e: Exception) {
+            Log.w(TAG, "Native renderer cannot open $uri", e)
+            null
+        } catch (e: LinkageError) {
+            // From Android 15 the renderer is an updatable module; one that fails to link must not stop PDFBox from drawing the page.
             Log.w(TAG, "Native renderer cannot open $uri", e)
             null
         }

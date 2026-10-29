@@ -9,14 +9,16 @@ pdfbox = "2.0.27.0"
 coil = "2.7.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
-robolectric = "4.16.1"
+robolectric = "4.17"
 exifinterface = "1.4.2"
-# Matches androidx.test:monitor 1.8.0, which Robolectric 4.16.1 brings onto the unit-test classpath.
+# Matches androidx.test:monitor 1.8.0, which Robolectric 4.17 brings onto the unit-test classpath.
 androidxTestCore = "1.7.0"
 # Held on the 1.5 line (1.5.3 is its last release): 1.6 moves camera-camera2 onto the CameraPipe backend, a separate migration.
 camerax = "1.5.3"
 # Brings androidx.test:runner 1.7.0 (AndroidJUnitRunner); same androidx.test release as ext:junit 1.3.0.
 androidxTestRules = "1.7.0"
+# Compose UI tests bring 3.6.1, whose event injector calls InputManager.getInstance(), gone on API 37; 3.7.0 uses the system service there.
+espressoCore = "3.7.0"
 # The OpenMP variant: multi-threaded, faster with a single Tesseract instance on multi-core phones (fork README).
 tesseract4android = "4.12.0"
 
@@ -43,6 +45,7 @@ androidx-camera-core = { group = "androidx.camera", name = "camera-core", versio
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 tesseract4android-openmp = { group = "com.github.haziaferi.Tesseract4Android", name = "tesseract4android-openmp", version.ref = "tesseract4android" }
 
 [plugins]

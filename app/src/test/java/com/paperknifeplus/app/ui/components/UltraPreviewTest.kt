@@ -188,7 +188,8 @@ class ToolHandOffTest {
     fun `Merge unlocks a file handed over with its password`() {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-merge.pdf")
         show(locked) { MergeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("Add more")
+        // The pinned button, not the list's "Add more" row: at Robolectric's density 1 a loaded thumbnail can push that row out of view.
+        waitFor("Add at least one more PDF")
         rule.onNodeWithText("Locked").assertDoesNotExist()
     }
 
