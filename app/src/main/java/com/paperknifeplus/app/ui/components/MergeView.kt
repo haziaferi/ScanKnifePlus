@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -360,11 +361,11 @@ fun MergeFileListItem(
                     val request = remember(file.uri, file.decryptedUri, file.password) {
                         PdfPageRequest(file.decryptedUri ?: file.uri, 0, if (file.decryptedUri != null) null else file.password, 0.4f)
                     }
-                    Image(
-                        painter = rememberAsyncImagePainter(request, imageLoader),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize().clickable { onClick() },
-                        contentScale = ContentScale.Crop
+                    // Painted without its own size: through IntrinsicSize.Min the bitmap's pixel height would set the card's (tall at low density).
+                    Box(
+                        Modifier.fillMaxSize().clipToBounds()
+                            .paint(rememberAsyncImagePainter(request, imageLoader), sizeToIntrinsics = false, contentScale = ContentScale.Crop)
+                            .clickable { onClick() }
                     )
                 }
                 Surface(
