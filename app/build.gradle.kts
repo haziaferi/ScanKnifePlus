@@ -18,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "com.haziaferi.scanknifeplus"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 37
         versionCode = 2
         versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -80,7 +80,11 @@ android {
     // The OCR benchmark's corpus (clean renders and their truth) is also the OCR engine's device test pages.
     sourceSets.getByName("androidTest").assets.srcDir("../docs/ocr-bench/corpus")
     // Robolectric needs the merged manifest and resources to resolve the FileProvider paths.
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        // Robolectric 4.17 reads FileDescriptor internals through jdk.internal.access, which JDK 17+ keeps closed.
+        unitTests.all { it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED") }
+    }
 }
 
 kotlin {
@@ -117,6 +121,7 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.rules)
     debugImplementation(libs.compose.ui.tooling)
