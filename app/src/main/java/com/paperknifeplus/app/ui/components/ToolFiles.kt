@@ -75,7 +75,7 @@ fun formatElapsed(startMs: Long, endMs: Long = System.currentTimeMillis()): Stri
 /** The MIME type of a History entry's output; entries whose provider does not say are PDFs, as every tool but the ZIP exports writes. */
 fun historyEntryMime(resolver: ContentResolver, uri: Uri): String = resolver.getType(uri) ?: "application/pdf"
 
-/** This build's version name, e.g. "1.1". */
+/** This build's version name, e.g. "2.0". */
 fun appVersionName(context: Context): String =
     @Suppress("DEPRECATION") // The PackageInfoFlags overload needs API 33.
     context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty()
