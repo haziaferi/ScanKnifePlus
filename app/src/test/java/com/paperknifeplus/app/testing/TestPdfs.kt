@@ -28,6 +28,7 @@ import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionJavaScript
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationWidget
@@ -123,6 +124,24 @@ object TestPdfs {
             rectangle = PDRectangle(0f, 0f, page.mediaBox.width, page.mediaBox.height)
             this.page = page
         })
+    }
+
+    /** The link annotations of [linksAndScript]. */
+    const val SCRIPTED_LINKS = 3
+
+    /**
+     * A 2-page PDF with [SCRIPTED_LINKS] web links (two on page 1, one on page 2) and a JavaScript OpenAction, the one script; it needs
+     * [password] to open when one is given.
+     */
+    fun linksAndScript(password: String? = null): ByteArray = build(2) { doc ->
+        fun link(y: Float) = PDAnnotationLink().apply {
+            action = PDActionURI().apply { uri = WEB_LINK }
+            rectangle = PDRectangle(72f, y, 100f, 20f)
+        }
+        doc.getPage(0).annotations = listOf(link(700f), link(650f))
+        doc.getPage(1).annotations = listOf(link(700f))
+        doc.documentCatalog.openAction = PDActionJavaScript("app.alert('opened')")
+        if (password != null) doc.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
     }
 
     /** Text in the uncompressed content stream of page n (1-based) of [structured], to tell whether that page made it into a saved file. */

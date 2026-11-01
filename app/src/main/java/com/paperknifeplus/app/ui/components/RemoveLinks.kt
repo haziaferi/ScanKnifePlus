@@ -16,16 +16,15 @@ internal data class LinkRemoval(val links: Int, val scripts: Int)
 private val JAVASCRIPT = COSName.getPDFName("JavaScript")
 
 /**
- * Removes every link annotation (whatever its action: URI, Launch, GoTo, GoToR, JavaScript or a plain destination) from the pages at
- * [pages], or from all pages when null, and every document-level script: the named JavaScript tree, and JavaScript actions run when the
- * file opens (OpenAction) or on the document events of the catalog's /AA. Other annotations, including form fields, stay. A removed link
- * loses its action too, as the structure tree may still point at it. Blocking.
+ * Removes every link annotation (whatever its action: URI, Launch, GoTo, GoToR, JavaScript or a plain destination) from every page, and
+ * every document-level script: the named JavaScript tree, and JavaScript actions run when the file opens (OpenAction) or on the document
+ * events of the catalog's /AA. Other annotations, including form fields, stay. A removed link loses its action too, as the structure tree
+ * may still point at it. Blocking.
  */
-internal fun removeLinks(document: PDDocument, pages: Collection<Int>? = null): LinkRemoval {
+internal fun removeLinks(document: PDDocument): LinkRemoval {
     var links = 0
-    document.pages.forEachIndexed { index, page ->
-        if (pages != null && index !in pages) return@forEachIndexed
-        val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: return@forEachIndexed
+    for (page in document.pages) {
+        val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
         for (i in annots.size() - 1 downTo 0) {
             val annotation = annots.getObject(i) as? COSDictionary ?: continue
             if (annotation.getNameAsString(COSName.SUBTYPE) != "Link") continue
@@ -104,23 +103,24 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = ide
 }
 
 /**
- * Writes [input], opened with [password], to [output] without links and document scripts as [removeLinks] does, on [pages] or all pages
- * when null. The copy is as protected as the source with [keepProtection] ([sameProtection]), else not encrypted. Returns what was
- * removed; throws on failure.
+ * What [removeLinksPdf] would take out of [input], opened with [password]: [removeLinks] run once on a copy in memory, which is then
+ * dropped, so a screen can show the counts before anything is saved. Throws on failure, InvalidPasswordException for a wrong password.
  */
-internal suspend fun removeLinksPdf(
-    context: Context,
-    input: Uri,
-    output: Uri,
-    password: String?,
-    pages: Collection<Int>? = null,
-    keepProtection: Boolean = false
-): LinkRemoval = withContext(Dispatchers.IO) {
+internal suspend fun countLinkRemoval(context: Context, input: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
+    context.contentResolver.requireInputStream(input).use { stream ->
+        PDDocument.load(stream, password.orEmpty()).use { removeLinks(it) }
+    }
+}
+
+/**
+ * Writes [input], opened with [password], to [output] without links and document scripts as [removeLinks] does, as protected as the
+ * source ([sameProtection]). Returns what was removed; throws on failure.
+ */
+internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
     context.contentResolver.requireInputStream(input).use { stream ->
         PDDocument.load(stream, password.orEmpty()).use { document ->
-            val protection = if (keepProtection) document.sameProtection(password.orEmpty()) else null
-            if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
-            val removal = removeLinks(document, pages)
+            val protection = document.sameProtection(password.orEmpty())
+            val removal = removeLinks(document)
             protection?.let(document::protect)
             // Like Metadata, this tool only takes things out, so it adds no default author.
             saveAndFlush(context, document, output, applyDefaults = false)

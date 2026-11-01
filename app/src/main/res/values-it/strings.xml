@@ -187,6 +187,8 @@
     <string name="tool_page_numbers_desc">Numera le pagine</string>
     <string name="tool_bookmarks">Segnalibri</string>
     <string name="tool_bookmarks_desc">Modifica i segnalibri</string>
+    <string name="tool_links">Link</string>
+    <string name="tool_links_desc">Rimuovi o aggiungi link</string>
     <string name="tool_compress">Comprimi</string>
     <string name="tool_compress_desc">Riduci le dimensioni del file</string>
     <string name="tool_grayscale">Scala di grigi</string>
@@ -315,6 +317,8 @@
     <string name="tool_step_save">Salva il risultato</string>
     <string name="tool_step_save_body">Il file originale resta com\'è</string>
     <string name="tool_recent_note">Sono elencati solo i PDF. Toccane uno per usarlo qui, oppure scegli un PDF qualsiasi sul telefono.</string>
+    <string name="tool_keeps_password">Protetto da password. La copia salvata mantiene questa password.</string>
+    <string name="tool_report_removed">Cosa è stato rimosso</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Aspetto</string>
@@ -547,6 +551,30 @@
     <string name="img2pdf_photo_to_document_converter">Da foto a documento</string>
     <string name="img2pdf_position">Posizione: %1$s</string>
     <string name="img2pdf_reorder_assets">Riordina le immagini</string>
+    <string name="links_remove_title">Rimuovi i link da un PDF</string>
+    <string name="links_remove_task">Spariscono tutti i link, e anche gli script che si avviano all\'apertura del file</string>
+    <string name="links_found">Trovati in questo file</string>
+    <plurals name="links_count_links">
+        <item quantity="one">link</item>
+        <item quantity="many">link</item>
+        <item quantity="other">link</item>
+    </plurals>
+    <plurals name="links_count_scripts">
+        <item quantity="one">script che si avvia all\'apertura del file</item>
+        <item quantity="many">script che si avviano all\'apertura del file</item>
+        <item quantity="other">script che si avviano all\'apertura del file</item>
+    </plurals>
+    <string name="links_nothing_changes">Non cambia niente finché non salvi.</string>
+    <string name="links_what_stays">I campi dei moduli, i commenti e i segnalibri restano al loro posto.</string>
+    <string name="links_none">Nessun link o script in questo file</string>
+    <string name="links_none_body">Non c\'è niente da rimuovere, quindi non viene salvato nulla.</string>
+    <string name="links_remove_and_save">Rimuovi i link e salva il PDF</string>
+    <string name="links_nothing_to_remove">Niente da rimuovere</string>
+    <string name="links_removing">Rimozione dei link…</string>
+    <string name="links_removed">Link rimossi</string>
+    <string name="links_done">Rimozione dei link completata</string>
+    <string name="links_report_links">Link</string>
+    <string name="links_report_scripts">Script che si avviano all\'apertura del file</string>
     <string name="merge_files_joined">%1$s file uniti</string>
     <string name="merge_join_multiple_documents">Unisci più documenti</string>
     <string name="merge_locked">Protetto</string>

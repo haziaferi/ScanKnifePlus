@@ -127,6 +127,48 @@ class LargeTextLayoutTest {
     }
 
     @Test
+    fun `Links' file card and counts show their text uncut`() {
+        atDoubleText {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                ToolFileCard(Uri.parse("content://test/a.pdf"), null, "Insurance letters.pdf", "2.4 MB • 12 pages", onChange = {}, keepsPassword = true)
+                LinkCountsCard(LinkRemoval(links = 14, scripts = 1))
+            }
+        }
+        val shown = listOf(PASSWORD_LINE, "Found in this file", "14", "links", "1", "script that runs when the file opens",
+            "Nothing changes until you save. Form fields, comments and bookmarks stay.")
+        for (text in shown) assertNotClipped(text)
+        assertEquals("the counts sit side by side", text("14").top, text("1").top, 0.5f)
+    }
+
+    @Test
+    fun `Links' counts with nothing to remove show their text uncut`() {
+        atDoubleText { LinkCountsCard(LinkRemoval(links = 0, scripts = 0)) }
+        for (text in listOf("Found in this file", "No links or scripts in this file", "There is nothing to remove, so nothing is saved.")) {
+            assertNotClipped(text)
+        }
+    }
+
+    @Test
+    fun `the result screen's password line and report rows show their text uncut`() {
+        atDoubleText {
+            SuccessView(
+                message = "Link removal complete",
+                subMessage = "12 pages",
+                result = ToolResult(Uri.parse("content://test/a-no-links.pdf"), "Insurance letters-no-links.pdf"),
+                onDone = {},
+                onProcessMore = {},
+                onOpen = {},
+                keepsPassword = true,
+                report = listOf("Links" to 14, "Scripts that run when the file opens" to 1)
+            )
+        }
+        val shown = listOf("Link removal complete", "Insurance letters-no-links.pdf", "12 pages", PASSWORD_LINE, "What was removed", "Links", "14",
+            "Scripts that run when the file opens", "1")
+        for (text in shown) assertNotClipped(text)
+        assertTrue("a count is beside its label", text("1").left >= text("Scripts that run when the file opens").right)
+    }
+
+    @Test
     fun `Compare's file cards grow with their text`() {
         atDoubleText {
             Row(Modifier.width(320.dp)) {
@@ -135,5 +177,9 @@ class LargeTextLayoutTest {
             }
         }
         for (shown in listOf("ORIGINAL (A)", "a-long-contract-name-2026.pdf", "REVISED (B)", "Select file")) assertNotClipped(shown)
+    }
+
+    private companion object {
+        const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }
