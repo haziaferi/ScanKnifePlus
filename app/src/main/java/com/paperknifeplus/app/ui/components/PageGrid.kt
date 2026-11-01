@@ -207,21 +207,22 @@ private fun TileDot(color: Color, modifier: Modifier, content: @Composable () ->
 
 /**
  * Page [index] of [uri], opened with [password], as a grid miniature: its displayed shape [aspect] with the long side 64 dp (narrower when
- * the cell is), rendered at that size once it first shows on screen, so a long file renders only what is looked at. [overlay] draws over
- * the page's own area.
+ * the cell is), rendered at that size only while it is on screen: a long file renders only what is looked at, and a miniature scrolled
+ * away lets go of its bitmap, so the held images stay bounded by the screen (the loader's memory cache brings it back quickly). [overlay]
+ * draws over the page's own area.
  */
 @Composable
 fun PdfPageMiniature(uri: Uri, password: String?, index: Int, aspect: Float, overlay: @Composable BoxScope.() -> Unit = {}) {
-    var seen by remember(uri, index) { mutableStateOf(false) }
+    var onScreen by remember(uri, index) { mutableStateOf(false) }
     val width = if (aspect >= 1f) MINIATURE_SIDE else MINIATURE_SIDE * aspect
     Box(
         Modifier
             .width(width)
             .aspectRatio(aspect)
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(3.dp))
-            .onVisibilityChanged(minFractionVisible = 0.01f) { visible -> if (visible) seen = true }
+            .onVisibilityChanged(minFractionVisible = 0.01f) { onScreen = it }
     ) {
-        if (seen) PdfPageImage(uri, password, index, width, priority = 0, modifier = Modifier.fillMaxSize())
+        if (onScreen) PdfPageImage(uri, password, index, width, priority = 0, modifier = Modifier.fillMaxSize())
         overlay()
     }
 }
