@@ -135,7 +135,7 @@ class CropViewTest {
     @Test
     fun `dragging a corner moves the frame with the finger, and the saved crop box is where the frame was drawn`() {
         show(TestPdfs.plain(2), "drag.pdf")
-        waitFor(CROP)
+        waitFor(READY)
         // The frame starts as the whole page, so its edges' centres span the page.
         val width = centre(edge("Right edge")).x - centre(edge("Left edge")).x
         val height = centre(edge("Bottom edge")).y - centre(edge("Top edge")).y
@@ -174,7 +174,7 @@ class CropViewTest {
     @Test
     fun `TalkBack moves each edge as an adjustable value, kept on the page and apart from the opposite edge`() {
         show(TestPdfs.plain(), "talkback.pdf")
-        waitFor(CROP)
+        waitFor(READY)
         edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.3f) }
         edge("Right edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.1f) }
         edge("Top edge").performSemanticsAction(SemanticsActions.SetProgress) { it(-1f) }
@@ -191,7 +191,7 @@ class CropViewTest {
     @Test
     fun `only the pages of the range are cropped`() {
         val input = show(TestPdfs.plain(5), "ranged.pdf")
-        waitFor(CROP)
+        waitFor(READY)
         rule.onNodeWithText("Page range").performClick()
         rule.onNode(hasSetTextAction()).performTextInput("2, 4-5")
         edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.25f) }
@@ -210,12 +210,62 @@ class CropViewTest {
     }
 
     @Test
-    fun `a range error disables the button and says what to fix`() {
-        show(TestPdfs.plain(5), "errors.pdf")
-        waitFor(CROP)
+    fun `until a corner moves the button is disabled and says to move one`() {
+        show(TestPdfs.plain(2), "untouched.pdf")
+        waitFor(READY)
+        rule.onNodeWithText(MOVE).assertIsNotEnabled().performClick()
+        rule.onNodeWithText(CROP).assertDoesNotExist()
+        assertNull(suggested)
+
+        edge("Bottom edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.9f) }
+        rule.onNodeWithText(MOVE).assertDoesNotExist()
+        rule.onNodeWithText(CROP).assertIsEnabled()
+        // Back to the whole page, there is nothing to crop again.
+        edge("Bottom edge").performSemanticsAction(SemanticsActions.SetProgress) { it(1f) }
+        rule.onNodeWithText(MOVE).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `the empty range says nothing until the field is edited, and the shown range error names the button first`() {
+        show(TestPdfs.plain(5), "order.pdf")
+        waitFor(READY)
         rule.onNodeWithText("Page range").performClick()
+        // Untouched: the helper, no error, and the untouched frame names the button.
+        rule.onNodeWithText("For example 1-3, 5, 8-").assertExists()
+        rule.onNodeWithText("No pages given.").assertDoesNotExist()
+        rule.onNodeWithText(MOVE).assertIsNotEnabled()
+
+        val field = rule.onNode(hasSetTextAction())
+        field.performTextInput("4-2")
+        rule.onNodeWithText("“4-2”: the range runs backwards. Write 2-4.").assertExists()
+        rule.onNodeWithText(CHECK).assertIsNotEnabled()
+        field.performTextReplacement("2")
+        rule.onNodeWithText(MOVE).assertIsNotEnabled()
+        edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.2f) }
+        rule.onNodeWithText(CROP).assertIsEnabled()
+
+        // Emptied after an edit, the field now says so.
+        field.performTextReplacement("")
         rule.onNodeWithText("No pages given.").assertExists()
         rule.onNodeWithText(CHECK).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `an untouched empty range keeps the button disabled without an error`() {
+        show(TestPdfs.plain(5), "untyped.pdf")
+        waitFor(READY)
+        edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.2f) }
+        rule.onNodeWithText("Page range").performClick()
+        rule.onNodeWithText("No pages given.").assertDoesNotExist()
+        rule.onNodeWithText(CHECK).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a range error disables the button and says what to fix`() {
+        show(TestPdfs.plain(5), "errors.pdf")
+        waitFor(READY)
+        edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.2f) }
+        rule.onNodeWithText("Page range").performClick()
 
         val field = rule.onNode(hasSetTextAction())
         val messages = mapOf(
@@ -248,7 +298,7 @@ class CropViewTest {
         rule.setContent {
             key(visit) { CropView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         }
-        waitFor(CROP)
+        waitFor(READY)
         rule.onNodeWithText(TIP).assertExists()
         rule.onNodeWithContentDescription("Show the tip").assertDoesNotExist()
         rule.onNodeWithContentDescription("Close the tip").performClick()
@@ -256,7 +306,7 @@ class CropViewTest {
 
         // A later visit to Crop opens with the tip closed and the (i) in the top bar.
         visit++
-        waitFor(CROP)
+        waitFor(READY)
         rule.onNodeWithText(TIP).assertDoesNotExist()
         rule.onNodeWithContentDescription("Show the tip").performClick()
         rule.onNodeWithText(TIP).assertExists()
@@ -267,7 +317,7 @@ class CropViewTest {
     @Test
     fun `a page in the grid shows in the viewer on tap, and touch and hold or TalkBack's action opens it to read`() {
         val name = getUriDetails(context, show(TestPdfs.plain(4), "letters.pdf")).name
-        waitFor(CROP)
+        waitFor(READY)
         rule.onNodeWithText("Page 1 of 4").assertExists()
         rule.onNodeWithContentDescription("Show page 3").performClick()
         rule.onNodeWithText("Page 3 of 4").assertExists()
@@ -293,7 +343,7 @@ class CropViewTest {
         waitFor("Incorrect password, try again.")
         rule.onNode(hasSetTextAction()).performTextReplacement(TestPdfs.USER_PASSWORD)
         rule.onNodeWithText("Unlock").performClick()
-        waitFor(CROP)
+        waitFor(READY)
 
         rule.onNodeWithText(PASSWORD_LINE).assertExists()
         edge("Top edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.5f) }
@@ -369,6 +419,10 @@ class CropViewTest {
 
     private companion object {
         const val CROP = "Crop and save PDF"
+        const val MOVE = "Move a corner to crop"
+
+        /** Shown once a file is open, whatever the button says. */
+        const val READY = "The frame on other pages"
         const val CHECK = "Check the page range"
         const val TIP = "Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact."
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."

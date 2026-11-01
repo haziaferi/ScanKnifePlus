@@ -156,7 +156,8 @@ class CropDeviceTest {
                     }
                 }
             }
-            waitFor("the screen") { node(CROP) }
+            // Until a corner moves there is nothing to crop, and the button says so.
+            waitFor("the screen") { node(MOVE) }
             // The frame starts as the whole page: its edges span the shown page, the rotated first one, 560 x 400 as displayed.
             val (left, middle) = centre("Left edge")
             val right = centre("Right edge").first
@@ -186,6 +187,7 @@ class CropDeviceTest {
             assertEquals(middle + height * 0.1f, centre("Left edge").second, 2f)
             assertEquals(centreX + width * 0.125f, centre("Top edge").first, 2f)
 
+            waitFor("the button to offer cropping") { node(CROP) }
             tap(CROP)
             waitFor("the result") { node("Crop complete") }
 
@@ -206,6 +208,7 @@ class CropDeviceTest {
 
     private companion object {
         const val CROP = "Crop and save PDF"
+        const val MOVE = "Move a corner to crop"
 
         /** The source pages' crop box: 400 x 560 points, its lower-left corner at (40, 60) on the 500 x 700 media box. */
         val BOX = PDRectangle(40f, 60f, 400f, 560f)

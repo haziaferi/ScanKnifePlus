@@ -502,6 +502,7 @@
     <string name="crop_edge_right">Right edge</string>
     <string name="crop_edge_bottom">Bottom edge</string>
     <string name="crop_and_save">Crop and save PDF</string>
+    <string name="crop_move_corner">Move a corner to crop</string>
     <string name="crop_cropping">Cropping pages…</string>
     <string name="crop_done">Crop complete</string>
     <plurals name="crop_pages_cropped">

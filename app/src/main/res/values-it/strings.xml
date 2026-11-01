@@ -506,7 +506,7 @@
     <string name="compress_optimizing_document_size">Riduzione delle dimensioni del documento…</string>
     <string name="crop_title">Ritaglia le pagine di un PDF</string>
     <string name="crop_task">Imposta la cornice da tenere, su tutte le pagine o su un intervallo</string>
-    <string name="crop_tip">Il ritaglio nasconde i bordi, non li elimina. Per rimuovere i contenuti in modo definitivo, usa Oscura.</string>
+    <string name="crop_tip">Il ritaglio nasconde i bordi, non li elimina. Per rimuovere i contenuti in modo definitivo, usa Censura.</string>
     <string name="crop_frame_others">La cornice sulle altre pagine</string>
     <string name="crop_same_frame">Sulle pagine di formato diverso si applica la stessa cornice, in proporzione.</string>
     <string name="crop_edge_left">Bordo sinistro</string>
@@ -514,6 +514,7 @@
     <string name="crop_edge_right">Bordo destro</string>
     <string name="crop_edge_bottom">Bordo inferiore</string>
     <string name="crop_and_save">Ritaglia e salva il PDF</string>
+    <string name="crop_move_corner">Sposta un angolo per ritagliare</string>
     <string name="crop_cropping">Ritaglio delle pagine…</string>
     <string name="crop_done">Ritaglio completato</string>
     <plurals name="crop_pages_cropped">

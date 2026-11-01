@@ -99,6 +99,18 @@ internal fun CropArea.Fractions.edge(edge: FrameEdge): Float = when (edge) {
     FrameEdge.BOTTOM -> bottom
 }
 
+/**
+ * What keeps Crop from saving, as its disabled button names it; null when it can save. A range error the field shows comes first, then a
+ * frame that is still the whole page, then a range not typed yet (until [rangeEdited] its field shows the helper, not an error).
+ */
+@StringRes
+internal fun cropBlocker(frame: CropArea.Fractions, useRange: Boolean, range: RangeList, rangeEdited: Boolean): Int? = when {
+    useRange && rangeEdited && range !is RangeList.Valid -> R.string.range_check
+    frame == FULL_FRAME -> R.string.crop_move_corner
+    useRange && range !is RangeList.Valid -> R.string.range_check
+    else -> null
+}
+
 /** This frame with [edge] at [value], kept on the page and [MIN_FRAME] from the opposite edge. */
 internal fun CropArea.Fractions.withEdge(edge: FrameEdge, value: Float): CropArea.Fractions = when (edge) {
     FrameEdge.LEFT -> copy(left = value.coerceIn(0f, right - MIN_FRAME))
@@ -136,6 +148,8 @@ fun CropView(
     var shownPage by remember { mutableIntStateOf(0) }
     var useRange by remember { mutableStateOf(false) }
     var rangeText by remember { mutableStateOf("") }
+    // "No pages given." waits for the first edit, so choosing Page range shows the helper rather than an error.
+    var rangeEdited by remember { mutableStateOf(false) }
     var readPage by remember { mutableStateOf<Int?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -155,6 +169,7 @@ fun CropView(
         shownPage = 0
         useRange = false
         rangeText = ""
+        rangeEdited = false
         outputUri = null
         currentState = ToolState.SELECTING
     }
@@ -214,7 +229,7 @@ fun CropView(
         if (uri == null || source == null) return@rememberLauncherForActivityResult
         val pass = password
         val area = frame
-        // The range was checked before the button could be pressed.
+        // The button is enabled only for a valid range (cropBlocker).
         val pages = if (useRange) (range as RangeList.Valid).ranges.flatten().toSet() else null
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
@@ -274,11 +289,12 @@ fun CropView(
                     ToolState.CONFIGURING -> {
                         val source = sourceUri
                         if (source != null && pageCount > 0) {
-                            val error = if (useRange) rangeError(range) else null
+                            val error = if (useRange && rangeEdited) rangeError(range) else null
+                            val blocker = cropBlocker(frame, useRange, range, rangeEdited)
                             ToolConfigLayout(
-                                action = stringResource(if (error != null) R.string.range_check else R.string.crop_and_save),
+                                action = stringResource(blocker ?: R.string.crop_and_save),
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-cropped", "pdf")) },
-                                actionEnabled = error == null
+                                actionEnabled = blocker == null
                             ) {
                                 ToolFileCard(
                                     uri = source,
@@ -340,7 +356,15 @@ fun CropView(
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 )
                                 if (useRange) {
-                                    PageRangeField(rangeText, { rangeText = it }, error, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                                    PageRangeField(
+                                        value = rangeText,
+                                        onValueChange = {
+                                            rangeText = it
+                                            rangeEdited = true
+                                        },
+                                        error = error,
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                    )
                                 }
                                 Spacer(Modifier.height(16.dp))
                             }
