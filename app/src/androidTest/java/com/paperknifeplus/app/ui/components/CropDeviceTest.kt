@@ -84,13 +84,24 @@ class CropDeviceTest {
             value()?.let { return it }
             Thread.sleep(100)
         }
-        throw AssertionError("Timed out waiting for $what")
+        throw AssertionError("Timed out waiting for $what; the screen shows ${nodes().mapNotNull { it.text ?: it.contentDescription }}")
+    }
+
+    /** Every node of the active window, walked from its root: Compose answers no text search, so the tree is read as TalkBack reads it. */
+    private fun nodes(): List<AccessibilityNodeInfo> {
+        val found = mutableListOf<AccessibilityNodeInfo>()
+        val queue = ArrayDeque(listOfNotNull(instrumentation.uiAutomation.rootInActiveWindow))
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            found += node
+            for (i in 0 until node.childCount) node.getChild(i)?.let(queue::addLast)
+        }
+        return found
     }
 
     /** The node of the active window whose text or content description is [label]. */
-    private fun node(label: String): AccessibilityNodeInfo? = instrumentation.uiAutomation.rootInActiveWindow
-        ?.findAccessibilityNodeInfosByText(label)
-        ?.firstOrNull { it.text?.toString() == label || it.contentDescription?.toString() == label }
+    private fun node(label: String): AccessibilityNodeInfo? =
+        nodes().firstOrNull { it.text?.toString() == label || it.contentDescription?.toString() == label }
 
     private fun centre(label: String): Pair<Float, Float> {
         val bounds = Rect().also { waitFor(label) { node(label) }.getBoundsInScreen(it) }
@@ -115,6 +126,14 @@ class CropDeviceTest {
             touch(MotionEvent.ACTION_MOVE, down, x + dx * i / steps, y + dy * i / steps)
         }
         touch(MotionEvent.ACTION_UP, down, x + dx, y + dy)
+    }
+
+    /** A finger tapping the middle of the node shown as [label]. */
+    private fun tap(label: String) {
+        val (x, y) = centre(label)
+        val down = SystemClock.uptimeMillis()
+        touch(MotionEvent.ACTION_DOWN, down, x, y)
+        touch(MotionEvent.ACTION_UP, down, x, y)
     }
 
     private fun PDRectangle.edges() = listOf(lowerLeftX, lowerLeftY, upperRightX, upperRightY)
@@ -146,6 +165,9 @@ class CropDeviceTest {
             val width = right - left
             val height = bottom - top
             assertEquals(560f / 400f, width / height, 0.02f)
+            // TalkBack reaches the edges, each an adjustable value; the corner handles are for fingers only.
+            assertEquals(1f, waitFor("Left edge") { node("Left edge") }.rangeInfo.max, 0f)
+            assertEquals(false, waitFor("Top-left corner") { node("Top-left corner") }.isVisibleToUser)
 
             drag(left, top, width * 0.25f, height * 0.2f)
             // The accessibility tree follows the screen a little later: read the frame once two reads agree.
@@ -164,7 +186,7 @@ class CropDeviceTest {
             assertEquals(middle + height * 0.1f, centre("Left edge").second, 2f)
             assertEquals(centreX + width * 0.125f, centre("Top edge").first, 2f)
 
-            waitFor(CROP) { node(CROP) }.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            tap(CROP)
             waitFor("the result") { node("Crop complete") }
 
             PDDocument.load(output).use { doc ->
@@ -173,7 +195,8 @@ class CropDeviceTest {
                 val b = BOX.lowerLeftY
                 assertBox(listOf(l + frame.top * 400, b + frame.left * 560, l + frame.bottom * 400, b + frame.right * 560), doc.getPage(0).cropBox)
                 // Upright: 400 x 560, y up from the crop box's bottom.
-                assertBox(listOf(l + frame.left * 400, b + (1 - frame.bottom) * 560, l + frame.right * 400, b + (1 - frame.top) * 560), doc.getPage(1).cropBox)
+                val upright = listOf(l + frame.left * 400, b + (1 - frame.bottom) * 560, l + frame.right * 400, b + (1 - frame.top) * 560)
+                assertBox(upright, doc.getPage(1).cropBox)
                 for (page in doc.pages) assertBox(listOf(0f, 0f, 500f, 700f), page.mediaBox)
             }
         } finally {

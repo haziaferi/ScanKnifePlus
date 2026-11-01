@@ -42,6 +42,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onVisibilityChanged
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.CollectionItemInfo
@@ -118,7 +119,7 @@ fun PageGrid(
         }
         if (shown < pageCount) {
             ToolSecondaryButton(
-                stringResource(R.string.page_grid_show_all, pageCount),
+                pluralStringResource(R.plurals.page_grid_show_all, pageCount, pageCount),
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth(),
                 icon = Icons.Filled.KeyboardArrowDown

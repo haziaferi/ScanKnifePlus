@@ -184,7 +184,8 @@ class CropViewTest {
         assertEquals(0f, edgeValue("Top edge"), 0f)
         assertEquals(99, edge("Left edge").fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].steps)
         // The handles are for fingers; TalkBack reaches the edges instead.
-        assertTrue(rule.onNodeWithContentDescription("Top-left corner").fetchSemanticsNode().config.contains(SemanticsProperties.HideFromAccessibility))
+        val corner = rule.onNodeWithContentDescription("Top-left corner").fetchSemanticsNode()
+        assertTrue(corner.config.contains(SemanticsProperties.HideFromAccessibility))
     }
 
     @Test

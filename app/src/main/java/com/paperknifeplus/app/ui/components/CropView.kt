@@ -44,6 +44,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -119,6 +120,7 @@ fun CropView(
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     val outputs = rememberToolOutputs("crop")
     val tip = rememberToolTip("crop")
@@ -225,7 +227,7 @@ fun CropView(
                     processingTime = timeStr
                     outputUri = uri
                     outputName = name
-                    val summary = context.resources.getQuantityString(R.plurals.crop_pages_cropped, cropped, cropped)
+                    val summary = resources.getQuantityString(R.plurals.crop_pages_cropped, cropped, cropped)
                     outputs.saved(uri, name, summary, Icons.Outlined.Crop, pageCount)
                     currentState = ToolState.SUCCESS
                 }

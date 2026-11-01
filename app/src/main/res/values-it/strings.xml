@@ -326,7 +326,11 @@
     <string name="page_show">Mostra la pagina %1$d</string>
     <string name="page_read">Leggi la pagina %1$d</string>
     <string name="page_hold_hint">Tieni premuta una pagina per leggerla.</string>
-    <string name="page_grid_show_all">Mostra tutte le %1$d pagine</string>
+    <plurals name="page_grid_show_all">
+        <item quantity="one">Mostra tutte le %1$d pagine</item>
+        <item quantity="many">Mostra tutte le %1$d pagine</item>
+        <item quantity="other">Mostra tutte le %1$d pagine</item>
+    </plurals>
     <string name="page_card_title">Pagina %1$d di %2$s</string>
     <string name="pages_label">Pagine</string>
     <string name="pages_all">Tutte le pagine</string>

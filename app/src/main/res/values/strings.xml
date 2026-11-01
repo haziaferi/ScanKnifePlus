@@ -316,7 +316,10 @@
     <string name="page_show">Show page %1$d</string>
     <string name="page_read">Read page %1$d</string>
     <string name="page_hold_hint">Touch and hold a page to read it.</string>
-    <string name="page_grid_show_all">Show all %1$d pages</string>
+    <plurals name="page_grid_show_all">
+        <item quantity="one">Show all %1$d pages</item>
+        <item quantity="other">Show all %1$d pages</item>
+    </plurals>
     <string name="page_card_title">Page %1$d of %2$s</string>
     <string name="pages_label">Pages</string>
     <string name="pages_all">All pages</string>
