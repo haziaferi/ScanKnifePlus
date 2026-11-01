@@ -186,6 +186,8 @@
     <string name="tool_bookmarks_desc">Edit bookmarks</string>
     <string name="tool_links">Links</string>
     <string name="tool_links_desc">Remove or add links</string>
+    <string name="tool_crop">Crop pages</string>
+    <string name="tool_crop_desc">Trim the page edges</string>
     <string name="tool_compress">Compress</string>
     <string name="tool_compress_desc">Make the file smaller</string>
     <string name="tool_grayscale">Grayscale</string>
@@ -309,6 +311,25 @@
     <string name="tool_recent_note">Only PDFs are listed. Tap one to use it here, or choose any PDF on this phone.</string>
     <string name="tool_keeps_password">Password-protected. The saved copy keeps this password.</string>
     <string name="tool_report_removed">What was removed</string>
+    <string name="tip_show">Show the tip</string>
+    <string name="tip_close">Close the tip</string>
+    <string name="page_show">Show page %1$d</string>
+    <string name="page_read">Read page %1$d</string>
+    <string name="page_hold_hint">Touch and hold a page to read it.</string>
+    <string name="page_grid_show_all">Show all %1$d pages</string>
+    <string name="page_card_title">Page %1$d of %2$s</string>
+    <string name="pages_label">Pages</string>
+    <string name="pages_all">All pages</string>
+    <string name="pages_range">Page range</string>
+    <string name="range_example">For example 1-3, 5, 8-</string>
+    <string name="range_check">Check the page range</string>
+    <string name="range_empty">No pages given.</string>
+    <string name="range_malformed">“%1$s” isn’t a page or a range. Use for example 1-3, 5, 8-.</string>
+    <plurals name="range_out_of_bounds">
+        <item quantity="one">“%1$s”: page %2$d doesn’t exist. This file has %3$d page.</item>
+        <item quantity="other">“%1$s”: page %2$d doesn’t exist. This file has %3$d pages.</item>
+    </plurals>
+    <string name="range_reversed">“%1$s”: the range runs backwards. Write %2$d-%3$d.</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Appearance</string>
@@ -468,6 +489,22 @@
     <string name="compress_optimize_pdf_size">Optimize PDF size</string>
     <string name="compress_optimized">Optimized</string>
     <string name="compress_optimizing_document_size">Optimizing document size…</string>
+    <string name="crop_title">Crop the pages of a PDF</string>
+    <string name="crop_task">Set the frame to keep, on every page or a range</string>
+    <string name="crop_tip">Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact.</string>
+    <string name="crop_frame_others">The frame on other pages</string>
+    <string name="crop_same_frame">Pages of another size get the same frame, scaled.</string>
+    <string name="crop_edge_left">Left edge</string>
+    <string name="crop_edge_top">Top edge</string>
+    <string name="crop_edge_right">Right edge</string>
+    <string name="crop_edge_bottom">Bottom edge</string>
+    <string name="crop_and_save">Crop and save PDF</string>
+    <string name="crop_cropping">Cropping pages…</string>
+    <string name="crop_done">Crop complete</string>
+    <plurals name="crop_pages_cropped">
+        <item quantity="one">%d page cropped</item>
+        <item quantity="other">%d pages cropped</item>
+    </plurals>
     <string name="delete_delete_complete">Delete complete</string>
     <string name="delete_delete_pages">Delete %1$s pages</string>
     <string name="delete_delete_pages_instantly">Delete pages instantly</string>

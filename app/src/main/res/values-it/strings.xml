@@ -189,6 +189,8 @@
     <string name="tool_bookmarks_desc">Modifica i segnalibri</string>
     <string name="tool_links">Link</string>
     <string name="tool_links_desc">Rimuovi o aggiungi link</string>
+    <string name="tool_crop">Ritaglia pagine</string>
+    <string name="tool_crop_desc">Rifila i bordi delle pagine</string>
     <string name="tool_compress">Comprimi</string>
     <string name="tool_compress_desc">Riduci le dimensioni del file</string>
     <string name="tool_grayscale">Scala di grigi</string>
@@ -319,6 +321,26 @@
     <string name="tool_recent_note">Sono elencati solo i PDF. Toccane uno per usarlo qui, oppure scegli un PDF qualsiasi sul telefono.</string>
     <string name="tool_keeps_password">Protetto da password. La copia salvata mantiene questa password.</string>
     <string name="tool_report_removed">Cosa è stato rimosso</string>
+    <string name="tip_show">Mostra il suggerimento</string>
+    <string name="tip_close">Chiudi il suggerimento</string>
+    <string name="page_show">Mostra la pagina %1$d</string>
+    <string name="page_read">Leggi la pagina %1$d</string>
+    <string name="page_hold_hint">Tieni premuta una pagina per leggerla.</string>
+    <string name="page_grid_show_all">Mostra tutte le %1$d pagine</string>
+    <string name="page_card_title">Pagina %1$d di %2$s</string>
+    <string name="pages_label">Pagine</string>
+    <string name="pages_all">Tutte le pagine</string>
+    <string name="pages_range">Intervallo di pagine</string>
+    <string name="range_example">Per esempio 1-3, 5, 8-</string>
+    <string name="range_check">Controlla l\'intervallo di pagine</string>
+    <string name="range_empty">Nessuna pagina indicata.</string>
+    <string name="range_malformed">“%1$s” non è una pagina né un intervallo. Usa per esempio 1-3, 5, 8-.</string>
+    <plurals name="range_out_of_bounds">
+        <item quantity="one">“%1$s”: la pagina %2$d non esiste. Questo file ha %3$d pagina.</item>
+        <item quantity="many">“%1$s”: la pagina %2$d non esiste. Questo file ha %3$d pagine.</item>
+        <item quantity="other">“%1$s”: la pagina %2$d non esiste. Questo file ha %3$d pagine.</item>
+    </plurals>
+    <string name="range_reversed">“%1$s”: l\'intervallo è al contrario. Scrivi %2$d-%3$d.</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Aspetto</string>
@@ -478,6 +500,23 @@
     <string name="compress_optimize_pdf_size">Riduci le dimensioni del PDF</string>
     <string name="compress_optimized">Ottimizzato</string>
     <string name="compress_optimizing_document_size">Riduzione delle dimensioni del documento…</string>
+    <string name="crop_title">Ritaglia le pagine di un PDF</string>
+    <string name="crop_task">Imposta la cornice da tenere, su tutte le pagine o su un intervallo</string>
+    <string name="crop_tip">Il ritaglio nasconde i bordi, non li elimina. Per rimuovere i contenuti in modo definitivo, usa Oscura.</string>
+    <string name="crop_frame_others">La cornice sulle altre pagine</string>
+    <string name="crop_same_frame">Sulle pagine di formato diverso si applica la stessa cornice, in proporzione.</string>
+    <string name="crop_edge_left">Bordo sinistro</string>
+    <string name="crop_edge_top">Bordo superiore</string>
+    <string name="crop_edge_right">Bordo destro</string>
+    <string name="crop_edge_bottom">Bordo inferiore</string>
+    <string name="crop_and_save">Ritaglia e salva il PDF</string>
+    <string name="crop_cropping">Ritaglio delle pagine…</string>
+    <string name="crop_done">Ritaglio completato</string>
+    <plurals name="crop_pages_cropped">
+        <item quantity="one">%d pagina ritagliata</item>
+        <item quantity="many">%d pagine ritagliate</item>
+        <item quantity="other">%d pagine ritagliate</item>
+    </plurals>
     <string name="delete_delete_complete">Eliminazione completata</string>
     <string name="delete_delete_pages">Elimina %1$s pagine</string>
     <string name="delete_delete_pages_instantly">Elimina pagine all\'istante</string>

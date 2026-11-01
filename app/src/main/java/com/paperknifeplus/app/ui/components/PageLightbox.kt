@@ -28,6 +28,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,6 +45,11 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import kotlinx.coroutines.launch
 
+/**
+ * The pages of [uri] (opened with [password]) full screen, from [initialPage]: swipe or the arrows to page, double tap or pinch to zoom,
+ * Close and Share. With [fileName] it is also the readable page card that touch and hold on a page miniature opens (R3): its counter reads
+ * "Page N of <file>", which TalkBack announces as the window's title.
+ */
 @Composable
 fun PageLightbox(
     uri: Uri,
@@ -54,7 +61,8 @@ fun PageLightbox(
     onToggleSelection: ((Int) -> Unit)? = null,
     isGrayscale: Boolean = false,
     itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null,
-    bottomBar: @Composable (BoxScope.(Int) -> Unit)? = null
+    bottomBar: @Composable (BoxScope.(Int) -> Unit)? = null,
+    fileName: String? = null
 ) {
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = initialPage) { totalCount }
@@ -75,6 +83,12 @@ fun PageLightbox(
         derivedStateOf { (zoomLevels[pagerState.currentPage] ?: 1f) > 1.01f }
     }
 
+    val counter = if (fileName != null) {
+        stringResource(R.string.page_card_title, pagerState.currentPage + 1, fileName)
+    } else {
+        stringResource(R.string.lightbox_page_of, pagerState.currentPage + 1, totalCount)
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -83,6 +97,7 @@ fun PageLightbox(
             modifier = Modifier
                 .fillMaxSize()
                 .background(LocalScanPalette.current.camera.cam)
+                .then(if (fileName != null) Modifier.semantics { paneTitle = counter } else Modifier)
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -187,7 +202,8 @@ fun PageLightbox(
                         }
                     }
                     
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Takes what the close button leaves, so a long file name in the counter wraps instead of pushing it off screen.
+                    Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {
                             try {
                                 val intent = Intent(Intent.ACTION_SEND).apply {
@@ -210,7 +226,7 @@ fun PageLightbox(
                             modifier = Modifier.heightIn(min = 48.dp)
                         ) {
                             Text(
-                                stringResource(R.string.lightbox_page_of, pagerState.currentPage + 1, totalCount),
+                                counter,
                                 color = LocalScanPalette.current.camera.onCam,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Black,
