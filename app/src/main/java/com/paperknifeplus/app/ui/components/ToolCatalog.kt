@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.FormatListNumbered
 import androidx.compose.material.icons.outlined.Layers
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
 import androidx.compose.material.icons.outlined.Palette
@@ -61,6 +62,9 @@ object ToolCatalog {
         },
         Tool("bookmarks", R.string.tool_bookmarks, R.string.tool_bookmarks_desc, Icons.Outlined.BookmarkBorder, EDIT) {
             BookmarksView(initialUri = it.initialUri, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
+        },
+        Tool("links", R.string.tool_links, R.string.tool_links_desc, Icons.Outlined.Link, EDIT) {
+            LinksView(initialUri = it.initialUri, initialPassword = it.initialPassword, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
         },
         Tool("compress", R.string.tool_compress, R.string.tool_compress_desc, Icons.Outlined.Bolt, OPTIMIZE) {
             CompressView(initialUri = it.initialUri, initialPassword = it.initialPassword, onBack = it.onBack, onOpenPreview = it.onOpenPreview)

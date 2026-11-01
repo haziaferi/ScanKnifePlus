@@ -156,6 +156,7 @@ class ToolCatalogTest {
             "merge" to "Join multiple documents", "split" to "Extract pages from PDF", "delete" to "Delete pages instantly",
             "rearrange" to "Move pages to new slots", "rotate" to "Fix document orientation", "sign" to "Secure signature",
             "watermark" to "Custom overlay", "page-numbers" to "Custom pagination", "bookmarks" to "Edit document navigation",
+            "links" to "Remove links from a PDF",
             "compress" to "Optimize PDF size", "grayscale" to "Convert PDF to B&W", "repair" to "Recover corrupt documents",
             "compare" to "Visual difference tool", "protect" to "Encrypt your document", "unlock" to "Remove PDF restrictions",
             "metadata" to "Edit document properties", "pdf2img" to "Native export engine", "img2pdf" to "JPG, PNG or WebP",

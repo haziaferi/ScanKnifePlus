@@ -184,6 +184,8 @@
     <string name="tool_page_numbers_desc">Add page numbers</string>
     <string name="tool_bookmarks">Bookmarks</string>
     <string name="tool_bookmarks_desc">Edit bookmarks</string>
+    <string name="tool_links">Links</string>
+    <string name="tool_links_desc">Remove or add links</string>
     <string name="tool_compress">Compress</string>
     <string name="tool_compress_desc">Make the file smaller</string>
     <string name="tool_grayscale">Grayscale</string>
@@ -305,6 +307,8 @@
     <string name="tool_step_save">Save the result</string>
     <string name="tool_step_save_body">Your original file stays as it is</string>
     <string name="tool_recent_note">Only PDFs are listed. Tap one to use it here, or choose any PDF on this phone.</string>
+    <string name="tool_keeps_password">Password-protected. The saved copy keeps this password.</string>
+    <string name="tool_report_removed">What was removed</string>
 
     <!-- Settings -->
     <string name="settings_appearance">Appearance</string>
@@ -531,6 +535,28 @@
     <string name="img2pdf_photo_to_document_converter">Photo to document converter</string>
     <string name="img2pdf_position">Position: %1$s</string>
     <string name="img2pdf_reorder_assets">Reorder assets</string>
+    <string name="links_remove_title">Remove links from a PDF</string>
+    <string name="links_remove_task">Every link goes, and scripts that run when the file opens</string>
+    <string name="links_found">Found in this file</string>
+    <plurals name="links_count_links">
+        <item quantity="one">link</item>
+        <item quantity="other">links</item>
+    </plurals>
+    <plurals name="links_count_scripts">
+        <item quantity="one">script that runs when the file opens</item>
+        <item quantity="other">scripts that run when the file opens</item>
+    </plurals>
+    <string name="links_nothing_changes">Nothing changes until you save.</string>
+    <string name="links_what_stays">Form fields, comments and bookmarks stay.</string>
+    <string name="links_none">No links or scripts in this file</string>
+    <string name="links_none_body">There is nothing to remove, so nothing is saved.</string>
+    <string name="links_remove_and_save">Remove links and save PDF</string>
+    <string name="links_nothing_to_remove">Nothing to remove</string>
+    <string name="links_removing">Removing links…</string>
+    <string name="links_removed">Links removed</string>
+    <string name="links_done">Link removal complete</string>
+    <string name="links_report_links">Links</string>
+    <string name="links_report_scripts">Scripts that run when the file opens</string>
     <string name="merge_files_joined">%1$s files joined</string>
     <string name="merge_join_multiple_documents">Join multiple documents</string>
     <string name="merge_locked">Locked</string>

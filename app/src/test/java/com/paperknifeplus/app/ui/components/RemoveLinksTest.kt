@@ -75,10 +75,10 @@ class RemoveLinksTest {
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
-    private fun run(pages: Collection<Int>?): Pair<LinkRemoval, File> {
+    private fun run(): Pair<LinkRemoval, File> {
         val input = TestPdfs.write(context.cacheDir, fixture(), "links-in.pdf")
         val output = File(context.cacheDir, "links-out.pdf").apply { delete() }
-        val removal = runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null, pages) }
+        val removal = runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null) }
         return removal to output
     }
 
@@ -86,7 +86,7 @@ class RemoveLinksTest {
 
     @Test
     fun `every link goes from every page, with the document scripts, and other annotations stay`() {
-        val (removal, output) = run(null)
+        val (removal, output) = run()
         assertEquals(LinkRemoval(links = 4, scripts = 4), removal)
         PDDocument.load(output).use { doc ->
             assertEquals(listOf("Text"), doc.subtypes(0))
@@ -106,14 +106,11 @@ class RemoveLinksTest {
     }
 
     @Test
-    fun `selected pages lose only their links, while document scripts always go`() {
-        val (removal, output) = run(listOf(2))
-        assertEquals(LinkRemoval(links = 2, scripts = 4), removal)
-        PDDocument.load(output).use { doc ->
-            assertEquals(listOf("Link", "Text"), doc.subtypes(0))
-            assertEquals(listOf("Link"), doc.subtypes(1))
-            assertTrue(doc.subtypes(2).isEmpty())
-        }
+    fun `the counts before saving are what saving removes, and the file is left as it was`() {
+        val bytes = fixture()
+        val input = TestPdfs.write(context.cacheDir, bytes, "links-count.pdf")
+        assertEquals(LinkRemoval(links = 4, scripts = 4), runBlocking { countLinkRemoval(context, input, null) })
+        assertTrue(File(input.path!!).readBytes().contentEquals(bytes))
     }
 
     @Test
@@ -134,19 +131,16 @@ class RemoveLinksTest {
     @Test
     fun `no default author is added`() {
         PreferencesManager.setDefaultAuthor(context, "Default Person")
-        val (_, output) = run(null)
+        val (_, output) = run()
         PDDocument.load(output).use { assertNull(it.documentInformation.author) }
     }
 
     @Test
-    fun `the source's protection is kept only when asked`() {
+    fun `the copy keeps the source's password`() {
         val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "links-locked.pdf")
         val kept = File(context.cacheDir, "links-kept.pdf").apply { delete() }
-        runBlocking { removeLinksPdf(context, input, Uri.fromFile(kept), TestPdfs.USER_PASSWORD, keepProtection = true) }
+        runBlocking { removeLinksPdf(context, input, Uri.fromFile(kept), TestPdfs.USER_PASSWORD) }
         assertThrows(InvalidPasswordException::class.java) { PDDocument.load(kept).close() }
         PDDocument.load(kept, TestPdfs.USER_PASSWORD).use { assertTrue(it.isEncrypted) }
-        val open = File(context.cacheDir, "links-open.pdf").apply { delete() }
-        runBlocking { removeLinksPdf(context, input, Uri.fromFile(open), TestPdfs.USER_PASSWORD) }
-        PDDocument.load(open).use { assertFalse(it.isEncrypted) }
     }
 }
