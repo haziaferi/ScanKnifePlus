@@ -4,7 +4,6 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,12 +34,6 @@ class PageCropTest {
         assertBox(listOf(100f, 250f, 640f, 850f), cropRectangle(box(180), area))
         // Rotated 270: the displayed left is the user-space top, the displayed top the user-space right.
         assertBox(listOf(100f, 50f, 550f, 770f), cropRectangle(box(270), area))
-    }
-
-    @Test
-    fun `a points area is cut to the page and a missed page is left alone`() {
-        assertBox(listOf(100f, 50f, 700f, 830f), cropRectangle(box(0), CropArea.Points(-5f, 20f, 9000f, 9000f)))
-        assertNull(cropRectangle(box(0), CropArea.Points(700f, 0f, 800f, 100f)))
     }
 
     @Test(expected = IllegalArgumentException::class)

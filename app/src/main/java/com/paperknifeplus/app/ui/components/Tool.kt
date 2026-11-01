@@ -88,6 +88,7 @@ import com.paperknifeplus.app.MainActivity
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
 import java.util.UUID
@@ -222,8 +223,8 @@ fun rememberToolOutputs(toolId: String): ToolOutputs {
 }
 
 /**
- * The top bar of the tool screens, Settings and About: a 48 dp back button named [backLabel], [title] over [subtitle], and a [changeLabel]
- * button (Change) when [showChange].
+ * The top bar of the tool screens, Settings and About: a 48 dp back button named [backLabel], [title] over [subtitle], a [changeLabel]
+ * button (Change) when [showChange], and the (i) that brings a closed tip back ([onShowTip], R4) when there is one.
  */
 @Composable
 fun ToolTopBar(
@@ -233,7 +234,8 @@ fun ToolTopBar(
     onBack: () -> Unit,
     onChange: () -> Unit = {},
     changeLabel: String = stringResource(R.string.tool_change),
-    backLabel: String = stringResource(R.string.tool_back)
+    backLabel: String = stringResource(R.string.tool_back),
+    onShowTip: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(modifier = Modifier.fillMaxWidth(), color = colors.background) {
@@ -259,16 +261,30 @@ fun ToolTopBar(
                     Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
                 }
             }
+            if (onShowTip != null) {
+                IconButton(onClick = onShowTip, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
+                }
+            }
         }
     }
 }
 
 /**
  * The top bar of a tool screen in [state]: none while the tool works; on the result, how long it took ([processingTime]) under [title] and
- * back named Back to tools; otherwise [subtitle], and Change ([onChange]) for a tool whose files are a list rather than one file card.
+ * back named Back to tools; otherwise [subtitle], Change ([onChange]) for a tool whose files are a list rather than one file card, and the
+ * (i) of a closed tip ([onShowTip]).
  */
 @Composable
-fun ToolScreenBar(state: ToolState, title: String, subtitle: String, processingTime: String, onBack: () -> Unit, onChange: (() -> Unit)? = null) {
+fun ToolScreenBar(
+    state: ToolState,
+    title: String,
+    subtitle: String,
+    processingTime: String,
+    onBack: () -> Unit,
+    onChange: (() -> Unit)? = null,
+    onShowTip: (() -> Unit)? = null
+) {
     when (state) {
         ToolState.PROCESSING -> Unit
         ToolState.SUCCESS -> ToolTopBar(
@@ -278,7 +294,14 @@ fun ToolScreenBar(state: ToolState, title: String, subtitle: String, processingT
             onBack = onBack,
             backLabel = stringResource(R.string.tool_back_to_tools)
         )
-        else -> ToolTopBar(title = title, subtitle = subtitle, showChange = onChange != null, onBack = onBack, onChange = onChange ?: {})
+        else -> ToolTopBar(
+            title = title,
+            subtitle = subtitle,
+            showChange = onChange != null,
+            onBack = onBack,
+            onChange = onChange ?: {},
+            onShowTip = onShowTip
+        )
     }
 }
 
@@ -711,3 +734,10 @@ val pageBadge: Color @Composable get() = LocalScanPalette.current.camera.cam.cop
 
 /** The text and icons on [pageBadge]. */
 val pageBadgeText: Color @Composable get() = LocalScanPalette.current.camera.onCam
+
+/** Marks drawn over a page (the crop frame and its handles): the palette's Light accent in both themes, since pages are light (15a). */
+val pageMark: Color
+    @Composable get() = LocalScanPalette.current.let { tokens -> AppPalette.entries.firstOrNull { it.oled == tokens }?.light ?: tokens }.acf
+
+/** The dimming over the part of a page a mark leaves out (outside the crop frame): the camera colour, as [pageBadge]. */
+val pageDim: Color @Composable get() = LocalScanPalette.current.camera.cam.copy(alpha = 0.55f)
