@@ -536,15 +536,15 @@
     <string name="img2pdf_position">Position: %1$s</string>
     <string name="img2pdf_reorder_assets">Reorder assets</string>
     <string name="links_remove_title">Remove links from a PDF</string>
-    <string name="links_remove_task">Every link goes, and scripts that run when the file opens</string>
+    <string name="links_remove_task">Every link goes, and scripts that run on their own</string>
     <string name="links_found">Found in this file</string>
     <plurals name="links_count_links">
         <item quantity="one">link</item>
         <item quantity="other">links</item>
     </plurals>
     <plurals name="links_count_scripts">
-        <item quantity="one">script that runs when the file opens</item>
-        <item quantity="other">scripts that run when the file opens</item>
+        <item quantity="one">script that runs on its own</item>
+        <item quantity="other">scripts that run on their own</item>
     </plurals>
     <string name="links_nothing_changes">Nothing changes until you save.</string>
     <string name="links_what_stays">Form fields, comments and bookmarks stay.</string>
@@ -556,7 +556,7 @@
     <string name="links_removed">Links removed</string>
     <string name="links_done">Link removal complete</string>
     <string name="links_report_links">Links</string>
-    <string name="links_report_scripts">Scripts that run when the file opens</string>
+    <string name="links_report_scripts">Scripts that run on their own</string>
     <string name="merge_files_joined">%1$s files joined</string>
     <string name="merge_join_multiple_documents">Join multiple documents</string>
     <string name="merge_locked">Locked</string>

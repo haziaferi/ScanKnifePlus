@@ -10,87 +10,99 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** What [removeLinks] took out: link annotations, and document-level JavaScript actions and named scripts. */
+/**
+ * What [removeLinks] took out. [links]: link annotations, and actions that open a website, an app or another file on their own. [scripts]:
+ * the named scripts, and scripts that run on their own. An action that several triggers run counts once.
+ */
 internal data class LinkRemoval(val links: Int, val scripts: Int)
 
-private val JAVASCRIPT = COSName.getPDFName("JavaScript")
+/** The action types that open a website (URI), an app (Launch) or another file (GoToR): links, when a trigger runs them on its own. */
+private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR").map { COSName.getPDFName(it) }
+
+// The triggers that fire without the user acting: the catalog's document events, a page's open and close, and a widget's page triggers.
+private val DOCUMENT_TRIGGERS = listOf("WC", "WS", "DS", "WP", "DP").map { COSName.getPDFName(it) }
+private val PAGE_TRIGGERS = listOf("O", "C").map { COSName.getPDFName(it) }
+private val WIDGET_TRIGGERS = listOf("PO", "PC", "PV", "PI").map { COSName.getPDFName(it) }
+
+private fun COSDictionary.isScript() = getCOSName(COSName.S) == COSName.JAVA_SCRIPT
+private fun COSDictionary.isLink() = getCOSName(COSName.S) in LINK_ACTIONS
 
 /**
- * Removes every link annotation (whatever its action: URI, Launch, GoTo, GoToR, JavaScript or a plain destination) from every page, and
- * every document-level script: the named JavaScript tree, and JavaScript actions run when the file opens (OpenAction) or on the document
- * events of the catalog's /AA. Other annotations, including form fields, stay. A removed link loses its action too, as the structure tree
- * may still point at it. Blocking.
+ * Removes every link annotation (whatever its action) from every page, the named scripts, and the scripts (JavaScript actions) and links
+ * (URI, Launch and GoToR actions) of every trigger that fires on its own, those chained by /Next included: the OpenAction, the catalog's
+ * document events, page open and close, and a widget's page triggers. What a user fires stays (field keystroke, format, validate and
+ * calculate scripts, focus and mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action
+ * too, as the structure tree may still point at it. Blocking.
  */
 internal fun removeLinks(document: PDDocument): LinkRemoval {
+    val removed = identitySetOf<COSDictionary>()
+    fun clear(owner: COSDictionary, key: COSName) {
+        val action = owner.getDictionaryObject(key) ?: return
+        val kept = without(action, { it.isScript() || it.isLink() }, removed)
+        if (kept == null) owner.removeItem(key) else if (kept !== action) owner.setItem(key, kept)
+    }
+    fun clearTriggers(owner: COSDictionary, keys: List<COSName>) {
+        val triggers = owner.getDictionaryObject(COSName.AA) as? COSDictionary ?: return
+        for (key in keys) clear(triggers, key)
+        if (triggers.size() == 0) owner.removeItem(COSName.AA)
+    }
+
     var links = 0
     for (page in document.pages) {
+        clearTriggers(page.cosObject, PAGE_TRIGGERS)
         val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
         for (i in annots.size() - 1 downTo 0) {
             val annotation = annots.getObject(i) as? COSDictionary ?: continue
-            if (annotation.getNameAsString(COSName.SUBTYPE) != "Link") continue
-            annots.remove(i)
-            annotation.removeItem(COSName.A)
-            annotation.removeItem(COSName.DEST)
-            links++
+            when (annotation.getNameAsString(COSName.SUBTYPE)) {
+                "Link" -> {
+                    annots.remove(i)
+                    annotation.removeItem(COSName.A)
+                    annotation.removeItem(COSName.DEST)
+                    links++
+                }
+                "Widget" -> clearTriggers(annotation, WIDGET_TRIGGERS)
+            }
         }
     }
 
     var scripts = 0
     val catalog = document.documentCatalog.cosObject
     val names = catalog.getDictionaryObject(COSName.NAMES) as? COSDictionary
-    names?.getDictionaryObject(JAVASCRIPT)?.let {
+    names?.getDictionaryObject(COSName.JAVA_SCRIPT)?.let {
         scripts += nameTreeLeaves(it)
-        names.removeItem(JAVASCRIPT)
+        names.removeItem(COSName.JAVA_SCRIPT)
     }
-    catalog.getDictionaryObject(COSName.OPEN_ACTION)?.let { action ->
-        val (kept, removed) = withoutScripts(action)
-        scripts += removed
-        if (kept == null) catalog.removeItem(COSName.OPEN_ACTION) else if (removed > 0) catalog.setItem(COSName.OPEN_ACTION, kept)
-    }
-    (catalog.getDictionaryObject(COSName.AA) as? COSDictionary)?.let { triggers ->
-        for (key in triggers.keySet().toList()) {
-            val (kept, removed) = withoutScripts(triggers.getDictionaryObject(key))
-            scripts += removed
-            if (kept == null) triggers.removeItem(key) else if (removed > 0) triggers.setItem(key, kept)
-        }
-        if (triggers.size() == 0) catalog.removeItem(COSName.AA)
-    }
-    return LinkRemoval(links, scripts)
+    clear(catalog, COSName.OPEN_ACTION)
+    clearTriggers(catalog, DOCUMENT_TRIGGERS)
+    val (ran, opened) = removed.partition { it.isScript() }
+    return LinkRemoval(links + opened.size, scripts + ran.size)
 }
 
 /**
- * [action] (an action dictionary, or an array of them, or a destination) without its JavaScript actions, those chained by /Next
- * included, and how many were removed; the kept part is null when nothing is left.
+ * [action] (an action dictionary, a /Next array of them, or a destination) without the actions that [removes] picks, those chained by /Next
+ * included, which are added to [removed]; null when no action is left. The kept actions run in the same order, chained again as copies, so
+ * a bookmark or field that shares one keeps its own chain. An action met twice (a shared or looping /Next) is taken once.
  */
-private fun withoutScripts(action: COSBase?, seen: MutableSet<COSDictionary> = identitySetOf()): Pair<COSBase?, Int> = when (action) {
-    is COSDictionary -> {
-        if (!seen.add(action)) {
-            action to 0
-        } else {
-            val (next, removedNext) = withoutScripts(action.getDictionaryObject(COSName.NEXT), seen)
-            if (action.getCOSName(COSName.S) == JAVASCRIPT) {
-                next to removedNext + 1
-            } else {
-                if (removedNext > 0) {
-                    if (next == null) action.removeItem(COSName.NEXT) else action.setItem(COSName.NEXT, next)
-                }
-                action to removedNext
-            }
+private fun without(action: COSBase, removes: (COSDictionary) -> Boolean, removed: MutableSet<COSDictionary>): COSBase? {
+    // The chain in the order it runs: each action, then its /Next, depth first.
+    val chain = mutableListOf<COSDictionary>()
+    val seen = identitySetOf<COSDictionary>()
+    fun walk(node: COSBase?) {
+        if (node is COSArray) {
+            for (i in 0 until node.size()) walk(node.getObject(i))
+        } else if (node is COSDictionary && seen.add(node)) {
+            chain += node
+            walk(node.getDictionaryObject(COSName.NEXT))
         }
     }
-    is COSArray -> {
-        // An array is either a /Next list of actions or an explicit destination, which holds no dictionary with an /S of its own.
-        var removed = 0
-        for (i in action.size() - 1 downTo 0) {
-            val (kept, count) = withoutScripts(action.getObject(i), seen)
-            removed += count
-            if (count > 0) {
-                if (kept == null) action.remove(i) else action.set(i, kept)
-            }
-        }
-        (if (action.size() == 0) null else action) to removed
-    }
-    else -> action to 0
+    walk(action)
+    val (dropped, kept) = chain.partition(removes)
+    if (dropped.isEmpty()) return action
+    removed += dropped
+    val copies = kept.map { COSDictionary(it).apply { removeItem(COSName.NEXT) } }
+    val first = copies.firstOrNull() ?: return null
+    if (copies.size > 1) first.setItem(COSName.NEXT, COSArray().apply { addAll(copies.drop(1)) })
+    return first
 }
 
 /** How many name/value pairs the name tree [node] holds, through its /Kids. */
@@ -113,8 +125,8 @@ internal suspend fun countLinkRemoval(context: Context, input: Uri, password: St
 }
 
 /**
- * Writes [input], opened with [password], to [output] without links and document scripts as [removeLinks] does, as protected as the
- * source ([sameProtection]). Returns what was removed; throws on failure.
+ * Writes [input], opened with [password], to [output] without the links and scripts [removeLinks] takes out, as protected as the source
+ * ([sameProtection]). Returns what was removed; throws on failure.
  */
 internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
     context.contentResolver.requireInputStream(input).use { stream ->

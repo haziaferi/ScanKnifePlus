@@ -87,7 +87,7 @@ class LinksViewTest {
         waitFor(REMOVE)
 
         counted("links", TestPdfs.SCRIPTED_LINKS).assertExists()
-        counted("script that runs when the file opens", 1).assertExists()
+        counted("script that runs on its own", 1).assertExists()
         rule.onNodeWithText("Nothing changes until you save. Form fields, comments and bookmarks stay.").assertExists()
         rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
         assertNull(suggested)
@@ -106,7 +106,7 @@ class LinksViewTest {
 
         assertEquals(pdfBaseName(getUriDetails(context, input).name) + "-no-links.pdf", suggested)
         counted("Links", expected.links).assertExists()
-        counted("Scripts that run when the file opens", expected.scripts).assertExists()
+        counted("Scripts that run on their own", expected.scripts).assertExists()
         rule.onNodeWithText("2 pages").assertExists()
         PDDocument.load(output).use { assertEquals(LinkRemoval(0, 0), removeLinks(it)) }
         assertEquals("links", SessionManager.history.single().toolId)
