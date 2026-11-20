@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -120,7 +122,16 @@ fun LinksView(
         currentState = ToolState.SELECTING
     }
 
-    // Finds what saving can remove from [source] opened with [pass]; a wrong password asks for it again.
+    // A file that is damaged, or too large to parse, says it cannot be read.
+    fun unreadable(source: Uri, e: Throwable) {
+        Log.w("LinksView", "Cannot count the links of $source", e)
+        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+        fileToUnlock = null
+        reset()
+    }
+
+    // Finds what saving can remove from [source] opened with [pass], parsing it once: a file that needs a password asks for it (again after
+    // a wrong one), while one with only an owner password opens without it.
     suspend fun count(source: Uri, pass: String?) {
         try {
             val counts = findLinks(context, source, pass)
@@ -134,10 +145,9 @@ fun LinksView(
             unlockError = pass != null
             fileToUnlock = fileName
         } catch (e: Exception) {
-            Log.w("LinksView", "Cannot count the links of $source", e)
-            Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-            fileToUnlock = null
-            reset()
+            unreadable(source, e)
+        } catch (e: OutOfMemoryError) {
+            unreadable(source, e)
         }
     }
 
@@ -150,14 +160,7 @@ fun LinksView(
         unlockError = false
         isFileLoading = true
         scope.launch {
-            when (inspectPdf(context, uri)) {
-                PdfAccess.Unreadable -> {
-                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-                    reset()
-                }
-                PdfAccess.Encrypted -> if (given == null) fileToUnlock = fileName else count(uri, given)
-                PdfAccess.Open -> count(uri, null)
-            }
+            count(uri, given)
             isFileLoading = false
         }
     }
@@ -345,8 +348,8 @@ fun LinksView(
 
 /**
  * What saving will remove with [options], summed from what the file holds ([found]) before saving: the links (only those that leave the
- * file with [LinkOptions.keepInside]) and the scripts that run on their own, each a number over its name. With a range the heading names
- * the pages, and a line says that what runs on its own goes from the whole file. With nothing in the file, that there is nothing to
+ * file with [LinkOptions.keepInside]) and the scripts that run on their own, each a number over its name. With a range the heading says
+ * "these pages", and a line says that what runs on its own goes from the whole file. With nothing in the file, that there is nothing to
  * remove, so nothing is saved; with choices that remove nothing, the counts and that line.
  */
 @Composable
@@ -389,7 +392,10 @@ internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: M
     }
 }
 
-/** One count of [LinkCountsCard]: [count] large over its [label], read as one; both tiles of a row take the taller one's height. */
+/**
+ * One count of [LinkCountsCard]: [count] large over its [label], read as one, and read out when a choice changes it (the tile is the node
+ * whose text changes, so it is the live region); both tiles of a row take the taller one's height.
+ */
 @Composable
 private fun CountTile(count: Int, label: String, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
@@ -399,7 +405,7 @@ private fun CountTile(count: Int, label: String, modifier: Modifier) {
             .heightIn(min = 88.dp)
             .background(colors.surfaceVariant, RoundedCornerShape(14.dp))
             .padding(12.dp)
-            .semantics(mergeDescendants = true) {},
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text("$count", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 36.sp, color = colors.onSurface)

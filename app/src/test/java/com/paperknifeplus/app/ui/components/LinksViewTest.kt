@@ -1,7 +1,11 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
+import android.database.Cursor
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
@@ -9,9 +13,13 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -20,6 +28,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.core.app.ActivityOptionsCompat
@@ -36,6 +45,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -45,12 +55,15 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowToast
 
 /**
  * Links, Remove on its screen: the counts before saving, files with only a script or only links, a file with nothing to remove, a protected
- * file, Done's report rows, and the Pages and link-kind choices: what they count and save, the range's states, and a new file's start.
+ * file, Done's report rows, and the Pages and link-kind choices: what they count and save, the range's states and labels, and a new file's
+ * start; opening reads the file once and says when it cannot, the counts are read out when they change, and the choices scroll into reach.
  */
 @RunWith(RobolectricTestRunner::class)
 // A tall window, so the whole screen is laid out without scrolling and touches reach every part of it.
@@ -90,8 +103,10 @@ class LinksViewTest {
         }
     }
 
-    private fun show(bytes: ByteArray, name: String, password: String? = null): Uri {
-        val input = TestPdfs.write(context.cacheDir, bytes, name)
+    private fun show(bytes: ByteArray, name: String, password: String? = null): Uri =
+        showUri(TestPdfs.write(context.cacheDir, bytes, name), password)
+
+    private fun showUri(input: Uri, password: String? = null): Uri {
         rule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
                 LinksView(initialUri = input, initialPassword = password, onBack = {}, onOpenPreview = { _, _, _ -> })
@@ -104,6 +119,112 @@ class LinksViewTest {
 
     /** The node read as [label] with [count]: a count tile before saving, a report row on Done. */
     private fun counted(label: String, count: Int): SemanticsNodeInteraction = rule.onNode(hasText(label) and hasText("$count"))
+
+    /** Serves [file] at any URI of [AUTHORITY], counting the reads that open it (the page thumbnail's aside), or throws [failure] instead. */
+    class CountingProvider : ContentProvider() {
+        override fun onCreate() = true
+        override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+            failure?.let { throw it }
+            if (Throwable().stackTrace.none { it.className.contains("PdfPageFetcher") }) reads.incrementAndGet()
+            return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+        }
+        override fun getType(uri: Uri) = "application/pdf"
+        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? = null
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
+        override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+
+        companion object {
+            const val AUTHORITY = "com.paperknifeplus.app.test.counting"
+            val reads = AtomicInteger()
+            lateinit var file: File
+            var failure: Throwable? = null
+        }
+    }
+
+    /** [bytes] behind a [CountingProvider] URI, with its reads counted from zero, or opening it throwing [failure]. */
+    private fun counting(bytes: ByteArray, failure: Throwable? = null): Uri {
+        CountingProvider.file = File(context.cacheDir, "counted-source.pdf").apply { writeBytes(bytes) }
+        CountingProvider.failure = failure
+        CountingProvider.reads.set(0)
+        Robolectric.setupContentProvider(CountingProvider::class.java, CountingProvider.AUTHORITY)
+        return Uri.parse("content://${CountingProvider.AUTHORITY}/counted.pdf")
+    }
+
+    @Test
+    fun `opening a file reads it once`() {
+        showUri(counting(TestPdfs.linksAndScript()))
+        waitFor(REMOVE)
+        counted("links", TestPdfs.SCRIPTED_LINKS).assertExists()
+        assertEquals(1, CountingProvider.reads.get())
+    }
+
+    @Test
+    fun `a file with only an owner password opens without asking for one`() {
+        show(TestPdfs.ownerOnly(), "owner-only.pdf")
+        waitFor(NONE)
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a damaged file says it can't be read`() {
+        show(TestPdfs.garbage, "damaged.pdf")
+        rule.waitUntil(60_000) { ShadowToast.getTextOfLatestToast() == UNREADABLE }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a file too large to read says it can't be read`() {
+        showUri(counting(TestPdfs.linksAndScript(), failure = OutOfMemoryError("test")))
+        rule.waitUntil(60_000) { ShadowToast.getTextOfLatestToast() == UNREADABLE }
+        rule.onNodeWithText("Choose PDF").assertExists()
+    }
+
+    @Test
+    fun `TalkBack hears each count change`() {
+        show(TestPdfs.linksAndScript(), "spoken.pdf")
+        waitFor(REMOVE)
+        val polite = SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)
+        counted("links", TestPdfs.SCRIPTED_LINKS).assert(polite)
+        counted("script that runs on its own", 1).assert(polite)
+        rule.onNodeWithText("External links").performClick()
+        counted("external links", TestPdfs.SCRIPTED_LINKS).assert(polite)
+    }
+
+    @Test
+    fun `with links only, an untouched or wrong range names itself before Nothing to remove`() {
+        show(only(links = true), "links-only-range.pdf")
+        waitFor(REMOVE)
+        rule.onNodeWithText("Page range").performClick()
+        // No pages yet, and nothing runs on its own: still the range's own label.
+        counted("links", 0).assertExists()
+        rule.onNodeWithText(TYPE).assertIsNotEnabled()
+        rule.onNodeWithText(NOTHING).assertDoesNotExist()
+        rule.onNode(hasSetTextAction()).performTextInput("3")
+        rule.onNodeWithText(CHECK).assertIsNotEnabled()
+        rule.onNodeWithText(NOTHING).assertDoesNotExist()
+    }
+
+    @Test
+    // The usual phone height, so the choices sit below the fold and are scrolled to.
+    @Config(qualifiers = "w400dp-h640dp")
+    fun `at the usual height the choices scroll into reach, and a range is saved`() {
+        show(TestPdfs.linksAndScript(), "scrolled.pdf")
+        waitFor(REMOVE)
+        rule.onNodeWithText("Page range").performScrollTo().performClick()
+        rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("2")
+        rule.onNodeWithText("External links").performScrollTo().performClick()
+        rule.onNodeWithText(EXTERNAL_NOTE).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(REMOVE).assertIsDisplayed().performClick()
+        waitFor(DONE)
+
+        counted("Links", 1).assertExists()
+        PDDocument.load(output).use { doc ->
+            assertEquals(2, doc.getPage(0).annotations.size)
+            assertTrue(doc.getPage(1).annotations.isEmpty())
+        }
+    }
 
     @Test
     fun `the counts show before saving, and nothing is written until the button`() {
@@ -345,6 +466,8 @@ class LinksViewTest {
         const val WHOLE_FILE = "Scripts and actions that run on their own go from the whole file."
         const val EXTERNAL_NOTE = "Links to pages of this file stay, such as a table of contents."
         const val NONE_BODY = "There is nothing to remove, so nothing is saved."
+        const val NONE = "No links or scripts in this file"
+        const val UNREADABLE = "Can't read this PDF."
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }
