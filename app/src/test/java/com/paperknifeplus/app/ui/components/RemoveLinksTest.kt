@@ -449,10 +449,14 @@ class RemoveLinksTest {
     }
 
     @Test
-    fun `no default author is added`() {
+    fun `the copy gets the default author, like the other edit tools`() {
         PreferencesManager.setDefaultAuthor(context, "Default Person")
-        val (_, output) = run()
-        PDDocument.load(output).use { assertNull(it.documentInformation.author) }
+        try {
+            val (_, output) = run()
+            PDDocument.load(output).use { assertEquals("Default Person", it.documentInformation.author) }
+        } finally {
+            PreferencesManager.setDefaultAuthor(context, "")
+        }
     }
 
     @Test

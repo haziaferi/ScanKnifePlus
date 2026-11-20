@@ -223,16 +223,9 @@ internal suspend fun findLinks(context: Context, input: Uri, password: String?):
 
 /**
  * Writes [input], opened with [password], to [output] without the links and scripts [removeLinks] takes out with [options], as protected as
- * the source ([sameProtection]). Returns what was removed; throws on failure.
+ * the source ([editKeepingProtection]). Returns what was removed; throws on failure.
  */
 internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?, options: LinkOptions): LinkRemoval =
     withContext(Dispatchers.IO) {
-        withPdf(context, input, password) { document ->
-            val protection = document.sameProtection(password.orEmpty())
-            val removal = removeLinks(document, options).removal(options)
-            protection?.let(document::protect)
-            // Like Metadata, this tool only takes things out, so it adds no default author.
-            saveAndFlush(context, document, output, applyDefaults = false)
-            removal
-        }
+        editKeepingProtection(context, input, password.orEmpty(), output) { removeLinks(it, options).removal(options) }
     }
