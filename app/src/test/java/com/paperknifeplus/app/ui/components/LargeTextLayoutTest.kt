@@ -140,7 +140,7 @@ class LargeTextLayoutTest {
                 LinkCountsCard(LinkRemoval(links = 14, scripts = 1))
             }
         }
-        val shown = listOf(PASSWORD_LINE, "Found in this file", "14", "links", "1", "script that runs when the file opens",
+        val shown = listOf(PASSWORD_LINE, "Found in this file", "14", "links", "1", "script that runs on its own",
             "Nothing changes until you save. Form fields, comments and bookmarks stay.")
         for (text in shown) assertNotClipped(text)
         assertEquals("the counts sit side by side", text("14").top, text("1").top, 0.5f)
@@ -165,13 +165,13 @@ class LargeTextLayoutTest {
                 onProcessMore = {},
                 onOpen = {},
                 keepsPassword = true,
-                report = listOf("Links" to 14, "Scripts that run when the file opens" to 1)
+                report = listOf("Links" to 14, "Scripts that run on their own" to 1)
             )
         }
         val shown = listOf("Link removal complete", "Insurance letters-no-links.pdf", "12 pages", PASSWORD_LINE, "What was removed", "Links", "14",
-            "Scripts that run when the file opens", "1")
+            "Scripts that run on their own", "1")
         for (text in shown) assertNotClipped(text)
-        assertTrue("a count is beside its label", text("1").left >= text("Scripts that run when the file opens").right)
+        assertTrue("a count is beside its label", text("1").left >= text("Scripts that run on their own").right)
     }
 
     @Test

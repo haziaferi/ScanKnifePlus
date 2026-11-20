@@ -9,6 +9,7 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -22,8 +23,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -36,7 +39,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Links, Remove on its screen: the counts before saving, a file with nothing to remove, a protected file, and Done's report rows. */
+/**
+ * Links, Remove on its screen: the counts before saving, files with only a script or only links, a file with nothing to remove, a protected
+ * file, and Done's report rows.
+ */
 @RunWith(RobolectricTestRunner::class)
 class LinksViewTest {
     @get:Rule(order = 0)
@@ -87,12 +93,38 @@ class LinksViewTest {
         waitFor(REMOVE)
 
         counted("links", TestPdfs.SCRIPTED_LINKS).assertExists()
-        counted("script that runs when the file opens", 1).assertExists()
+        counted("script that runs on its own", 1).assertExists()
         rule.onNodeWithText("Nothing changes until you save. Form fields, comments and bookmarks stay.").assertExists()
         rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
         assertNull(suggested)
         assertFalse(output.exists())
         assertTrue(SessionManager.history.isEmpty())
+    }
+
+    /** [TestPdfs.linksAndScript] with only its links, or only its script. */
+    private fun only(links: Boolean): ByteArray = PDDocument.load(TestPdfs.linksAndScript()).use { doc ->
+        if (links) doc.documentCatalog.cosObject.removeItem(COSName.OPEN_ACTION) else doc.pages.forEach { it.annotations = emptyList() }
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    @Test
+    fun `a file with only a script shows its counts and can be saved`() {
+        show(only(links = false), "script-only.pdf")
+        waitFor(FOUND)
+
+        counted("links", 0).assertExists()
+        counted("script that runs on its own", 1).assertExists()
+        rule.onNodeWithText(REMOVE).assertIsEnabled()
+    }
+
+    @Test
+    fun `a file with only links shows its counts and can be saved`() {
+        show(only(links = true), "links-only.pdf")
+        waitFor(FOUND)
+
+        counted("links", TestPdfs.SCRIPTED_LINKS).assertExists()
+        counted("scripts that run on their own", 0).assertExists()
+        rule.onNodeWithText(REMOVE).assertIsEnabled()
     }
 
     @Test
@@ -106,7 +138,7 @@ class LinksViewTest {
 
         assertEquals(pdfBaseName(getUriDetails(context, input).name) + "-no-links.pdf", suggested)
         counted("Links", expected.links).assertExists()
-        counted("Scripts that run when the file opens", expected.scripts).assertExists()
+        counted("Scripts that run on their own", expected.scripts).assertExists()
         rule.onNodeWithText("2 pages").assertExists()
         PDDocument.load(output).use { assertEquals(LinkRemoval(0, 0), removeLinks(it)) }
         assertEquals("links", SessionManager.history.single().toolId)
@@ -153,6 +185,7 @@ class LinksViewTest {
 
     private companion object {
         const val REMOVE = "Remove links and save PDF"
+        const val FOUND = "Found in this file"
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }

@@ -596,7 +596,7 @@
     <string name="img2pdf_position">Posizione: %1$s</string>
     <string name="img2pdf_reorder_assets">Riordina le immagini</string>
     <string name="links_remove_title">Rimuovi i link da un PDF</string>
-    <string name="links_remove_task">Spariscono tutti i link, e anche gli script che si avviano all\'apertura del file</string>
+    <string name="links_remove_task">Spariscono tutti i link e gli script che si avviano da soli</string>
     <string name="links_found">Trovati in questo file</string>
     <plurals name="links_count_links">
         <item quantity="one">link</item>
@@ -604,9 +604,9 @@
         <item quantity="other">link</item>
     </plurals>
     <plurals name="links_count_scripts">
-        <item quantity="one">script che si avvia all\'apertura del file</item>
-        <item quantity="many">script che si avviano all\'apertura del file</item>
-        <item quantity="other">script che si avviano all\'apertura del file</item>
+        <item quantity="one">script che si avvia da solo</item>
+        <item quantity="many">script che si avviano da soli</item>
+        <item quantity="other">script che si avviano da soli</item>
     </plurals>
     <string name="links_nothing_changes">Non cambia niente finché non salvi.</string>
     <string name="links_what_stays">I campi dei moduli, i commenti e i segnalibri restano al loro posto.</string>
@@ -618,7 +618,7 @@
     <string name="links_removed">Link rimossi</string>
     <string name="links_done">Rimozione dei link completata</string>
     <string name="links_report_links">Link</string>
-    <string name="links_report_scripts">Script che si avviano all\'apertura del file</string>
+    <string name="links_report_scripts">Script che si avviano da soli</string>
     <string name="merge_files_joined">%1$s file uniti</string>
     <string name="merge_join_multiple_documents">Unisci più documenti</string>
     <string name="merge_locked">Protetto</string>

@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Links, Remove: every link and every script that runs when the file opens go. The counts come first: once a file is chosen (and
+ * Links, Remove: every link goes, and every script that runs on its own ([removeLinks]). The counts come first: once a file is chosen (and
  * unlocked), [countLinkRemoval] runs on it in memory, so the card right above the button says what saving will take out, or that there is
  * nothing to remove and so nothing to save. The saved copy keeps the source's password.
  */
@@ -200,7 +200,7 @@ fun LinksView(
                         val source = sourceUri
                         val counts = found
                         if (source != null && counts != null) {
-                            val none = counts.links == 0 && counts.scripts == 0
+                            val none = counts.isEmpty
                             ToolConfigLayout(
                                 action = stringResource(if (none) R.string.links_nothing_to_remove else R.string.links_remove_and_save),
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-no-links", "pdf")) },
@@ -273,8 +273,8 @@ fun LinksView(
 }
 
 /**
- * What saving will remove, counted before it and shown right above the button: the links and the scripts that run when the file opens,
- * each a number over its name; with neither, that there is nothing to remove, so nothing is saved.
+ * What saving will remove, counted before it and shown right above the button: the links and the scripts that run on their own, each a
+ * number over its name; with neither, that there is nothing to remove, so nothing is saved.
  */
 @Composable
 internal fun LinkCountsCard(found: LinkRemoval, modifier: Modifier = Modifier) {
@@ -282,7 +282,7 @@ internal fun LinkCountsCard(found: LinkRemoval, modifier: Modifier = Modifier) {
     ToolCard(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ToolSectionLabel(stringResource(R.string.links_found))
-            if (found.links == 0 && found.scripts == 0) {
+            if (found.isEmpty) {
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
