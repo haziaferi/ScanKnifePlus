@@ -1,13 +1,17 @@
 package com.paperknifeplus.app.ui.components
 
 import android.net.Uri
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -20,6 +24,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -28,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.Typography
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -179,7 +185,60 @@ class LargeTextLayoutTest {
         for (shown in listOf("ORIGINAL (A)", "a-long-contract-name-2026.pdf", "REVISED (B)", "Select file")) assertNotClipped(shown)
     }
 
+    @Test
+    fun `the segmented control stacks into full-width rows of one height, never wrapping a row`() {
+        // In the app's font, as the segments measure their labels in the font they are drawn in, and as wide as on a 320 dp phone.
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                Column(Modifier.width(288.dp)) { SegmentedChoice(listOf("All pages", "Page range"), 1, onSelect = {}) }
+            }
+        }
+        for (label in listOf("All pages", "Page range")) assertNotClipped(label)
+        val all = rule.onNode(hasText("All pages")).bounds()
+        val range = rule.onNode(hasText("Page range")).bounds()
+        assertTrue("the segments stack", range.top >= all.bottom)
+        assertEquals("each row is full width", all.width, range.width, 0.5f)
+        assertEquals("every row is one height", all.height, range.height, 0.5f)
+        val width = with(rule.density) { 288.dp.toPx() }
+        assertEquals(width, all.width, 1f)
+        assertTrue("a row is one line, at least 48 dp", all.height >= with(rule.density) { 48.dp.toPx() } && layoutOf("All pages").lineCount == 1)
+    }
+
+    @Test
+    fun `the tip card grows with its text beside its close button`() {
+        atDoubleText {
+            ToolTipCard(TIP, onClose = {}, link = { Text("Go to the other tool") })
+        }
+        assertNotClipped(TIP)
+        assertNotClipped("Go to the other tool")
+        val close = rule.onNodeWithContentDescription("Close the tip").bounds()
+        assertTrue("the close button is 48 dp", close.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
+        assertTrue("the text runs beside the close button", text(TIP).right <= close.left)
+    }
+
+    @Test
+    fun `the page grid keeps five a row and nothing sideways at twice the text size`() {
+        val width = 358.dp
+        atDoubleText {
+            Column(Modifier.width(width)) {
+                PageGrid(16, isSelected = { it == 0 }, tapLabel = { "Show page ${it + 1}" }, onTap = {}, onRead = {}) {
+                    Box(Modifier.size(48.dp, 64.dp))
+                }
+            }
+        }
+        assertNotClipped("Show all 16 pages")
+        val first = rule.onNodeWithContentDescription("Show page 1").bounds()
+        val fifth = rule.onNodeWithContentDescription("Show page 5").bounds()
+        val sixth = rule.onNodeWithContentDescription("Show page 6").bounds()
+        assertEquals("five pages a row", first.top, fifth.top, 0.5f)
+        assertTrue("the sixth starts the next row", sixth.top >= first.bottom)
+        assertTrue("nothing sideways", fifth.right <= with(rule.density) { width.toPx() } + 0.5f)
+        // The tile holds the page and its number at twice the size: 10 + 64 + 6 + 32 (16 sp line, doubled) + 4 dp.
+        assertTrue("the number fits under the page", first.height >= with(rule.density) { 116.dp.toPx() } - 0.5f)
+    }
+
     private companion object {
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
+        const val TIP = "Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact."
     }
 }

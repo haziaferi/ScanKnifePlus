@@ -426,19 +426,18 @@ private fun PDDocument.recoverUserPassword(ownerPassword: String): String? = try
 }
 
 /**
- * Opens [input] with [password], lets [edit] change it in place and writes it to [output] as protected as it was ([sameProtection]). Tools
- * pass the file as picked, never its decrypted cache copy, so the encryption can be read. Blocking; throws on failure.
+ * Opens [input] with [password] through temp files ([withPdf]), lets [edit] change it in place and writes it to [output] as protected as it
+ * was ([sameProtection]); returns what [edit] returns. Tools pass the file as picked, never its decrypted cache copy, so the encryption can
+ * be read. Blocking; throws on failure.
  */
-private fun editKeepingProtection(context: Context, input: Uri, password: String, output: Uri, edit: (PDDocument) -> Unit) {
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password).use { document ->
-            val protection = document.sameProtection(password)
-            edit(document)
-            protection?.let(document::protect)
-            saveAndFlush(context, document, output)
-        }
+internal fun <T> editKeepingProtection(context: Context, input: Uri, password: String, output: Uri, edit: (PDDocument) -> T): T =
+    withPdf(context, input, password) { document ->
+        val protection = document.sameProtection(password)
+        val result = edit(document)
+        protection?.let(document::protect)
+        saveAndFlush(context, document, output)
+        result
     }
-}
 
 /** Writes [input] without the pages at [indices] to [output], in place as [keepPages] does and as protected as it was. Throws on failure. */
 suspend fun deletePages(context: Context, input: Uri, output: Uri, password: String, indices: Set<Int>) = withContext(Dispatchers.IO) {

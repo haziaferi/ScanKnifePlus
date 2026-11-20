@@ -4,7 +4,6 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,12 +22,12 @@ class PageCropTest {
     @Test
     fun `an unrotated page is cut from its displayed top-left, offset by the crop box`() {
         // Left 10% and top 25% off: x from 100 + 60, y from the top edge 850 down by 200.
-        assertBox(listOf(160f, 50f, 700f, 650f), cropRectangle(box(0), CropArea.Fractions(0.1f, 0.25f, 1f, 1f)))
+        assertBox(listOf(160f, 50f, 700f, 650f), cropRectangle(box(0), CropArea(0.1f, 0.25f, 1f, 1f)))
     }
 
     @Test
     fun `a rotated page is cut where it is displayed`() {
-        val area = CropArea.Fractions(0.1f, 0.25f, 1f, 1f)
+        val area = CropArea(0.1f, 0.25f, 1f, 1f)
         // Rotated 90: displayed 800 wide and 600 high; the displayed left is the user-space bottom, the displayed top the user-space left.
         assertBox(listOf(250f, 130f, 700f, 850f), cropRectangle(box(90), area))
         // Rotated 180: the displayed left is the user-space right, the displayed top the user-space bottom.
@@ -37,22 +36,16 @@ class PageCropTest {
         assertBox(listOf(100f, 50f, 550f, 770f), cropRectangle(box(270), area))
     }
 
-    @Test
-    fun `a points area is cut to the page and a missed page is left alone`() {
-        assertBox(listOf(100f, 50f, 700f, 830f), cropRectangle(box(0), CropArea.Points(-5f, 20f, 9000f, 9000f)))
-        assertNull(cropRectangle(box(0), CropArea.Points(700f, 0f, 800f, 100f)))
-    }
-
     @Test(expected = IllegalArgumentException::class)
-    fun `an empty fractions area is refused`() {
-        CropArea.Fractions(0.5f, 0f, 0.5f, 1f)
+    fun `an empty area is refused`() {
+        CropArea(0.5f, 0f, 0.5f, 1f)
     }
 
     @Test
     fun `cropPages sets the crop box of the chosen pages only and keeps the media box`() {
         val bytes = PDDocument().use { doc ->
             repeat(3) { i -> doc.addPage(PDPage(PDRectangle(0f, 0f, 600f, 800f)).apply { rotation = if (i == 1) 90 else 0 }) }
-            assertEquals(2, cropPages(doc, CropArea.Fractions(0f, 0f, 0.5f, 0.5f), listOf(1, 2, 7, -1)))
+            assertEquals(2, cropPages(doc, CropArea(0f, 0f, 0.5f, 0.5f), listOf(1, 2, 7, -1)))
             ByteArrayOutputStream().also(doc::save).toByteArray()
         }
         PDDocument.load(bytes).use { doc ->
@@ -68,8 +61,8 @@ class PageCropTest {
     fun `cropping twice cuts inside the first crop`() {
         PDDocument().use { doc ->
             doc.addPage(PDPage(PDRectangle(0f, 0f, 600f, 800f)))
-            cropPages(doc, CropArea.Fractions(0.5f, 0.5f, 1f, 1f))
-            cropPages(doc, CropArea.Fractions(0.5f, 0.5f, 1f, 1f))
+            cropPages(doc, CropArea(0.5f, 0.5f, 1f, 1f))
+            cropPages(doc, CropArea(0.5f, 0.5f, 1f, 1f))
             assertBox(listOf(450f, 0f, 600f, 200f), doc.getPage(0).cropBox)
         }
     }

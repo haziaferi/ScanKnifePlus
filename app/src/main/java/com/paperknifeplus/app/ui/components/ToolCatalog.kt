@@ -10,6 +10,7 @@ import androidx.compose.material.icons.outlined.BurstMode
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.Compare
 import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.FindInPage
@@ -65,6 +66,9 @@ object ToolCatalog {
         },
         Tool("links", R.string.tool_links, R.string.tool_links_desc, Icons.Outlined.Link, EDIT) {
             LinksView(initialUri = it.initialUri, initialPassword = it.initialPassword, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
+        },
+        Tool("crop", R.string.tool_crop, R.string.tool_crop_desc, Icons.Outlined.Crop, EDIT) {
+            CropView(initialUri = it.initialUri, initialPassword = it.initialPassword, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
         },
         Tool("compress", R.string.tool_compress, R.string.tool_compress_desc, Icons.Outlined.Bolt, OPTIMIZE) {
             CompressView(initialUri = it.initialUri, initialPassword = it.initialPassword, onBack = it.onBack, onOpenPreview = it.onOpenPreview)
