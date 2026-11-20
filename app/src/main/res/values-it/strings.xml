@@ -599,22 +599,34 @@
     <string name="links_remove_title">Rimuovi i link da un PDF</string>
     <string name="links_remove_task">Spariscono tutti i link e gli script che si avviano da soli</string>
     <string name="links_found">Trovati in questo file</string>
+    <string name="links_found_on_pages">Trovati in queste pagine</string>
     <plurals name="links_count_links">
         <item quantity="one">link</item>
         <item quantity="many">link</item>
         <item quantity="other">link</item>
+    </plurals>
+    <plurals name="links_count_external">
+        <item quantity="one">link esterno</item>
+        <item quantity="many">link esterni</item>
+        <item quantity="other">link esterni</item>
     </plurals>
     <plurals name="links_count_scripts">
         <item quantity="one">script che si avvia da solo</item>
         <item quantity="many">script che si avviano da soli</item>
         <item quantity="other">script che si avviano da soli</item>
     </plurals>
+    <string name="links_whole_file">Gli script e le azioni che si avviano da soli spariscono da tutto il file.</string>
     <string name="links_nothing_changes">Non cambia niente finché non salvi.</string>
     <string name="links_what_stays">I campi dei moduli, i commenti e i segnalibri restano al loro posto.</string>
     <string name="links_none">Nessun link o script in questo file</string>
     <string name="links_none_body">Non c\'è niente da rimuovere, quindi non viene salvato nulla.</string>
+    <string name="links_which">Link da rimuovere</string>
+    <string name="links_all">Tutti i link</string>
+    <string name="links_external">Link esterni</string>
+    <string name="links_external_note">I link alle pagine di questo file restano, come quelli di un indice.</string>
     <string name="links_remove_and_save">Rimuovi i link e salva il PDF</string>
     <string name="links_nothing_to_remove">Niente da rimuovere</string>
+    <string name="links_type_pages">Scrivi le pagine da cui rimuovere i link</string>
     <string name="links_removing">Rimozione dei link…</string>
     <string name="links_removed">Link rimossi</string>
     <string name="links_done">Rimozione dei link completata</string>

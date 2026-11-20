@@ -5,12 +5,14 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +31,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,9 +52,22 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Links, Remove: every link goes, and every script that runs on its own ([removeLinks]). The counts come first: once a file is chosen (and
- * unlocked), [countLinkRemoval] runs on it in memory, so the card right above the button says what saving will take out, or that there is
- * nothing to remove and so nothing to save. The saved copy keeps the source's password.
+ * What keeps Remove links from saving, as its disabled button names it; null when it can save. A range error the field shows comes first,
+ * then a range not typed yet (until [rangeEdited] its field shows the helper, not an error), then choices that would [remove] nothing.
+ */
+@StringRes
+internal fun linksBlocker(useRange: Boolean, range: RangeList, rangeEdited: Boolean, remove: LinkRemoval): Int? = when {
+    useRange && rangeEdited && range !is RangeList.Valid -> R.string.range_check
+    useRange && range !is RangeList.Valid -> R.string.links_type_pages
+    remove.isEmpty -> R.string.links_nothing_to_remove
+    else -> null
+}
+
+/**
+ * Links, Remove: the links on every page or on a range go, all of them or only those that leave the file, and every script and action that
+ * runs on its own goes from the whole file ([removeLinks]). The counts come first: once a file is chosen (and unlocked), [findLinks] reads it
+ * once, and each choice sums what it found per page and kind, so the card says what saving will take out, or that there is nothing to
+ * remove and so nothing to save. The saved copy keeps the source's password.
  */
 @Composable
 fun LinksView(
@@ -73,8 +87,12 @@ fun LinksView(
     var password by remember { mutableStateOf<String?>(null) }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
-    var pageCount by remember { mutableIntStateOf(0) }
-    var found by remember { mutableStateOf<LinkRemoval?>(null) }
+    var found by remember { mutableStateOf<FoundLinks?>(null) }
+    var useRange by remember { mutableStateOf(false) }
+    var rangeText by remember { mutableStateOf("") }
+    // "No pages given." waits for the first edit, so choosing Page range shows the helper rather than an error.
+    var rangeEdited by remember { mutableStateOf(false) }
+    var keepInside by remember { mutableStateOf(false) }
     var removed by remember { mutableStateOf<LinkRemoval?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -83,21 +101,29 @@ fun LinksView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var outputName by remember { mutableStateOf("") }
     val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val pageCount = found?.pageCount ?: 0
+    val range = PageRanges.parseList(rangeText, pageCount)
+    // A range not typed or with an error takes no page's links yet.
+    val pages = if (!useRange) null else (range as? RangeList.Valid)?.ranges?.flatten()?.toSet() ?: emptySet()
+    val options = LinkOptions(pages, keepInside)
 
     fun reset() {
         sourceUri = null
         password = null
         found = null
+        useRange = false
+        rangeText = ""
+        rangeEdited = false
+        keepInside = false
         removed = null
         outputUri = null
         currentState = ToolState.SELECTING
     }
 
-    // Counts what saving will remove from [source] opened with [pass]; a wrong password asks for it again.
+    // Finds what saving can remove from [source] opened with [pass]; a wrong password asks for it again.
     suspend fun count(source: Uri, pass: String?) {
         try {
-            val counts = countLinkRemoval(context, source, pass)
-            pageCount = getPageCount(context, source, pass)
+            val counts = findLinks(context, source, pass)
             password = pass
             found = counts
             fileToUnlock = null
@@ -148,11 +174,12 @@ fun LinksView(
         val source = sourceUri
         if (uri == null || source == null) return@rememberLauncherForActivityResult
         val pass = password
+        val chosen = options
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                val removal = removeLinksPdf(context, source, uri, pass)
+                val removal = removeLinksPdf(context, source, uri, pass, chosen)
                 val timeStr = formatElapsed(startTime)
                 val name = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -200,11 +227,12 @@ fun LinksView(
                         val source = sourceUri
                         val counts = found
                         if (source != null && counts != null) {
-                            val none = counts.isEmpty
+                            val error = if (useRange && rangeEdited) rangeError(range) else null
+                            val blocker = linksBlocker(useRange, range, rangeEdited, counts.removal(options))
                             ToolConfigLayout(
-                                action = stringResource(if (none) R.string.links_nothing_to_remove else R.string.links_remove_and_save),
+                                action = stringResource(blocker ?: R.string.links_remove_and_save),
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-no-links", "pdf")) },
-                                actionEnabled = !none
+                                actionEnabled = blocker == null
                             ) {
                                 ToolFileCard(
                                     uri = source,
@@ -213,10 +241,53 @@ fun LinksView(
                                     details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                     onChange = { reset() },
                                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                    // With nothing to remove nothing is saved, so no copy keeps the password.
-                                    keepsPassword = password != null && !none
+                                    // With nothing in the file to remove nothing is saved, so no copy keeps the password.
+                                    keepsPassword = password != null && !counts.isEmpty
                                 )
-                                LinkCountsCard(counts, Modifier.padding(16.dp))
+                                LinkCountsCard(counts, options, Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp))
+                                // A file with nothing to remove has nothing to choose either.
+                                if (!counts.isEmpty) {
+                                    ToolSectionLabel(
+                                        stringResource(R.string.pages_label),
+                                        Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)
+                                    )
+                                    SegmentedChoice(
+                                        options = listOf(stringResource(R.string.pages_all), stringResource(R.string.pages_range)),
+                                        selected = if (useRange) 1 else 0,
+                                        onSelect = { useRange = it == 1 },
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                    if (useRange) {
+                                        PageRangeField(
+                                            value = rangeText,
+                                            onValueChange = {
+                                                rangeText = it
+                                                rangeEdited = true
+                                            },
+                                            error = error,
+                                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                        )
+                                    }
+                                    ToolSectionLabel(
+                                        stringResource(R.string.links_which),
+                                        Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)
+                                    )
+                                    SegmentedChoice(
+                                        options = listOf(stringResource(R.string.links_all), stringResource(R.string.links_external)),
+                                        selected = if (keepInside) 1 else 0,
+                                        onSelect = { keepInside = it == 1 },
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                    if (keepInside) {
+                                        Text(
+                                            stringResource(R.string.links_external_note),
+                                            fontSize = 13.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(16.dp))
                             }
                         }
                     }
@@ -273,15 +344,18 @@ fun LinksView(
 }
 
 /**
- * What saving will remove, counted before it and shown right above the button: the links and the scripts that run on their own, each a
- * number over its name; with neither, that there is nothing to remove, so nothing is saved.
+ * What saving will remove with [options], summed from what the file holds ([found]) before saving: the links (only those that leave the
+ * file with [LinkOptions.keepInside]) and the scripts that run on their own, each a number over its name. With a range the heading names
+ * the pages, and a line says that what runs on its own goes from the whole file. With nothing in the file, that there is nothing to
+ * remove, so nothing is saved; with choices that remove nothing, the counts and that line.
  */
 @Composable
-internal fun LinkCountsCard(found: LinkRemoval, modifier: Modifier = Modifier) {
+internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
+    val removal = found.removal(options)
     ToolCard(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ToolSectionLabel(stringResource(R.string.links_found))
+            ToolSectionLabel(stringResource(if (options.pages == null) R.string.links_found else R.string.links_found_on_pages))
             if (found.isEmpty) {
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(12.dp),
@@ -293,12 +367,20 @@ internal fun LinkCountsCard(found: LinkRemoval, modifier: Modifier = Modifier) {
                 }
                 Text(stringResource(R.string.links_none_body), fontSize = 14.sp, color = colors.onSurfaceVariant)
             } else {
+                val links = if (options.keepInside) R.plurals.links_count_external else R.plurals.links_count_links
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CountTile(found.links, pluralStringResource(R.plurals.links_count_links, found.links), Modifier.weight(1f))
-                    CountTile(found.scripts, pluralStringResource(R.plurals.links_count_scripts, found.scripts), Modifier.weight(1f))
+                    CountTile(removal.links, pluralStringResource(links, removal.links), Modifier.weight(1f))
+                    CountTile(removal.scripts, pluralStringResource(R.plurals.links_count_scripts, removal.scripts), Modifier.weight(1f))
+                }
+                if (options.pages != null) {
+                    Text(stringResource(R.string.links_whole_file), fontSize = 14.sp, color = colors.onSurfaceVariant)
                 }
                 Text(
-                    stringResource(R.string.links_nothing_changes) + " " + stringResource(R.string.links_what_stays),
+                    if (removal.isEmpty) {
+                        stringResource(R.string.links_none_body)
+                    } else {
+                        stringResource(R.string.links_nothing_changes) + " " + stringResource(R.string.links_what_stays)
+                    },
                     fontSize = 14.sp,
                     color = colors.onSurfaceVariant
                 )

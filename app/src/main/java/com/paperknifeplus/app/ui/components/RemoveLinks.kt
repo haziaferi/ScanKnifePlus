@@ -23,11 +23,43 @@ internal data class LinkRemoval(val links: Int, val scripts: Int) {
 }
 
 /**
+ * Which link annotations [removeLinks] takes out: those on [pages] (0-based indices; every page when null), and with [keepInside] only those
+ * that leave the file ([leavesFile]). What runs on its own goes from the whole file whatever these say.
+ */
+internal data class LinkOptions(val pages: Set<Int>? = null, val keepInside: Boolean = false) {
+    /** Whether a link annotation on page [index] goes; [leaves] says whether it leaves the file. */
+    fun takes(index: Int, leaves: Boolean): Boolean = (pages == null || index in pages) && (leaves || !keepInside)
+}
+
+/**
+ * What [removeLinks] found in a file, whatever its options: on each page, the link annotations that stay inside the file ([inside]) and
+ * those that leave it ([leaving]), and what runs on its own ([automatic]), which goes from the whole file. A screen counts once and sums
+ * this for each choice ([removal]).
+ */
+internal data class FoundLinks(val inside: List<Int>, val leaving: List<Int>, val automatic: LinkRemoval) {
+    val pageCount: Int get() = inside.size
+
+    /** Nothing to remove whatever the options. */
+    val isEmpty: Boolean get() = removal(LinkOptions()).isEmpty
+
+    /** What [removeLinks] with [options] takes out. */
+    fun removal(options: LinkOptions): LinkRemoval {
+        val links = inside.indices.sumOf { page ->
+            (if (options.takes(page, leaves = false)) inside[page] else 0) + (if (options.takes(page, leaves = true)) leaving[page] else 0)
+        }
+        return automatic.copy(links = automatic.links + links)
+    }
+}
+
+/**
  * The action types that open a website (URI), an app (Launch) or another file (GoToR), or send form data to a web address (SubmitForm):
  * links, when a trigger runs them on its own.
  */
 private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR", "SubmitForm").map { COSName.getPDFName(it) }
 private val RENDITION = COSName.getPDFName("Rendition")
+
+/** The only action types a link may run and stay inside the file: go to a place in it (GoTo), or a viewer command such as NextPage (Named). */
+private val INSIDE_ACTIONS = listOf("GoTo", "Named").map { COSName.getPDFName(it) }
 
 // The triggers that fire without the user acting: the catalog's document events, a page's open and close, and an annotation's page triggers.
 private val DOCUMENT_TRIGGERS = listOf("WC", "WS", "DS", "WP", "DP").map { COSName.getPDFName(it) }
@@ -56,13 +88,26 @@ private fun cleared(action: COSDictionary): Pair<COSDictionary?, Taken?> {
 }
 
 /**
- * Removes every link annotation (whatever its action) from every page, the named scripts, and the scripts and links of every trigger that
- * fires on its own, those chained by /Next included, as [cleared] decides: the OpenAction, the catalog's document events, page open and
- * close, and every annotation's page triggers. What a user fires stays (field keystroke, format, validate and calculate scripts, focus and
- * mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action too, as the structure tree may
- * still point at it. Blocking.
+ * Whether the link annotation [link] leaves the file: an action the user fires on it (its /A, or a mouse or focus trigger of its /AA), or one
+ * chained after it by /Next, is not one of [INSIDE_ACTIONS], an unknown one included. A plain destination (/Dest), or no action, stays inside.
  */
-internal fun removeLinks(document: PDDocument): LinkRemoval {
+private fun leavesFile(link: COSDictionary): Boolean {
+    val triggers = (link.getDictionaryObject(COSName.AA) as? COSDictionary)?.let { aa ->
+        aa.keySet().filter { it !in ANNOTATION_TRIGGERS }.mapNotNull { aa.getDictionaryObject(it) }
+    }
+    val fired = listOfNotNull(link.getDictionaryObject(COSName.A)) + triggers.orEmpty()
+    return fired.any { action -> chainOf(action).any { it.getCOSName(COSName.S) !in INSIDE_ACTIONS } }
+}
+
+/**
+ * Removes the link annotations [options] choose, the named scripts, and the scripts and links of every trigger that fires on its own, those
+ * chained by /Next included, as [cleared] decides: the OpenAction, the catalog's document events, page open and close, and every
+ * annotation's page triggers, on every page whatever [options] say. What a user fires stays (field keystroke, format, validate and calculate
+ * scripts, focus and mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action too, as the
+ * structure tree may still point at it. Returns what it found, every page and kind, so its [FoundLinks.removal] of [options] is what it
+ * took out. Blocking.
+ */
+internal fun removeLinks(document: PDDocument, options: LinkOptions = LinkOptions()): FoundLinks {
     val taken = IdentityHashMap<COSDictionary, Taken>()
     fun clear(owner: COSDictionary, key: COSName) {
         val action = owner.getDictionaryObject(key) ?: return
@@ -75,22 +120,34 @@ internal fun removeLinks(document: PDDocument): LinkRemoval {
         if (triggers.size() == 0) owner.removeItem(COSName.AA)
     }
 
-    var links = 0
-    for (page in document.pages) {
+    val inside = mutableListOf<Int>()
+    val leaving = mutableListOf<Int>()
+    // A link's action is dropped only after every page is read, so a link shared by a page outside the range is read and kept whole.
+    val removed = identitySetOf<COSDictionary>()
+    val kept = identitySetOf<COSDictionary>()
+    for ((index, page) in document.pages.withIndex()) {
+        inside += 0
+        leaving += 0
         clearTriggers(page.cosObject, PAGE_TRIGGERS)
         val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
         for (i in annots.size() - 1 downTo 0) {
             val annotation = annots.getObject(i) as? COSDictionary ?: continue
-            when (annotation.getNameAsString(COSName.SUBTYPE)) {
-                "Link" -> {
-                    annots.remove(i)
-                    annotation.removeItem(COSName.A)
-                    annotation.removeItem(COSName.DEST)
-                    links++
-                }
-                else -> clearTriggers(annotation, ANNOTATION_TRIGGERS)
+            clearTriggers(annotation, ANNOTATION_TRIGGERS)
+            if (annotation.getNameAsString(COSName.SUBTYPE) != "Link") continue
+            val leaves = leavesFile(annotation)
+            if (leaves) leaving[index]++ else inside[index]++
+            if (options.takes(index, leaves)) {
+                annots.remove(i)
+                removed += annotation
+            } else {
+                kept += annotation
             }
         }
+    }
+    for (link in removed) {
+        if (link in kept) continue
+        link.removeItem(COSName.A)
+        link.removeItem(COSName.DEST)
     }
 
     var scripts = 0
@@ -102,18 +159,14 @@ internal fun removeLinks(document: PDDocument): LinkRemoval {
     }
     clear(catalog, COSName.OPEN_ACTION)
     clearTriggers(catalog, DOCUMENT_TRIGGERS)
-    return LinkRemoval(links + taken.values.count { it == Taken.LINK }, scripts + taken.values.count { it == Taken.SCRIPT })
+    val automatic = LinkRemoval(taken.values.count { it == Taken.LINK }, scripts + taken.values.count { it == Taken.SCRIPT })
+    return FoundLinks(inside, leaving, automatic)
 }
 
-/**
- * [action] (an action dictionary, a /Next array of them, or a destination) with each action in it, those chained by /Next included, as
- * [clear] leaves it, and what each lost added to [taken]; null when no action is left. When anything changed, the actions left run in the
- * same order, chained again as copies, so a bookmark or field that shares one keeps its own chain. An action met twice (a shared or looping
- * /Next) is taken once.
- */
-private fun without(action: COSBase, clear: (COSDictionary) -> Pair<COSDictionary?, Taken?>, taken: MutableMap<COSDictionary, Taken>): COSBase? {
-    // The chain in the order it runs: each action, then its /Next, depth first.
+/** The actions of [action] (an action dictionary, a /Next array of them, or a destination) in the order they run: each, then its /Next. */
+private fun chainOf(action: COSBase): List<COSDictionary> {
     val chain = mutableListOf<COSDictionary>()
+    // A shared or looping /Next is followed once.
     val seen = identitySetOf<COSDictionary>()
     fun walk(node: COSBase?) {
         if (node is COSArray) {
@@ -124,6 +177,17 @@ private fun without(action: COSBase, clear: (COSDictionary) -> Pair<COSDictionar
         }
     }
     walk(action)
+    return chain
+}
+
+/**
+ * [action] (an action dictionary, a /Next array of them, or a destination) with each action in it, those chained by /Next included, as
+ * [clear] leaves it, and what each lost added to [taken]; null when no action is left. When anything changed, the actions left run in the
+ * same order, chained again as copies, so a bookmark or field that shares one keeps its own chain. An action met twice (a shared or looping
+ * /Next) is taken once.
+ */
+private fun without(action: COSBase, clear: (COSDictionary) -> Pair<COSDictionary?, Taken?>, taken: MutableMap<COSDictionary, Taken>): COSBase? {
+    val chain = chainOf(action)
     val results = chain.map(clear)
     if (results.all { (_, lost) -> lost == null }) return action
     chain.zip(results).forEach { (original, result) -> result.second?.let { taken[original] = it } }
@@ -149,24 +213,26 @@ internal fun <T> withPdf(context: Context, input: Uri, password: String?, block:
     }
 
 /**
- * What [removeLinksPdf] would take out of [input], opened with [password]: [removeLinks] run once on a copy that is never saved, so a
- * screen can show the counts before anything is saved. Throws on failure, InvalidPasswordException for a wrong password.
+ * What [removeLinksPdf] finds in [input], opened with [password]: [removeLinks] run once on a copy that is never saved, so a screen can show
+ * the counts for every choice before anything is saved, without reading the file again. Throws on failure, InvalidPasswordException for a
+ * wrong password.
  */
-internal suspend fun countLinkRemoval(context: Context, input: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
-    withPdf(context, input, password, ::removeLinks)
+internal suspend fun findLinks(context: Context, input: Uri, password: String?): FoundLinks = withContext(Dispatchers.IO) {
+    withPdf(context, input, password) { removeLinks(it) }
 }
 
 /**
- * Writes [input], opened with [password], to [output] without the links and scripts [removeLinks] takes out, as protected as the source
- * ([sameProtection]). Returns what was removed; throws on failure.
+ * Writes [input], opened with [password], to [output] without the links and scripts [removeLinks] takes out with [options], as protected as
+ * the source ([sameProtection]). Returns what was removed; throws on failure.
  */
-internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
-    withPdf(context, input, password) { document ->
-        val protection = document.sameProtection(password.orEmpty())
-        val removal = removeLinks(document)
-        protection?.let(document::protect)
-        // Like Metadata, this tool only takes things out, so it adds no default author.
-        saveAndFlush(context, document, output, applyDefaults = false)
-        removal
+internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?, options: LinkOptions): LinkRemoval =
+    withContext(Dispatchers.IO) {
+        withPdf(context, input, password) { document ->
+            val protection = document.sameProtection(password.orEmpty())
+            val removal = removeLinks(document, options).removal(options)
+            protection?.let(document::protect)
+            // Like Metadata, this tool only takes things out, so it adds no default author.
+            saveAndFlush(context, document, output, applyDefaults = false)
+            removal
+        }
     }
-}

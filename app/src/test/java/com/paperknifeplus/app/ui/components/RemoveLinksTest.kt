@@ -150,14 +150,31 @@ class RemoveLinksTest {
         ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
 
-    private fun run(): Pair<LinkRemoval, File> {
+    private fun run(options: LinkOptions = LinkOptions()): Pair<LinkRemoval, File> {
         val input = TestPdfs.write(context.cacheDir, fixture(), "links-in.pdf")
         val output = File(context.cacheDir, "links-out.pdf").apply { delete() }
-        val removal = runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null) }
+        val removal = runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null, options) }
         return removal to output
     }
 
+    /** What [removeLinks] with [options] takes out of this document. */
+    private fun PDDocument.remove(options: LinkOptions = LinkOptions()): LinkRemoval = removeLinks(this, options).removal(options)
+
     private fun PDDocument.subtypes(page: Int): List<String> = getPage(page).annotations.map { it.subtype }
+
+    /** The trigger keys of [owner]'s /AA. */
+    private fun triggerKeys(owner: COSDictionary): Set<String> =
+        (owner.getDictionaryObject(COSName.AA) as? COSDictionary)?.keySet()?.map { it.name }?.toSet().orEmpty()
+
+    /** The catalog of a saved [fixture] keeps no script and no trigger that runs on its own, and its OpenAction only goes to a page. */
+    private fun PDDocument.assertCatalogCleared() {
+        val catalog = documentCatalog.cosObject
+        assertNull((catalog.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.JAVA_SCRIPT))
+        assertNull(catalog.getDictionaryObject(COSName.AA))
+        val open = catalog.getDictionaryObject(COSName.OPEN_ACTION) as COSDictionary
+        assertEquals("GoTo", open.getNameAsString(COSName.S))
+        assertNull(open.getDictionaryObject(COSName.NEXT))
+    }
 
     @Test
     fun `every link goes, with every script and link that runs on its own, and what a user fires stays`() {
@@ -174,12 +191,7 @@ class RemoveLinksTest {
             assertNull(played.getDictionaryObject(COSName.JS))
             assertNotNull(played.getDictionaryObject(COSName.R))
             assertEquals(setOf("C", "U"), triggersOf(2).keySet().map { it.name }.toSet())
-            val catalog = doc.documentCatalog.cosObject
-            assertNull((catalog.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.JAVA_SCRIPT))
-            assertNull(catalog.getDictionaryObject(COSName.AA))
-            val open = catalog.getDictionaryObject(COSName.OPEN_ACTION) as COSDictionary
-            assertEquals("GoTo", open.getNameAsString(COSName.S))
-            assertNull(open.getDictionaryObject(COSName.NEXT))
+            doc.assertCatalogCleared()
             assertEquals("https://example.org/$BOOKMARK_MARKER", (doc.documentCatalog.documentOutline!!.firstChild!!.action as PDActionURI).uri)
         }
         val text = String(output.readBytes(), Charsets.ISO_8859_1)
@@ -190,14 +202,140 @@ class RemoveLinksTest {
     }
 
     @Test
-    fun `the counts before saving are what saving removes, and the file is left as it was`() {
+    fun `a range takes the link annotations of its pages only`() {
+        // Pages 1 and 3 (indices 0 and 2): their three links go, page 2's link to page 1 stays with its destination.
+        val (removal, output) = run(LinkOptions(pages = setOf(0, 2)))
+        assertEquals(LinkRemoval(links = AUTOMATIC.links + 3, scripts = AUTOMATIC.scripts), removal)
+        PDDocument.load(output).use { doc ->
+            assertEquals(listOf("Text"), doc.subtypes(0))
+            assertEquals(listOf("Link", "Screen"), doc.subtypes(1))
+            assertNotNull(doc.getPage(1).annotations.first().cosObject.getDictionaryObject(COSName.DEST))
+            assertEquals(listOf("Widget"), doc.subtypes(2))
+        }
+    }
+
+    @Test
+    fun `with a range, what runs on its own still goes from every page`() {
+        // Only page 2 (index 1): pages 1 and 3 keep their links, but lose their own triggers and their widget's.
+        val (removal, output) = run(LinkOptions(pages = setOf(1)))
+        assertEquals(LinkRemoval(links = AUTOMATIC.links + 1, scripts = AUTOMATIC.scripts), removal)
+        PDDocument.load(output).use { doc ->
+            assertEquals(listOf("Link", "Text"), doc.subtypes(0))
+            assertEquals(emptySet<String>(), triggerKeys(doc.getPage(0).cosObject))
+            assertEquals(listOf("Screen"), doc.subtypes(1))
+            val played = (doc.getPage(1).annotations.single().cosObject.getDictionaryObject(COSName.AA) as COSDictionary).getDictionaryObject("PO")
+            assertNull((played as COSDictionary).getDictionaryObject(COSName.JS))
+            assertEquals(listOf("Link", "Link", "Widget"), doc.subtypes(2))
+            assertEquals(setOf("C", "U"), triggerKeys(doc.getPage(2).annotations.last().cosObject))
+            doc.assertCatalogCleared()
+        }
+
+        // A link kept outside the range loses the triggers that fire on their own, and keeps its action and what a user fires.
+        PDDocument.load(TestPdfs.plain(2)).use { doc ->
+            val kept = link(web("KEPT"), 700f).apply { cosObject.setItem(COSName.AA, triggers("PV" to script("shown"), "U" to goTo(doc.getPage(1)))) }
+            doc.getPage(0).annotations = listOf(kept)
+            assertEquals(LinkRemoval(0, 1), doc.remove(LinkOptions(pages = setOf(1))))
+            assertEquals(setOf("U"), triggerKeys(kept.cosObject))
+            assertEquals("https://example.org/KEPT", (kept.action as PDActionURI).uri)
+        }
+    }
+
+    @Test
+    fun `a link on two pages stays whole on the page outside the range`() {
+        PDDocument.load(TestPdfs.plain(2)).use { doc ->
+            val shared = link(web("SHARED"), 700f)
+            doc.getPage(0).annotations = listOf(shared)
+            doc.getPage(1).annotations = listOf(shared)
+            assertEquals(LinkRemoval(1, 0), doc.remove(LinkOptions(pages = setOf(1))))
+            assertEquals("https://example.org/SHARED", ((doc.getPage(0).annotations.single() as PDAnnotationLink).action as PDActionURI).uri)
+            assertTrue(doc.getPage(1).annotations.isEmpty())
+        }
+    }
+
+    /** A link annotation for the kind choice: [name] in its /Contents, and whether it [stays] when only links that leave the file go. */
+    private class LinkCase(val name: String, val stays: Boolean, val make: (PDDocument) -> PDAnnotationLink)
+
+    @Test
+    fun `when only links that leave the file go, a link stays only if every action of its chain stays inside`() {
+        fun action(type: String?) = COSDictionary().apply { setName(COSName.TYPE, "Action"); type?.let { setName(COSName.S, it) } }
+        fun named(name: String) = action("Named").apply { setName(COSName.N, name) }
+        fun goToPage(doc: PDDocument) = goTo(doc.getPage(1)).cosObject
+        /** A link that runs [actions] one after the other, each the /Next of the one before. */
+        fun runs(vararg actions: COSDictionary) = link(null, 700f).apply {
+            actions.toList().zipWithNext { action, next -> action.setItem(COSName.NEXT, next) }
+            cosObject.setItem(COSName.A, actions.first())
+        }
+        val cases = listOf(
+            LinkCase("destination", stays = true) { doc ->
+                link(null, 700f).apply { destination = PDPageFitDestination().apply { page = doc.getPage(1) } }
+            },
+            LinkCase("no action", stays = true) { link(null, 700f) },
+            LinkCase("go to", stays = true) { doc -> runs(goToPage(doc)) },
+            LinkCase("next page", stays = true) { runs(named("NextPage")) },
+            LinkCase("go to, then last page", stays = true) { doc -> runs(goToPage(doc), named("LastPage")) },
+            LinkCase("go to, then a website", stays = false) { doc -> runs(goToPage(doc), web("NEXT").cosObject) },
+            LinkCase("go to, then a script among its next", stays = false) { doc ->
+                runs(goToPage(doc).apply { setItem(COSName.NEXT, COSArray().apply { add(named("PrevPage")); add(script("next")) }) })
+            },
+            LinkCase("go to, and a website on mouse-up", stays = false) { doc ->
+                runs(goToPage(doc)).apply { cosObject.setItem(COSName.AA, triggers("U" to web("UP"))) }
+            },
+            LinkCase("website", stays = false) { link(web("LINK"), 700f) },
+            LinkCase("app", stays = false) { link(app(), 700f) },
+            LinkCase("other file", stays = false) { link(otherFile(), 700f) },
+            LinkCase("embedded file", stays = false) { runs(action("GoToE")) },
+            LinkCase("form submission", stays = false) { link(submit("LINK"), 700f) },
+            LinkCase("form data import", stays = false) { runs(action("ImportData")) },
+            LinkCase("script", stays = false) { link(script("link"), 700f) },
+            LinkCase("hide", stays = false) { runs(action("Hide")) },
+            LinkCase("unknown", stays = false) { runs(action("Teleport")) },
+            LinkCase("no type", stays = false) { runs(action(null)) }
+        )
+        val stay = cases.filter { it.stays }.map { it.name }
+        val go = cases.size - stay.size
+        PDDocument.load(TestPdfs.plain(2)).use { doc ->
+            doc.getPage(0).annotations = cases.map { case -> case.make(doc).apply { contents = case.name } }
+            val options = LinkOptions(keepInside = true)
+            val found = removeLinks(doc, options)
+            assertEquals(FoundLinks(inside = listOf(stay.size, 0), leaving = listOf(go, 0), automatic = LinkRemoval(0, 0)), found)
+            assertEquals(LinkRemoval(go, 0), found.removal(options))
+            assertEquals(stay, doc.getPage(0).annotations.map { it.contents })
+            // What stays keeps its action.
+            val kept = doc.getPage(0).annotations.single { it.contents == "go to" }.cosObject.getDictionaryObject(COSName.A) as COSDictionary
+            assertEquals("GoTo", kept.getNameAsString(COSName.S))
+
+            assertEquals(LinkRemoval(stay.size, 0), doc.remove())
+            assertTrue(doc.getPage(0).annotations.isEmpty())
+        }
+    }
+
+    @Test
+    fun `the counts before saving are what saving removes for every choice, and the file is left as it was`() {
         val bytes = fixture()
         val input = TestPdfs.write(context.cacheDir, bytes, "links-count.pdf")
-        assertEquals(FIXTURE_REMOVAL, runBlocking { countLinkRemoval(context, input, null) })
+        val found = runBlocking { findLinks(context, input, null) }
         assertTrue(File(input.path!!).readBytes().contentEquals(bytes))
-        val (removal, output) = run()
-        assertEquals(FIXTURE_REMOVAL, removal)
-        assertEquals(LinkRemoval(0, 0), runBlocking { countLinkRemoval(context, Uri.fromFile(output), null) })
+        assertEquals(FoundLinks(inside = listOf(0, 1, 0), leaving = listOf(1, 0, 2), automatic = AUTOMATIC), found)
+
+        val choices = mapOf(
+            LinkOptions() to 4,
+            LinkOptions(keepInside = true) to 3,
+            LinkOptions(pages = setOf(1)) to 1,
+            LinkOptions(pages = setOf(1), keepInside = true) to 0,
+            LinkOptions(pages = setOf(0, 2)) to 3,
+            LinkOptions(pages = setOf(0, 2), keepInside = true) to 3,
+            LinkOptions(pages = emptySet()) to 0
+        )
+        val output = File(context.cacheDir, "links-choice.pdf")
+        for ((options, annotations) in choices) {
+            val expected = AUTOMATIC.copy(links = AUTOMATIC.links + annotations)
+            assertEquals("$options counted", expected, found.removal(options))
+            output.delete()
+            assertEquals("$options saved", expected, runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null, options) })
+            // The saved file holds what was found less what was removed, and nothing that runs on its own.
+            val left = runBlocking { findLinks(context, Uri.fromFile(output), null) }
+            assertEquals("$options left", LinkRemoval(found.removal(LinkOptions()).links - expected.links, 0), left.removal(LinkOptions()))
+        }
     }
 
     /** An action put on a trigger that fires on its own: what [removeLinks] counts of it, and whether the trigger keeps what is left of it. */
@@ -231,10 +369,10 @@ class RemoveLinksTest {
                 val key = where.substringAfter(' ')
                 holder.setItem(key, kind.make(doc))
                 val what = "${kind.name} at $where"
-                assertEquals(what, kind.counted, removeLinks(doc))
+                assertEquals(what, kind.counted, doc.remove())
                 val left = holder.getDictionaryObject(key)
                 if (kind.stays) assertNotNull(what, left) else assertNull(what, left)
-                assertEquals("$what, a second time", LinkRemoval(0, 0), removeLinks(doc))
+                assertEquals("$what, a second time", LinkRemoval(0, 0), doc.remove())
             }
         }
     }
@@ -243,13 +381,13 @@ class RemoveLinksTest {
     fun `an OpenAction that is only a script is removed, a destination stays`() {
         PDDocument.load(TestPdfs.plain()).use { doc ->
             doc.documentCatalog.openAction = PDActionJavaScript("app.alert(0)")
-            assertEquals(LinkRemoval(0, 1), removeLinks(doc))
+            assertEquals(LinkRemoval(0, 1), doc.remove())
             assertNull(doc.documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION))
         }
         PDDocument.load(TestPdfs.plain()).use { doc ->
             val destination = COSArray().apply { add(doc.getPage(0).cosObject); add(COSName.getPDFName("Fit")) }
             doc.documentCatalog.cosObject.setItem(COSName.OPEN_ACTION, destination)
-            assertEquals(LinkRemoval(0, 0), removeLinks(doc))
+            assertEquals(LinkRemoval(0, 0), doc.remove())
             assertEquals(2, (doc.documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION) as COSArray).size())
         }
     }
@@ -261,7 +399,7 @@ class RemoveLinksTest {
                 cosObject.setItem(COSName.NEXT, COSArray().apply { add(goTo(doc.getPage(0))); add(web("NEXT")); add(goTo(doc.getPage(1))) })
             }
             doc.documentCatalog.openAction = open
-            assertEquals(LinkRemoval(1, 1), removeLinks(doc))
+            assertEquals(LinkRemoval(1, 1), doc.remove())
 
             fun target(action: COSDictionary) = (action.getDictionaryObject(COSName.D) as COSArray).getObject(0)
             val first = doc.documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION) as COSDictionary
@@ -286,7 +424,7 @@ class RemoveLinksTest {
             chain(loop, script("loop"), loop)
             doc.getPage(0).cosObject.setItem(COSName.AA, triggers("O" to loop))
 
-            assertEquals(LinkRemoval(0, 2), removeLinks(doc))
+            assertEquals(LinkRemoval(0, 2), doc.remove())
             val catalog = doc.documentCatalog.cosObject
             assertNull((catalog.getDictionaryObject(COSName.OPEN_ACTION) as COSDictionary).getDictionaryObject(COSName.NEXT))
             assertNull(catalog.getDictionaryObject(COSName.AA))
@@ -303,7 +441,7 @@ class RemoveLinksTest {
             doc.documentCatalog.openAction = shared
             doc.documentCatalog.documentOutline = PDDocumentOutline().apply { addLast(PDOutlineItem().apply { title = "Start"; action = shared }) }
 
-            assertEquals(LinkRemoval(0, 1), removeLinks(doc))
+            assertEquals(LinkRemoval(0, 1), doc.remove())
             assertNull((doc.documentCatalog.cosObject.getDictionaryObject(COSName.OPEN_ACTION) as COSDictionary).getDictionaryObject(COSName.NEXT))
             val bookmark = doc.documentCatalog.documentOutline!!.firstChild!!.action!!.cosObject
             assertEquals("JavaScript", (bookmark.getDictionaryObject(COSName.NEXT) as COSDictionary).getNameAsString(COSName.S))
@@ -321,7 +459,7 @@ class RemoveLinksTest {
     fun `the copy keeps the source's password`() {
         val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(), "links-locked.pdf")
         val kept = File(context.cacheDir, "links-kept.pdf").apply { delete() }
-        runBlocking { removeLinksPdf(context, input, Uri.fromFile(kept), TestPdfs.USER_PASSWORD) }
+        runBlocking { removeLinksPdf(context, input, Uri.fromFile(kept), TestPdfs.USER_PASSWORD, LinkOptions()) }
         assertThrows(InvalidPasswordException::class.java) { PDDocument.load(kept).close() }
         PDDocument.load(kept, TestPdfs.USER_PASSWORD).use { assertTrue(it.isEncrypted) }
     }
@@ -332,10 +470,13 @@ class RemoveLinksTest {
         const val CALCULATE = "event.value = 'CALCULATED-STAYS'"
 
         /**
-         * What [fixture] loses. Links: 4 link annotations, the OpenAction's two websites and app, page 1's other file, and the form
-         * submission before saving. Scripts: 2 named, and the OpenAction's, document close's, page 1's open, the widget's, the Screen
-         * rendition's own and the script-only rendition after printing.
+         * What runs on its own in [fixture], which goes whatever the options. Links: the OpenAction's two websites and app, page 1's
+         * other file, and the form submission before saving. Scripts: 2 named, and the OpenAction's, document close's, page 1's open, the
+         * widget's, the Screen rendition's own and the script-only rendition after printing.
          */
-        val FIXTURE_REMOVAL = LinkRemoval(links = 9, scripts = 8)
+        val AUTOMATIC = LinkRemoval(links = 5, scripts = 8)
+
+        /** What [fixture] loses with every link: its 4 link annotations too. */
+        val FIXTURE_REMOVAL = LinkRemoval(links = AUTOMATIC.links + 4, scripts = AUTOMATIC.scripts)
     }
 }
