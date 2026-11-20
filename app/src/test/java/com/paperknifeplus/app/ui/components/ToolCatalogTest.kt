@@ -48,6 +48,17 @@ class ToolCatalogTest {
     }
 
     @Test
+    fun `Links sits in Edit right after Bookmarks, to remove or add links`() {
+        val links = ToolCatalog.byId("links")!!
+        assertEquals("links", links.id)
+        assertEquals(ToolCategory.EDIT, links.category)
+        val edit = ToolCatalog.tools.filter { it.category == ToolCategory.EDIT }.map { it.id }
+        assertEquals("links", edit[edit.indexOf("bookmarks") + 1])
+        assertEquals("Links", context.getString(links.name))
+        assertEquals("Remove or add links", context.getString(links.description))
+    }
+
+    @Test
     fun `every tool screen is in the catalog`() {
         val catalog = File(components, "ToolCatalog.kt").readText()
         val screens = components.listFiles()!!.map { it.name.removeSuffix(".kt") }.filter { it.endsWith("View") && it !in NOT_TOOLS }
@@ -156,6 +167,7 @@ class ToolCatalogTest {
             "merge" to "Join multiple documents", "split" to "Extract pages from PDF", "delete" to "Delete pages instantly",
             "rearrange" to "Move pages to new slots", "rotate" to "Fix document orientation", "sign" to "Secure signature",
             "watermark" to "Custom overlay", "page-numbers" to "Custom pagination", "bookmarks" to "Edit document navigation",
+            "links" to "Remove links from a PDF",
             "compress" to "Optimize PDF size", "grayscale" to "Convert PDF to B&W", "repair" to "Recover corrupt documents",
             "compare" to "Visual difference tool", "protect" to "Encrypt your document", "unlock" to "Remove PDF restrictions",
             "metadata" to "Edit document properties", "pdf2img" to "Native export engine", "img2pdf" to "JPG, PNG or WebP",

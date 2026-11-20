@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import androidx.activity.ComponentDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,6 +21,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
 class LockedFilePromptTest {
@@ -66,5 +68,26 @@ class LockedFilePromptTest {
 
         rule.onNodeWithText("Unlock").performClick()
         rule.onNodeWithText("Incorrect password, try again.").assertExists()
+    }
+
+    /** Back, as the system hands it to the prompt's window. */
+    private fun pressBack() {
+        rule.waitForIdle()
+        rule.runOnUiThread { (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun `Back closes the prompt, but not while the password is being checked`() {
+        var dismissed = 0
+        var loading by mutableStateOf(true)
+        rule.setContent { LockedFilePrompt(fileName = "a.pdf", onDismiss = { dismissed++ }, onUnlocked = {}, isLoading = loading) }
+
+        pressBack()
+        assertEquals(0, dismissed)
+
+        loading = false
+        pressBack()
+        assertEquals(1, dismissed)
     }
 }

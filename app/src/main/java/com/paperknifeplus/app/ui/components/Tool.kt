@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -454,11 +455,20 @@ fun PdfThumbnail(uri: Uri, password: String?, modifier: Modifier = Modifier) {
 internal const val THUMBNAIL_SCALE = 0.4f
 
 /**
- * The picked file as a small card (2b): its first page (from [uri], opened with [password]), [name] over [details] (size and pages), and
- * Change ([onChange], T3: 40 dp visible in a 48 dp target). The name wraps rather than clips.
+ * The picked file as a small card (2b): its first page (from [uri], opened with [password]), [name] over [details] (size and pages), the
+ * [PasswordLine] when the tool's output [keepsPassword], and Change ([onChange], T3: 40 dp visible in a 48 dp target). The name wraps
+ * rather than clips.
  */
 @Composable
-fun ToolFileCard(uri: Uri, password: String?, name: String, details: String, onChange: () -> Unit, modifier: Modifier = Modifier) {
+fun ToolFileCard(
+    uri: Uri,
+    password: String?,
+    name: String,
+    details: String,
+    onChange: () -> Unit,
+    modifier: Modifier = Modifier,
+    keepsPassword: Boolean = false
+) {
     val colors = MaterialTheme.colorScheme
     ToolCard(modifier) {
         Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -466,6 +476,7 @@ fun ToolFileCard(uri: Uri, password: String?, name: String, details: String, onC
             Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
                 Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta)
+                if (keepsPassword) PasswordLine()
             }
             Box(
                 Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable(role = Role.Button, onClick = onChange),
@@ -479,6 +490,19 @@ fun ToolFileCard(uri: Uri, password: String?, name: String, details: String, onC
                 }
             }
         }
+    }
+}
+
+/**
+ * The fact that a tool's output keeps the open password of its source (decision 20d), under the file on the file card and the result card:
+ * a lock and one wording wherever it shows.
+ */
+@Composable
+fun PasswordLine(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.onSurface, modifier = Modifier.padding(top = 2.dp).size(16.dp))
+        Text(stringResource(R.string.tool_keeps_password), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
     }
 }
 

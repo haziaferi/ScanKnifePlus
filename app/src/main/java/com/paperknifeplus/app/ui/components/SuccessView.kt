@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,8 +48,9 @@ internal const val ZIP_MIME = "application/zip"
 
 /**
  * The tools' shared result screen (3b), under [ToolScreenBar]: a check and [message], then a card with the saved [result] (its first page,
- * name and [subMessage]) whose rank-1 action is Open ([onOpen], the reader) with Share beside it, or Share alone when the result does not
- * open in the reader; below, Process more files and Back to tools ([onDone]). It scrolls, so nothing clips at large text sizes.
+ * name, [subMessage] and the [PasswordLine] when it [keepsPassword]) whose rank-1 action is Open ([onOpen], the reader) with Share beside
+ * it, or Share alone when the result does not open in the reader; then the [report] of what was removed, when there is one (R8); below,
+ * Process more files and Back to tools ([onDone]). It scrolls, so nothing clips at large text sizes.
  */
 @Composable
 fun SuccessView(
@@ -57,7 +59,9 @@ fun SuccessView(
     result: ToolResult?,
     onDone: () -> Unit,
     onProcessMore: () -> Unit,
-    onOpen: (() -> Unit)? = null
+    onOpen: (() -> Unit)? = null,
+    keepsPassword: Boolean = false,
+    report: List<Pair<String, Int>> = emptyList()
 ) {
     val colors = MaterialTheme.colorScheme
     val palette = LocalScanPalette.current
@@ -95,6 +99,7 @@ fun SuccessView(
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (result != null) Text(result.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
                         if (subMessage.isNotBlank()) Text(subMessage, fontSize = 13.sp, color = palette.meta)
+                        if (keepsPassword) PasswordLine()
                     }
                 }
                 if (result != null) {
@@ -116,11 +121,34 @@ fun SuccessView(
                 }
             }
         }
+        if (report.isNotEmpty()) ReportRows(report, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
 
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ToolSecondaryButton(stringResource(R.string.tool_process_more), onClick = onProcessMore, modifier = Modifier.fillMaxWidth())
             TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
                 Text(stringResource(R.string.tool_back_to_tools), fontWeight = FontWeight.SemiBold, color = colors.onBackground, fontSize = 15.sp)
+            }
+        }
+    }
+}
+
+/** The report rows (R8): a card headed What was removed, one row per label and count of [rows], each row read as one. */
+@Composable
+private fun ReportRows(rows: List<Pair<String, Int>>, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    ToolCard(modifier) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            ToolSectionLabel(stringResource(R.string.tool_report_removed), Modifier.padding(top = 8.dp, bottom = 4.dp))
+            rows.forEachIndexed { index, (label, count) ->
+                if (index > 0) HorizontalDivider(color = colors.outline)
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 44.dp).semantics(mergeDescendants = true) {},
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(label, fontSize = 14.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
+                    Text("$count", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
+                }
             }
         }
     }
