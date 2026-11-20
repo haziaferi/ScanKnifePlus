@@ -58,8 +58,18 @@ internal data class FoundLinks(val inside: List<Int>, val leaving: List<Int>, va
 private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR", "SubmitForm").map { COSName.getPDFName(it) }
 private val RENDITION = COSName.getPDFName("Rendition")
 
-/** The only action types a link may run and stay inside the file: go to a place in it (GoTo), or a viewer command such as NextPage (Named). */
-private val INSIDE_ACTIONS = listOf("GoTo", "Named").map { COSName.getPDFName(it) }
+private val GO_TO = COSName.getPDFName("GoTo")
+private val NAMED = COSName.getPDFName("Named")
+
+/** The Named actions that go to a page of the file; any other (Print, a menu command such as AcroSendMail:SendMail) leaves it. */
+private val PAGE_COMMANDS = listOf("NextPage", "PrevPage", "FirstPage", "LastPage").map { COSName.getPDFName(it) }
+
+/** Whether [action] stays inside the file: it goes to a place in it (GoTo), or to its next, previous, first or last page (Named). */
+private fun goesToPage(action: COSDictionary): Boolean = when (action.getCOSName(COSName.S)) {
+    GO_TO -> true
+    NAMED -> action.getCOSName(COSName.N) in PAGE_COMMANDS
+    else -> false
+}
 
 // The triggers that fire without the user acting: the catalog's document events, a page's open and close, and an annotation's page triggers.
 private val DOCUMENT_TRIGGERS = listOf("WC", "WS", "DS", "WP", "DP").map { COSName.getPDFName(it) }
@@ -89,14 +99,15 @@ private fun cleared(action: COSDictionary): Pair<COSDictionary?, Taken?> {
 
 /**
  * Whether the link annotation [link] leaves the file: an action the user fires on it (its /A, or a mouse or focus trigger of its /AA), or one
- * chained after it by /Next, is not one of [INSIDE_ACTIONS], an unknown one included. A plain destination (/Dest), or no action, stays inside.
+ * chained after it by /Next, does not go to a page of it ([goesToPage]), an unknown one included. A plain destination (/Dest), or no action,
+ * stays inside.
  */
 private fun leavesFile(link: COSDictionary): Boolean {
     val triggers = (link.getDictionaryObject(COSName.AA) as? COSDictionary)?.let { aa ->
         aa.keySet().filter { it !in ANNOTATION_TRIGGERS }.mapNotNull { aa.getDictionaryObject(it) }
     }
     val fired = listOfNotNull(link.getDictionaryObject(COSName.A)) + triggers.orEmpty()
-    return fired.any { action -> chainOf(action).any { it.getCOSName(COSName.S) !in INSIDE_ACTIONS } }
+    return fired.any { action -> chainOf(action).any { !goesToPage(it) } }
 }
 
 /**

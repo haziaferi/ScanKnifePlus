@@ -294,7 +294,12 @@ class RemoveLinksTest {
             LinkCase("no action", stays = true) { link(null, 700f) },
             LinkCase("go to", stays = true) { doc -> runs(goToPage(doc)) },
             LinkCase("next page", stays = true) { runs(named("NextPage")) },
+            LinkCase("previous page, then first page", stays = true) { runs(named("PrevPage"), named("FirstPage")) },
             LinkCase("go to, then last page", stays = true) { doc -> runs(goToPage(doc), named("LastPage")) },
+            LinkCase("print", stays = false) { runs(named("Print")) },
+            LinkCase("send by mail", stays = false) { runs(named("AcroSendMail:SendMail")) },
+            LinkCase("next page, then print", stays = false) { runs(named("NextPage"), named("Print")) },
+            LinkCase("named without a name", stays = false) { runs(action("Named")) },
             LinkCase("go to, then a website", stays = false) { doc -> runs(goToPage(doc), web("NEXT").cosObject) },
             LinkCase("go to, then a script among its next", stays = false) { doc ->
                 runs(goToPage(doc).apply { setItem(COSName.NEXT, COSArray().apply { add(named("PrevPage")); add(script("next")) }) })
