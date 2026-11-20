@@ -6,6 +6,7 @@ import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -117,14 +118,18 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = ide
     return own + (0 until kids.size()).sumOf { nameTreeLeaves(kids.getObject(it), seen) }
 }
 
+/** [block] on [input] opened with [password], parsed through temp files in the cache so that a large PDF does not exhaust the heap. Blocking. */
+private fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =
+    context.contentResolver.requireInputStream(input).use { stream ->
+        PDDocument.load(stream, password.orEmpty(), MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)).use(block)
+    }
+
 /**
- * What [removeLinksPdf] would take out of [input], opened with [password]: [removeLinks] run once on a copy in memory, which is then
- * dropped, so a screen can show the counts before anything is saved. Throws on failure, InvalidPasswordException for a wrong password.
+ * What [removeLinksPdf] would take out of [input], opened with [password]: [removeLinks] run once on a copy that is never saved, so a
+ * screen can show the counts before anything is saved. Throws on failure, InvalidPasswordException for a wrong password.
  */
 internal suspend fun countLinkRemoval(context: Context, input: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password.orEmpty()).use { removeLinks(it) }
-    }
+    withPdf(context, input, password, ::removeLinks)
 }
 
 /**
@@ -132,14 +137,12 @@ internal suspend fun countLinkRemoval(context: Context, input: Uri, password: St
  * ([sameProtection]). Returns what was removed; throws on failure.
  */
 internal suspend fun removeLinksPdf(context: Context, input: Uri, output: Uri, password: String?): LinkRemoval = withContext(Dispatchers.IO) {
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password.orEmpty()).use { document ->
-            val protection = document.sameProtection(password.orEmpty())
-            val removal = removeLinks(document)
-            protection?.let(document::protect)
-            // Like Metadata, this tool only takes things out, so it adds no default author.
-            saveAndFlush(context, document, output, applyDefaults = false)
-            removal
-        }
+    withPdf(context, input, password) { document ->
+        val protection = document.sameProtection(password.orEmpty())
+        val removal = removeLinks(document)
+        protection?.let(document::protect)
+        // Like Metadata, this tool only takes things out, so it adds no default author.
+        saveAndFlush(context, document, output, applyDefaults = false)
+        removal
     }
 }
