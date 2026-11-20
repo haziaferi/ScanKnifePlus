@@ -33,8 +33,9 @@ import org.junit.runner.RunWith
 
 /**
  * Crop pages on the phone, through the screen: a real finger drag on the frame's top-left corner, then Crop and save PDF, on a file whose
- * first page is turned by /Rotate and whose crop boxes sit away from the media box's origin. PDFBox then reads each page's new crop box,
- * which must be where the frame was drawn. The screen is read through the accessibility tree, as TalkBack reads it.
+ * first page is turned by /Rotate and whose crop boxes sit away from the media box's origin, in other proportions than the media box, so the
+ * page's shape on screen tells which box the viewer draws. PDFBox then reads each page's new crop box, which must be where the frame was
+ * drawn. The screen is read through the accessibility tree, as TalkBack reads it.
  */
 @RunWith(AndroidJUnit4::class)
 class CropDeviceTest {
@@ -158,21 +159,22 @@ class CropDeviceTest {
             }
             // Until a corner moves there is nothing to crop, and the button says so.
             waitFor("the screen") { node(MOVE) }
-            // The frame starts as the whole page: its edges span the shown page, the rotated first one, 560 x 400 as displayed.
+            // The frame starts as the whole page: its edges span the shown page, the rotated first one, its crop box 500 x 400 as displayed
+            // (the media box would be 700 x 500, 1.4 against 1.25).
             val (left, middle) = centre("Left edge")
             val right = centre("Right edge").first
             val (centreX, top) = centre("Top edge")
             val bottom = centre("Bottom edge").second
             val width = right - left
             val height = bottom - top
-            assertEquals(560f / 400f, width / height, 0.02f)
+            assertEquals(500f / 400f, width / height, 0.02f)
             // TalkBack reaches the edges, each an adjustable value; the corner handles are for fingers only.
             assertEquals(1f, waitFor("Left edge") { node("Left edge") }.rangeInfo.max, 0f)
             assertEquals(false, waitFor("Top-left corner") { node("Top-left corner") }.isVisibleToUser)
 
             drag(left, top, width * 0.25f, height * 0.2f)
             // The accessibility tree follows the screen a little later: read the frame once two reads agree.
-            fun read() = CropArea.Fractions(value("Left edge"), value("Top edge"), value("Right edge"), value("Bottom edge"))
+            fun read() = CropArea(value("Left edge"), value("Top edge"), value("Right edge"), value("Bottom edge"))
             val frame = waitFor("the frame to settle") {
                 val first = read()
                 Thread.sleep(300)
@@ -192,12 +194,12 @@ class CropDeviceTest {
             waitFor("the result") { node("Crop complete") }
 
             PDDocument.load(output).use { doc ->
-                // Rotated 90: the displayed left edge is the crop box's bottom (y up 560 across), its displayed top the crop box's left.
+                // Rotated 90: the displayed left edge is the crop box's bottom (y up 500 across), its displayed top the crop box's left.
                 val l = BOX.lowerLeftX
                 val b = BOX.lowerLeftY
-                assertBox(listOf(l + frame.top * 400, b + frame.left * 560, l + frame.bottom * 400, b + frame.right * 560), doc.getPage(0).cropBox)
-                // Upright: 400 x 560, y up from the crop box's bottom.
-                val upright = listOf(l + frame.left * 400, b + (1 - frame.bottom) * 560, l + frame.right * 400, b + (1 - frame.top) * 560)
+                assertBox(listOf(l + frame.top * 400, b + frame.left * 500, l + frame.bottom * 400, b + frame.right * 500), doc.getPage(0).cropBox)
+                // Upright: 400 x 500, y up from the crop box's bottom.
+                val upright = listOf(l + frame.left * 400, b + (1 - frame.bottom) * 500, l + frame.right * 400, b + (1 - frame.top) * 500)
                 assertBox(upright, doc.getPage(1).cropBox)
                 for (page in doc.pages) assertBox(listOf(0f, 0f, 500f, 700f), page.mediaBox)
             }
@@ -210,7 +212,7 @@ class CropDeviceTest {
         const val CROP = "Crop and save PDF"
         const val MOVE = "Move a corner to crop"
 
-        /** The source pages' crop box: 400 x 560 points, its lower-left corner at (40, 60) on the 500 x 700 media box. */
-        val BOX = PDRectangle(40f, 60f, 400f, 560f)
+        /** The source pages' crop box: 400 x 500 points, shaped unlike the 500 x 700 media box, its lower-left corner at (50, 120) on it. */
+        val BOX = PDRectangle(50f, 120f, 400f, 500f)
     }
 }

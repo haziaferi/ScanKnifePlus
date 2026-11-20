@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -43,17 +42,18 @@ fun rangeError(result: RangeList): String? = when (result) {
 }
 
 /**
- * The shared page-range field: [value] in a single-line box labelled "Pages" for TalkBack (the screen's section label shows it), then the
- * [error] with a warning icon, read out when it changes, or else the helper "For example 1-3, 5, 8-".
+ * The shared page-range field: [value] in a single-line box with the label "Pages", then the [error] with a warning icon, read out when it
+ * changes, or else the helper "For example 1-3, 5, 8-". The label is the text field's own, so TalkBack reads what is typed and then the label;
+ * a content description on an editable field would be read instead of the typed text.
  */
 @Composable
 fun PageRangeField(value: String, onValueChange: (String) -> Unit, error: String?, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
-    val label = stringResource(R.string.pages_label)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
+            label = { Text(stringResource(R.string.pages_label)) },
             singleLine = true,
             isError = error != null,
             textStyle = TextStyle(fontSize = 16.sp),
@@ -67,10 +67,7 @@ fun PageRangeField(value: String, onValueChange: (String) -> Unit, error: String
                 focusedBorderColor = colors.primary,
                 cursorColor = colors.primary
             ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics {
-                contentDescription = label
-                if (error != null) this.error(error)
-            }
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics { if (error != null) this.error(error) }
         )
         if (error != null) {
             Row(

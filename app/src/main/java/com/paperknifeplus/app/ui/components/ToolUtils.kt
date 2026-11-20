@@ -90,10 +90,12 @@ object PreferencesManager {
         return AppPalette.fromStorageName(prefs.getString("palette", null))
     }
 
+    /** Keeps the tip of the tool whose catalog id is [toolId] [closed], or shows it again (R4). */
     fun setTipClosed(context: Context, toolId: String, closed: Boolean) {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
         prefs.edit { putBoolean("tip_closed_$toolId", closed) }
     }
+
     /** Whether the tip of the tool whose catalog id is [toolId] was closed; it stays closed until the top bar's (i) brings it back (R4). */
     fun isTipClosed(context: Context, toolId: String): Boolean {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)

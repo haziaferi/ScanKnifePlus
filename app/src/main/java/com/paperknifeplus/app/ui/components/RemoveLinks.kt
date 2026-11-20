@@ -119,7 +119,7 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = ide
 }
 
 /** [block] on [input] opened with [password], parsed through temp files in the cache so that a large PDF does not exhaust the heap. Blocking. */
-private fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =
+internal fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =
     context.contentResolver.requireInputStream(input).use { stream ->
         PDDocument.load(stream, password.orEmpty(), MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)).use(block)
     }

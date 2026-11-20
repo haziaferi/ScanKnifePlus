@@ -515,6 +515,7 @@
     <string name="crop_edge_bottom">Bordo inferiore</string>
     <string name="crop_and_save">Ritaglia e salva il PDF</string>
     <string name="crop_move_corner">Sposta un angolo per ritagliare</string>
+    <string name="crop_type_pages">Scrivi le pagine da ritagliare</string>
     <string name="crop_cropping">Ritaglio delle pagine…</string>
     <string name="crop_done">Ritaglio completato</string>
     <plurals name="crop_pages_cropped">

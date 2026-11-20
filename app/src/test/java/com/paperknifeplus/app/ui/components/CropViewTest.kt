@@ -7,6 +7,7 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,7 +24,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -33,6 +38,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -61,8 +67,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Crop pages on its screen: the catalog entry, the frame dragged by a corner and moved by TalkBack, only the range's pages cropped, a
- * range error, the tip, the readable page card and a protected source; plus the page grid's long-file rule.
+ * Crop pages on its screen: the catalog entry, the frame dragged by a corner and moved by TalkBack and snapping onto the page's edge, only the
+ * range's pages cropped, a range error, a new file starting afresh, the tip, the viewer brought into view, the readable page card and a
+ * protected source; plus the page grid's long-file rule and what the range field gives TalkBack.
  */
 @RunWith(RobolectricTestRunner::class)
 // A tall window, so the whole screen is laid out without scrolling and touches reach every part of it.
@@ -78,6 +85,9 @@ class CropViewTest {
     private val output = File(context.cacheDir, "crop-view-out.pdf")
     private var suggested: Any? = null
 
+    /** The file Choose PDF picks. */
+    private var next: Uri? = null
+
     @Before
     fun setUp() {
         PDFBoxResourceLoader.init(context)
@@ -86,12 +96,16 @@ class CropViewTest {
         output.delete()
     }
 
-    /** A save picker the user picks [output] in; it remembers the suggested name. */
+    /** A file picker that picks [next], and a save picker the user picks [output] in, which remembers the suggested name. */
     private val picker = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-                suggested = input
-                dispatchResult(requestCode, Uri.fromFile(output))
+                if (contract is ActivityResultContracts.GetContent) {
+                    dispatchResult(requestCode, next)
+                } else {
+                    suggested = input
+                    dispatchResult(requestCode, Uri.fromFile(output))
+                }
             }
         }
     }
@@ -112,6 +126,19 @@ class CropViewTest {
 
     /** Where the TalkBack value of edge [name] puts it, as a fraction of the page. */
     private fun edgeValue(name: String): Float = edge(name).fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo].current
+
+    /** The frame as TalkBack reads its four edges. */
+    private fun shownFrame() = CropArea(edgeValue("Left edge"), edgeValue("Top edge"), edgeValue("Right edge"), edgeValue("Bottom edge"))
+
+    /**
+     * TalkBack's [count] steps on edge [name], up ([direction] 1) or down (-1): each adds 1/(steps + 1) of the range to the value it reads, in
+     * floats, as Compose turns an adjustable value's scroll action into a new value.
+     */
+    private fun stepEdge(name: String, count: Int, direction: Int) = repeat(count) {
+        val info = edge(name).fetchSemanticsNode().config[SemanticsProperties.ProgressBarRangeInfo]
+        val step = (info.range.endInclusive - info.range.start) / (info.steps + 1)
+        edge(name).performSemanticsAction(SemanticsActions.SetProgress) { it(info.current + direction * step) }
+    }
 
     private fun centre(node: SemanticsNodeInteraction): Offset = node.fetchSemanticsNode().boundsInRoot.center
 
@@ -155,7 +182,7 @@ class CropViewTest {
             swipe(center, center - Offset(width * 0.3f, height * 0.25f), durationMillis = 300)
         }
         rule.waitForIdle()
-        val frame = CropArea.Fractions(edgeValue("Left edge"), edgeValue("Top edge"), edgeValue("Right edge"), edgeValue("Bottom edge"))
+        val frame = shownFrame()
         assertEquals(0.7f, frame.right, 0.01f)
         assertEquals(0.75f, frame.bottom, 0.01f)
         assertEquals(0.2f, frame.left, 0.01f)
@@ -186,6 +213,35 @@ class CropViewTest {
         // The handles are for fingers; TalkBack reaches the edges instead.
         val corner = rule.onNodeWithContentDescription("Top-left corner").fetchSemanticsNode()
         assertTrue(corner.config.contains(SemanticsProperties.HideFromAccessibility))
+    }
+
+    @Test
+    fun `TalkBack's steps in and back out leave the whole page, with nothing to crop`() {
+        show(TestPdfs.plain(), "steps.pdf")
+        waitFor(READY)
+        stepEdge("Left edge", 51, 1)
+        rule.onNodeWithText(CROP).assertIsEnabled()
+        // 51 float steps of 1% back end at 1.5e-8, not 0: the edge snaps onto the page's edge.
+        stepEdge("Left edge", 51, -1)
+        assertEquals(FULL_FRAME, shownFrame())
+        rule.onNodeWithText(MOVE).assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a corner dragged back to within half a percent of the page's edge snaps onto it, with nothing to crop`() {
+        show(TestPdfs.plain(), "snap.pdf")
+        waitFor(READY)
+        val width = centre(edge("Right edge")).x - centre(edge("Left edge")).x
+        // In 20% of the page, then back to 0.3% of it from the left edge.
+        rule.onNodeWithContentDescription("Top-left corner").performTouchInput {
+            down(center)
+            moveBy(Offset(width * 0.2f, 0f))
+            moveBy(Offset(-width * 0.197f, 0f))
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals(FULL_FRAME, shownFrame())
+        rule.onNodeWithText(MOVE).assertIsNotEnabled()
     }
 
     @Test
@@ -251,13 +307,51 @@ class CropViewTest {
     }
 
     @Test
-    fun `an untouched empty range keeps the button disabled without an error`() {
+    fun `an untouched empty range keeps the button disabled, asking for the pages without an error`() {
         show(TestPdfs.plain(5), "untyped.pdf")
         waitFor(READY)
         edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.2f) }
         rule.onNodeWithText("Page range").performClick()
         rule.onNodeWithText("No pages given.").assertDoesNotExist()
-        rule.onNodeWithText(CHECK).assertIsNotEnabled()
+        rule.onNodeWithText(TYPE).assertIsNotEnabled()
+        rule.onNodeWithText(CHECK).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a new file from Change or Process more starts with the whole page, All pages and an untouched empty range`() {
+        show(TestPdfs.plain(5), "first.pdf")
+        waitFor(READY)
+        fun edit() {
+            edge("Left edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.2f) }
+            rule.onNodeWithText("Page range").performClick()
+            rule.onNode(hasSetTextAction()).performTextInput("2")
+            rule.onNodeWithText(CROP).assertIsEnabled()
+        }
+        fun assertStart(pageCount: Int) {
+            waitFor("Page 1 of $pageCount")
+            assertEquals(FULL_FRAME, shownFrame())
+            rule.onNodeWithText("All pages").assertIsSelected()
+            rule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
+            rule.onNodeWithText("Page range").performClick()
+            assertEquals("", rule.onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            // Not edited yet: the helper shows, not "No pages given.".
+            rule.onNodeWithText("For example 1-3, 5, 8-").assertExists()
+            rule.onNodeWithText("No pages given.").assertDoesNotExist()
+        }
+
+        edit()
+        next = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "second.pdf")
+        rule.onNodeWithText("Change").performClick()
+        rule.onNodeWithText("Choose PDF").performClick()
+        assertStart(3)
+
+        edit()
+        rule.onNodeWithText(CROP).performClick()
+        waitFor("Crop complete")
+        next = TestPdfs.write(context.cacheDir, TestPdfs.plain(4), "third.pdf")
+        rule.onNodeWithText("Process more files").performClick()
+        rule.onNodeWithText("Choose PDF").performClick()
+        assertStart(4)
     }
 
     @Test
@@ -401,14 +495,42 @@ class CropViewTest {
         assertEquals(Role.RadioButton, rule.onNodeWithText("Page range").fetchSemanticsNode().config[SemanticsProperties.Role])
     }
 
-    private fun assertFrame(expected: List<Float>, actual: CropArea.Fractions) {
+    @Test
+    fun `the range field gives TalkBack what is typed, with the Pages label beside it`() {
+        var text by mutableStateOf("")
+        rule.setContent { PageRangeField(text, onValueChange = { text = it }, error = null) }
+        rule.onNode(hasSetTextAction()).performTextInput("2-4")
+        val field = rule.onNode(hasSetTextAction()).fetchSemanticsNode().config
+        assertEquals("2-4", field[SemanticsProperties.EditableText].text)
+        assertEquals(listOf("Pages"), field[SemanticsProperties.Text].map { it.text })
+        // A content description on an editable field is read instead of what is typed.
+        assertFalse(field.contains(SemanticsProperties.ContentDescription))
+    }
+
+    @Test
+    // A short window, so the grid's last row and the viewer don't fit on screen together.
+    @Config(qualifiers = "w400dp-h640dp")
+    fun `a page tapped low in the grid brings the viewer back into view`() {
+        show(TestPdfs.plain(12), "long.pdf")
+        waitFor(READY)
+        rule.onNodeWithContentDescription("Show page 12").performScrollTo()
+        rule.onNodeWithText("Page 1 of 12").assertIsNotDisplayed()
+
+        rule.onNodeWithContentDescription("Show page 12").performClick()
+        rule.waitForIdle()
+        // The whole viewer: its title and the frame's bottom edge on the page.
+        rule.onNodeWithText("Page 12 of 12").assertIsDisplayed()
+        edge("Bottom edge").assertIsDisplayed()
+    }
+
+    private fun assertFrame(expected: List<Float>, actual: CropArea) {
         val edges = listOf(actual.left, actual.top, actual.right, actual.bottom)
         for ((e, a) in expected.zip(edges)) assertEquals(edges.toString(), e, a, 1e-5f)
     }
 
     @Test
     fun `the frame's mapping keeps it on the page and never empty`() {
-        val frame = CropArea.Fractions(0.1f, 0.2f, 0.9f, 0.8f)
+        val frame = CropArea(0.1f, 0.2f, 0.9f, 0.8f)
         assertFrame(listOf(0.15f, 0.3f, 0.9f, 0.8f), frame.moveCorner(FrameCorner.TOP_LEFT, 0.05f, 0.1f))
         assertFrame(listOf(0.1f, 0.1f, 0.8f, 0.8f), frame.moveCorner(FrameCorner.TOP_RIGHT, -0.1f, -0.1f))
         assertFrame(listOf(0.1f, 0.2f, 1f, 0.9f), frame.moveCorner(FrameCorner.BOTTOM_RIGHT, 0.5f, 0.1f))
@@ -424,6 +546,7 @@ class CropViewTest {
         /** Shown once a file is open, whatever the button says. */
         const val READY = "The frame on other pages"
         const val CHECK = "Check the page range"
+        const val TYPE = "Type the pages to crop"
         const val TIP = "Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact."
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }

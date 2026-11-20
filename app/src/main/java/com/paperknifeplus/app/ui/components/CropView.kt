@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material3.MaterialTheme
@@ -65,10 +67,13 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /** The frame Crop starts with: the whole page, so nothing is cut until a handle moves. */
-internal val FULL_FRAME = CropArea.Fractions(0f, 0f, 1f, 1f)
+internal val FULL_FRAME = CropArea(0f, 0f, 1f, 1f)
 
 /** The narrowest the frame gets, as a fraction of the page's width or height. */
 internal const val MIN_FRAME = 0.05f
+
+/** How close to the page's edge, as a fraction of the page, an edge of the frame snaps onto it. */
+private const val EDGE_SNAP = 0.005f
 
 /** A corner handle of the crop frame; [left] and [top] say which edges it moves, [label] names it. */
 internal enum class FrameCorner(val left: Boolean, val top: Boolean, @StringRes val label: Int) {
@@ -83,16 +88,15 @@ internal enum class FrameEdge(@StringRes val label: Int) {
     LEFT(R.string.crop_edge_left), TOP(R.string.crop_edge_top), RIGHT(R.string.crop_edge_right), BOTTOM(R.string.crop_edge_bottom)
 }
 
-/** This frame with [corner] dragged by [dx] and [dy], fractions of the page's width and height, kept on the page and [MIN_FRAME] across. */
-internal fun CropArea.Fractions.moveCorner(corner: FrameCorner, dx: Float, dy: Float): CropArea.Fractions = CropArea.Fractions(
-    left = if (corner.left) (left + dx).coerceIn(0f, right - MIN_FRAME) else left,
-    top = if (corner.top) (top + dy).coerceIn(0f, bottom - MIN_FRAME) else top,
-    right = if (corner.left) right else (right + dx).coerceIn(left + MIN_FRAME, 1f),
-    bottom = if (corner.top) bottom else (bottom + dy).coerceIn(top + MIN_FRAME, 1f)
-)
+/** This frame with [corner] dragged by [dx] and [dy], fractions of the page's width and height: its two edges moved as [withEdge] moves them. */
+internal fun CropArea.moveCorner(corner: FrameCorner, dx: Float, dy: Float): CropArea {
+    val x = if (corner.left) FrameEdge.LEFT else FrameEdge.RIGHT
+    val y = if (corner.top) FrameEdge.TOP else FrameEdge.BOTTOM
+    return withEdge(x, edge(x) + dx).withEdge(y, edge(y) + dy)
+}
 
 /** Where [edge] of this frame is: a fraction of the page's width (left, right) or height (top, bottom). */
-internal fun CropArea.Fractions.edge(edge: FrameEdge): Float = when (edge) {
+internal fun CropArea.edge(edge: FrameEdge): Float = when (edge) {
     FrameEdge.LEFT -> left
     FrameEdge.TOP -> top
     FrameEdge.RIGHT -> right
@@ -104,19 +108,30 @@ internal fun CropArea.Fractions.edge(edge: FrameEdge): Float = when (edge) {
  * frame that is still the whole page, then a range not typed yet (until [rangeEdited] its field shows the helper, not an error).
  */
 @StringRes
-internal fun cropBlocker(frame: CropArea.Fractions, useRange: Boolean, range: RangeList, rangeEdited: Boolean): Int? = when {
+internal fun cropBlocker(frame: CropArea, useRange: Boolean, range: RangeList, rangeEdited: Boolean): Int? = when {
     useRange && rangeEdited && range !is RangeList.Valid -> R.string.range_check
     frame == FULL_FRAME -> R.string.crop_move_corner
-    useRange && range !is RangeList.Valid -> R.string.range_check
+    useRange && range !is RangeList.Valid -> R.string.crop_type_pages
     else -> null
 }
 
-/** This frame with [edge] at [value], kept on the page and [MIN_FRAME] from the opposite edge. */
-internal fun CropArea.Fractions.withEdge(edge: FrameEdge, value: Float): CropArea.Fractions = when (edge) {
-    FrameEdge.LEFT -> copy(left = value.coerceIn(0f, right - MIN_FRAME))
-    FrameEdge.TOP -> copy(top = value.coerceIn(0f, bottom - MIN_FRAME))
-    FrameEdge.RIGHT -> copy(right = value.coerceIn(left + MIN_FRAME, 1f))
-    FrameEdge.BOTTOM -> copy(bottom = value.coerceIn(top + MIN_FRAME, 1f))
+/**
+ * This frame with [edge] at [value], kept on the page and [MIN_FRAME] from the opposite edge. A value within [EDGE_SNAP] of the page's edge
+ * is the page's edge: a corner dragged back to it, or TalkBack's float steps in and back out, can stop a hair short of it, and the button
+ * would then offer a crop that changes nothing.
+ */
+internal fun CropArea.withEdge(edge: FrameEdge, value: Float): CropArea {
+    val snapped = when {
+        value <= EDGE_SNAP -> 0f
+        value >= 1f - EDGE_SNAP -> 1f
+        else -> value
+    }
+    return when (edge) {
+        FrameEdge.LEFT -> copy(left = snapped.coerceIn(0f, right - MIN_FRAME))
+        FrameEdge.TOP -> copy(top = snapped.coerceIn(0f, bottom - MIN_FRAME))
+        FrameEdge.RIGHT -> copy(right = snapped.coerceIn(left + MIN_FRAME, 1f))
+        FrameEdge.BOTTOM -> copy(bottom = snapped.coerceIn(top + MIN_FRAME, 1f))
+    }
 }
 
 /**
@@ -158,6 +173,7 @@ fun CropView(
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var outputName by remember { mutableStateOf("") }
     val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val viewerInView = remember { BringIntoViewRequester() }
     val pageCount = boxes.size
     val range = PageRanges.parseList(rangeText, pageCount)
 
@@ -320,7 +336,7 @@ fun CropView(
                                     pageCount = pageCount,
                                     aspect = boxes[shown].displayAspect,
                                     onPageChange = { shownPage = it },
-                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                    modifier = Modifier.bringIntoViewRequester(viewerInView).padding(start = 16.dp, end = 16.dp, top = 12.dp),
                                     pagePadding = PaddingValues(vertical = 20.dp)
                                 ) {
                                     CropFrame(frame, onChange = { frame = it })
@@ -333,7 +349,11 @@ fun CropView(
                                     pageCount = pageCount,
                                     isSelected = { it == shown },
                                     tapLabel = { stringResource(R.string.page_show, it + 1) },
-                                    onTap = { shownPage = it },
+                                    onTap = {
+                                        shownPage = it
+                                        // On a long grid or at large text the viewer can be scrolled away above the tapped page.
+                                        scope.launch { viewerInView.bringIntoView() }
+                                    },
                                     onRead = { readPage = it },
                                     modifier = Modifier.padding(horizontal = 16.dp)
                                 ) { index ->
@@ -436,7 +456,7 @@ fun CropView(
  * not accessible; the handles themselves are hidden from it.
  */
 @Composable
-private fun CropFrame(frame: CropArea.Fractions, onChange: (CropArea.Fractions) -> Unit) {
+private fun CropFrame(frame: CropArea, onChange: (CropArea) -> Unit) {
     val mark = pageMark
     val dim = pageDim
     val current by rememberUpdatedState(frame)
@@ -507,14 +527,14 @@ private val TARGET: Dp = 48.dp
 
 /** The frame as a miniature in the grid shows it over its page: the outside dimmed and a thin frame, no handles. */
 @Composable
-private fun CropMarks(frame: CropArea.Fractions) {
+private fun CropMarks(frame: CropArea) {
     val mark = pageMark
     val dim = pageDim
     Canvas(Modifier.fillMaxSize()) { drawCropFrame(frame, mark, dim, 1.5.dp.toPx()) }
 }
 
 /** Dims the page outside [frame] with [dim] and outlines the frame, [stroke] wide and inside it, in [mark]. */
-private fun DrawScope.drawCropFrame(frame: CropArea.Fractions, mark: Color, dim: Color, stroke: Float) {
+private fun DrawScope.drawCropFrame(frame: CropArea, mark: Color, dim: Color, stroke: Float) {
     val l = frame.left * size.width
     val t = frame.top * size.height
     val r = frame.right * size.width
@@ -527,7 +547,7 @@ private fun DrawScope.drawCropFrame(frame: CropArea.Fractions, mark: Color, dim:
 }
 
 /** The L of a handle: two 20 x 4 dp bars from [corner]'s point along its two edges, inside the frame. */
-private fun DrawScope.drawCornerMark(frame: CropArea.Fractions, corner: FrameCorner, mark: Color) {
+private fun DrawScope.drawCornerMark(frame: CropArea, corner: FrameCorner, mark: Color) {
     val x = (if (corner.left) frame.left else frame.right) * size.width
     val y = (if (corner.top) frame.top else frame.bottom) * size.height
     val long = 20.dp.toPx()
