@@ -172,6 +172,21 @@ class LargeTextLayoutTest {
     @Test
     // A small phone, and tall, so the whole screen is laid out and touches reach it.
     @Config(qualifiers = "w320dp-h2400dp")
+    fun `Links' Nothing to remove shows uncut on its button`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        // Three links, all to pages of the file, and no script: External links removes nothing.
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.linked(3), "large-inside.pdf")
+        atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("External links").performClick()
+        rule.waitForIdle()
+        assertNotClipped("Nothing to remove")
+    }
+
+    @Test
+    // A small phone, and tall, so the whole screen is laid out and touches reach it.
+    @Config(qualifiers = "w320dp-h2400dp")
     fun `Links with its choices, disabled buttons and a range error shows its text uncut, and nothing sideways`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
