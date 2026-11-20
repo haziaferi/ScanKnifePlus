@@ -28,7 +28,8 @@ import com.paperknifeplus.app.R
 
 /**
  * Asks for the password of [fileName]. The field is masked (with a show toggle) and kept out of the keyboard's learning. [isError] shows
- * "Incorrect password" until the user edits the field or submits again, so callers only need to set it after a failed attempt.
+ * "Incorrect password" until the user edits the field or submits again, so callers only need to set it after a failed attempt. While
+ * [isLoading], nothing dismisses it.
  */
 @Composable
 fun LockedFilePrompt(
@@ -50,7 +51,8 @@ fun LockedFilePrompt(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        // Like Cancel, Back and a tap outside do nothing while the password is checked: the tool would reset under the running check.
+        properties = DialogProperties(dismissOnBackPress = !isLoading, dismissOnClickOutside = !isLoading, usePlatformDefaultWidth = false)
     ) {
         Surface(
             modifier = Modifier
