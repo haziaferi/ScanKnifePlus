@@ -597,7 +597,7 @@
     <string name="img2pdf_position">Posizione: %1$s</string>
     <string name="img2pdf_reorder_assets">Riordina le immagini</string>
     <string name="links_remove_title">Rimuovi i link da un PDF</string>
-    <string name="links_remove_task">Spariscono tutti i link e gli script che si avviano da soli</string>
+    <string name="links_remove_task">Rimuovi i link, tutti o solo quelli esterni, e gli script che si avviano da soli</string>
     <string name="links_found">Trovati in questo file</string>
     <string name="links_found_on_pages">Trovati in queste pagine</string>
     <plurals name="links_count_links">

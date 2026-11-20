@@ -39,7 +39,9 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
@@ -207,15 +209,18 @@ class LinksViewTest {
     }
 
     @Test
-    // The usual phone height, so the choices sit below the fold and are scrolled to.
+    // The usual phone height, so the choices and the counts don't all fit on screen at once.
     @Config(qualifiers = "w400dp-h640dp")
-    fun `at the usual height the choices scroll into reach, and a range is saved`() {
+    fun `at the usual height the choices and the counts scroll into reach above the button, and a range is saved`() {
         show(TestPdfs.linksAndScript(), "scrolled.pdf")
         waitFor(REMOVE)
         rule.onNodeWithText("Page range").performScrollTo().performClick()
         rule.onNode(hasSetTextAction()).performScrollTo().performTextInput("2")
         rule.onNodeWithText("External links").performScrollTo().performClick()
         rule.onNodeWithText(EXTERNAL_NOTE).performScrollTo().assertIsDisplayed()
+        // The counts of these choices, scrolled to, show together with the pinned button.
+        counted("external link", 1).performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText(NOTHING_CHANGES).performScrollTo().assertIsDisplayed()
         rule.onNodeWithText(REMOVE).assertIsDisplayed().performClick()
         waitFor(DONE)
 
@@ -224,6 +229,53 @@ class LinksViewTest {
             assertEquals(2, doc.getPage(0).annotations.size)
             assertTrue(doc.getPage(1).annotations.isEmpty())
         }
+    }
+
+    @Test
+    fun `the choices come first, and the counts sit right above the button`() {
+        show(TestPdfs.linksAndScript(), "ordered.pdf")
+        waitFor(REMOVE)
+        fun bounds(text: String) = rule.onNodeWithText(text).fetchSemanticsNode().boundsInRoot
+        assertTrue("the file card, then Pages", bounds(fileName("ordered.pdf")).bottom <= bounds("All pages").top)
+        assertTrue("Pages, then Links to remove", bounds("All pages").bottom <= bounds("Links to remove").top)
+        assertTrue("the choices, then the counts", bounds("External links").bottom <= bounds(FOUND).top)
+        assertTrue("the counts, then the button", bounds(NOTHING_CHANGES).bottom <= bounds(REMOVE).top)
+    }
+
+    /** The name the file card shows for the file written as [name]. */
+    private fun fileName(name: String): String = getUriDetails(context, Uri.fromFile(File(context.cacheDir, name))).name
+
+    /** [bytes] protected with [TestPdfs.USER_PASSWORD]. */
+    private fun locked(bytes: ByteArray): ByteArray = PDDocument.load(bytes).use { doc ->
+        doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+    }
+
+    @Test
+    fun `the password line shows only while the choices save something`() {
+        // Three links on page 1, all to pages of the file, and no script.
+        show(locked(TestPdfs.linked(3)), "locked-inside.pdf", TestPdfs.USER_PASSWORD)
+        waitFor(REMOVE)
+        rule.onNodeWithText(PASSWORD_LINE).assertExists()
+
+        rule.onNodeWithText("External links").performClick()
+        rule.onNodeWithText(NOTHING).assertIsNotEnabled()
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        rule.onNodeWithText("All links").performClick()
+        rule.onNodeWithText(PASSWORD_LINE).assertExists()
+        rule.onNodeWithText("Page range").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("2-3")
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the empty screen says which links go`() {
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
+                LinksView(onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.onNodeWithText("Remove links, all or only external ones, and scripts that run on their own").assertExists()
     }
 
     @Test
@@ -467,6 +519,7 @@ class LinksViewTest {
         const val EXTERNAL_NOTE = "Links to pages of this file stay, such as a table of contents."
         const val NONE_BODY = "There is nothing to remove, so nothing is saved."
         const val NONE = "No links or scripts in this file"
+        const val NOTHING_CHANGES = "Nothing changes until you save. Form fields, comments and bookmarks stay."
         const val UNREADABLE = "Can't read this PDF."
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }

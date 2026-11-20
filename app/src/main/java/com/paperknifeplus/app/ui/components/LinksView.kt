@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -244,10 +243,9 @@ fun LinksView(
                                     details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                     onChange = { reset() },
                                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                    // With nothing in the file to remove nothing is saved, so no copy keeps the password.
-                                    keepsPassword = password != null && !counts.isEmpty
+                                    // Only choices that remove something save a copy, which then keeps the password.
+                                    keepsPassword = password != null && !counts.removal(options).isEmpty
                                 )
-                                LinkCountsCard(counts, options, Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp))
                                 // A file with nothing to remove has nothing to choose either.
                                 if (!counts.isEmpty) {
                                     ToolSectionLabel(
@@ -290,7 +288,8 @@ fun LinksView(
                                         )
                                     }
                                 }
-                                Spacer(Modifier.height(16.dp))
+                                // The counts of the choices sit right above the button (R6), as in Crop.
+                                LinkCountsCard(counts, options, Modifier.padding(16.dp))
                             }
                         }
                     }
@@ -347,10 +346,10 @@ fun LinksView(
 }
 
 /**
- * What saving will remove with [options], summed from what the file holds ([found]) before saving: the links (only those that leave the
- * file with [LinkOptions.keepInside]) and the scripts that run on their own, each a number over its name. With a range the heading says
- * "these pages", and a line says that what runs on its own goes from the whole file. With nothing in the file, that there is nothing to
- * remove, so nothing is saved; with choices that remove nothing, the counts and that line.
+ * What saving will remove with [options], summed from what the file holds ([found]) and shown right above the button: the links (only those
+ * that leave the file with [LinkOptions.keepInside]) and the scripts that run on their own, each a number over its name. With a range the
+ * heading says "these pages", and a line says that what runs on its own goes from the whole file. With nothing in the file, that there is
+ * nothing to remove, so nothing is saved; with choices that remove nothing, the counts and that line.
  */
 @Composable
 internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: Modifier = Modifier) {

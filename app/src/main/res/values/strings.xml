@@ -578,7 +578,7 @@
     <string name="img2pdf_position">Position: %1$s</string>
     <string name="img2pdf_reorder_assets">Reorder assets</string>
     <string name="links_remove_title">Remove links from a PDF</string>
-    <string name="links_remove_task">Every link goes, and scripts that run on their own</string>
+    <string name="links_remove_task">Remove links, all or only external ones, and scripts that run on their own</string>
     <string name="links_found">Found in this file</string>
     <string name="links_found_on_pages">Found on these pages</string>
     <plurals name="links_count_links">
