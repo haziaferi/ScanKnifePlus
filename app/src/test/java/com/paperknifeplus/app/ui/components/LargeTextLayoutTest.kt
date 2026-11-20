@@ -27,12 +27,14 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
@@ -72,15 +74,20 @@ class LargeTextLayoutTest {
 
     private fun text(text: String): Rect = rule.onNodeWithText(text, useUnmergedTree = true).bounds()
 
-    private fun layoutOf(text: String): TextLayoutResult {
+    private fun layoutOf(text: String): TextLayoutResult = layoutOf(rule.onNodeWithText(text, useUnmergedTree = true))
+
+    private fun layoutOf(node: SemanticsNodeInteraction): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
-        rule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
+        node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
         return results.single()
     }
 
     /** Fails when [text] is cut: its own layout, measured in the space its container gave it, overflows (bounds alone cannot show this). */
-    private fun assertNotClipped(text: String) {
-        val layout = layoutOf(text)
+    private fun assertNotClipped(text: String) = assertNotClipped(text, rule.onNodeWithText(text, useUnmergedTree = true))
+
+    /** [assertNotClipped] for [node], which shows [text]. */
+    private fun assertNotClipped(text: String, node: SemanticsNodeInteraction) {
+        val layout = layoutOf(node)
         // Height overflow is a cut line; a visible end short of the text is a line dropped by maxLines or an ellipsis.
         assertFalse("$text is cut off at the bottom", layout.didOverflowHeight)
         assertEquals("$text loses its end", layout.layoutInput.text.length, layout.getLineEnd(layout.lineCount - 1, visibleEnd = true))
@@ -165,16 +172,28 @@ class LargeTextLayoutTest {
     @Test
     // A small phone, and tall, so the whole screen is laid out and touches reach it.
     @Config(qualifiers = "w320dp-h2400dp")
-    fun `Links with a page range and External links shows its text uncut, and nothing sideways`() {
+    fun `Links with its choices, disabled buttons and a range error shows its text uncut, and nothing sideways`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links.pdf")
         atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Page range").performClick()
-        rule.onNode(hasSetTextAction()).performTextInput("2")
+        // The disabled button for an untouched range, then for a range with an error, which shows under the field.
+        assertNotClipped("Type the pages to remove links from")
+        val field = rule.onNode(hasSetTextAction())
+        field.performTextInput("3")
+        assertNotClipped("Check the page range")
+        assertNotClipped("“3”: page 3 doesn’t exist. This file has 2 pages.")
+        field.performTextReplacement("2")
         rule.onNodeWithText("External links").performClick()
         rule.waitForIdle()
+
+        // "Pages" labels the section and the field.
+        val pages = rule.onAllNodesWithText("Pages", useUnmergedTree = true)
+        val pageLabels = pages.fetchSemanticsNodes().size
+        assertTrue("the section's and the field's Pages", pageLabels >= 2)
+        for (i in 0 until pageLabels) assertNotClipped("Pages", pages[i])
 
         val segments = listOf("All pages", "Page range", "All links", "External links")
         val shown = segments + listOf(
