@@ -48,6 +48,17 @@ class ToolCatalogTest {
     }
 
     @Test
+    fun `Links sits in Edit right after Bookmarks, to remove or add links`() {
+        val links = ToolCatalog.byId("links")!!
+        assertEquals("links", links.id)
+        assertEquals(ToolCategory.EDIT, links.category)
+        val edit = ToolCatalog.tools.filter { it.category == ToolCategory.EDIT }.map { it.id }
+        assertEquals("links", edit[edit.indexOf("bookmarks") + 1])
+        assertEquals("Links", context.getString(links.name))
+        assertEquals("Remove or add links", context.getString(links.description))
+    }
+
+    @Test
     fun `every tool screen is in the catalog`() {
         val catalog = File(components, "ToolCatalog.kt").readText()
         val screens = components.listFiles()!!.map { it.name.removeSuffix(".kt") }.filter { it.endsWith("View") && it !in NOT_TOOLS }
