@@ -8,41 +8,65 @@ import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import java.util.IdentityHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * What [removeLinks] took out. [links]: link annotations, and actions that open a website, an app or another file on their own. [scripts]:
- * the named scripts, and scripts that run on their own. An action that several triggers run counts once.
+ * What [removeLinks] took out. [links]: link annotations, and actions that open a website, an app or another file, or send form data, on
+ * their own. [scripts]: the named scripts, and scripts that run on their own, a rendition's own script included. An action that several
+ * triggers run counts once.
  */
 internal data class LinkRemoval(val links: Int, val scripts: Int) {
     /** Nothing to remove, so nothing to save. */
     val isEmpty: Boolean get() = links == 0 && scripts == 0
 }
 
-/** The action types that open a website (URI), an app (Launch) or another file (GoToR): links, when a trigger runs them on its own. */
-private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR").map { COSName.getPDFName(it) }
+/**
+ * The action types that open a website (URI), an app (Launch) or another file (GoToR), or send form data to a web address (SubmitForm):
+ * links, when a trigger runs them on its own.
+ */
+private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR", "SubmitForm").map { COSName.getPDFName(it) }
+private val RENDITION = COSName.getPDFName("Rendition")
 
-// The triggers that fire without the user acting: the catalog's document events, a page's open and close, and a widget's page triggers.
+// The triggers that fire without the user acting: the catalog's document events, a page's open and close, and an annotation's page triggers.
 private val DOCUMENT_TRIGGERS = listOf("WC", "WS", "DS", "WP", "DP").map { COSName.getPDFName(it) }
 private val PAGE_TRIGGERS = listOf("O", "C").map { COSName.getPDFName(it) }
-private val WIDGET_TRIGGERS = listOf("PO", "PC", "PV", "PI").map { COSName.getPDFName(it) }
+private val ANNOTATION_TRIGGERS = listOf("PO", "PC", "PV", "PI").map { COSName.getPDFName(it) }
 
-private fun COSDictionary.isScript() = getCOSName(COSName.S) == COSName.JAVA_SCRIPT
-private fun COSDictionary.isLink() = getCOSName(COSName.S) in LINK_ACTIONS
+/** What an action that runs on its own loses, as [LinkRemoval] counts it. */
+private enum class Taken { SCRIPT, LINK }
 
 /**
- * Removes every link annotation (whatever its action) from every page, the named scripts, and the scripts (JavaScript actions) and links
- * (URI, Launch and GoToR actions) of every trigger that fires on its own, those chained by /Next included: the OpenAction, the catalog's
- * document events, page open and close, and a widget's page triggers. What a user fires stays (field keystroke, format, validate and
- * calculate scripts, focus and mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action
- * too, as the structure tree may still point at it. Blocking.
+ * What a trigger that fires on its own may still run of [action] (null for nothing), and what it lost (null for nothing): a script or link
+ * action goes whole; a rendition loses its own script (/JS), and goes whole when it has no rendition (/R) left to play; any other action
+ * stays as it is.
+ */
+private fun cleared(action: COSDictionary): Pair<COSDictionary?, Taken?> {
+    val type = action.getCOSName(COSName.S)
+    return when {
+        type == COSName.JAVA_SCRIPT -> null to Taken.SCRIPT
+        type in LINK_ACTIONS -> null to Taken.LINK
+        type == RENDITION && action.getDictionaryObject(COSName.JS) != null -> {
+            val rest = if (action.getDictionaryObject(COSName.R) == null) null else COSDictionary(action).apply { removeItem(COSName.JS) }
+            rest to Taken.SCRIPT
+        }
+        else -> action to null
+    }
+}
+
+/**
+ * Removes every link annotation (whatever its action) from every page, the named scripts, and the scripts and links of every trigger that
+ * fires on its own, those chained by /Next included, as [cleared] decides: the OpenAction, the catalog's document events, page open and
+ * close, and every annotation's page triggers. What a user fires stays (field keystroke, format, validate and calculate scripts, focus and
+ * mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action too, as the structure tree may
+ * still point at it. Blocking.
  */
 internal fun removeLinks(document: PDDocument): LinkRemoval {
-    val removed = identitySetOf<COSDictionary>()
+    val taken = IdentityHashMap<COSDictionary, Taken>()
     fun clear(owner: COSDictionary, key: COSName) {
         val action = owner.getDictionaryObject(key) ?: return
-        val kept = without(action, { it.isScript() || it.isLink() }, removed)
+        val kept = without(action, ::cleared, taken)
         if (kept == null) owner.removeItem(key) else if (kept !== action) owner.setItem(key, kept)
     }
     fun clearTriggers(owner: COSDictionary, keys: List<COSName>) {
@@ -64,7 +88,7 @@ internal fun removeLinks(document: PDDocument): LinkRemoval {
                     annotation.removeItem(COSName.DEST)
                     links++
                 }
-                "Widget" -> clearTriggers(annotation, WIDGET_TRIGGERS)
+                else -> clearTriggers(annotation, ANNOTATION_TRIGGERS)
             }
         }
     }
@@ -78,16 +102,16 @@ internal fun removeLinks(document: PDDocument): LinkRemoval {
     }
     clear(catalog, COSName.OPEN_ACTION)
     clearTriggers(catalog, DOCUMENT_TRIGGERS)
-    val (ran, opened) = removed.partition { it.isScript() }
-    return LinkRemoval(links + opened.size, scripts + ran.size)
+    return LinkRemoval(links + taken.values.count { it == Taken.LINK }, scripts + taken.values.count { it == Taken.SCRIPT })
 }
 
 /**
- * [action] (an action dictionary, a /Next array of them, or a destination) without the actions that [removes] picks, those chained by /Next
- * included, which are added to [removed]; null when no action is left. The kept actions run in the same order, chained again as copies, so
- * a bookmark or field that shares one keeps its own chain. An action met twice (a shared or looping /Next) is taken once.
+ * [action] (an action dictionary, a /Next array of them, or a destination) with each action in it, those chained by /Next included, as
+ * [clear] leaves it, and what each lost added to [taken]; null when no action is left. When anything changed, the actions left run in the
+ * same order, chained again as copies, so a bookmark or field that shares one keeps its own chain. An action met twice (a shared or looping
+ * /Next) is taken once.
  */
-private fun without(action: COSBase, removes: (COSDictionary) -> Boolean, removed: MutableSet<COSDictionary>): COSBase? {
+private fun without(action: COSBase, clear: (COSDictionary) -> Pair<COSDictionary?, Taken?>, taken: MutableMap<COSDictionary, Taken>): COSBase? {
     // The chain in the order it runs: each action, then its /Next, depth first.
     val chain = mutableListOf<COSDictionary>()
     val seen = identitySetOf<COSDictionary>()
@@ -100,10 +124,10 @@ private fun without(action: COSBase, removes: (COSDictionary) -> Boolean, remove
         }
     }
     walk(action)
-    val (dropped, kept) = chain.partition(removes)
-    if (dropped.isEmpty()) return action
-    removed += dropped
-    val copies = kept.map { COSDictionary(it).apply { removeItem(COSName.NEXT) } }
+    val results = chain.map(clear)
+    if (results.all { (_, lost) -> lost == null }) return action
+    chain.zip(results).forEach { (original, result) -> result.second?.let { taken[original] = it } }
+    val copies = results.mapNotNull { (rest, _) -> rest }.map { COSDictionary(it).apply { removeItem(COSName.NEXT) } }
     val first = copies.firstOrNull() ?: return null
     if (copies.size > 1) first.setItem(COSName.NEXT, COSArray().apply { addAll(copies.drop(1)) })
     return first

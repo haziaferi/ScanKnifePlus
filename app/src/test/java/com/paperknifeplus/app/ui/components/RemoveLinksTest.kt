@@ -12,6 +12,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDJavascriptNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.common.COSObjectable
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDAction
@@ -19,7 +20,9 @@ import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionJavaScript
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionLaunch
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionRemoteGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionSubmitForm
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
+import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotation
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationText
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
@@ -59,6 +62,18 @@ class RemoveLinksTest {
     private fun app() = PDActionLaunch().apply { cosObject.setString(COSName.F, "calc.exe") }
     private fun otherFile() = PDActionRemoteGoTo().apply { cosObject.setString(COSName.F, "other.pdf") }
     private fun goTo(page: PDPage) = PDActionGoTo().apply { destination = PDPageFitDestination().apply { this.page = page } }
+    private fun submit(marker: String) = PDActionSubmitForm().apply { cosObject.setString(COSName.F, "https://example.org/$marker") }
+
+    /** A rendition action: with its own script (/JS) when [withScript], and with a rendition to play (/R) when [play]. */
+    private fun rendition(withScript: Boolean, play: Boolean) = COSDictionary().apply {
+        setName(COSName.TYPE, "Action")
+        setName(COSName.S, "Rendition")
+        if (withScript) setString(COSName.JS, "app.alert('rendition')")
+        if (play) {
+            setInt(COSName.OP, 0)
+            setItem(COSName.R, COSDictionary().apply { setName(COSName.TYPE, "Rendition"); setName(COSName.S, "MR") })
+        }
+    }
 
     /** [actions] run one after the other, each the /Next of the one before; returns the first. */
     private fun chain(vararg actions: PDAction): PDAction {
@@ -67,7 +82,18 @@ class RemoveLinksTest {
     }
 
     /** An additional-actions dictionary (/AA) holding [actions] under their trigger keys. */
-    private fun triggers(vararg actions: Pair<String, PDAction>) = COSDictionary().apply { for ((key, action) in actions) setItem(key, action) }
+    private fun triggers(vararg actions: Pair<String, COSObjectable>) = COSDictionary().apply { for ((key, action) in actions) setItem(key, action) }
+
+    /** A Screen annotation, which plays media, on [page]. */
+    private fun screen(page: PDPage): COSDictionary {
+        val screen = COSDictionary().apply {
+            setItem(COSName.TYPE, COSName.ANNOT)
+            setItem(COSName.SUBTYPE, COSName.SCREEN)
+            setItem(COSName.RECT, PDRectangle(72f, 300f, 200f, 150f).cosArray)
+        }
+        page.annotations = page.annotations + PDAnnotation.createAnnotation(screen)
+        return screen
+    }
 
     /** The widget of [doc]'s one text field, placed on [page]; the field and the widget share this dictionary. */
     private fun field(doc: PDDocument, page: PDPage): COSDictionary {
@@ -85,11 +111,13 @@ class RemoveLinksTest {
     /**
      * Three pages:
      * - page 1: a web link and a sticky note; a script when the page opens, a link to another file when it closes;
-     * - page 2: a link with a plain destination;
-     * - page 3: app and script links, and a text field that calculates with a script and whose widget runs one when its page opens.
+     * - page 2: a link with a plain destination, and a Screen annotation that plays a rendition with its own script when its page opens;
+     * - page 3: app and script links, and a text field that calculates with a script and submits the form on mouse-up, and whose widget
+     *   runs a script when its page opens.
      *
      * The catalog: two named scripts; an OpenAction that opens a website and an app, goes to page 1, then opens another website and runs a
-     * script; a script on document close; a bookmark that opens a website.
+     * script; on document events, a script on close, a form submission before saving and a rendition that is only a script after printing;
+     * a bookmark that opens a website.
      */
     private fun fixture(): ByteArray = PDDocument.load(TestPdfs.plain(3)).use { doc ->
         val pages = doc.pages.toList()
@@ -101,14 +129,21 @@ class RemoveLinksTest {
         pages[1].annotations = listOf(
             link(null, 700f).apply { destination = PDPageFitDestination().apply { page = pages[0] } }
         )
+        screen(pages[1]).setItem(COSName.AA, triggers("PO" to rendition(withScript = true, play = true)))
         pages[2].annotations = listOf(link(app(), 700f), link(script("link"), 650f))
-        field(doc, pages[2]).setItem(COSName.AA, triggers("C" to PDActionJavaScript(CALCULATE), "PO" to script("widget")))
+        field(doc, pages[2]).setItem(
+            COSName.AA,
+            triggers("C" to PDActionJavaScript(CALCULATE), "U" to submit(SUBMIT_MARKER), "PO" to script("widget"))
+        )
         val scripts = PDJavascriptNameTreeNode().apply {
             names = mapOf("one" to script("1"), "two" to script("2"))
         }
         doc.documentCatalog.names = PDDocumentNameDictionary(doc.documentCatalog).apply { setJavascript(scripts) }
         doc.documentCatalog.openAction = chain(web("OPEN-MARKER"), app(), goTo(pages[0]), web("NEXT-MARKER"), script("open"))
-        doc.documentCatalog.cosObject.setItem(COSName.AA, triggers("WC" to script("close")))
+        doc.documentCatalog.cosObject.setItem(
+            COSName.AA,
+            triggers("WC" to script("close"), "WS" to submit("SUBMIT-ON-SAVE"), "DP" to rendition(withScript = true, play = false))
+        )
         doc.documentCatalog.documentOutline = PDDocumentOutline().apply {
             addLast(PDOutlineItem().apply { title = "Website"; action = web(BOOKMARK_MARKER) })
         }
@@ -130,11 +165,15 @@ class RemoveLinksTest {
         assertEquals(FIXTURE_REMOVAL, removal)
         PDDocument.load(output).use { doc ->
             assertEquals(listOf("Text"), doc.subtypes(0))
-            assertTrue(doc.subtypes(1).isEmpty())
+            assertEquals(listOf("Screen"), doc.subtypes(1))
             assertEquals(listOf("Widget"), doc.subtypes(2))
             assertNull(doc.getPage(0).cosObject.getDictionaryObject(COSName.AA))
-            val widgetTriggers = doc.getPage(2).annotations.single().cosObject.getDictionaryObject(COSName.AA) as COSDictionary
-            assertEquals(listOf("C"), widgetTriggers.keySet().map { it.name })
+            fun triggersOf(page: Int) = doc.getPage(page).annotations.single().cosObject.getDictionaryObject(COSName.AA) as COSDictionary
+            val played = triggersOf(1).getDictionaryObject("PO") as COSDictionary
+            assertEquals("Rendition", played.getNameAsString(COSName.S))
+            assertNull(played.getDictionaryObject(COSName.JS))
+            assertNotNull(played.getDictionaryObject(COSName.R))
+            assertEquals(setOf("C", "U"), triggersOf(2).keySet().map { it.name }.toSet())
             val catalog = doc.documentCatalog.cosObject
             assertNull((catalog.getDictionaryObject(COSName.NAMES) as? COSDictionary)?.getDictionaryObject(COSName.JAVA_SCRIPT))
             assertNull(catalog.getDictionaryObject(COSName.AA))
@@ -144,8 +183,10 @@ class RemoveLinksTest {
             assertEquals("https://example.org/$BOOKMARK_MARKER", (doc.documentCatalog.documentOutline!!.firstChild!!.action as PDActionURI).uri)
         }
         val text = String(output.readBytes(), Charsets.ISO_8859_1)
-        for (gone in listOf("LINK-MARKER", "OPEN-MARKER", "NEXT-MARKER", "app.alert", "calc.exe", "other.pdf")) assertFalse(gone, text.contains(gone))
-        for (kept in listOf(BOOKMARK_MARKER, CALCULATE)) assertTrue(kept, text.contains(kept))
+        for (gone in listOf("LINK-MARKER", "OPEN-MARKER", "NEXT-MARKER", "SUBMIT-ON-SAVE", "app.alert", "calc.exe", "other.pdf")) {
+            assertFalse(gone, text.contains(gone))
+        }
+        for (kept in listOf(BOOKMARK_MARKER, SUBMIT_MARKER, CALCULATE)) assertTrue(kept, text.contains(kept))
     }
 
     @Test
@@ -159,32 +200,41 @@ class RemoveLinksTest {
         assertEquals(LinkRemoval(0, 0), runBlocking { countLinkRemoval(context, Uri.fromFile(output), null) })
     }
 
+    /** An action put on a trigger that fires on its own: what [removeLinks] counts of it, and whether the trigger keeps what is left of it. */
+    private class Kind(val name: String, val counted: LinkRemoval, val stays: Boolean, val make: (PDDocument) -> COSDictionary)
+
     @Test
     fun `each trigger that fires on its own loses scripts and links of every kind, and keeps other actions`() {
-        val kinds: List<Pair<(PDDocument) -> PDAction, LinkRemoval>> = listOf(
-            { _: PDDocument -> script("trigger") } to LinkRemoval(0, 1),
-            { _: PDDocument -> web("TRIGGER") } to LinkRemoval(1, 0),
-            { _: PDDocument -> app() } to LinkRemoval(1, 0),
-            { _: PDDocument -> otherFile() } to LinkRemoval(1, 0),
-            { doc: PDDocument -> goTo(doc.getPage(0)) } to LinkRemoval(0, 0)
+        val kinds = listOf(
+            Kind("script", LinkRemoval(0, 1), stays = false) { script("trigger").cosObject },
+            Kind("website", LinkRemoval(1, 0), stays = false) { web("TRIGGER").cosObject },
+            Kind("app", LinkRemoval(1, 0), stays = false) { app().cosObject },
+            Kind("other file", LinkRemoval(1, 0), stays = false) { otherFile().cosObject },
+            Kind("form submission", LinkRemoval(1, 0), stays = false) { submit("TRIGGER").cosObject },
+            Kind("rendition with a script", LinkRemoval(0, 1), stays = true) { rendition(withScript = true, play = true) },
+            Kind("rendition that is only a script", LinkRemoval(0, 1), stays = false) { rendition(withScript = true, play = false) },
+            Kind("rendition", LinkRemoval(0, 0), stays = true) { rendition(withScript = false, play = true) },
+            Kind("go to", LinkRemoval(0, 0), stays = true) { doc -> goTo(doc.getPage(0)).cosObject }
         )
-        // Each trigger as its key and the dictionary that holds it, made in a one-page file.
+        // Each trigger as "owner key", with the dictionary that holds the key, made in a one-page file.
         fun attached(owner: COSDictionary) = COSDictionary().also { owner.setItem(COSName.AA, it) }
         val places: List<Pair<String, (PDDocument) -> COSDictionary>> =
-            listOf("OpenAction" to { doc: PDDocument -> doc.documentCatalog.cosObject }) +
-                listOf("WC", "WS", "DS", "WP", "DP").map { it to { doc: PDDocument -> attached(doc.documentCatalog.cosObject) } } +
-                listOf("O", "C").map { it to { doc: PDDocument -> attached(doc.getPage(0).cosObject) } } +
-                listOf("PO", "PC", "PV", "PI").map { it to { doc: PDDocument -> attached(field(doc, doc.getPage(0))) } }
+            listOf("catalog OpenAction" to { doc: PDDocument -> doc.documentCatalog.cosObject }) +
+                listOf("WC", "WS", "DS", "WP", "DP").map { "catalog $it" to { doc: PDDocument -> attached(doc.documentCatalog.cosObject) } } +
+                listOf("O", "C").map { "page $it" to { doc: PDDocument -> attached(doc.getPage(0).cosObject) } } +
+                listOf("PO", "PC", "PV", "PI").map { "widget $it" to { doc: PDDocument -> attached(field(doc, doc.getPage(0))) } } +
+                listOf("PO", "PC", "PV", "PI").map { "screen $it" to { doc: PDDocument -> attached(screen(doc.getPage(0))) } }
         val plain = TestPdfs.plain()
-        for ((key, place) in places) for ((make, counted) in kinds) {
+        for ((where, place) in places) for (kind in kinds) {
             PDDocument.load(plain).use { doc ->
                 val holder = place(doc)
-                val action = make(doc)
-                holder.setItem(key, action)
-                val what = "${action.subType} at $key"
-                assertEquals(what, counted, removeLinks(doc))
+                val key = where.substringAfter(' ')
+                holder.setItem(key, kind.make(doc))
+                val what = "${kind.name} at $where"
+                assertEquals(what, kind.counted, removeLinks(doc))
                 val left = holder.getDictionaryObject(key)
-                if (counted.isEmpty) assertNotNull(what, left) else assertNull(what, left)
+                if (kind.stays) assertNotNull(what, left) else assertNull(what, left)
+                assertEquals("$what, a second time", LinkRemoval(0, 0), removeLinks(doc))
             }
         }
     }
@@ -278,12 +328,14 @@ class RemoveLinksTest {
 
     private companion object {
         const val BOOKMARK_MARKER = "BOOKMARK-STAYS"
+        const val SUBMIT_MARKER = "SUBMIT-STAYS"
         const val CALCULATE = "event.value = 'CALCULATED-STAYS'"
 
         /**
-         * What [fixture] loses. Links: 4 link annotations, and the OpenAction's two websites and app, and page 1's other file. Scripts: 2
-         * named, and the OpenAction's, document close's, page 1's open and the widget's.
+         * What [fixture] loses. Links: 4 link annotations, the OpenAction's two websites and app, page 1's other file, and the form
+         * submission before saving. Scripts: 2 named, and the OpenAction's, document close's, page 1's open, the widget's, the Screen
+         * rendition's own and the script-only rendition after printing.
          */
-        val FIXTURE_REMOVAL = LinkRemoval(links = 8, scripts = 6)
+        val FIXTURE_REMOVAL = LinkRemoval(links = 9, scripts = 8)
     }
 }
