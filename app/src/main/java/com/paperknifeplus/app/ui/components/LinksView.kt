@@ -200,7 +200,7 @@ fun LinksView(
                         val source = sourceUri
                         val counts = found
                         if (source != null && counts != null) {
-                            val none = counts.links == 0 && counts.scripts == 0
+                            val none = counts.isEmpty
                             ToolConfigLayout(
                                 action = stringResource(if (none) R.string.links_nothing_to_remove else R.string.links_remove_and_save),
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-no-links", "pdf")) },
@@ -282,7 +282,7 @@ internal fun LinkCountsCard(found: LinkRemoval, modifier: Modifier = Modifier) {
     ToolCard(modifier) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ToolSectionLabel(stringResource(R.string.links_found))
-            if (found.links == 0 && found.scripts == 0) {
+            if (found.isEmpty) {
                 Row(
                     Modifier.fillMaxWidth().heightIn(min = 56.dp).background(colors.surfaceVariant, RoundedCornerShape(14.dp)).padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,

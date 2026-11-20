@@ -14,7 +14,10 @@ import kotlinx.coroutines.withContext
  * What [removeLinks] took out. [links]: link annotations, and actions that open a website, an app or another file on their own. [scripts]:
  * the named scripts, and scripts that run on their own. An action that several triggers run counts once.
  */
-internal data class LinkRemoval(val links: Int, val scripts: Int)
+internal data class LinkRemoval(val links: Int, val scripts: Int) {
+    /** Nothing to remove, so nothing to save. */
+    val isEmpty: Boolean get() = links == 0 && scripts == 0
+}
 
 /** The action types that open a website (URI), an app (Launch) or another file (GoToR): links, when a trigger runs them on its own. */
 private val LINK_ACTIONS = listOf("URI", "Launch", "GoToR").map { COSName.getPDFName(it) }
