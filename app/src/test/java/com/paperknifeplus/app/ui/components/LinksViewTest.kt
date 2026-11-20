@@ -169,6 +169,25 @@ class LinksViewTest {
     }
 
     @Test
+    fun `an open file handed a password keeps none, and saves without one`() {
+        show(TestPdfs.linksAndScript(), "open-handed.pdf", TestPdfs.USER_PASSWORD)
+        waitFor(REMOVE)
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        rule.onNodeWithText(REMOVE).performClick()
+        waitFor(DONE)
+
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        PDDocument.load(output).use { assertFalse(it.isEncrypted) }
+    }
+
+    @Test
+    fun `a file with only an owner password, handed a password it doesn't take, opens without asking`() {
+        show(TestPdfs.ownerOnly(), "owner-handed.pdf", "not-its-password")
+        waitFor(NONE)
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
     fun `a damaged file says it can't be read`() {
         show(TestPdfs.garbage, "damaged.pdf")
         rule.waitUntil(60_000) { ShadowToast.getTextOfLatestToast() == UNREADABLE }

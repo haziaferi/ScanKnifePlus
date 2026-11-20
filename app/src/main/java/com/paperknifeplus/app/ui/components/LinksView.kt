@@ -66,9 +66,9 @@ internal fun linksBlocker(useRange: Boolean, range: RangeList, rangeEdited: Bool
 
 /**
  * Links, Remove: the links on every page or on a range go, all of them or only those that leave the file, and every script and action that
- * runs on its own goes from the whole file ([removeLinks]). The counts come first: once a file is chosen (and unlocked), [findLinks] reads it
- * once, and each choice sums what it found per page and kind, so the card says what saving will take out, or that there is nothing to
- * remove and so nothing to save. The saved copy keeps the source's password.
+ * runs on its own goes from the whole file ([removeLinks]). The counts are worked out before saving: once a file is chosen (and unlocked),
+ * [findLinks] reads it once, and each choice sums what it found per page and kind, so the card under the choices, right above the button,
+ * says what saving will take out, or that there is nothing to remove and so nothing to save. The saved copy keeps the source's password.
  */
 @Composable
 fun LinksView(
@@ -129,9 +129,9 @@ fun LinksView(
         reset()
     }
 
-    // Finds what saving can remove from [source] opened with [pass], parsing it once: a file that needs a password asks for it (again after
-    // a wrong one), while one with only an owner password opens without it.
-    suspend fun count(source: Uri, pass: String?) {
+    // Finds what saving can remove from [source] opened with [pass]. As in Crop, a file that opens without a password keeps none, not even
+    // one the reader [handed] over; a file that needs one tries [handed] next (its first read stops at the encryption), then asks for it.
+    suspend fun count(source: Uri, pass: String?, handed: String? = null) {
         try {
             val counts = findLinks(context, source, pass)
             password = pass
@@ -141,8 +141,12 @@ fun LinksView(
         } catch (e: CancellationException) {
             throw e
         } catch (e: InvalidPasswordException) {
-            unlockError = pass != null
-            fileToUnlock = fileName
+            if (handed != null) {
+                count(source, handed)
+            } else {
+                unlockError = pass != null
+                fileToUnlock = fileName
+            }
         } catch (e: Exception) {
             unreadable(source, e)
         } catch (e: OutOfMemoryError) {
@@ -159,7 +163,7 @@ fun LinksView(
         unlockError = false
         isFileLoading = true
         scope.launch {
-            count(uri, given)
+            count(uri, null, handed = given)
             isFileLoading = false
         }
     }
@@ -248,6 +252,7 @@ fun LinksView(
                                 )
                                 // A file with nothing to remove has nothing to choose either.
                                 if (!counts.isEmpty) {
+                                    // Crop's Pages section: the same control, range field, helper and errors.
                                     ToolSectionLabel(
                                         stringResource(R.string.pages_label),
                                         Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)
@@ -288,7 +293,7 @@ fun LinksView(
                                         )
                                     }
                                 }
-                                // The counts of the choices sit right above the button (R6), as in Crop.
+                                // The counts of the choices sit last, right above the button (R6).
                                 LinkCountsCard(counts, options, Modifier.padding(16.dp))
                             }
                         }
