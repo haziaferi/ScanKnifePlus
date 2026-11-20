@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   pull_request:
   workflow_dispatch:
+  # Twice a week on main, so the Gradle cache (written only from main, evicted after 7 days unused) stays warm between merges.
+  schedule:
+    - cron: '17 5 * * 1,4'
 
 permissions:
   contents: read
@@ -32,6 +35,17 @@ jobs:
     # Validates the wrapper jar; caches are written only from the default branch.
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
+
+    # A repository can briefly answer "not found" (Gradle never retries that), so the build's own classpath is resolved first, up
+    # to three times. The build itself is not retried, so a failing test still fails the run.
+    - name: Resolve build dependencies
+      run: |
+        for attempt in 1 2 3; do
+          ./gradlew help --no-daemon --console=plain && exit 0
+          echo "Resolving the build's dependencies failed (attempt $attempt of 3)"
+          [ "$attempt" -lt 3 ] && sleep 60
+        done
+        exit 1
 
     - name: Test, lint and build release APK and AAB
       run: |
