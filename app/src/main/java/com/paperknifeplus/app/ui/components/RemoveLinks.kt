@@ -13,9 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * What [removeLinks] took out. [links]: link annotations, and actions that open a website, an app or another file, or send form data, on
- * their own. [scripts]: the named scripts, and scripts that run on their own, a rendition's own script included. An action that several
- * triggers run counts once.
+ * What removing links takes out with some options ([FoundLinks.removal]), or took out ([removeLinksPdf]). [links]: link annotations, and
+ * actions that open a website, an app or another file, or send form data, on their own. [scripts]: the named scripts, and scripts that run
+ * on their own, a rendition's own script included. An action that several triggers run counts once.
  */
 internal data class LinkRemoval(val links: Int, val scripts: Int) {
     /** Nothing to remove, so nothing to save. */
@@ -103,9 +103,9 @@ private fun leavesFile(link: COSDictionary): Boolean {
  * Removes the link annotations [options] choose, the named scripts, and the scripts and links of every trigger that fires on its own, those
  * chained by /Next included, as [cleared] decides: the OpenAction, the catalog's document events, page open and close, and every
  * annotation's page triggers, on every page whatever [options] say. What a user fires stays (field keystroke, format, validate and calculate
- * scripts, focus and mouse actions, bookmarks), and so do other action types and annotations. A removed link loses its action too, as the
- * structure tree may still point at it. Returns what it found, every page and kind, so its [FoundLinks.removal] of [options] is what it
- * took out. Blocking.
+ * scripts, focus and mouse actions, bookmarks), and so do other action types and annotations. A removed link that no page keeps also loses
+ * its /A and /Dest, as the structure tree may still point at it; the triggers a user fires on it (its /AA) stay in its dictionary, which no
+ * page holds any more. Returns what it found, every page and kind, so its [FoundLinks.removal] of [options] is what it took out. Blocking.
  */
 internal fun removeLinks(document: PDDocument, options: LinkOptions = LinkOptions()): FoundLinks {
     val taken = IdentityHashMap<COSDictionary, Taken>()
@@ -118,6 +118,13 @@ internal fun removeLinks(document: PDDocument, options: LinkOptions = LinkOption
         val triggers = owner.getDictionaryObject(COSName.AA) as? COSDictionary ?: return
         for (key in keys) clear(triggers, key)
         if (triggers.size() == 0) owner.removeItem(COSName.AA)
+    }
+
+    // Pages that share one /Annots array get their own copies before any changes, so each page counts and loses only its own links.
+    val arrays = identitySetOf<COSArray>()
+    for (page in document.pages) {
+        val annots = page.cosObject.getDictionaryObject(COSName.ANNOTS) as? COSArray ?: continue
+        if (!arrays.add(annots)) page.cosObject.setItem(COSName.ANNOTS, COSArray().apply { for (i in 0 until annots.size()) add(annots.get(i)) })
     }
 
     val inside = mutableListOf<Int>()
@@ -213,9 +220,9 @@ internal fun <T> withPdf(context: Context, input: Uri, password: String?, block:
     }
 
 /**
- * What [removeLinksPdf] finds in [input], opened with [password]: [removeLinks] run once on a copy that is never saved, so a screen can show
- * the counts for every choice before anything is saved, without reading the file again. Throws on failure, InvalidPasswordException for a
- * wrong password.
+ * What [input], opened with [password], holds for [removeLinksPdf] to take out: [removeLinks] run once on a copy that is never saved, so a
+ * screen can show the counts for every choice before anything is saved, without reading the file again. Throws on failure,
+ * InvalidPasswordException for a wrong or missing password.
  */
 internal suspend fun findLinks(context: Context, input: Uri, password: String?): FoundLinks = withContext(Dispatchers.IO) {
     withPdf(context, input, password) { removeLinks(it) }

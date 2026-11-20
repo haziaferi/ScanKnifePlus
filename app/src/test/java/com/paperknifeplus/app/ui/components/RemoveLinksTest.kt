@@ -252,6 +252,28 @@ class RemoveLinksTest {
         }
     }
 
+    @Test
+    fun `pages that share one annotations array each count and lose only their own links`() {
+        /** Two pages whose /Annots is one and the same array, holding a web link and a sticky note. */
+        fun sharing() = PDDocument.load(TestPdfs.plain(2)).apply {
+            val note = PDAnnotationText().apply { rectangle = PDRectangle(72f, 500f, 20f, 20f) }
+            val annots = COSArray().apply { add(link(web("ONE-ARRAY"), 700f)); add(note) }
+            pages.forEach { it.cosObject.setItem(COSName.ANNOTS, annots) }
+        }
+        val found = sharing().use { removeLinks(it) }
+        assertEquals(FoundLinks(inside = listOf(0, 0), leaving = listOf(1, 1), automatic = LinkRemoval(0, 0)), found)
+
+        // A range on page 2 only: page 1 keeps its link, with its action.
+        sharing().use { doc ->
+            val options = LinkOptions(pages = setOf(1))
+            assertEquals(LinkRemoval(1, 0), found.removal(options))
+            assertEquals(found.removal(options), doc.remove(options))
+            assertEquals(listOf("Link", "Text"), doc.subtypes(0))
+            assertEquals("https://example.org/ONE-ARRAY", ((doc.getPage(0).annotations.first() as PDAnnotationLink).action as PDActionURI).uri)
+            assertEquals(listOf("Text"), doc.subtypes(1))
+        }
+    }
+
     /** A link annotation for the kind choice: [name] in its /Contents, and whether it [stays] when only links that leave the file go. */
     private class LinkCase(val name: String, val stays: Boolean, val make: (PDDocument) -> PDAnnotationLink)
 
