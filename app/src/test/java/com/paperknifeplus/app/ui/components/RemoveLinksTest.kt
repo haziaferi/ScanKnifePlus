@@ -183,7 +183,8 @@ class RemoveLinksTest {
                 holder.setItem(key, action)
                 val what = "${action.subType} at $key"
                 assertEquals(what, counted, removeLinks(doc))
-                if (counted == LinkRemoval(0, 0)) assertNotNull(what, holder.getDictionaryObject(key)) else assertNull(what, holder.getDictionaryObject(key))
+                val left = holder.getDictionaryObject(key)
+                if (counted.isEmpty) assertNotNull(what, left) else assertNull(what, left)
             }
         }
     }
