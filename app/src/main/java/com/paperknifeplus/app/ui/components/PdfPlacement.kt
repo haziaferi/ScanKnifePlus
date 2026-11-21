@@ -2,16 +2,12 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.Context
 import android.net.Uri
-import android.util.Log
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState
 import com.tom_roush.pdfbox.util.Matrix
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * The part of a page viewers show: its cropBox in user space ([left], [bottom], [width], [height]) and its /Rotate, one of 0, 90, 180 or
@@ -122,24 +118,12 @@ internal fun rewritePdf(context: Context, source: Uri, password: String, output:
 }
 
 /**
- * The [PageBox] of every page of [uri], opened with [password] through temp files ([withPdf]). Throws on failure, InvalidPasswordException
- * for a wrong or missing password, so a damaged protected file is not taken for a wrong password.
+ * The [PageBox] of every page of [uri], opened with [password] through temp files ([withPdf]), told apart as [checkPassword] does: a
+ * damaged protected file is not taken for a wrong password, and a file without pages is unreadable.
  */
-internal suspend fun pageBoxesOf(context: Context, uri: Uri, password: String?): List<PageBox> = withContext(Dispatchers.IO) {
-    withPdf(context, uri, password) { doc -> doc.pages.map(PageBox::of) }
-}
+internal suspend fun checkPageBoxes(context: Context, uri: Uri, password: String?): PasswordCheck<List<PageBox>> =
+    checkPassword(context, uri, password) { doc -> doc.pages.map(PageBox::of).ifEmpty { null } }
 
-/** [pageBoxesOf], or empty when it cannot be read with [password] (wrong passwords included), also for lack of memory. */
+/** [checkPageBoxes], or empty when it cannot be read with [password] (wrong passwords included), also for lack of memory. */
 internal suspend fun readPageBoxes(context: Context, uri: Uri, password: String?): List<PageBox> =
-    try {
-        pageBoxesOf(context, uri, password)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        // PDFBox throws unchecked exceptions on some malformed files, as inspectPdf notes.
-        Log.w("PdfPlacement", "Cannot read the pages of $uri", e)
-        emptyList()
-    } catch (e: OutOfMemoryError) {
-        Log.w("PdfPlacement", "Out of memory reading the pages of $uri", e)
-        emptyList()
-    }
+    (checkPageBoxes(context, uri, password) as? PasswordCheck.Opened)?.value.orEmpty()

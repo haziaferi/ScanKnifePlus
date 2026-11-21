@@ -231,16 +231,24 @@ fun UltraPreview(
                 }
             } else {
                 isDecrypting = true
-                val copy = decryptToCache(context, uri, password)
+                val decrypted = decryptToCache(context, uri, password)
                 isDecrypting = false
-                if (copy == null) {
-                    unlockError = true
-                    fileToUnlock = fileName
-                    isInitializing = false
-                    return@launch
+                decrypted.resolve(
+                    context,
+                    onWrongPassword = {
+                        unlockError = true
+                        fileToUnlock = fileName
+                        isInitializing = false
+                        return@launch
+                    },
+                    onUnreadable = {
+                        onDismiss()
+                        return@launch
+                    }
+                ) { copy ->
+                    deleteDecryptedCopy(context, source.displayUri)
+                    source = source.unlocked(copy.uri, password)
                 }
-                deleteDecryptedCopy(context, source.displayUri)
-                source = source.unlocked(copy, password)
             }
 
             val document = loadReaderDocument(context, source.displayUri)

@@ -1,5 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,6 +77,27 @@ class FileCheck internal constructor(private val scope: CoroutineScope) {
 fun rememberFileCheck(): FileCheck {
     val scope = rememberCoroutineScope()
     return remember(scope) { FileCheck(scope) }
+}
+
+/**
+ * Applies a password check's outcome the one way every tool does: [onOpened] with what it read; for a wrong password [onWrongPassword],
+ * where the prompt says it is incorrect; for a file that cannot be read, the tools' unreadable message and [onUnreadable], which closes the
+ * prompt and resets the tool. Inline, so the handlers can suspend and return from the check.
+ */
+internal inline fun <T> PasswordCheck<T>.resolve(
+    context: Context,
+    onWrongPassword: () -> Unit,
+    onUnreadable: () -> Unit,
+    onOpened: (T) -> Unit
+) {
+    when (this) {
+        is PasswordCheck.Opened -> onOpened(value)
+        PasswordCheck.WrongPassword -> onWrongPassword()
+        PasswordCheck.Unreadable -> {
+            Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+            onUnreadable()
+        }
+    }
 }
 
 /**

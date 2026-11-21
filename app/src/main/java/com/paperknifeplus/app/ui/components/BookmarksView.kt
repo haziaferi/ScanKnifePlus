@@ -64,21 +64,21 @@ fun BookmarksView(
         currentState = ToolState.SELECTING
     }
 
-    /** Reads the outline with [pass]; false if the document does not open with it. An unreadable outline is reported and resets. */
-    suspend fun extractBookmarks(uri: Uri, pass: String?): Boolean = when (val result = loadOutline(context, uri, pass)) {
-        is OutlineLoad.Loaded -> {
-            bookmarks = result.bookmarks
-            pageCount = result.pageCount
+    /**
+     * Reads the outline with [pass]. A file that does not open with it asks for its password (saying it is incorrect when one was given);
+     * one that cannot be read is reported and resets.
+     */
+    suspend fun extractBookmarks(uri: Uri, pass: String?) {
+        loadOutline(context, uri, pass).resolve(
+            context,
+            onWrongPassword = { unlockError = pass != null; fileToUnlock = fileName },
+            onUnreadable = { fileToUnlock = null; unlockError = false; reset() }
+        ) { outline ->
+            bookmarks = outline.bookmarks
+            pageCount = outline.pageCount
             unlockPassword = pass.orEmpty()
             currentState = ToolState.CONFIGURING
-            true
-        }
-        OutlineLoad.WrongPassword -> false
-        OutlineLoad.Unreadable -> {
-            Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
             fileToUnlock = null
-            reset()
-            true
         }
     }
 
@@ -96,8 +96,8 @@ fun BookmarksView(
                 Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                 selectedUri = null
                 currentState = ToolState.SELECTING
-            } else if (!extractBookmarks(uri, null)) {
-                fileToUnlock = fileName
+            } else {
+                extractBookmarks(uri, null)
             }
         }
     }
@@ -266,13 +266,7 @@ fun BookmarksView(
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            check.start {
-                                if (extractBookmarks(source, pass)) {
-                                    fileToUnlock = null
-                                } else {
-                                    unlockError = true
-                                }
-                            }
+                            check.start { extractBookmarks(source, pass) }
                         }
                     },
                     isError = unlockError,

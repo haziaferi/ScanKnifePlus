@@ -44,19 +44,20 @@ class ToolUtilsTest {
     private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }
 
     @Test
-    fun `decryptToCache gives null and writes nothing when the provider has no stream`() = runBlocking {
-        assertNull(decryptToCache(context, TestPdfs.nullStreamUri(), TestPdfs.USER_PASSWORD))
+    fun `decryptToCache finds nothing to read and writes nothing when the provider has no stream`() = runBlocking {
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, TestPdfs.nullStreamUri(), TestPdfs.USER_PASSWORD))
         assertEquals(emptyList<File>(), decryptedCopies())
     }
 
     @Test
-    fun `decryptToCache writes a unique, unencrypted copy`() = runBlocking {
+    fun `decryptToCache writes a unique, unencrypted copy with its page count`() = runBlocking {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked.pdf")
-        val first = decryptToCache(context, source, TestPdfs.USER_PASSWORD)!!
-        val second = decryptToCache(context, source, TestPdfs.USER_PASSWORD)!!
-        assertTrue(first != second)
-        PDDocument.load(File(first.path!!)).use { assertEquals(2, it.numberOfPages) }
-        assertNull(decryptToCache(context, source, "wrong"))
+        val first = (decryptToCache(context, source, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        val second = (decryptToCache(context, source, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        assertTrue(first.uri != second.uri)
+        assertEquals(2, first.pageCount)
+        PDDocument.load(File(first.uri.path!!)).use { assertEquals(2, it.numberOfPages) }
+        assertEquals(PasswordCheck.WrongPassword, decryptToCache(context, source, "wrong"))
         assertEquals(2, decryptedCopies().size)
     }
 

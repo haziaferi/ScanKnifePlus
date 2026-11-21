@@ -19,9 +19,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 import java.util.concurrent.TimeUnit
 
-/** Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check. */
+/** Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check, and a damaged protected file. */
 @RunWith(RobolectricTestRunner::class)
 class CompressViewTest {
     @get:Rule(order = 0)
@@ -59,5 +60,21 @@ class CompressViewTest {
         rule.onNodeWithText("Choose PDF").assertExists()
         rule.onNodeWithText("Compress and save PDF").assertDoesNotExist()
         assertEquals(before, cacheFiles())
+    }
+
+    @Test
+    fun `a damaged protected file opened with its password says it can't be read, not that the password is wrong`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "damaged-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        val before = cacheFiles()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isEmpty() }
+        assertEquals("Can't read this PDF.", ShadowToast.getTextOfLatestToast())
+        rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        assertEquals("no decrypted copy is left", before, cacheFiles())
     }
 }

@@ -63,3 +63,41 @@ suspend fun inspectPdf(context: Context, uri: Uri, countOwnerPassword: Boolean =
 
 /** True when a tool must ask for a password: the file is [PdfAccess.Encrypted] and the caller was not handed one (e.g. by the preview). */
 fun needsUnlockPrompt(access: PdfAccess, password: String?): Boolean = access == PdfAccess.Encrypted && password == null
+
+/** What opening a file with a password found ([checkPassword]): what was read from it, a password that does not open it, or neither. */
+sealed interface PasswordCheck<out T> {
+    /** The password opens the file; [value] is what the check read from it. */
+    data class Opened<out T>(val value: T) : PasswordCheck<T>
+
+    /** The password does not open the file: the prompt says so and asks again. */
+    data object WrongPassword : PasswordCheck<Nothing>
+
+    /** Damaged, without pages, or too large to parse: the tool says it cannot be read and resets. */
+    data object Unreadable : PasswordCheck<Nothing>
+}
+
+/**
+ * [read] on [uri] opened with [password] (none for null) through [withPdf], off the main thread. Only a password that does not open the
+ * file is [PasswordCheck.WrongPassword]; any other failure, running out of memory included, and a [read] that finds nothing (null) are
+ * [PasswordCheck.Unreadable], so a damaged protected file is not taken for a wrong password. Cancellation is rethrown.
+ */
+suspend fun <T : Any> checkPassword(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): PasswordCheck<T> =
+    withContext(Dispatchers.IO) {
+        try {
+            withPdf(context, uri, password, read)?.let { PasswordCheck.Opened(it) } ?: PasswordCheck.Unreadable
+        } catch (e: InvalidPasswordException) {
+            PasswordCheck.WrongPassword
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot read $uri", e)
+            PasswordCheck.Unreadable
+        } catch (e: OutOfMemoryError) {
+            Log.w(TAG, "Out of memory reading $uri", e)
+            PasswordCheck.Unreadable
+        }
+    }
+
+/** The page count of [uri] opened with [password], told apart as [checkPassword] does; a file without pages is unreadable. */
+suspend fun checkPageCount(context: Context, uri: Uri, password: String): PasswordCheck<Int> =
+    checkPassword(context, uri, password) { document -> document.numberOfPages.takeIf { it > 0 } }

@@ -165,14 +165,16 @@ class BookmarkOutlineTest {
     }
 
     @Test
-    fun `an outline that fails to read is reported unreadable, a wrong password is not`() = runBlocking {
+    fun `an outline that fails to read, or a file too large to parse, is reported unreadable, a wrong password is not`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val uri = Uri.fromFile(File(context.cacheDir, "outlined.pdf").apply { writeBytes(outlined()) })
-        assertEquals(OutlineLoad.Unreadable, loadOutline(context, uri, null) { throw IllegalStateException("malformed") })
-        assertEquals(5, (loadOutline(context, uri, null) as OutlineLoad.Loaded).bookmarks.size)
-        val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(com.paperknifeplus.app.testing.TestPdfs.userPassword()) })
-        assertEquals(OutlineLoad.WrongPassword, loadOutline(context, locked, "wrong"))
+        assertEquals(PasswordCheck.Unreadable, loadOutline(context, uri, null) { throw IllegalStateException("malformed") })
+        assertEquals(5, (loadOutline(context, uri, null) as PasswordCheck.Opened).value.bookmarks.size)
+        val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(TestPdfs.userPassword()) })
+        assertEquals(PasswordCheck.WrongPassword, loadOutline(context, locked, "wrong"))
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword()).apply { runOutOfMemory() }
+        assertEquals(PasswordCheck.Unreadable, loadOutline(context, huge.uri, TestPdfs.USER_PASSWORD))
     }
 
     @Test

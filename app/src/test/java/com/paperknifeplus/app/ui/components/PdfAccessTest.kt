@@ -12,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class PdfAccessTest {
@@ -61,5 +62,31 @@ class PdfAccessTest {
         assertFalse(needsUnlockPrompt(PdfAccess.Encrypted, "pw"))
         assertFalse(needsUnlockPrompt(PdfAccess.Open, null))
         assertFalse(needsUnlockPrompt(PdfAccess.Unreadable, null))
+    }
+
+    private val locked by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "checked.pdf") }
+    private val damaged by lazy { TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "checked-damaged.pdf") }
+    private val withoutPages by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 0), "checked-empty.pdf") }
+    private val huge by lazy { TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(pages = 2)).apply { runOutOfMemory() }.uri }
+
+    @Test
+    fun `a password check tells a wrong password from a damaged, empty or too large file`() = runBlocking {
+        assertEquals(PasswordCheck.Opened(2), checkPageCount(context, locked, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.WrongPassword, checkPageCount(context, locked, "wrong"))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, damaged, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, withoutPages, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, huge, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `decrypting tells them apart the same way, and keeps a copy only of a file it opened`() = runBlocking {
+        val opened = (decryptToCache(context, locked, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        assertEquals(2, opened.pageCount)
+        assertEquals(PasswordCheck.WrongPassword, decryptToCache(context, locked, "wrong"))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, damaged, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, withoutPages, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, huge, TestPdfs.USER_PASSWORD))
+        val copies = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.map { it.name }
+        assertEquals(listOf(File(opened.uri.path!!).name), copies)
     }
 }

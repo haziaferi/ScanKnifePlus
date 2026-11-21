@@ -245,18 +245,24 @@ fun MetadataView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
                             check.start {
-                                if (getPageCount(context, source, pass) > 0) {
+                                val counted = checkPageCount(context, source, pass)
+                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) {
                                     unlockPassword = pass
                                     showProperties(source, pass)
-                                } else {
-                                    unlockError = true
                                 }
                             }
                         }

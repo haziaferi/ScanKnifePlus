@@ -111,14 +111,17 @@ fun MergeView(
                         }
                         PdfAccess.Encrypted -> {
                             // A password handed over by the preview unlocks the file right away, as the unlock prompt would.
-                            val copy = password?.let { decryptAndCount(context, uri, it) }
-                            if (copy == null) {
-                                MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
-                            } else {
-                                MergeFile(
-                                    nextFileId++, uri, details.name, details.size,
-                                    isLocked = true, password = password, isUnlocked = true, decryptedUri = copy.uri, pageCount = copy.pageCount
+                            when (val decrypted = password?.let { decryptToCache(context, uri, it) }) {
+                                is PasswordCheck.Opened -> MergeFile(
+                                    nextFileId++, uri, details.name, details.size, isLocked = true, password = password, isUnlocked = true,
+                                    decryptedUri = decrypted.value.uri, pageCount = decrypted.value.pageCount
                                 )
+                                PasswordCheck.Unreadable -> {
+                                    unreadable++
+                                    null
+                                }
+                                // No password, or a wrong one: listed locked, for the prompt.
+                                else -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
                             }
                         }
                         PdfAccess.Open -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = false, pageCount = getPageCount(context, uri, null))
@@ -299,8 +302,17 @@ fun MergeView(
                     onDismiss = { check.stop(); fileToUnlock = null; unlockError = false },
                     onUnlocked = { password ->
                         check.start {
-                            val copy = decryptAndCount(context, currentFileToUnlock.uri, password)
-                            if (copy != null) {
+                            val decrypted = decryptToCache(context, currentFileToUnlock.uri, password)
+                            decrypted.resolve(
+                                context,
+                                onWrongPassword = { unlockError = true },
+                                // A file that cannot be read leaves the list, as it would not have joined it when added.
+                                onUnreadable = {
+                                    updateFiles(selectedFiles.filter { it.uri != currentFileToUnlock.uri })
+                                    fileToUnlock = null
+                                    unlockError = false
+                                }
+                            ) { copy ->
                                 updateFiles(selectedFiles.map {
                                     if (it.uri == currentFileToUnlock.uri) {
                                         it.copy(isUnlocked = true, password = password, decryptedUri = copy.uri, pageCount = copy.pageCount)
@@ -310,8 +322,6 @@ fun MergeView(
                                 })
                                 fileToUnlock = null
                                 unlockError = false
-                            } else {
-                                unlockError = true
                             }
                         }
                     },

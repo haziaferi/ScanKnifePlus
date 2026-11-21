@@ -72,17 +72,23 @@ fun DeleteView(
         currentState = ToolState.CONFIGURING
     }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        dropDecryptedCopy()
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
     // An encrypted file is decrypted to a cache copy once, so page previews can use the fast native renderer.
     suspend fun unlock(source: Uri, password: String) {
-        val copy = decryptAndCount(context, source, password)
-        if (copy != null) {
+        val decrypted = decryptToCache(context, source, password)
+        decrypted.resolve(context, onWrongPassword = { unlockError = true; fileToUnlock = fileName }, onUnreadable = { closePrompt() }) { copy ->
             decryptedUri = copy.uri
             unlockPassword = password
             showPages(copy.uri, copy.pageCount)
             fileToUnlock = null
-        } else {
-            unlockError = true
-            fileToUnlock = fileName
         }
     }
 
@@ -322,14 +328,7 @@ fun DeleteView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = {
-                        check.stop()
-                        fileToUnlock = null
-                        unlockError = false
-                        dropDecryptedCopy()
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,

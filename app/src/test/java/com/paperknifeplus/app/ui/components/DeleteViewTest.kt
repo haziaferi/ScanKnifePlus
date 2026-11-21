@@ -78,6 +78,21 @@ class DeleteViewTest {
         rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 
+    @Test
+    fun `a damaged protected file opened with its password says it can't be read, not that the password is wrong`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "damaged-delete.pdf")
+        rule.setContent { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isEmpty() }
+        assertEquals("Can't read this PDF.", ShadowToast.getTextOfLatestToast())
+        rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        assertTrue("no decrypted copy is left", context.cacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted_") })
+    }
+
     /**
      * An empty document in a documents provider, as the system's save picker creates it before the tool writes, served so that the tool's
      * clean-up after a failed save can remove it.

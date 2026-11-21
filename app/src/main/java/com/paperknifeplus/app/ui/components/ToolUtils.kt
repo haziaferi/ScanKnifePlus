@@ -409,7 +409,7 @@ suspend fun convertPdfToImages(
     onProgress: (Int, Int) -> Unit
 ) = withContext(Dispatchers.IO) {
     // Protected files are decrypted to a cache copy, which the native renderer can open; the copy is deleted whatever happens.
-    val decrypted = if (password != null) decryptToCache(context, pdfUri, password) else null
+    val decrypted = if (password != null) (decryptToCache(context, pdfUri, password) as? PasswordCheck.Opened)?.value?.uri else null
     try {
         val workingUri = decrypted ?: pdfUri
         context.contentResolver.requireOutputStream(outputUri).use { outputStream ->
@@ -524,47 +524,27 @@ internal fun decryptedCopy(context: Context, uri: Uri, password: String): File =
     saveDecryptedCopy(document, context.cacheDir)
 }
 
-/**
- * Writes an unencrypted copy of [uri], opened with [password], to the cache folder ([decryptedCopy]) and returns its file:// URI, or null if
- * it cannot, also for lack of memory. The native renderer cannot open protected files, so tools decrypt once and work on the copy; delete it
- * with [deleteDecryptedCopy]. Cancelled, it leaves no copy behind.
- */
-suspend fun decryptToCache(context: Context, uri: Uri, password: String): Uri? {
-    var copy: File? = null
-    return try {
-        withContext(Dispatchers.IO) {
-            try {
-                Uri.fromFile(decryptedCopy(context, uri, password).also { copy = it })
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Cannot decrypt $uri", e)
-                null
-            } catch (e: OutOfMemoryError) {
-                Log.w(TAG, "Out of memory decrypting $uri", e)
-                null
-            }
-        }
-    } catch (e: CancellationException) {
-        // Cancelled while decrypting, withContext drops the copy it made, so no caller could delete it.
-        copy?.delete()
-        throw e
-    }
-}
-
 /** A decrypted cache copy ([decryptToCache]) and its page count. */
 class DecryptedCopy(val uri: Uri, val pageCount: Int)
 
 /**
- * [decryptToCache], then the page count of the copy; null when [password] does not open [uri]. A count that throws, a stopped check
- * ([FileCheck]) included, deletes the copy, so none is left behind.
+ * Writes an unencrypted copy of [uri], opened with [password], to the cache folder and counts its pages, told apart as [checkPassword]
+ * does; a file without pages is unreadable. The native renderer cannot open protected files, so tools decrypt once and work on the copy;
+ * delete it with [deleteDecryptedCopy]. No failure leaves a copy behind, and neither does a stopped check ([FileCheck]).
  */
-suspend fun decryptAndCount(context: Context, uri: Uri, password: String): DecryptedCopy? {
-    val copy = decryptToCache(context, uri, password) ?: return null
+suspend fun decryptToCache(context: Context, uri: Uri, password: String): PasswordCheck<DecryptedCopy> {
+    var copy: File? = null
     return try {
-        DecryptedCopy(copy, getPageCount(context, copy, null))
-    } catch (e: Throwable) {
-        deleteDecryptedCopy(context, copy)
+        checkPassword(context, uri, password) { document ->
+            val pages = document.numberOfPages
+            if (pages == 0) return@checkPassword null
+            document.isAllSecurityToBeRemoved = true
+            val file = saveDecryptedCopy(document, context.cacheDir).also { copy = it }
+            DecryptedCopy(Uri.fromFile(file), pages)
+        }.also { if (it !is PasswordCheck.Opened) copy?.delete() }
+    } catch (e: CancellationException) {
+        // Cancelled while decrypting, checkPassword drops the copy it made, so no caller could delete it.
+        copy?.delete()
         throw e
     }
 }

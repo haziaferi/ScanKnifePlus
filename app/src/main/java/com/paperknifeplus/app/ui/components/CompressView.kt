@@ -217,25 +217,29 @@ fun CompressView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
                             check.start {
                                 // Decrypted once to a cache copy, so the preview can use the fast native renderer.
-                                val copy = decryptAndCount(context, source, pass)
-                                if (copy != null && copy.pageCount > 0) {
+                                val decrypted = decryptToCache(context, source, pass)
+                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
                                     decryptedUri = copy.uri
                                     unlockPassword = pass
                                     selectedUri = copy.uri
                                     pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    deleteDecryptedCopy(context, copy?.uri)
-                                    unlockError = true
                                 }
                             }
                         }
