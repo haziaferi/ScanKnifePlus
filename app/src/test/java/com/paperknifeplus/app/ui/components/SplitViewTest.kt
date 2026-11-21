@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -112,5 +113,20 @@ class SplitViewTest {
         waitForPages("0 / 1 page selected")
         rule.waitUntil(10_000) { thumbnailCached(plain, null) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `a wrong password handed over by the reader opens the prompt with its error`() {
+        startSplit(TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-wrong-split.pdf"), "wrong")
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Incorrect password, try again.").assertExists()
+    }
+
+    @Test
+    fun `a damaged protected file handed over with its password says it can't be read and goes back to choosing a file`() {
+        startSplit(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "handed-damaged-split.pdf"), TestPdfs.USER_PASSWORD)
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 }

@@ -66,6 +66,21 @@ fun SplitView(
     }
     DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
+    fun showPages(count: Int) {
+        pageCount = count
+        selectedPages = emptySet()
+        rangeText = ""
+        currentState = ToolState.CONFIGURING
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
@@ -85,12 +100,13 @@ fun SplitView(
                     currentState = ToolState.SELECTING
                 }
                 needsUnlockPrompt(access, password) -> fileToUnlock = fileName
-                else -> {
-                    pageCount = getPageCount(context, uri, password)
-                    selectedPages = emptySet()
-                    rangeText = ""
-                    currentState = ToolState.CONFIGURING
-                }
+                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
+                access == PdfAccess.Encrypted && password != null -> checkPageCount(context, uri, password).resolve(
+                    context,
+                    onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                    onUnreadable = { closePrompt() }
+                ) { count -> showPages(count) }
+                else -> showPages(getPageCount(context, uri, password))
             }
         }
     }
@@ -310,13 +326,6 @@ fun SplitView(
             }
 
             if (fileToUnlock != null) {
-                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
-                fun closePrompt() {
-                    fileToUnlock = null
-                    unlockError = false
-                    selectedUri = null
-                    currentState = ToolState.SELECTING
-                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = { check.stop(); closePrompt() },

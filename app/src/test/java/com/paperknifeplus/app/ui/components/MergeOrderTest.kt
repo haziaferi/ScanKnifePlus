@@ -31,6 +31,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
@@ -70,7 +71,10 @@ class MergeOrderTest {
     }
 }
 
-/** Rearrange end to end: pages that inherit Resources, MediaBox and Rotate from the page tree, and a file unlocked at the prompt. */
+/**
+ * Rearrange end to end: pages that inherit Resources, MediaBox and Rotate from the page tree, a file unlocked at the prompt, and a password
+ * handed over by the reader that is wrong or opens a damaged file.
+ */
 @RunWith(RobolectricTestRunner::class)
 class RearrangeViewTest {
     @get:Rule(order = 0)
@@ -136,5 +140,23 @@ class RearrangeViewTest {
             assertTrue(doc.isEncrypted)
             assertEquals(2, doc.numberOfPages)
         }
+    }
+
+    private fun showHanded(uri: Uri, password: String) =
+        rule.setContent { RearrangeView(initialUri = uri, initialPassword = password, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+
+    @Test
+    fun `a wrong password handed over by the reader opens the prompt with its error`() {
+        showHanded(TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-wrong-rearrange.pdf"), "wrong")
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Incorrect password, try again.").assertExists()
+    }
+
+    @Test
+    fun `a damaged protected file handed over with its password says it can't be read and goes back to choosing a file`() {
+        showHanded(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "handed-damaged-rearrange.pdf"), TestPdfs.USER_PASSWORD)
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 }

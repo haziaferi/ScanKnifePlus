@@ -58,6 +58,14 @@ fun CompressView(
     }
     DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
@@ -75,6 +83,15 @@ fun CompressView(
                     currentState = ToolState.SELECTING
                 }
                 needsUnlockPrompt(access, password) -> fileToUnlock = fileName
+                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
+                access == PdfAccess.Encrypted && password != null -> checkPageCount(context, uri, password).resolve(
+                    context,
+                    onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                    onUnreadable = { closePrompt() }
+                ) { count ->
+                    pageCount = count
+                    currentState = ToolState.CONFIGURING
+                }
                 else -> {
                     pageCount = getPageCount(context, uri, password)
                     currentState = ToolState.CONFIGURING
@@ -217,13 +234,6 @@ fun CompressView(
             }
 
             if (fileToUnlock != null) {
-                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
-                fun closePrompt() {
-                    fileToUnlock = null
-                    unlockError = false
-                    selectedUri = null
-                    currentState = ToolState.SELECTING
-                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = { check.stop(); closePrompt() },

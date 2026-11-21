@@ -22,7 +22,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowToast
 import java.util.concurrent.TimeUnit
 
-/** Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check, and a damaged protected file. */
+/**
+ * Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check, a damaged protected file, and a
+ * password handed over by the reader that is wrong or opens a damaged file.
+ */
 @RunWith(RobolectricTestRunner::class)
 class CompressViewTest {
     @get:Rule(order = 0)
@@ -76,5 +79,22 @@ class CompressViewTest {
         rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
         rule.onNodeWithText("Choose PDF").assertExists()
         assertEquals("no decrypted copy is left", before, cacheFiles())
+    }
+
+    @Test
+    fun `a wrong password handed over by the reader opens the prompt with its error`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-wrong-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, initialPassword = "wrong", onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Incorrect password, try again.").assertExists()
+    }
+
+    @Test
+    fun `a damaged protected file handed over with its password says it can't be read and goes back to choosing a file`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "handed-damaged-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 }
