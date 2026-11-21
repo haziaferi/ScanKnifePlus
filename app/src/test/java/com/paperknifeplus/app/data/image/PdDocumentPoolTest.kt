@@ -250,4 +250,22 @@ class PdDocumentPoolTest {
         assertSame(loaded, pool.withDocument("a", { error("loaded again") }) { it })
         assertTrue(closed.isEmpty())
     }
+
+    @Test
+    fun `a document a check rejects stays open while the check holds it, then closes once, and the next caller loads it again`() = runBlocking {
+        val pool = pool(3)
+        val loads = AtomicInteger()
+        val rejected = pool.check("a", { loads.incrementAndGet(); FakeDoc("a") }, rejects = { true }) { doc ->
+            assertEquals("open while the check reads it", 0, doc.closes.get())
+            doc
+        }
+        assertEquals(1, rejected.closes.get())
+
+        val next = pool.withDocument("a", { loads.incrementAndGet(); FakeDoc("a") }) { it }
+        assertEquals(2, loads.get())
+        assertFalse(next === rejected)
+        assertEquals(1, rejected.closes.get())
+        assertEquals(listOf("a"), closed.map { it.key })
+        assertEquals(1, pool.size())
+    }
 }
