@@ -182,7 +182,8 @@ fun MergeView(
                 stringResource(R.string.merge_join_multiple_documents),
                 processingTime,
                 onBack,
-                onChange = if (selectedFiles.isNotEmpty()) ({ updateFiles(emptyList()); currentState = ToolState.SELECTING }) else null
+                // Change stays tappable while more files are read; stopping that check keeps them off the emptied list.
+                onChange = if (selectedFiles.isNotEmpty()) ({ check.stop(); updateFiles(emptyList()); currentState = ToolState.SELECTING }) else null
             )
         }
     ) { padding ->

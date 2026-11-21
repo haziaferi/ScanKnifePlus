@@ -103,6 +103,8 @@ fun CompareView(
                     if (isComparing) {
                         isComparing = false
                     } else {
+                        // Reset works while a file is still being checked; stopping the check keeps it from filling a card afterwards.
+                        check.stop()
                         fileA = null; fileB = null; nameA = ""; nameB = ""; passA = ""; passB = ""
                     }
                 },
