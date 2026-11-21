@@ -10,6 +10,7 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
@@ -23,6 +24,7 @@ import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageKeyer
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.CompositionJobs
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
@@ -44,6 +46,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class UltraPreviewTest {
@@ -224,7 +227,7 @@ class ToolHandOffTest {
     }
 }
 
-/** The reader's password prompt: a protected file that cannot be read closes the reader. */
+/** The reader's password prompt: a protected file that cannot be read closes the reader, and Cancel stops a check in progress. */
 @RunWith(RobolectricTestRunner::class)
 class ReaderUnlockTest {
     @get:Rule(order = 0)
@@ -253,6 +256,32 @@ class ReaderUnlockTest {
         rule.waitUntil(30_000) { closed == 1 }
         assertEquals("Can't read this PDF.", ShadowToast.getTextOfLatestToast())
         rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
+        assertTrue("no decrypted copy is left", decryptedCopies().isEmpty())
+    }
+
+    @Test
+    fun `the prompt stays open while the password is checked, and Cancel stops the check and closes the reader`() {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-reader.pdf")
+        val jobs = CompositionJobs()
+        rule.setContent {
+            jobs.Watch()
+            UltraPreview(source.uri, "locked.pdf", 2, onDismiss = { closed++ }, onOpenInTool = { _, _, _ -> })
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        source.hold()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { source.reached.count == 0L }
+        val check = jobs.waitingOnIo()
+        assertTrue("the check is held in its read", check.isNotEmpty())
+
+        rule.onNodeWithText("Password required").assertExists()
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
+        assertEquals(1, closed)
+        source.release()
+        assertTrue(source.closed.await(30, TimeUnit.SECONDS))
+        // The stopped check goes on to write its decrypted copy, then finds itself cancelled and deletes it.
+        rule.waitUntil(30_000) { check.all { it.isCompleted } }
         assertTrue("no decrypted copy is left", decryptedCopies().isEmpty())
     }
 }
