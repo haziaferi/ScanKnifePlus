@@ -1,15 +1,12 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
-import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,10 +15,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.io.InputStream
 
 @RunWith(RobolectricTestRunner::class)
 class PdfToTextTest {
@@ -52,10 +47,7 @@ class PdfToTextTest {
 
     @Test
     fun `a protected file gives its text through the opener with its password`() = runBlocking {
-        val bytes = PDDocument.load(withText("Locked text layer")).use { doc ->
-            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
-            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-        }
+        val bytes = TestPdfs.protectedCopy(withText("Locked text layer"))
         val locked = TestPdfs.write(context.cacheDir, bytes, "locked-text.pdf")
         val expected = PDDocument.load(bytes, TestPdfs.USER_PASSWORD).use(::extractPdfText)
         assertTrue(expected, expected.contains("Locked text layer"))
@@ -65,13 +57,8 @@ class PdfToTextTest {
 
     @Test
     fun `running out of memory while opening the file is a failure result, not a crash`() = runBlocking {
-        val uri = Uri.parse("content://com.example.huge/huge.pdf")
-        val huge = object : InputStream() {
-            override fun read(): Int = throw OutOfMemoryError("test")
-            override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("test")
-        }
-        Shadows.shadowOf(context.contentResolver).registerInputStream(uri, huge)
-        assertTrue(processText(context, uri, null).exceptionOrNull() is OutOfMemoryError)
+        val huge = TestPdfs.OutOfMemorySource(context, withText("Too much")).apply { runOutOfMemory() }
+        assertTrue(processText(context, huge.uri, null).exceptionOrNull() is OutOfMemoryError)
     }
 
     @Test

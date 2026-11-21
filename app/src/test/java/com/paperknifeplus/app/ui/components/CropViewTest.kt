@@ -453,18 +453,9 @@ class CropViewTest {
         }
     }
 
-    /** [TestPdfs.userPassword] whose catalog has lost its page tree: it asks for its password, and opened with it has no pages to read. */
-    private fun damagedProtected(): ByteArray {
-        val text = String(TestPdfs.userPassword(2), Charsets.ISO_8859_1)
-        // Same length, so the cross-reference offsets still hold.
-        val damaged = Regex("""/Pages (\d+ \d+ R)""").replace(text) { "/Pagez ${it.groupValues[1]}" }
-        assertTrue("the catalog's page tree is gone", damaged != text)
-        return damaged.toByteArray(Charsets.ISO_8859_1)
-    }
-
     @Test
     fun `a damaged protected file opened with its password says it can't be read, not that the password is wrong`() {
-        show(damagedProtected(), "damaged-locked.pdf")
+        show(TestPdfs.damagedProtected(), "damaged-locked.pdf")
         waitFor("Password required")
         rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
         rule.onNodeWithText("Unlock").performClick()

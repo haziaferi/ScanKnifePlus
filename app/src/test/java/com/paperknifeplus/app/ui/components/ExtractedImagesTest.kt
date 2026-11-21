@@ -11,8 +11,6 @@ import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDResources
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -207,11 +205,10 @@ class ExtractedImagesTest {
     @Test
     fun `the tool opens a protected file with its password and writes what writeImages writes`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val bytes = PDDocument().use { doc ->
+        val bytes = TestPdfs.protectedCopy(PDDocument().use { doc ->
             jpegPage(doc, 300 to 310, 60 to 80)
-            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
             ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-        }
+        })
         val expected = ByteArrayOutputStream()
         PDDocument.load(bytes, TestPdfs.USER_PASSWORD).use { doc -> ZipOutputStream(expected).use { writeImages(doc, it) } }
         val output = File(context.cacheDir, "images.zip")

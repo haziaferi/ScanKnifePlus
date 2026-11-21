@@ -12,8 +12,6 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDPage
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
@@ -181,11 +179,7 @@ class BookmarkOutlineTest {
     fun `Extract pages opens a protected file with its password and writes each bookmarked page once, in order, without it`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
-        val protected = PDDocument.load(TestPdfs.structured()).use { doc ->
-            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
-            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-        }
-        val source = Uri.fromFile(File(context.cacheDir, "bookmarked.pdf").apply { writeBytes(protected) })
+        val source = Uri.fromFile(File(context.cacheDir, "bookmarked.pdf").apply { writeBytes(TestPdfs.protectedCopy(TestPdfs.structured())) })
         val output = File(context.cacheDir, "bookmarked-pages.pdf")
         val marks = listOf(Bookmark("Last", 3), Bookmark("Second", 1), Bookmark("Again", 1), Bookmark("Nowhere", null), Bookmark("Gone", 9))
         extractBookmarkedPages(context, source, TestPdfs.USER_PASSWORD, Uri.fromFile(output), marks)

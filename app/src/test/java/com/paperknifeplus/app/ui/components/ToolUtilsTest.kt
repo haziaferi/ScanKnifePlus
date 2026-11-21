@@ -13,8 +13,6 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
@@ -168,11 +166,7 @@ class ToolUtilsTest {
 
     @Test
     fun `Repair and Compress open a protected file with its password and save it whole, without the password`() = runBlocking {
-        val protected = PDDocument.load(TestPdfs.someWithText(3, setOf(2))).use { doc ->
-            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
-            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-        }
-        val source = TestPdfs.write(context.cacheDir, protected, "protected-whole.pdf")
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(TestPdfs.someWithText(3, setOf(2))), "protected-whole.pdf")
         val repaired = File(context.cacheDir, "repaired.pdf")
         repairPdf(context, source, Uri.fromFile(repaired), TestPdfs.USER_PASSWORD)
         val compressed = File(context.cacheDir, "compressed-protected.pdf")

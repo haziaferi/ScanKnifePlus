@@ -67,14 +67,29 @@ object TestPdfs {
     fun plain(pages: Int = 1): ByteArray = build(pages) {}
 
     /** A PDF that needs [password] to open. */
-    fun userPassword(pages: Int = 1, password: String = USER_PASSWORD): ByteArray = build(pages) {
-        it.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
-    }
+    fun userPassword(pages: Int = 1, password: String = USER_PASSWORD): ByteArray = build(pages) { protect(it, password) }
 
     /** A PDF with only an owner password: it opens without one, but reports itself as encrypted. */
-    fun ownerOnly(pages: Int = 1): ByteArray = build(pages) {
-        it.protect(StandardProtectionPolicy(OWNER_PASSWORD, "", AccessPermission()).apply { encryptionKeyLength = 128 })
+    fun ownerOnly(pages: Int = 1): ByteArray = build(pages) { protect(it, "") }
+
+    /** [pdf] saved again needing [password] to open. */
+    fun protectedCopy(pdf: ByteArray, password: String = USER_PASSWORD): ByteArray = PDDocument.load(pdf).use { doc ->
+        protect(doc, password)
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
+
+    /** [userPassword] whose catalog has lost its page tree: it asks for its password, and opened with it has no pages to read. */
+    fun damagedProtected(): ByteArray {
+        val text = String(userPassword(2), Charsets.ISO_8859_1)
+        // Same length, so the cross-reference offsets still hold.
+        val damaged = Regex("""/Pages (\d+ \d+ R)""").replace(text) { "/Pagez ${it.groupValues[1]}" }
+        check(damaged != text) { "the catalog's page tree is gone" }
+        return damaged.toByteArray(Charsets.ISO_8859_1)
+    }
+
+    /** Protects [doc] with [OWNER_PASSWORD] and the user password [password] (none for empty), 128-bit. */
+    private fun protect(doc: PDDocument, password: String) =
+        doc.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
 
     /** The font name every page of [inheritedAttributes] uses, and the attributes its Pages root carries. */
     val INHERITED_FONT: COSName = COSName.getPDFName("F1")
@@ -153,7 +168,7 @@ object TestPdfs {
         doc.getPage(0).annotations = listOf(link(700f), link(650f))
         doc.getPage(1).annotations = listOf(link(700f))
         doc.documentCatalog.openAction = PDActionJavaScript("app.alert('opened')")
-        if (password != null) doc.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
+        if (password != null) protect(doc, password)
     }
 
     /** Text in the uncompressed content stream of page n (1-based) of [structured], to tell whether that page made it into a saved file. */
