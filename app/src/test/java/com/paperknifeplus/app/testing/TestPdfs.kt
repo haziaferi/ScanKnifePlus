@@ -383,8 +383,9 @@ object TestPdfs {
     /**
      * [bytes] at a content [uri], each open a fresh stream. After [hold], the next stream opened stops at its first read until [release]:
      * [reached] counts down when that read starts, [closed] when its reader closes it, so a test can act while a tool's check is running.
+     * Each test names its own [uri]: the app-wide document pool outlives a test, and would hand a later test a file with the same name.
      */
-    class HeldSource(context: Context, private val bytes: ByteArray, name: String = "held.pdf") {
+    class HeldSource(context: Context, private val bytes: ByteArray, name: String) {
         val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.held/$name")
         val reached = CountDownLatch(1)
         val closed = CountDownLatch(1)
@@ -437,9 +438,9 @@ object TestPdfs {
 
     /**
      * [bytes] at a content [uri], each open a fresh stream, until [runOutOfMemory]: then every read runs out of memory, as reading a file
-     * too large to parse would.
+     * too large to parse would. Each test names its own [uri], as for [HeldSource].
      */
-    class OutOfMemorySource(context: Context, private val bytes: ByteArray, name: String = "huge.pdf") {
+    class OutOfMemorySource(context: Context, private val bytes: ByteArray, name: String) {
         val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.huge/$name")
         @Volatile private var outOfMemory = false
 
@@ -457,7 +458,10 @@ object TestPdfs {
         }
     }
 
-    /** [bytes] at a content [uri], each open a fresh stream; [opens] counts them, so a test can tell how many times a tool parsed the file. */
+    /**
+     * [bytes] at a content [uri], each open a fresh stream; [opens] counts them, so a test can tell how many times a tool parsed the file.
+     * Each test names its own [uri], as for [HeldSource].
+     */
     class CountedSource(context: Context, private val bytes: ByteArray, name: String) {
         val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.counted/$name")
         private val count = AtomicInteger()

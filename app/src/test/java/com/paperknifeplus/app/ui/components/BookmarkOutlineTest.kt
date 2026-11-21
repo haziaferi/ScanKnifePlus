@@ -173,7 +173,7 @@ class BookmarkOutlineTest {
         assertEquals(5, (loadOutline(context, uri, null) as PasswordCheck.Opened).value.bookmarks.size)
         val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(TestPdfs.userPassword()) })
         assertEquals(PasswordCheck.WrongPassword, loadOutline(context, locked, "wrong"))
-        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword()).apply { runOutOfMemory() }
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(), "huge-outline.pdf").apply { runOutOfMemory() }
         assertEquals(PasswordCheck.Unreadable, loadOutline(context, huge.uri, TestPdfs.USER_PASSWORD))
     }
 

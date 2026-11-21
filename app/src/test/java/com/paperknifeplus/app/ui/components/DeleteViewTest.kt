@@ -126,7 +126,7 @@ class DeleteViewTest {
     fun `running out of memory while saving shows the failure and removes the file the save created`() {
         val (output, created) = createdDocument("huge-pages-deleted.pdf")
         assertTrue("the documents provider serves the created file", DocumentsContract.isDocumentUri(context, output))
-        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(3), "huge.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(3), "huge-delete.pdf")
         rule.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides savingTo(output)) {
                 DeleteView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })

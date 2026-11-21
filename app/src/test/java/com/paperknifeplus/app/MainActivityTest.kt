@@ -376,8 +376,8 @@ class MainActivityTest {
 
     @Test
     fun `a closed Open with file does not reopen after recreation`() {
-        launch(view(pdf("handed.pdf")))
-        waitFor("handed.pdf")
+        launch(view(pdf("closed.pdf")))
+        waitFor("closed.pdf")
         rule.onAllNodes(hasContentDescription("Back")).onFirst().performClick()
         rule.waitUntil(10_000) { !shows("PDF viewer") }
 

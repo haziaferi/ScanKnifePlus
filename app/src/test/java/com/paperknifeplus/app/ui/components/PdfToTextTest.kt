@@ -57,7 +57,7 @@ class PdfToTextTest {
 
     @Test
     fun `running out of memory while opening the file is a failure result, not a crash`() = runBlocking {
-        val huge = TestPdfs.OutOfMemorySource(context, withText("Too much")).apply { runOutOfMemory() }
+        val huge = TestPdfs.OutOfMemorySource(context, withText("Too much"), "huge-text.pdf").apply { runOutOfMemory() }
         assertTrue(processText(context, huge.uri, null).exceptionOrNull() is OutOfMemoryError)
     }
 

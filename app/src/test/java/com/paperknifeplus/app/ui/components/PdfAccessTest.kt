@@ -67,7 +67,9 @@ class PdfAccessTest {
     private val locked by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "checked.pdf") }
     private val damaged by lazy { TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "checked-damaged.pdf") }
     private val withoutPages by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 0), "checked-empty.pdf") }
-    private val huge by lazy { TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(pages = 2)).apply { runOutOfMemory() }.uri }
+    private val huge by lazy {
+        TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(pages = 2), "huge-checked.pdf").apply { runOutOfMemory() }.uri
+    }
 
     @Test
     fun `a password check tells a wrong password from a damaged, empty or too large file`() = runBlocking {

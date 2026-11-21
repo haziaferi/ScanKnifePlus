@@ -212,7 +212,7 @@ class LinksViewTest {
 
     @Test
     fun `Cancel during the password check resets the tool, and the check leaves no late result and no temp file`() {
-        val source = TestPdfs.HeldSource(context, TestPdfs.linksAndScript(TestPdfs.USER_PASSWORD))
+        val source = TestPdfs.HeldSource(context, TestPdfs.linksAndScript(TestPdfs.USER_PASSWORD), "held-links.pdf")
         showUri(source.uri)
         waitFor("Password required")
         val before = cacheFiles()
