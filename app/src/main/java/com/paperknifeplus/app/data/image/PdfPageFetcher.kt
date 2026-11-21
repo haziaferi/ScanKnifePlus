@@ -231,7 +231,9 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
 
     /**
      * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
-     * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done.
+     * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done. That caller
+     * also closes the documents its load evicts, once the waiters have the new one: an Error a close throws reaches it, and its [block]
+     * does not run.
      */
     suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, null, block)
 
@@ -344,7 +346,10 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
     }
 }
 
-/** PDFBox documents for password-protected pages and the PDFBox fallback, keyed by URI and password. */
+/**
+ * PDFBox documents, keyed by URI and password: for password-protected pages and the PDFBox fallback, and the documents the password checks
+ * (`checkPageCount`) and Bookmarks' outline read, which those pages then reuse.
+ */
 object PdDocumentPool {
     private data class Key(val uri: Uri, val password: String?)
 

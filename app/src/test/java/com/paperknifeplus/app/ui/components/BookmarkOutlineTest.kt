@@ -170,7 +170,7 @@ class BookmarkOutlineTest {
         PDFBoxResourceLoader.init(context)
         val uri = Uri.fromFile(File(context.cacheDir, "outlined.pdf").apply { writeBytes(outlined()) })
         assertEquals(5, (loadOutline(context, uri, null) as PasswordCheck.Opened).value.bookmarks.size)
-        // Its page tree is gone, so reading it throws once the password has opened it.
+        // Its page tree is gone, so it does not parse, even with its password.
         val damaged = Uri.fromFile(File(context.cacheDir, "damaged-outline.pdf").apply { writeBytes(TestPdfs.damagedProtected()) })
         assertEquals(PasswordCheck.Unreadable, loadOutline(context, damaged, TestPdfs.USER_PASSWORD))
         val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(TestPdfs.userPassword()) })

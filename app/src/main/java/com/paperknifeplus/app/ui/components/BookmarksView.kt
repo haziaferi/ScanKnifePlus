@@ -65,13 +65,13 @@ fun BookmarksView(
     }
 
     /**
-     * Reads the outline with [pass]. A file that does not open with it asks for its password (saying it is incorrect when one was given);
-     * one that cannot be read is reported and resets.
+     * Reads the outline with [pass]: none for a file that opens without one, else the one typed in the prompt, which says when it is
+     * incorrect. A file that cannot be read is reported and resets.
      */
     suspend fun extractBookmarks(uri: Uri, pass: String?) {
         loadOutline(context, uri, pass).resolve(
             context,
-            onWrongPassword = { unlockError = pass != null; fileToUnlock = fileName },
+            onWrongPassword = { unlockError = true },
             onUnreadable = { fileToUnlock = null; unlockError = false; reset() }
         ) { outline ->
             bookmarks = outline.bookmarks
