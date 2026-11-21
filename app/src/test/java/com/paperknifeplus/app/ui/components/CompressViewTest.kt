@@ -1,6 +1,9 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -12,7 +15,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -20,6 +25,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowToast
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -96,6 +102,25 @@ class CompressViewTest {
         rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(1, cacheFiles().count { it.startsWith("decrypted_") })
+    }
+
+    @Test
+    fun `a file handed over with its password is compressed and saved whole, without the password`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-saved-compress.pdf")
+        val output = File(context.cacheDir, "handed-compressed.pdf").apply { delete() }
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(Uri.fromFile(output))) {
+                CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Compress and save PDF").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Compression complete")).fetchSemanticsNodes().isNotEmpty() }
+
+        PDDocument.load(output).use { doc ->
+            assertFalse(doc.isEncrypted)
+            assertEquals(2, doc.numberOfPages)
+        }
     }
 
     @Test
