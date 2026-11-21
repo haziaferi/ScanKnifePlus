@@ -166,12 +166,15 @@ class ToolUtilsTest {
     }
 
     @Test
-    fun `Repair and Compress open a protected file with its password and save it whole, without the password`() = runBlocking {
-        val source = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(TestPdfs.someWithText(3, setOf(2))), "protected-whole.pdf")
+    fun `Repair opens a protected file with its password, Compress an owner-protected one, both saving it whole and open`() = runBlocking {
+        val content = TestPdfs.someWithText(3, setOf(2))
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(content), "protected-whole.pdf")
         val repaired = File(context.cacheDir, "repaired.pdf")
         repairPdf(context, source, Uri.fromFile(repaired), TestPdfs.USER_PASSWORD)
+        // Compress gets a file that opens without a password: a protected file's decrypted copy, or one with only an owner password.
+        val ownerProtected = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(content, password = ""), "owner-protected-whole.pdf")
         val compressed = File(context.cacheDir, "compressed-protected.pdf")
-        compressPdf(context, source, Uri.fromFile(compressed), TestPdfs.USER_PASSWORD, "Recommended") { _, _ -> }
+        compressPdf(context, ownerProtected, Uri.fromFile(compressed), "Recommended") { _, _ -> }
         for (output in listOf(repaired, compressed)) {
             PDDocument.load(output).use {
                 assertFalse(it.isEncrypted)
@@ -202,7 +205,7 @@ class ToolUtilsTest {
     private fun compress(input: ByteArray, level: String): File {
         val source = TestPdfs.write(context.cacheDir, input, "to-compress.pdf")
         val output = File(context.cacheDir, "compressed.pdf")
-        runBlocking { compressPdf(context, source, Uri.fromFile(output), null, level) { _, _ -> } }
+        runBlocking { compressPdf(context, source, Uri.fromFile(output), level) { _, _ -> } }
         return output
     }
 

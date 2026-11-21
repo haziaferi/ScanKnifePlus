@@ -39,7 +39,6 @@ fun CompressView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     val check = rememberFileCheck()
@@ -66,8 +65,8 @@ fun CompressView(
         currentState = ToolState.SELECTING
     }
 
-    // A protected file is decrypted once to a cache copy, so the preview can use the fast native renderer. A wrong password, typed or
-    // handed over by the reader, opens the prompt with its error.
+    // A protected file is decrypted once to a cache copy, which the preview and the compression read; the output is not protected anyway.
+    // A wrong password, typed or handed over by the reader, opens the prompt with its error.
     suspend fun unlock(source: Uri, password: String) {
         decryptToCache(context, source, password).resolve(
             context,
@@ -75,7 +74,6 @@ fun CompressView(
             onUnreadable = { closePrompt() }
         ) { copy ->
             decryptedUri = copy.uri
-            unlockPassword = password
             selectedUri = copy.uri
             pageCount = copy.pageCount
             currentState = ToolState.CONFIGURING
@@ -86,7 +84,6 @@ fun CompressView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
-        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
@@ -123,7 +120,7 @@ fun CompressView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                compressPdf(context, source, uri, unlockPassword.ifEmpty { null }, compressionLevel) { current, _ ->
+                compressPdf(context, source, uri, compressionLevel) { current, _ ->
                     progressPage = current
                 }
                 val timeStr = formatElapsed(startTime)
@@ -215,7 +212,6 @@ fun CompressView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.compress_optimizing_document_size),
                             current = progressPage,
                             total = pageCount,
@@ -232,7 +228,6 @@ fun CompressView(
                                 dropDecryptedCopy()
                                 selectedUri = null
                                 outputUri = null
-                                unlockPassword = ""
                                 currentState = ToolState.SELECTING
                             },
                             onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }

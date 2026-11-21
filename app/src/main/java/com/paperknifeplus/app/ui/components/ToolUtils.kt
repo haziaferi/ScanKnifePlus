@@ -281,12 +281,13 @@ internal fun compressImages(document: PDDocument, quality: Float, downscale: Flo
 }
 
 /**
- * Writes [inputUri], opened with [password], to [outputUri] with its images re-encoded for [level] ([compressImages]) and its encryption
- * removed. The source is parsed through temp files ([withPdf]). Throws on failure.
+ * Writes [inputUri], a file that opens without a password (Compress works on the decrypted copy of one that needs it), to [outputUri] with
+ * its images re-encoded for [level] ([compressImages]) and an owner password's restrictions removed. The source is parsed through temp
+ * files ([withPdf]). Throws on failure.
  */
-suspend fun compressPdf(context: Context, inputUri: Uri, outputUri: Uri, password: String?, level: String, onProgress: (Int, Int) -> Unit) =
+suspend fun compressPdf(context: Context, inputUri: Uri, outputUri: Uri, level: String, onProgress: (Int, Int) -> Unit) =
     withContext(Dispatchers.IO) {
-        withPdf(context, inputUri, password) { document ->
+        withPdf(context, inputUri, null) { document ->
             if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
             val quality = when (level) { "Extreme" -> 0.4f; "Recommended" -> 0.7f; else -> 0.9f }
             val downscale = when (level) { "Extreme" -> 0.6f; "Recommended" -> 0.8f; else -> 1.0f }

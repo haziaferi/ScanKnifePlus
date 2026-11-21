@@ -157,7 +157,6 @@ fun UnlockView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = password,
                             text = stringResource(R.string.unlock_decrypting_document),
                             current = 0,
                             total = 0,

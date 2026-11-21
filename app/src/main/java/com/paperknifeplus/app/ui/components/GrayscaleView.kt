@@ -201,7 +201,6 @@ fun GrayscaleView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.grayscale_applying_grayscale_filter),
                             current = progressPage,
                             total = pageCount,

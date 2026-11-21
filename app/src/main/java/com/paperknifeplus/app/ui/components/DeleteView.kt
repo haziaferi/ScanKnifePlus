@@ -291,7 +291,6 @@ fun DeleteView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.delete_removing_selected_pages),
                             current = progressCount,
                             total = pagesToDeleteSet.size,

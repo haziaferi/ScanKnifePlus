@@ -222,7 +222,6 @@ fun RotateView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.rotate_applying_rotations_to_document),
                             current = 0,
                             total = 0,

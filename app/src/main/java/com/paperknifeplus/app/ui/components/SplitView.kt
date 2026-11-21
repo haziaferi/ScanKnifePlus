@@ -299,7 +299,6 @@ fun SplitView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.split_extracting_specified_pages),
                             current = progressCount,
                             total = selectedPages.size,
