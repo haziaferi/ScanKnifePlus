@@ -2,6 +2,7 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
@@ -120,7 +121,7 @@ class PdfAccessTest {
         first.cancel()
         // The same file and password again, as when the file is picked once more: this check waits for the first one's parse.
         val second = async(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
-        delay(500) // Time for the second check to reach the parse in progress.
+        withTimeout(10_000) { while (PdDocumentPool.waiters(source.uri, TestPdfs.USER_PASSWORD) == 0) delay(10) }
         source.release()
 
         assertEquals(PasswordCheck.Opened(2), withTimeout(10_000) { second.await() })

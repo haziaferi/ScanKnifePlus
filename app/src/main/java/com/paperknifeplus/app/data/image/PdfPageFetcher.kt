@@ -247,6 +247,9 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
 
     internal fun size(): Int = synchronized(lock) { entries.size }
 
+    /** How many callers wait for [key]'s load in progress; 0 when none is. */
+    internal fun waiters(key: K): Int = synchronized(lock) { loads[key]?.waiters ?: 0 }
+
     private suspend fun <T> use(key: K, load: () -> D, rejects: ((T) -> Boolean)?, block: suspend (D) -> T): T {
         val entry = acquire(key, load)
         // Only a check drops a document; release keeps it if any other caller has taken it or waits for it, so it is one this call loaded.
@@ -374,6 +377,9 @@ object PdDocumentPool {
         withContext(Dispatchers.IO) {
             pool.check(Key(uri, password), { load(context, uri, password) }, rejects = { it == null }) { read(it) }
         }
+
+    /** How many callers wait for the parse of [uri] with [password] in progress ([DocumentPool.waiters]). */
+    internal fun waiters(uri: Uri, password: String?): Int = pool.waiters(Key(uri, password))
 
     private fun load(context: Context, uri: Uri, password: String?): PDDocument =
         context.contentResolver.requireInputStream(uri).use { stream ->
