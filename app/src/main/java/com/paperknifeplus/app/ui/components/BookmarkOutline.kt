@@ -57,16 +57,12 @@ fun readOutline(document: PDDocument): List<Bookmark> = outlineItems(document).m
 internal class Outline(val bookmarks: List<Bookmark>, val pageCount: Int)
 
 /**
- * Reads the outline of [uri] opened with [password] with [read], told apart as [checkPassword] does: an outline that cannot be read
+ * Reads the outline of [uri] opened with [password], told apart as [checkPassword] does: an outline or page tree that cannot be read
  * (PDFBox throws unchecked exceptions on some malformed files) is unreadable, as is a file that does not open for any other reason than its
  * password.
  */
-internal suspend fun loadOutline(
-    context: Context,
-    uri: Uri,
-    password: String?,
-    read: (PDDocument) -> List<Bookmark> = ::readOutline
-): PasswordCheck<Outline> = checkPassword(context, uri, password) { Outline(read(it), it.numberOfPages) }
+internal suspend fun loadOutline(context: Context, uri: Uri, password: String?): PasswordCheck<Outline> =
+    checkPassword(context, uri, password) { Outline(readOutline(it), it.numberOfPages) }
 
 /** This list without the item at [index] and the items nested under it (the ones right after it that are deeper). */
 fun List<Bookmark>.withoutBranch(index: Int): List<Bookmark> {
