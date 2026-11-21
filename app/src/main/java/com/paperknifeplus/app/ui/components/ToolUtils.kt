@@ -207,15 +207,17 @@ suspend fun getPageCount(context: Context, uri: Uri, password: String?): Int = t
 }
 
 /**
- * Writes a gray copy of [inputUri], opened with [password], to [outputUri] with [GrayscaleConverter], which keeps text, links, forms, outline and
- * metadata; returns how many pages could only be stored as images. The copy is not encrypted. Pages are buffered in temp files ([withPdf]).
+ * Writes a gray copy of [inputUri], a file that opens without a password (Grayscale works on the decrypted copy of one that needs it), to
+ * [outputUri] with [GrayscaleConverter], which keeps text, links, forms, outline and metadata; returns how many pages could only be stored as
+ * images. The copy is not encrypted. Pages are buffered in temp files ([withPdf]).
  */
-suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, password: String?, onProgress: (Int, Int) -> Unit): Int =
+suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
-        withPdf(context, inputUri, password) { document ->
+        withPdf(context, inputUri, null) { document ->
             val encrypted = document.isEncrypted
             if (encrypted) document.isAllSecurityToBeRemoved = true
-            NativePageRasterizer(context, inputUri, if (encrypted) password.orEmpty() else null).use { rasterizer ->
+            // A file with only an owner password is still encrypted, so its fallback pages are drawn from a copy decrypted with no password.
+            NativePageRasterizer(context, inputUri, if (encrypted) "" else null).use { rasterizer ->
                 val fallbacks = GrayscaleConverter(document, rasterizer).convert(onProgress)
                 saveAndFlush(context, document, outputUri)
                 fallbacks

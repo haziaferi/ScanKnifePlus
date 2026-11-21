@@ -147,17 +147,22 @@ class GrayscaleDeviceTest {
 
     private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.toSet()
 
+    /**
+     * A file with only an owner password reaches Grayscale as it is, still encrypted (one that needs a password reaches it as a decrypted
+     * copy), and the platform renderer draws its fallback page from a copy decrypted without a password.
+     */
     @Test
-    fun aProtectedFileWithAFallbackPageConvertsThroughADecryptedCopyItThenDeletes() {
-        val source = file("locked-colour-key")
+    fun anOwnerProtectedFileWithAFallbackPageConvertsThroughADecryptedCopyItThenDeletes() {
+        val source = file("owner-locked-colour-key")
         PDDocument().use { doc ->
             fallbackPage(doc)
-            doc.protect(StandardProtectionPolicy("owner-secret", "user-secret", AccessPermission()).apply { encryptionKeyLength = 128 })
+            doc.protect(StandardProtectionPolicy("owner-secret", "", AccessPermission()).apply { encryptionKeyLength = 128 })
             doc.save(source)
         }
+        assertTrue("encrypted", PDDocument.load(source).use { it.isEncrypted })
         val before = decryptedCopies()
-        val output = file("locked-gray")
-        val imagePages = runBlocking { performGrayscaleRewrite(context, Uri.fromFile(source), Uri.fromFile(output), "user-secret") { _, _ -> } }
+        val output = file("owner-locked-gray")
+        val imagePages = runBlocking { performGrayscaleRewrite(context, Uri.fromFile(source), Uri.fromFile(output)) { _, _ -> } }
         assertEquals(1, imagePages)
         PDDocument.load(output).use { doc ->
             assertFalse(doc.isEncrypted)

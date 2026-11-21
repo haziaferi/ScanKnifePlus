@@ -39,7 +39,6 @@ fun GrayscaleView(
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
-    var unlockPassword by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
@@ -99,7 +98,7 @@ fun GrayscaleView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                val imagePages = performGrayscaleRewrite(context, source, uri, unlockPassword.ifEmpty { null }) { current, _ ->
+                val imagePages = performGrayscaleRewrite(context, source, uri) { current, _ ->
                     progressPage = current
                 }
                 val timeStr = formatElapsed(startTime)
@@ -213,7 +212,7 @@ fun GrayscaleView(
                             subMessage = grayscaleSummary(context, fallbackPages),
                             result = outputUri?.let { ToolResult(it, fileName) },
                             onDone = onBack,
-                            onProcessMore = { dropDecryptedCopy(); selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
+                            onProcessMore = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
                             onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
                         )
                     }
@@ -235,11 +234,10 @@ fun GrayscaleView(
                         val source = selectedUri
                         if (source != null) {
                             check.start {
-                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
+                                // Decrypted once to a cache copy, which page previews and the conversion read.
                                 val decrypted = decryptToCache(context, source, pass)
                                 decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
                                     decryptedUri = copy.uri
-                                    unlockPassword = pass
                                     selectedUri = copy.uri
                                     pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING

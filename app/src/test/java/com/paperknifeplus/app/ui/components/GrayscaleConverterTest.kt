@@ -547,9 +547,10 @@ class GrayscaleConverterTest {
 
     @Test
     fun `the tool removes encryption, keeps the page and reports no image pages`() {
-        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked.pdf")
+        // An owner password only: Grayscale gets it as it is, while a file that needs a password reaches it as a decrypted copy.
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "owner-locked.pdf")
         val output = File(context.cacheDir, "gray.pdf")
-        val imagePages = runBlocking { performGrayscaleRewrite(context, source, Uri.fromFile(output), TestPdfs.USER_PASSWORD) { _, _ -> } }
+        val imagePages = runBlocking { performGrayscaleRewrite(context, source, Uri.fromFile(output)) { _, _ -> } }
         assertEquals(0, imagePages)
         PDDocument.load(output).use {
             assertFalse(it.isEncrypted)
