@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -107,19 +108,15 @@ fun BookmarksView(
         uri?.let { handleFileSelection(it) }
     }
 
-    /** Runs [write] on the freshly loaded source into [saveUri], then records the result as [summary]. */
-    fun save(saveUri: Uri, summary: (Int) -> String, write: (source: PDDocument, saveUri: Uri) -> Unit) {
+    /** Runs [write] from the source, opened with its password, into [saveUri], then records the result as [summary]. */
+    fun save(saveUri: Uri, summary: (Int) -> String, write: (source: Uri, password: String) -> Unit) {
         val source = selectedUri ?: return
+        val password = unlockPassword
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        write(document, saveUri)
-                    }
-                }
+                write(source, password)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, saveUri).name
                 val finalCount = getPageCount(context, saveUri, null)
@@ -134,7 +131,8 @@ fun BookmarksView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, saveUri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("BookmarksView", "Saving failed", e)
                 deleteCreatedDocument(context, saveUri)
                 withContext(Dispatchers.Main) {
@@ -146,20 +144,16 @@ fun BookmarksView(
     }
 
     val extractLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted()
-        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { document, saveUri ->
-            PDDocument().use { target ->
-                target.appendPagesFrom(pages.filter { it < document.numberOfPages }.map { document.getPage(it) })
-                saveAndFlush(context, target, saveUri)
-            }
+        val marked = bookmarks
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { source, password ->
+            extractBookmarkedPages(context, source, password, uri, marked)
         }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val edited = bookmarks
-        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { document, saveUri ->
-            applyOutline(document, edited)
-            saveAndFlush(context, document, saveUri)
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { source, password ->
+            rewritePdf(context, source, password, uri) { applyOutline(it, edited) }
         }
     }
 
@@ -315,5 +309,19 @@ fun BookmarksView(
                 }) { Text(stringResource(R.string.action_add)) }
             }
         )
+    }
+}
+
+/**
+ * Writes the pages of [source] (opened with [password] through temp files, [withPdf]) that [bookmarks] lead to, once each and in page
+ * order, to [output] as a new document without encryption, as Bookmarks' Extract pages saves. Blocking; throws on failure.
+ */
+internal fun extractBookmarkedPages(context: Context, source: Uri, password: String, output: Uri, bookmarks: List<Bookmark>) {
+    withPdf(context, source, password) { document ->
+        val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted().filter { it < document.numberOfPages }
+        PDDocument().use { target ->
+            target.appendPagesFrom(pages.map { document.getPage(it) })
+            saveAndFlush(context, target, output)
+        }
     }
 }

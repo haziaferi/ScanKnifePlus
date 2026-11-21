@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -101,28 +102,10 @@ fun PdfToZipView(
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val sourceName = fileName
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                // The source is read into memory once, as before, so no input stream stays open across the export.
-                val bytes = context.contentResolver.requireInputStream(source).use { it.readBytes() }
-                context.contentResolver.requireOutputStream(uri).use { os ->
-                    ZipOutputStream(os).use { zipOut ->
-                        PDDocument.load(bytes, unlockPassword).use { sourceDoc ->
-                            for (i in 0 until sourceDoc.numberOfPages) {
-                                withContext(Dispatchers.Main) { progressCount = i + 1 }
-                                // Saved to a buffer: PDDocument.save closes the stream it writes to, which would close the ZIP.
-                                val pageBytes = PDDocument().use { single ->
-                                    single.appendPageFrom(sourceDoc.getPage(i))
-                                    ByteArrayOutputStream().also { single.save(it) }.toByteArray()
-                                }
-                                zipOut.putNextEntry(ZipEntry(zipPageEntryName(sourceName, i + 1)))
-                                zipOut.write(pageBytes)
-                                zipOut.closeEntry()
-                            }
-                        }
-                        zipOut.finish()
-                    }
-                }
+                zipPages(context, source, password, sourceName, uri) { page -> withContext(Dispatchers.Main) { progressCount = page } }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -135,7 +118,8 @@ fun PdfToZipView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("PdfToZipView", "Archiving failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -235,6 +219,31 @@ fun PdfToZipView(
                     accentColor = accentColor,
                     isLoading = isFileLoading
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Writes every page of [source] (opened with [password] through temp files, [withPdf]) as a PDF of its own into a ZIP at [output], each
+ * entry named after [sourceName] ([zipPageEntryName]); [onPage] hears each page's number (from 1) before it is written. Throws on failure.
+ */
+internal suspend fun zipPages(context: Context, source: Uri, password: String, sourceName: String, output: Uri, onPage: suspend (Int) -> Unit) {
+    withPdf(context, source, password) { sourceDoc ->
+        context.contentResolver.requireOutputStream(output).use { os ->
+            ZipOutputStream(os).use { zipOut ->
+                for (i in 0 until sourceDoc.numberOfPages) {
+                    onPage(i + 1)
+                    // Saved to a buffer: PDDocument.save closes the stream it writes to, which would close the ZIP.
+                    val pageBytes = PDDocument().use { single ->
+                        single.appendPageFrom(sourceDoc.getPage(i))
+                        ByteArrayOutputStream().also { single.save(it) }.toByteArray()
+                    }
+                    zipOut.putNextEntry(ZipEntry(zipPageEntryName(sourceName, i + 1)))
+                    zipOut.write(pageBytes)
+                    zipOut.closeEntry()
+                }
+                zipOut.finish()
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -19,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.IOException
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
@@ -91,17 +91,10 @@ fun ExtractImagesView(
         if (uri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                val counts = context.contentResolver.requireOutputStream(uri).use { output ->
-                    ZipOutputStream(output).use { zip ->
-                        context.contentResolver.requireInputStream(source).use { input ->
-                            PDDocument.load(input, unlockPassword).use { document ->
-                                writeImages(document, zip) { extractedCount = it }
-                            }
-                        }
-                    }
-                }
+                val counts = extractImagesZip(context, source, password, uri) { extractedCount = it }
                 counts.emptyReason(resources)?.let { throw IOException(it) }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
@@ -116,7 +109,8 @@ fun ExtractImagesView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("ExtractImagesView", "Extraction failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -235,3 +229,14 @@ fun ExtractImagesView(
         }
     }
 }
+
+/**
+ * Writes the images of [source] (opened with [password] through temp files, [withPdf]) into a ZIP at [output] with [writeImages], which
+ * reports the running count to [onWritten]; returns what it wrote. Blocking; throws on failure.
+ */
+internal fun extractImagesZip(context: Context, source: Uri, password: String, output: Uri, onWritten: (Int) -> Unit = {}): ExtractCounts =
+    withPdf(context, source, password) { document ->
+        context.contentResolver.requireOutputStream(output).use { stream ->
+            ZipOutputStream(stream).use { zip -> writeImages(document, zip, onWritten = onWritten) }
+        }
+    }

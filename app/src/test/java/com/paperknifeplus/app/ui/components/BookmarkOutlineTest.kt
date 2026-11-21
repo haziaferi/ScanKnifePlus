@@ -3,6 +3,7 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import kotlinx.coroutines.runBlocking
@@ -11,6 +12,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentNameDictionary
 import com.tom_roush.pdfbox.pdmodel.PDDestinationNameTreeNode
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDNamedDestination
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageDestination
@@ -19,6 +22,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.P
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -171,5 +175,26 @@ class BookmarkOutlineTest {
         assertEquals(5, (loadOutline(context, uri, null) as OutlineLoad.Loaded).bookmarks.size)
         val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(com.paperknifeplus.app.testing.TestPdfs.userPassword()) })
         assertEquals(OutlineLoad.WrongPassword, loadOutline(context, locked, "wrong"))
+    }
+
+    @Test
+    fun `Extract pages opens a protected file with its password and writes each bookmarked page once, in order, without it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val protected = PDDocument.load(TestPdfs.structured()).use { doc ->
+            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val source = Uri.fromFile(File(context.cacheDir, "bookmarked.pdf").apply { writeBytes(protected) })
+        val output = File(context.cacheDir, "bookmarked-pages.pdf")
+        val marks = listOf(Bookmark("Last", 3), Bookmark("Second", 1), Bookmark("Again", 1), Bookmark("Nowhere", null), Bookmark("Gone", 9))
+        extractBookmarkedPages(context, source, TestPdfs.USER_PASSWORD, Uri.fromFile(output), marks)
+        PDDocument.load(output).use { doc ->
+            assertFalse(doc.isEncrypted)
+            val shown = doc.pages.map { page -> String(page.contents.use { it.readBytes() }, Charsets.ISO_8859_1) }
+            assertEquals(2, shown.size)
+            assertTrue(shown[0].contains(TestPdfs.structuredMarker(2)))
+            assertTrue(shown[1].contains(TestPdfs.structuredMarker(4)))
+        }
     }
 }

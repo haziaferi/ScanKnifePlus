@@ -103,8 +103,9 @@ fun ProtectView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // Includes IllegalArgumentException from SASLprep for passwords with prohibited characters.
+                if (!isToolFailure(e)) throw e
                 Log.w("ProtectView", "Protect failed", e)
                 deleteCreatedDocument(context, uri)
                 Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()

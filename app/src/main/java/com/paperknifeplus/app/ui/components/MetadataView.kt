@@ -153,7 +153,8 @@ fun MetadataView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("MetadataView", "Saving properties failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -324,26 +325,27 @@ internal data class PdfProperties(
     val producer: String
 )
 
-/** [uri]'s document information, opened with [password]; null when the file cannot be read, so the screen can say so. */
+/** [uri]'s document information, opened with [password]; null when the file cannot be read, also for lack of memory, so the screen can say so. */
 internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?): PdfProperties? = withContext(Dispatchers.IO) {
     try {
-        context.contentResolver.requireInputStream(uri).use { input ->
-            PDDocument.load(input, password.orEmpty()).use { document ->
-                val info = document.documentInformation
-                PdfProperties(
-                    info.title.orEmpty(),
-                    info.author.orEmpty(),
-                    info.subject.orEmpty(),
-                    info.keywords.orEmpty(),
-                    info.creator.orEmpty(),
-                    info.producer.orEmpty()
-                )
-            }
+        withPdf(context, uri, password) { document ->
+            val info = document.documentInformation
+            PdfProperties(
+                info.title.orEmpty(),
+                info.author.orEmpty(),
+                info.subject.orEmpty(),
+                info.keywords.orEmpty(),
+                info.creator.orEmpty(),
+                info.producer.orEmpty()
+            )
         }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Log.w("MetadataView", "Cannot read the properties of $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w("MetadataView", "Out of memory reading the properties of $uri", e)
         null
     }
 }

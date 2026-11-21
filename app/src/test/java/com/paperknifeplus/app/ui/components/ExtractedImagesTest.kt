@@ -1,7 +1,9 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSName
@@ -9,6 +11,8 @@ import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDResources
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,6 +24,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.zip.DeflaterOutputStream
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -197,6 +202,25 @@ class ExtractedImagesTest {
             val counts = ZipOutputStream(ByteArrayOutputStream()).use { writeImages(doc, it) }
             assertEquals(ExtractCounts(written = 3, skipped = 0, filtered = 0), counts)
         }
+    }
+
+    @Test
+    fun `the tool opens a protected file with its password and writes what writeImages writes`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val bytes = PDDocument().use { doc ->
+            jpegPage(doc, 300 to 310, 60 to 80)
+            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val expected = ByteArrayOutputStream()
+        PDDocument.load(bytes, TestPdfs.USER_PASSWORD).use { doc -> ZipOutputStream(expected).use { writeImages(doc, it) } }
+        val output = File(context.cacheDir, "images.zip")
+        val counts = extractImagesZip(context, TestPdfs.write(context.cacheDir, bytes, "images.pdf"), TestPdfs.USER_PASSWORD, Uri.fromFile(output))
+        assertEquals(ExtractCounts(written = 2, skipped = 0), counts)
+        val written = readZip(output.readBytes())
+        val wanted = readZip(expected.toByteArray())
+        assertEquals(wanted.keys, written.keys)
+        wanted.forEach { (name, image) -> assertArrayEquals(image, written.getValue(name)) }
     }
 
     @Test

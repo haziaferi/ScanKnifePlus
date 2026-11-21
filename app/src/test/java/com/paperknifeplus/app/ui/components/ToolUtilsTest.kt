@@ -12,6 +12,8 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDDeviceGray
 import com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
@@ -154,6 +156,26 @@ class ToolUtilsTest {
         assertEquals(3, getPageCount(context, source, TestPdfs.USER_PASSWORD))
         assertEquals(0, getPageCount(context, source, "wrong"))
         assertEquals(0, getPageCount(context, source, null))
+    }
+
+    @Test
+    fun `Repair and Compress open a protected file with its password and save it whole, without the password`() = runBlocking {
+        val protected = PDDocument.load(TestPdfs.someWithText(3, setOf(2))).use { doc ->
+            doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val source = TestPdfs.write(context.cacheDir, protected, "protected-whole.pdf")
+        val repaired = File(context.cacheDir, "repaired.pdf")
+        repairPdf(context, source, Uri.fromFile(repaired), TestPdfs.USER_PASSWORD)
+        val compressed = File(context.cacheDir, "compressed-protected.pdf")
+        compressPdf(context, source, Uri.fromFile(compressed), TestPdfs.USER_PASSWORD, "Recommended") { _, _ -> }
+        for (output in listOf(repaired, compressed)) {
+            PDDocument.load(output).use {
+                assertFalse(it.isEncrypted)
+                assertEquals(3, it.numberOfPages)
+                assertTrue(String(it.getPage(2).contents.use { s -> s.readBytes() }, Charsets.ISO_8859_1).contains(TestPdfs.textMarker(3)))
+            }
+        }
     }
 
     /** A Flate-free 1-bit image of [width] x [height] pixels; uncompressed, so a JPEG of it would be far smaller. */

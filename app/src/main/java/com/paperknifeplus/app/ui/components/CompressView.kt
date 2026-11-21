@@ -116,7 +116,8 @@ fun CompressView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("CompressView", "Compression failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {

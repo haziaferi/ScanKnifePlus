@@ -26,17 +26,23 @@ sealed interface PdfAccess {
 private const val TAG = "PdfAccess"
 
 /**
+ * [block] on [input] opened with [password] (none for null), parsed through temp files in the cache so that a large PDF does not exhaust
+ * the heap: the one way the tools open a PDF with PDFBox. Throws on failure, InvalidPasswordException for a wrong or missing password, and
+ * OutOfMemoryError when even that is not enough. Blocking; inline, so [block] can report progress on the main thread.
+ */
+internal inline fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =
+    context.contentResolver.requireInputStream(input).use { stream ->
+        PDDocument.load(stream, password.orEmpty(), MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)).use(block)
+    }
+
+/**
  * Opens [uri] once without a password to classify it. A file with only an owner password (permission restrictions, no open password) is
  * [PdfAccess.Open], so tools do not ask for a password it does not need; Unlock and Protect pass [countOwnerPassword] to see it as
- * [PdfAccess.Encrypted]. Parsing spills to temp files, so large PDFs do not exhaust the heap.
+ * [PdfAccess.Encrypted]. Parsing spills to temp files ([withPdf]), so large PDFs do not exhaust the heap.
  */
 suspend fun inspectPdf(context: Context, uri: Uri, countOwnerPassword: Boolean = false): PdfAccess = withContext(Dispatchers.IO) {
     try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            PDDocument.load(stream, MemoryUsageSetting.setupTempFileOnly()).use {
-                if (it.isEncrypted && countOwnerPassword) PdfAccess.Encrypted else PdfAccess.Open
-            }
-        } ?: PdfAccess.Unreadable
+        withPdf(context, uri, null) { if (it.isEncrypted && countOwnerPassword) PdfAccess.Encrypted else PdfAccess.Open }
     } catch (e: InvalidPasswordException) {
         PdfAccess.Encrypted
     } catch (e: IOException) {

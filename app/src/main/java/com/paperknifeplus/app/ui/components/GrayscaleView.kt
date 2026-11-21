@@ -117,7 +117,9 @@ fun GrayscaleView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // The fallback renderer runs outside the converter's own attempts, so a page too large for memory fails the whole copy.
+                if (!isToolFailure(e)) throw e
                 Log.w("GrayscaleView", "Grayscale conversion failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {

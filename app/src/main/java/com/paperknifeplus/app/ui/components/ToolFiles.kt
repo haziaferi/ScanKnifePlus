@@ -38,6 +38,12 @@ fun ContentResolver.requireOutputStream(uri: Uri, mode: String = "wt"): OutputSt
     return stream ?: (if (mode == "wt") openOutputStream(uri, "w") else null) ?: throw IOException("Cannot write $uri")
 }
 
+/**
+ * Whether a tool shows [e] as its failure and carries on, rather than crashing: an exception, or running out of memory on a file too large
+ * for the heap. Cancellation is an exception too, so catch it first.
+ */
+fun isToolFailure(e: Throwable): Boolean = e is Exception || e is OutOfMemoryError
+
 /** Removes a document the system file picker created for an output that then failed or was cancelled. Never throws. */
 fun deleteCreatedDocument(context: Context, uri: Uri) {
     try {

@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -91,12 +90,7 @@ fun UnlockView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, password).use { document ->
-                        document.isAllSecurityToBeRemoved = true
-                        saveAndFlush(context, document, uri)
-                    }
-                }
+                rewritePdf(context, source, password, uri) {}
                 val timeStr = formatElapsed(startTime)
                 val name = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -109,7 +103,8 @@ fun UnlockView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("UnlockView", "Unlock failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {

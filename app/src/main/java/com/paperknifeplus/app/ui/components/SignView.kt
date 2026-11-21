@@ -214,7 +214,8 @@ fun SignView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("SignView", "Signing failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {

@@ -125,7 +125,8 @@ fun SplitView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("SplitView", "Split failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {

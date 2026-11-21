@@ -6,7 +6,6 @@ import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
-import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.util.IdentityHashMap
 import kotlinx.coroutines.Dispatchers
@@ -223,12 +222,6 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = ide
     val kids = dict.getDictionaryObject(COSName.KIDS) as? COSArray ?: return own
     return own + (0 until kids.size()).sumOf { nameTreeLeaves(kids.getObject(it), seen) }
 }
-
-/** [block] on [input] opened with [password], parsed through temp files in the cache so that a large PDF does not exhaust the heap. Blocking. */
-internal fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password.orEmpty(), MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)).use(block)
-    }
 
 /**
  * What [input], opened with [password], holds for [removeLinksPdf] to take out: [removeLinks] run once on a copy that is never saved, so a

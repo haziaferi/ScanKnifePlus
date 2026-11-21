@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
-import java.io.InputStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -276,20 +275,19 @@ fun PdfToTextView(
     }
 }
 
-/** The text of every page of the PDF in [input], each under a "--- PAGE n ---" header. Throws if it cannot be read. Blocking. */
-internal fun extractPdfText(input: InputStream, password: String?): String =
-    (if (password != null) PDDocument.load(input, password) else PDDocument.load(input)).use { document ->
-        val stripper = PDFTextStripper()
-        val builder = StringBuilder()
-        for (i in 1..document.numberOfPages) {
-            stripper.startPage = i
-            stripper.endPage = i
-            builder.append("--- PAGE $i ---\n")
-            builder.append(stripper.getText(document))
-            builder.append("\n\n")
-        }
-        builder.toString()
+/** The text of every page of [document], each under a "--- PAGE n ---" header. Blocking. */
+internal fun extractPdfText(document: PDDocument): String {
+    val stripper = PDFTextStripper()
+    val builder = StringBuilder()
+    for (i in 1..document.numberOfPages) {
+        stripper.startPage = i
+        stripper.endPage = i
+        builder.append("--- PAGE $i ---\n")
+        builder.append(stripper.getText(document))
+        builder.append("\n\n")
     }
+    return builder.toString()
+}
 
 /** [text] cut after every [linesPerChunk]-th line break; each chunk keeps its own line breaks, so the chunks joined are [text] again. */
 internal fun textChunks(text: String, linesPerChunk: Int = 40): List<String> {
@@ -307,16 +305,22 @@ internal fun textChunks(text: String, linesPerChunk: Int = 40): List<String> {
     return chunks
 }
 
-/** Extracts the text of [uri] off the main thread, with the chunks to show it in; a failure is returned, cancellation rethrown. */
+/**
+ * Extracts the text of [uri], parsed through temp files ([withPdf]), off the main thread, with the chunks to show it in; a failure, running
+ * out of memory included, is returned, cancellation rethrown.
+ */
 internal suspend fun processText(context: Context, uri: Uri, password: String?): Result<Pair<String, List<String>>> =
     withContext(Dispatchers.IO) {
         try {
-            val text = context.contentResolver.requireInputStream(uri).use { extractPdfText(it, password) }
+            val text = withPdf(context, uri, password, ::extractPdfText)
             Result.success(text to textChunks(text))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.w("PdfToTextView", "Text extraction failed", e)
+            Result.failure(e)
+        } catch (e: OutOfMemoryError) {
+            Log.w("PdfToTextView", "Out of memory extracting text", e)
             Result.failure(e)
         }
     }

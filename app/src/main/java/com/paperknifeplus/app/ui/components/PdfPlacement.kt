@@ -3,7 +3,6 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -109,28 +108,28 @@ internal fun PDPageContentStream.drawStamp(image: PDImageXObject, box: PageBox, 
 internal fun PDDocument.appendTo(page: PDPage): PDPageContentStream = PDPageContentStream(this, page, PDPageContentStream.AppendMode.APPEND, true, true)
 
 /**
- * Loads [source] with [password] (empty for none), removes its encryption, applies [edit] and saves the result to [output], as Sign,
- * Watermark, Page Numbers and Metadata do; [applyDefaults] goes to [saveAndFlush]. Blocking; throws on failure.
+ * Loads [source] with [password] (empty for none) through temp files ([withPdf]), removes its encryption, applies [edit] and saves the
+ * result to [output], as Sign, Watermark, Page Numbers, Metadata, Bookmarks and Unlock do; [applyDefaults] goes to [saveAndFlush]. Blocking;
+ * throws on failure.
  */
 internal fun rewritePdf(context: Context, source: Uri, password: String, output: Uri, applyDefaults: Boolean = true, edit: (PDDocument) -> Unit) {
-    context.contentResolver.requireInputStream(source).use { input ->
-        PDDocument.load(input, password).use { document ->
-            if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-            edit(document)
-            saveAndFlush(context, document, output, applyDefaults)
-        }
+    withPdf(context, source, password) { document ->
+        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
+        edit(document)
+        saveAndFlush(context, document, output, applyDefaults)
     }
 }
 
-/** The [PageBox] of every page of [uri], or empty when it cannot be read with [password] (wrong passwords included). */
+/** The [PageBox] of every page of [uri], or empty when it cannot be read with [password] (wrong passwords included), also for lack of memory. */
 internal suspend fun readPageBoxes(context: Context, uri: Uri, password: String?): List<PageBox> = withContext(Dispatchers.IO) {
     try {
-        context.contentResolver.requireInputStream(uri).use { input ->
-            PDDocument.load(input, password.orEmpty(), MemoryUsageSetting.setupTempFileOnly()).use { doc -> doc.pages.map(PageBox::of) }
-        }
+        withPdf(context, uri, password) { doc -> doc.pages.map(PageBox::of) }
     } catch (e: Exception) {
         // PDFBox throws unchecked exceptions on some malformed files, as inspectPdf notes.
         Log.w("PdfPlacement", "Cannot read the pages of $uri", e)
+        emptyList()
+    } catch (e: OutOfMemoryError) {
+        Log.w("PdfPlacement", "Out of memory reading the pages of $uri", e)
         emptyList()
     }
 }
