@@ -250,6 +250,31 @@ class PdDocumentPoolTest {
     }
 
     @Test
+    fun `a check stopped while it waits no longer counts, so the stopped check that loaded the document closes it`() = runBlocking {
+        val pool = pool(3)
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val first = launch(Dispatchers.IO) {
+            pool.check("a", {
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("a")
+            }, rejects = { false }) {}
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        val second = launch(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }, rejects = { false }) {} }
+        assertEquals(1, pool.waiters("a"))
+        second.cancel()
+        withTimeout(10_000) { second.join() }
+        first.cancel()
+        finish.countDown()
+
+        withTimeout(10_000) { first.join() }
+        assertEquals(listOf("a"), closed.map { it.key })
+        assertEquals(0, pool.size())
+    }
+
+    @Test
     fun `a check that rejects a document another caller loaded leaves it pooled`() = runBlocking {
         val pool = pool(3)
         val loaded = pool.withDocument("a", { FakeDoc("a") }) { it }

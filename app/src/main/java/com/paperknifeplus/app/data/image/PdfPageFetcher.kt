@@ -210,7 +210,7 @@ object NativeRendererPool {
  * find their key loading wait for that load rather than parse the file again.
  */
 class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val close: (D) -> Unit) {
-    /** A pooled [document]; [shared] once a caller other than the one that loaded it has taken it or waited for it. */
+    /** A pooled [document]; [shared] once a caller other than its loader has taken it, or still waited for it when it was published. */
     private class Entry<K, D>(val key: K, val document: D, var shared: Boolean) {
         val mutex = Mutex()
         var refCount = 0
@@ -286,7 +286,13 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
             }
             if (!loading) {
                 // Throws what the load threw; once it is published, the next turn takes the document, or loads again if it was evicted.
-                pending.done.await()
+                try {
+                    pending.done.await()
+                } catch (e: Throwable) {
+                    // Stopped while the load goes on: this caller no longer waits, so the document is not shared on its account.
+                    synchronized(lock) { if (loads[key] === pending) pending.waiters-- }
+                    throw e
+                }
                 continue
             }
             val loaded = try {
