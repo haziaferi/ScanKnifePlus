@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCompositionContext
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
 import com.tom_roush.pdfbox.cos.COSArray
@@ -48,6 +50,10 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 
 /** In-memory PDFs for Robolectric tests, so no binary fixtures are checked in. Shared by every tool-screen test; edit only additively. */
 object TestPdfs {
@@ -453,6 +459,34 @@ object TestPdfs {
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
         override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
         override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+}
+
+/**
+ * The coroutines of a composition's effects (its rememberCoroutineScope and LaunchedEffect jobs, and what they start), so a test can wait
+ * until work a screen began in the background has ended, rather than for a fixed time. Call [Watch] in the content beside the screen.
+ */
+class CompositionJobs {
+    private lateinit var root: Job
+
+    @Composable
+    fun Watch() {
+        // The context the composition's effects run in: every remembered scope's Job is a child of its Job.
+        root = rememberCompositionContext().effectCoroutineContext[Job]!!
+    }
+
+    /** The coroutines now waiting on a withContext(Dispatchers.IO) of their own: a tool's check held in its read is one. */
+    fun waitingOnIo(): Set<Job> {
+        val found = mutableSetOf<Job>()
+        fun visit(job: Job) {
+            for (child in job.children) {
+                val io = (child as? CoroutineScope)?.coroutineContext?.get(ContinuationInterceptor) === Dispatchers.IO
+                // A scope's own Job is no coroutine; a coroutine on IO under one was launched there, not waited on.
+                if (io && job is CoroutineScope) found += job else visit(child)
+            }
+        }
+        visit(root)
+        return found
     }
 }
 
