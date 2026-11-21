@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,21 +20,30 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.Typography
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -64,15 +74,20 @@ class LargeTextLayoutTest {
 
     private fun text(text: String): Rect = rule.onNodeWithText(text, useUnmergedTree = true).bounds()
 
-    private fun layoutOf(text: String): TextLayoutResult {
+    private fun layoutOf(text: String): TextLayoutResult = layoutOf(rule.onNodeWithText(text, useUnmergedTree = true))
+
+    private fun layoutOf(node: SemanticsNodeInteraction): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()
-        rule.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
+        node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(results)
         return results.single()
     }
 
     /** Fails when [text] is cut: its own layout, measured in the space its container gave it, overflows (bounds alone cannot show this). */
-    private fun assertNotClipped(text: String) {
-        val layout = layoutOf(text)
+    private fun assertNotClipped(text: String) = assertNotClipped(text, rule.onNodeWithText(text, useUnmergedTree = true))
+
+    /** [assertNotClipped] for [node], which shows [text]. */
+    private fun assertNotClipped(text: String, node: SemanticsNodeInteraction) {
+        val layout = layoutOf(node)
         // Height overflow is a cut line; a visible end short of the text is a line dropped by maxLines or an ellipsis.
         assertFalse("$text is cut off at the bottom", layout.didOverflowHeight)
         assertEquals("$text loses its end", layout.layoutInput.text.length, layout.getLineEnd(layout.lineCount - 1, visibleEnd = true))
@@ -137,7 +152,7 @@ class LargeTextLayoutTest {
         atDoubleText {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 ToolFileCard(Uri.parse("content://test/a.pdf"), null, "Insurance letters.pdf", "2.4 MB • 12 pages", onChange = {}, keepsPassword = true)
-                LinkCountsCard(LinkRemoval(links = 14, scripts = 1))
+                LinkCountsCard(FoundLinks(inside = listOf(0), leaving = listOf(14), automatic = LinkRemoval(0, 1)), LinkOptions())
             }
         }
         val shown = listOf(PASSWORD_LINE, "Found in this file", "14", "links", "1", "script that runs on its own",
@@ -148,9 +163,69 @@ class LargeTextLayoutTest {
 
     @Test
     fun `Links' counts with nothing to remove show their text uncut`() {
-        atDoubleText { LinkCountsCard(LinkRemoval(links = 0, scripts = 0)) }
+        atDoubleText { LinkCountsCard(FoundLinks(inside = listOf(0), leaving = listOf(0), automatic = LinkRemoval(0, 0)), LinkOptions()) }
         for (text in listOf("Found in this file", "No links or scripts in this file", "There is nothing to remove, so nothing is saved.")) {
             assertNotClipped(text)
+        }
+    }
+
+    @Test
+    // A small phone, and tall, so the whole screen is laid out and touches reach it.
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `Links' Nothing to remove shows uncut on its button`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        // Three links, all to pages of the file, and no script: External links removes nothing.
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.linked(3), "large-inside.pdf")
+        atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("External links").performClick()
+        rule.waitForIdle()
+        assertNotClipped("Nothing to remove")
+    }
+
+    @Test
+    // A small phone, and tall, so the whole screen is laid out and touches reach it.
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `Links with its choices, disabled buttons and a range error shows its text uncut, and nothing sideways`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links.pdf")
+        atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Page range").performClick()
+        // The disabled button for an untouched range, then for a range with an error, which shows under the field.
+        assertNotClipped("Type the pages to remove links from")
+        val field = rule.onNode(hasSetTextAction())
+        field.performTextInput("3")
+        assertNotClipped("Check the page range")
+        assertNotClipped("“3”: page 3 doesn’t exist. This file has 2 pages.")
+        field.performTextReplacement("2")
+        rule.onNodeWithText("External links").performClick()
+        rule.waitForIdle()
+
+        // "Pages" labels the section and the field.
+        val pages = rule.onAllNodesWithText("Pages", useUnmergedTree = true)
+        val pageLabels = pages.fetchSemanticsNodes().size
+        assertTrue("the section's and the field's Pages", pageLabels >= 2)
+        for (i in 0 until pageLabels) assertNotClipped("Pages", pages[i])
+
+        val segments = listOf("All pages", "Page range", "All links", "External links")
+        val shown = segments + listOf(
+            "Found on these pages", "external link", "script that runs on its own",
+            "Scripts and actions that run on their own go from the whole file.",
+            "Nothing changes until you save. Form fields, comments and bookmarks stay.", "For example 1-3, 5, 8-", "Links to remove",
+            "Links to pages of this file stay, such as a table of contents.", "Remove links and save PDF"
+        )
+        for (text in shown) assertNotClipped(text)
+        // A segment is one line that never wraps, so a label wider than the room it got would be cut at its end.
+        for (label in segments) {
+            val layout = layoutOf(label)
+            assertTrue("$label is cut at its end", layout.multiParagraph.intrinsics.maxIntrinsicWidth <= layout.size.width + 0.5f)
+        }
+        val width = rule.onRoot().bounds().width
+        for (node in rule.onAllNodes(SemanticsMatcher("any node") { true }, useUnmergedTree = true).fetchSemanticsNodes()) {
+            assertTrue("$node runs sideways", node.boundsInRoot.left >= -0.5f && node.boundsInRoot.right <= width + 0.5f)
         }
     }
 
