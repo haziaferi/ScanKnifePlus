@@ -256,28 +256,35 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
                 pending.completeExceptionally(e)
                 throw e
             }
-            return publish(key, loaded).also { pending.complete(Unit) }
+            val (entry, evicted) = publish(key, loaded)
+            // The waiters take the document before the evicted ones are closed, so they neither wait on that nor hang if a close throws.
+            pending.complete(Unit)
+            try {
+                evicted.forEach(::closeQuietly)
+            } catch (e: Throwable) {
+                release(entry)
+                throw e
+            }
+            return entry
         }
     }
 
-    private fun publish(key: K, loaded: D): Entry<D> {
-        val toClose = mutableListOf<D>()
-        val entry = synchronized(lock) {
-            loads.remove(key)
-            while (entries.size >= maxEntries) {
-                val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
-                entries.remove(oldKey)
-                old.evicted = true
-                if (old.refCount == 0) toClose += old.document
-            }
-            Entry(loaded).also {
-                it.lastUsed = ++clock
-                it.refCount++
-                entries[key] = it
-            }
+    /** Adds [loaded] as [key]'s entry, held once, and returns it with the idle documents it evicted, for the caller to close. */
+    private fun publish(key: K, loaded: D): Pair<Entry<D>, List<D>> = synchronized(lock) {
+        loads.remove(key)
+        val evicted = mutableListOf<D>()
+        while (entries.size >= maxEntries) {
+            val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
+            entries.remove(oldKey)
+            old.evicted = true
+            if (old.refCount == 0) evicted += old.document
         }
-        toClose.forEach(::closeQuietly)
-        return entry
+        val entry = Entry(loaded).also {
+            it.lastUsed = ++clock
+            it.refCount++
+            entries[key] = it
+        }
+        entry to evicted
     }
 
     private fun release(entry: Entry<D>) {

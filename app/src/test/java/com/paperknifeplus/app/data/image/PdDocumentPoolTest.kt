@@ -129,4 +129,35 @@ class PdDocumentPoolTest {
         assertEquals(0, pool.size())
         assertEquals("used", pool.withDocument("a", { FakeDoc("a") }) { "used" })
     }
+
+    private class CloseFailed : Error("close failed")
+
+    @Test
+    fun `a close that throws an Error still hands the new document to the callers waiting for it`() = runBlocking {
+        val pool = DocumentPool<String, FakeDoc>(1) {
+            if (it.key == "a") throw CloseFailed()
+            closed += it
+        }
+        pool.withDocument("a", { FakeDoc("a") }) {} // Idle, so the next load evicts and closes it.
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val first = async(Dispatchers.IO) {
+            runCatching {
+                pool.withDocument("b", {
+                    loading.countDown()
+                    finish.await(5, TimeUnit.SECONDS)
+                    FakeDoc("b")
+                }) { it }
+            }
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { pool.withDocument("b", { error("loaded twice") }) { it.key } }
+        finish.countDown()
+
+        assertEquals("b", withTimeout(10_000) { waiter.await() })
+        assertTrue(first.await().exceptionOrNull() is CloseFailed)
+        // Neither holds "b" any more, so evicting it closes it.
+        pool.withDocument("c", { FakeDoc("c") }) {}
+        assertEquals(listOf("b"), closed.map { it.key })
+    }
 }
