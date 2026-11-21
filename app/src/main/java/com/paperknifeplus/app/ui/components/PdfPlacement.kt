@@ -9,6 +9,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.graphics.image.PDImageXObject
 import com.tom_roush.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState
 import com.tom_roush.pdfbox.util.Matrix
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -120,10 +121,20 @@ internal fun rewritePdf(context: Context, source: Uri, password: String, output:
     }
 }
 
-/** The [PageBox] of every page of [uri], or empty when it cannot be read with [password] (wrong passwords included), also for lack of memory. */
-internal suspend fun readPageBoxes(context: Context, uri: Uri, password: String?): List<PageBox> = withContext(Dispatchers.IO) {
+/**
+ * The [PageBox] of every page of [uri], opened with [password] through temp files ([withPdf]). Throws on failure, InvalidPasswordException
+ * for a wrong or missing password, so a damaged protected file is not taken for a wrong password.
+ */
+internal suspend fun pageBoxesOf(context: Context, uri: Uri, password: String?): List<PageBox> = withContext(Dispatchers.IO) {
+    withPdf(context, uri, password) { doc -> doc.pages.map(PageBox::of) }
+}
+
+/** [pageBoxesOf], or empty when it cannot be read with [password] (wrong passwords included), also for lack of memory. */
+internal suspend fun readPageBoxes(context: Context, uri: Uri, password: String?): List<PageBox> =
     try {
-        withPdf(context, uri, password) { doc -> doc.pages.map(PageBox::of) }
+        pageBoxesOf(context, uri, password)
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         // PDFBox throws unchecked exceptions on some malformed files, as inspectPdf notes.
         Log.w("PdfPlacement", "Cannot read the pages of $uri", e)
@@ -132,4 +143,3 @@ internal suspend fun readPageBoxes(context: Context, uri: Uri, password: String?
         Log.w("PdfPlacement", "Out of memory reading the pages of $uri", e)
         emptyList()
     }
-}

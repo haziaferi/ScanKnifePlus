@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -190,24 +191,36 @@ fun CropView(
         currentState = ToolState.SELECTING
     }
 
-    // Reads the pages of [source] opened with [pass]; a password that does not open it asks again.
+    // A file that is damaged, too large to parse, or without pages says it cannot be read.
+    fun unreadable(source: Uri, e: Throwable?) {
+        Log.w("CropView", "Cannot read the pages of $source", e)
+        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+        fileToUnlock = null
+        reset()
+    }
+
+    // Reads the pages of [source] opened with [pass]. Only a password that does not open it asks again, as in Links: a damaged protected
+    // file opened with its password is unreadable, not a wrong password.
     suspend fun open(source: Uri, pass: String?) {
-        val read = readPageBoxes(context, source, pass)
-        when {
-            read.isNotEmpty() -> {
-                boxes = read
-                password = pass
-                fileToUnlock = null
-                currentState = ToolState.CONFIGURING
+        try {
+            val read = pageBoxesOf(context, source, pass)
+            if (read.isEmpty()) {
+                unreadable(source, null)
+                return
             }
-            pass != null -> {
-                unlockError = true
-                fileToUnlock = fileName
-            }
-            else -> {
-                Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-                reset()
-            }
+            boxes = read
+            password = pass
+            fileToUnlock = null
+            currentState = ToolState.CONFIGURING
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: InvalidPasswordException) {
+            unlockError = pass != null
+            fileToUnlock = fileName
+        } catch (e: Exception) {
+            unreadable(source, e)
+        } catch (e: OutOfMemoryError) {
+            unreadable(source, e)
         }
     }
 
