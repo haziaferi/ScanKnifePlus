@@ -232,8 +232,8 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
     /**
      * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
      * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done. That caller
-     * also closes the documents its load evicts, once the waiters have the new one: an Error a close throws reaches it, and its [block]
-     * does not run.
+     * also closes the documents its load evicts, once the waiters have the new one; a close that fails, even with an Error, is logged and
+     * changes nothing for it.
      */
     suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, null, block)
 
@@ -241,7 +241,7 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
      * [withDocument] for a check that reads the file to tell whether it can be used: a document this call loaded leaves the pool again, and is
      * closed, when [rejects] what [block] returned, when [block] throws, or when the call is stopped, unless another caller has taken it or
      * waits for it. A document that was already pooled stays, whatever the check finds. A stopped check ends with its cancellation, even if
-     * closing the document throws.
+     * closing its document or one its load evicted throws.
      */
     suspend fun <T> check(key: K, load: () -> D, rejects: (T) -> Boolean, block: suspend (D) -> T): T = use(key, load, rejects, block)
 
@@ -303,14 +303,9 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
                 throw e
             }
             val (entry, evicted) = publish(key, loaded, pending)
-            // The waiters take the document before the evicted ones are closed, so they neither wait on that nor hang if a close throws.
+            // The waiters take the document before the evicted ones are closed, so they do not wait on that.
             pending.done.complete(Unit)
-            try {
-                evicted.forEach(::closeQuietly)
-            } catch (e: Throwable) {
-                release(entry)
-                throw e
-            }
+            evicted.forEach(::closeEvicted)
             return entry
         }
     }
@@ -351,6 +346,15 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
             close(document)
         } catch (e: Exception) {
             Log.w(TAG, "Could not close a document", e)
+        }
+    }
+
+    /** Closes a document a load evicted. No caller holds it, so a close that fails, even with an Error, is logged and changes nothing. */
+    private fun closeEvicted(document: D) {
+        try {
+            close(document)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not close an evicted document", e)
         }
     }
 }

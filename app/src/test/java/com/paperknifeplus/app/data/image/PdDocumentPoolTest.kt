@@ -140,32 +140,60 @@ class PdDocumentPoolTest {
 
     private class CloseFailed : Error("close failed")
 
-    @Test
-    fun `a close that throws an Error still hands the new document to the callers waiting for it`() = runBlocking {
+    /** A pool of one whose close throws [CloseFailed] for "a", holding "a" idle, so the next load evicts it and the close fails. */
+    private suspend fun poolFailingToCloseA(): DocumentPool<String, FakeDoc> {
         val pool = DocumentPool<String, FakeDoc>(1) {
             if (it.key == "a") throw CloseFailed()
             closed += it
         }
-        pool.withDocument("a", { FakeDoc("a") }) {} // Idle, so the next load evicts and closes it.
+        pool.withDocument("a", { FakeDoc("a") }) {}
+        return pool
+    }
+
+    @Test
+    fun `an evicted document whose close throws an Error changes nothing for the loader or the callers waiting for it`() = runBlocking {
+        val pool = poolFailingToCloseA()
         val loading = CountDownLatch(1)
         val finish = CountDownLatch(1)
         val first = async(Dispatchers.IO) {
-            runCatching {
-                pool.withDocument("b", {
-                    loading.countDown()
-                    finish.await(5, TimeUnit.SECONDS)
-                    FakeDoc("b")
-                }) { it }
-            }
+            pool.withDocument("b", {
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("b")
+            }) { it.key }
         }
         assertTrue(loading.await(5, TimeUnit.SECONDS))
         val waiter = async(start = CoroutineStart.UNDISPATCHED) { pool.withDocument("b", { error("loaded twice") }) { it.key } }
         finish.countDown()
 
-        assertEquals("b", withTimeout(10_000) { waiter.await() })
-        assertTrue(first.await().exceptionOrNull() is CloseFailed)
+        assertEquals(listOf("b", "b"), withTimeout(10_000) { listOf(first.await(), waiter.await()) })
         // Neither holds "b" any more, so evicting it closes it.
         pool.withDocument("c", { FakeDoc("c") }) {}
+        assertEquals(listOf("b"), closed.map { it.key })
+    }
+
+    @Test
+    fun `a stopped check whose load evicts a document that fails to close ends with its cancellation, and takes its own out`() = runBlocking {
+        val pool = poolFailingToCloseA()
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        // Its own scope, so that a check failing with the Error would not fail the test's.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val check = scope.async {
+            pool.check("b", {
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("b")
+            }, rejects = { false }) {}
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        check.cancel()
+        finish.countDown()
+
+        withTimeout(10_000) { check.join() }
+        val thrown = runCatching { check.await() }.exceptionOrNull()
+        assertTrue(thrown.toString(), thrown is CancellationException)
+        assertEquals(0, pool.size())
         assertEquals(listOf("b"), closed.map { it.key })
     }
 
