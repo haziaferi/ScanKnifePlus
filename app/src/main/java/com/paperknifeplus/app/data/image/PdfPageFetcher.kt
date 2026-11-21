@@ -238,7 +238,8 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
     /**
      * [withDocument] for a check that reads the file to tell whether it can be used: a document this call loaded leaves the pool again, and is
      * closed, when [rejects] what [block] returned, when [block] throws, or when the call is stopped, unless another caller has taken it or
-     * waits for it. A document that was already pooled stays, whatever the check finds.
+     * waits for it. A document that was already pooled stays, whatever the check finds. A stopped check ends with its cancellation, even if
+     * closing the document throws.
      */
     suspend fun <T> check(key: K, load: () -> D, rejects: (T) -> Boolean, block: suspend (D) -> T): T = use(key, load, rejects, block)
 
@@ -253,7 +254,13 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
             if (rejects != null) discard = rejects(result) || !currentCoroutineContext().isActive
             return result
         } finally {
-            release(entry, discard)
+            val stopped = !currentCoroutineContext().isActive
+            try {
+                release(entry, discard)
+            } catch (e: Throwable) {
+                if (!stopped) throw e
+                Log.w(TAG, "Could not close a document", e)
+            }
         }
     }
 

@@ -1,8 +1,11 @@
 package com.paperknifeplus.app.data.image
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -14,12 +17,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+// Robolectric for android.util.Log, which the pool writes to when a close fails.
+@RunWith(RobolectricTestRunner::class)
 class PdDocumentPoolTest {
     private class FakeDoc(val key: String) {
         val closes = AtomicInteger()
@@ -267,5 +274,28 @@ class PdDocumentPoolTest {
         assertEquals(1, rejected.closes.get())
         assertEquals(listOf("a"), closed.map { it.key })
         assertEquals(1, pool.size())
+    }
+
+    @Test
+    fun `a stopped check ends with its cancellation even if closing its document throws`() = runBlocking {
+        val pool = DocumentPool<String, FakeDoc>(3) { throw CloseFailed() }
+        val reading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        // Its own scope, so that a check failing with the Error would not fail the test's.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val check = scope.async {
+            pool.check("a", { FakeDoc("a") }, rejects = { false }) {
+                reading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+            }
+        }
+        assertTrue(reading.await(5, TimeUnit.SECONDS))
+        check.cancel()
+        finish.countDown()
+
+        withTimeout(10_000) { check.join() }
+        val thrown = runCatching { check.await() }.exceptionOrNull()
+        assertTrue(thrown.toString(), thrown is CancellationException)
+        assertEquals("taken out of the pool all the same", 0, pool.size())
     }
 }
