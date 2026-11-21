@@ -43,10 +43,10 @@ private val MARK = 18.dp
 private val MARK_GAP = 4.dp
 
 /**
- * The one control for a small single choice (R2): [options] as segments of one line and one height (48 dp at least), the [selected] one
- * tonal with a check. When the labels, measured at the current text size, do not fit one row, the segments stack as full-width rows, where
- * a label too long even for its row wraps onto a second line and its row grows; the single row's segments never wrap. Each segment is a
- * radio button of one group.
+ * The one control for a small single choice (R2): [options] as segments 48 dp high at least, the [selected] one tonal with a check. Side by
+ * side, the segments are one row of one line and one height, never wrapping. When the labels, measured at the current text size, do not fit
+ * that row, the segments stack as full-width rows, and a label too long even for its row wraps onto more lines and its row grows. Each
+ * segment is a radio button of one group.
  */
 @Composable
 fun SegmentedChoice(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
