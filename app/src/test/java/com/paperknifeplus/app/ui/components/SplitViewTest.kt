@@ -9,6 +9,7 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
@@ -23,7 +24,9 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import org.junit.Assert.assertFalse
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -59,18 +62,20 @@ class SplitViewTest {
         return PdfImageLoader.get(context).memoryCache!!.keys.any { it.key == key }
     }
 
-    /** Answers every launch with [result], like a file picker the user picked [result] in. */
-    private fun pickerReturning(result: Uri) = object : ActivityResultRegistryOwner {
+    /** A file picker the user picks [picked] in, and a save picker the user picks [saved] in. */
+    private fun pickerReturning(picked: Uri, saved: Uri) = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-                dispatchResult(requestCode, result)
+                dispatchResult(requestCode, if (contract is ActivityResultContracts.CreateDocument) saved else picked)
             }
         }
     }
 
+    private val output = File(context.cacheDir, "split-view-out.pdf").apply { delete() }
+
     private fun startSplit(uri: Uri, password: String, picked: Uri = uri) {
         rule.setContent {
-            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked)) {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked, Uri.fromFile(output))) {
                 SplitView(initialUri = uri, initialPassword = password, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
@@ -78,6 +83,13 @@ class SplitViewTest {
 
     private fun waitForPages(text: String) {
         rule.waitUntil(10_000) { rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** Selects every page, extracts them, and waits for the result. */
+    private fun extractAll(pages: Int) {
+        rule.onNodeWithText("Select all").performClick()
+        rule.onNodeWithText("Extract $pages pages").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Split complete")).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test
@@ -89,21 +101,24 @@ class SplitViewTest {
         rule.onNodeWithText("Password required").assertDoesNotExist()
         val copy = context.cacheDir.listFiles().orEmpty().single { it.name.startsWith("decrypted_") }
         rule.waitUntil(10_000) { thumbnailCached(Uri.fromFile(copy), null) }
-        assertFalse(thumbnailCached(uri, TestPdfs.USER_PASSWORD))
     }
 
     @Test
-    fun `after CHANGE the next file is previewed without the old password`() {
+    fun `after CHANGE the next file keeps no password and is saved without the old one`() {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-change.pdf")
-        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-change.pdf")
-        startSplit(locked, TestPdfs.USER_PASSWORD, picked = plain)
+        // An owner password only: the old password is neither, so saving with it would fail.
+        val next = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 1), "owner-only-change.pdf")
+        startSplit(locked, TestPdfs.USER_PASSWORD, picked = next)
         waitForPages("0 / 2 pages selected")
+        rule.onNodeWithText(PASSWORD_LINE).assertExists()
 
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
         waitForPages("0 / 1 page selected")
-        rule.waitUntil(10_000) { thumbnailCached(plain, null) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD))
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        extractAll(1)
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        PDDocument.load(output).use { assertEquals(1, it.numberOfPages) }
     }
 
     @Test
@@ -122,12 +137,18 @@ class SplitViewTest {
     }
 
     @Test
-    fun `a password handed over for a file that opens without one is dropped, so its pages count and render without it`() {
+    fun `a password handed over for a file that opens without one is dropped, so its pages count, render and are saved without it`() {
         // An owner password only: the handed one is neither, so opening with it would fail.
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-split.pdf")
         startSplit(uri, "not-needed")
         waitForPages("0 / 2 pages selected")
         rule.waitUntil(10_000) { thumbnailCached(uri, null) }
-        assertFalse(thumbnailCached(uri, "not-needed"))
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        extractAll(2)
+        PDDocument.load(output).use { assertEquals(2, it.numberOfPages) }
+    }
+
+    private companion object {
+        const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }

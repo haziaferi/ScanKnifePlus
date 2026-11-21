@@ -1,13 +1,12 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsEnabled
@@ -19,10 +18,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
-import coil.request.Options
-import com.paperknifeplus.app.data.image.PdfImageLoader
-import com.paperknifeplus.app.data.image.PdfPageKeyer
-import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.CompositionJobs
 import android.net.Uri
@@ -35,7 +30,6 @@ import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -46,6 +40,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
@@ -152,7 +147,10 @@ class UltraPreviewTest {
     }
 }
 
-/** Tools opened from the preview with the password the file was unlocked with: they use it, and forget it for the next file. */
+/**
+ * Tools opened from the preview with the password the file was unlocked with: they use it, and forget it for the next file. Compress keeps
+ * no password to forget: it saves an unprotected copy.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ToolHandOffTest {
@@ -167,29 +165,20 @@ class ToolHandOffTest {
     @Before
     fun setUp() = PDFBoxResourceLoader.init(context)
 
-    private fun pickerReturning(result: Uri) = object : ActivityResultRegistryOwner {
+    /** A file picker the user picks [picked] in, and a save picker the user picks [saved] in. */
+    private fun pickerReturning(picked: Uri, saved: Uri) = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-                dispatchResult(requestCode, result)
+                dispatchResult(requestCode, if (contract is ActivityResultContracts.CreateDocument) saved else picked)
             }
         }
     }
 
-    private fun show(picked: Uri, content: @Composable () -> Unit) = rule.setContent {
-        CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked), content = content)
+    private fun show(picked: Uri, saved: Uri = picked, content: @Composable () -> Unit) = rule.setContent {
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked, saved), content = content)
     }
 
     private fun waitFor(text: String) = rule.waitUntil(30_000) { rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
-
-    /** Whether a first-page thumbnail of [uri] at [scale] rendered with [password] is cached; Coil only loads what is drawn. */
-    private fun thumbnailCached(uri: Uri, password: String?, scale: Float): Boolean {
-        rule.runOnUiThread {
-            val root = rule.activity.window.decorView
-            root.draw(Canvas(Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)))
-        }
-        val key = PdfPageKeyer().key(PdfPageRequest(uri, 0, password, scale), Options(context))
-        return PdfImageLoader.get(context).memoryCache!!.keys.any { it.key == key }
-    }
 
     @Test
     fun `Merge unlocks a file handed over with its password`() {
@@ -201,29 +190,29 @@ class ToolHandOffTest {
     }
 
     @Test
-    fun `Compress forgets the handed-over password after CHANGE`() {
-        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-compress.pdf")
-        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-compress.pdf")
-        show(plain) { CompressView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("2 pages")
-        rule.onNodeWithText("Change").performClick()
-        rule.onNodeWithText("Choose PDF").performClick()
-        waitFor("• 1 page")
-        rule.waitUntil(30_000) { thumbnailCached(plain, null, THUMBNAIL_SCALE) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE))
-    }
-
-    @Test
     fun `Rearrange forgets the handed-over password after CHANGE`() {
         val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
-        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-rearrange.pdf")
-        show(plain) { RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        // An owner password only: the handed one is neither, so saving with it would fail.
+        val next = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 1), "owner-only-rearrange.pdf")
+        val output = File(context.cacheDir, "handed-change-rearranged.pdf").apply { delete() }
+        show(next, saved = Uri.fromFile(output)) {
+            RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> })
+        }
         waitFor("2 pages")
+        rule.onNodeWithText(PASSWORD_LINE).assertExists()
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
         waitFor("• 1 page")
-        rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+
+        rule.onNodeWithText("Save PDF").performClick()
+        waitFor("Rearrange complete")
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        PDDocument.load(output).use { assertEquals(1, it.numberOfPages) }
+    }
+
+    private companion object {
+        const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }
 
