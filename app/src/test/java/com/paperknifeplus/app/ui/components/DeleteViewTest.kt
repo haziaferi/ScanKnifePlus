@@ -83,6 +83,15 @@ class DeleteViewTest {
     }
 
     @Test
+    fun `a file without pages says it can't be read and goes back to choosing a file`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(0), "empty-delete.pdf")
+        rule.setContent { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNode(hasText("marked for deletion", substring = true)).assertDoesNotExist()
+    }
+
+    @Test
     fun `running out of memory while saving shows the failure and removes the file the save created`() {
         val (output, created) = TestPdfs.createdDocument(context, "huge-pages-deleted.pdf")
         assertTrue("the documents provider serves the created file", DocumentsContract.isDocumentUri(context, output))

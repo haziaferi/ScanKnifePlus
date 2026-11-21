@@ -20,7 +20,7 @@ sealed interface PdfAccess {
     /** Needs a user password to open, or carries an owner password when [inspectPdf] was asked to count those. */
     data object Encrypted : PdfAccess
 
-    /** Missing, not a PDF, or too large to parse. */
+    /** Missing, not a PDF, damaged (a page tree that cannot be read included), too large to parse, or without pages. */
     data object Unreadable : PdfAccess
 }
 
@@ -41,11 +41,18 @@ internal inline fun <T> withPdf(context: Context, input: Uri, password: String?,
 /**
  * Opens [uri] once without a password to classify it. A file with only an owner password (permission restrictions, no open password) is
  * [PdfAccess.Open], so tools do not ask for a password it does not need; Unlock and Protect pass [countOwnerPassword] to see it as
- * [PdfAccess.Encrypted]. Parsing spills to temp files ([withPdf]), so large PDFs do not exhaust the heap.
+ * [PdfAccess.Encrypted]. A file that opens without pages is [PdfAccess.Unreadable], as every tool but Links (which does not inspect files)
+ * has nothing to work on in it (owner's decision). Parsing spills to temp files ([withPdf]), so large PDFs do not exhaust the heap.
  */
 suspend fun inspectPdf(context: Context, uri: Uri, countOwnerPassword: Boolean = false): PdfAccess = withContext(Dispatchers.IO) {
     try {
-        withPdf(context, uri, null) { if (it.isEncrypted && countOwnerPassword) PdfAccess.Encrypted else PdfAccess.Open }
+        withPdf(context, uri, null) {
+            when {
+                it.numberOfPages == 0 -> PdfAccess.Unreadable
+                it.isEncrypted && countOwnerPassword -> PdfAccess.Encrypted
+                else -> PdfAccess.Open
+            }
+        }
     } catch (e: InvalidPasswordException) {
         PdfAccess.Encrypted
     } catch (e: IOException) {
@@ -71,7 +78,10 @@ sealed interface PasswordCheck<out T> {
     /** The password does not open the file: the prompt says so and asks again. */
     data object WrongPassword : PasswordCheck<Nothing>
 
-    /** Damaged, without pages, or too large to parse: the tool says it cannot be read and resets. */
+    /**
+     * Damaged, too large to parse, or found unusable by the check's read, as every check but Links' finds a file without pages: the tool
+     * says it cannot be read and resets. Links can still remove a page-less file's scripts.
+     */
     data object Unreadable : PasswordCheck<Nothing>
 }
 

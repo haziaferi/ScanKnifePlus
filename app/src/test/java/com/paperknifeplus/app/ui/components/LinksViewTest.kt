@@ -42,6 +42,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
+import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionJavaScript
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import java.io.ByteArrayOutputStream
@@ -371,6 +372,21 @@ class LinksViewTest {
         counted("links", 0).assertExists()
         counted("script that runs on its own", 1).assertExists()
         rule.onNodeWithText(REMOVE).assertIsEnabled()
+    }
+
+    @Test
+    fun `a file without pages that has a script still opens, its script can be removed`() {
+        // Unlike every other tool, Links has work to do in a file without pages.
+        val pageless = PDDocument().use { doc ->
+            doc.documentCatalog.openAction = PDActionJavaScript("app.alert('opened')")
+            ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        show(pageless, "pageless-script.pdf")
+        waitFor(FOUND)
+
+        counted("script that runs on its own", 1).assertExists()
+        rule.onNodeWithText(REMOVE).assertIsEnabled()
+        rule.onNodeWithText(UNREADABLE).assertDoesNotExist()
     }
 
     @Test

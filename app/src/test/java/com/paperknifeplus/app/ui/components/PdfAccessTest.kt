@@ -55,6 +55,14 @@ class PdfAccessTest {
     }
 
     @Test
+    fun `a file that opens without pages is unreadable, also with only an owner password`() {
+        assertEquals(PdfAccess.Unreadable, inspect(TestPdfs.plain(0)))
+        assertEquals(PdfAccess.Unreadable, inspect(TestPdfs.ownerOnly(pages = 0)))
+        val ownerOnly = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 0), "owner-empty.pdf")
+        assertEquals(PdfAccess.Unreadable, runBlocking { inspectPdf(context, ownerOnly, countOwnerPassword = true) })
+    }
+
+    @Test
     fun `an unchecked exception while parsing is unreadable, not a crash`() {
         val uri = android.net.Uri.parse("content://com.example.throwing/doc.pdf")
         val throwing = object : java.io.InputStream() {

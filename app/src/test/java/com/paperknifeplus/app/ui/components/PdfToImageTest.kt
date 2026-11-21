@@ -88,6 +88,15 @@ class PdfToImageTest {
     }
 
     @Test
+    fun `a file without pages says it can't be read and goes back to choosing a file`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(0), "empty-images.pdf")
+        rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNode(hasText("Convert 0 pages", substring = true)).assertDoesNotExist()
+    }
+
+    @Test
     fun `each page tile is a checkbox that says whether the page is exported`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three-tiles.pdf")
         rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }

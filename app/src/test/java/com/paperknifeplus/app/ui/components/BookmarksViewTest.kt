@@ -26,8 +26,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
-/** Bookmarks on its screen: unlocking a protected file. */
+/** Bookmarks on its screen: unlocking a protected file, and a protected file without pages. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BookmarksViewTest {
@@ -64,5 +65,18 @@ class BookmarksViewTest {
         rule.waitUntil(30_000) { thumbnailCached(source.uri, TestPdfs.USER_PASSWORD) }
         // Once to find that it needs a password, once to check the password and read the outline.
         assertEquals(2, source.opens)
+    }
+
+    @Test
+    fun `a protected file without pages says it can't be read and goes back to choosing a file`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 0), "empty-bookmarks.pdf")
+        rule.setContent { BookmarksView(initialUri = source, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
     }
 }
