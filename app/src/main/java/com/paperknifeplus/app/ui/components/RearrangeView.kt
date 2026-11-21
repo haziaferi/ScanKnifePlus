@@ -74,6 +74,23 @@ fun RearrangeView(
         currentState = ToolState.SELECTING
     }
 
+    // A protected file is decrypted once to a cache copy, so page previews can use the fast native renderer; saving reads the original
+    // with its password. A wrong password, typed or handed over by the reader, opens the prompt with its error.
+    suspend fun unlock(source: Uri, password: String) {
+        decryptToCache(context, source, password).resolve(
+            context,
+            onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+            onUnreadable = { closePrompt() }
+        ) { copy ->
+            decryptedUri = copy.uri
+            unlockPassword = password
+            selectedUri = copy.uri
+            pageOrder = (0 until copy.pageCount).toList()
+            currentState = ToolState.CONFIGURING
+            fileToUnlock = null
+        }
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
@@ -90,20 +107,7 @@ fun RearrangeView(
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
-                PdfAccess.Encrypted -> if (password == null) {
-                    fileToUnlock = fileName
-                } else {
-                    checkPageCount(context, uri, password).resolve(
-                        context,
-                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
-                        onUnreadable = { closePrompt() }
-                    ) { count ->
-                        unlockPassword = password
-                        pageOrder = (0 until count).toList()
-                        currentState = ToolState.CONFIGURING
-                    }
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
                 // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
                 PdfAccess.Open -> {
                     pageOrder = (0 until getPageCount(context, uri, null)).toList()
@@ -182,7 +186,7 @@ fun RearrangeView(
                         ) {
                             ToolFileCard(
                                 uri = selectedUri!!,
-                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
@@ -198,7 +202,7 @@ fun RearrangeView(
                                         uri = selectedUri!!,
                                         pageCount = pageOrder.size,
                                         mode = PreviewMode.REORDER,
-                                        password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                        password = null,
                                         accentColor = accentColor,
                                         pageOrder = pageOrder,
                                         selectedPages = selectedPageIndex?.let { setOf(it) } ?: emptySet(),
@@ -267,7 +271,7 @@ fun RearrangeView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                            password = null,
                             text = stringResource(R.string.rearrange_applying_new_order),
                             current = 0,
                             total = 0,
@@ -336,23 +340,7 @@ fun RearrangeView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = { check.stop(); closePrompt() },
-                    onUnlocked = { pass ->
-                        val source = selectedUri
-                        if (source != null) {
-                            check.start {
-                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val decrypted = decryptToCache(context, source, pass)
-                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
-                                    decryptedUri = copy.uri
-                                    unlockPassword = pass
-                                    selectedUri = copy.uri
-                                    pageOrder = (0 until copy.pageCount).toList()
-                                    currentState = ToolState.CONFIGURING
-                                    fileToUnlock = null
-                                }
-                            }
-                        }
-                    },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
                     isLoading = check.running

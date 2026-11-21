@@ -66,6 +66,23 @@ fun CompressView(
         currentState = ToolState.SELECTING
     }
 
+    // A protected file is decrypted once to a cache copy, so the preview can use the fast native renderer. A wrong password, typed or
+    // handed over by the reader, opens the prompt with its error.
+    suspend fun unlock(source: Uri, password: String) {
+        decryptToCache(context, source, password).resolve(
+            context,
+            onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+            onUnreadable = { closePrompt() }
+        ) { copy ->
+            decryptedUri = copy.uri
+            unlockPassword = password
+            selectedUri = copy.uri
+            pageCount = copy.pageCount
+            currentState = ToolState.CONFIGURING
+            fileToUnlock = null
+        }
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
@@ -81,20 +98,7 @@ fun CompressView(
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
-                PdfAccess.Encrypted -> if (password == null) {
-                    fileToUnlock = fileName
-                } else {
-                    checkPageCount(context, uri, password).resolve(
-                        context,
-                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
-                        onUnreadable = { closePrompt() }
-                    ) { count ->
-                        unlockPassword = password
-                        pageCount = count
-                        currentState = ToolState.CONFIGURING
-                    }
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
                 // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
                 PdfAccess.Open -> {
                     pageCount = getPageCount(context, uri, null)
@@ -173,7 +177,7 @@ fun CompressView(
                         ) {
                             ToolFileCard(
                                 uri = selectedUri!!,
-                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
@@ -241,23 +245,7 @@ fun CompressView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = { check.stop(); closePrompt() },
-                    onUnlocked = { pass ->
-                        val source = selectedUri
-                        if (source != null) {
-                            check.start {
-                                // Decrypted once to a cache copy, so the preview can use the fast native renderer.
-                                val decrypted = decryptToCache(context, source, pass)
-                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
-                                    decryptedUri = copy.uri
-                                    unlockPassword = pass
-                                    selectedUri = copy.uri
-                                    pageCount = copy.pageCount
-                                    currentState = ToolState.CONFIGURING
-                                    fileToUnlock = null
-                                }
-                            }
-                        }
-                    },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
                     isLoading = check.running

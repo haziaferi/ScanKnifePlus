@@ -23,9 +23,7 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -83,22 +81,15 @@ class SplitViewTest {
     }
 
     @Test
-    fun `previews of the original encrypted file get the password the preview handed over`() {
-        val original = Uri.parse("content://docs/locked.pdf")
-        val copy = Uri.parse("file:///cache/decrypted_1.pdf")
-        assertEquals("pw", splitPreviewPassword(original, null, "pw"))
-        assertNull(splitPreviewPassword(copy, copy, "pw"))
-        assertNull(splitPreviewPassword(original, null, ""))
-    }
-
-    @Test
-    fun `opened with an encrypted file and its password, thumbnails render with that password`() {
+    fun `opened with an encrypted file and its password, Split previews its decrypted copy, as after the prompt`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-split.pdf")
         startSplit(uri, TestPdfs.USER_PASSWORD)
 
         waitForPages("0 / 2 pages selected")
         rule.onNodeWithText("Password required").assertDoesNotExist()
-        rule.waitUntil(10_000) { thumbnailCached(uri, TestPdfs.USER_PASSWORD) }
+        val copy = context.cacheDir.listFiles().orEmpty().single { it.name.startsWith("decrypted_") }
+        rule.waitUntil(10_000) { thumbnailCached(Uri.fromFile(copy), null) }
+        assertFalse(thumbnailCached(uri, TestPdfs.USER_PASSWORD))
     }
 
     @Test

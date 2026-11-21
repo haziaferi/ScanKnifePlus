@@ -91,6 +91,14 @@ class CompressViewTest {
     }
 
     @Test
+    fun `a handed password unlocks the file as the prompt does, through a decrypted copy`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-copied-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, cacheFiles().count { it.startsWith("decrypted_") })
+    }
+
+    @Test
     fun `a wrong password handed over by the reader opens the prompt with its error`() {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-wrong-compress.pdf")
         rule.setContent { CompressView(initialUri = source, initialPassword = "wrong", onBack = {}, onOpenPreview = { _, _, _ -> }) }

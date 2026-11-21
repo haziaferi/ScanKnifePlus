@@ -154,6 +154,13 @@ class RearrangeViewTest {
     }
 
     @Test
+    fun `a handed password unlocks the file as the prompt does, through a decrypted copy`() {
+        showHanded(TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-copied-rearrange.pdf"), TestPdfs.USER_PASSWORD)
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, context.cacheDir.listFiles().orEmpty().count { it.name.startsWith("decrypted_") })
+    }
+
+    @Test
     fun `a password handed over for a file that opens without one is dropped, so its pages count`() {
         // An owner password only: the handed one is neither, so opening with it would fail.
         showHanded(TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-rearrange.pdf"), "not-needed")

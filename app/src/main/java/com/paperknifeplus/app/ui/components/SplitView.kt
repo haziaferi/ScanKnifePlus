@@ -80,6 +80,22 @@ fun SplitView(
         currentState = ToolState.CONFIGURING
     }
 
+    // A protected file is decrypted once to a cache copy, so page previews can use the fast native renderer; saving reads the original
+    // with its password. A wrong password, typed or handed over by the reader, opens the prompt with its error.
+    suspend fun unlock(source: Uri, password: String) {
+        decryptToCache(context, source, password).resolve(
+            context,
+            onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+            onUnreadable = { closePrompt() }
+        ) { copy ->
+            decryptedUri = copy.uri
+            unlockPassword = password
+            selectedUri = copy.uri
+            showPages(copy.pageCount)
+            fileToUnlock = null
+        }
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
@@ -96,19 +112,7 @@ fun SplitView(
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
-                PdfAccess.Encrypted -> if (password == null) {
-                    fileToUnlock = fileName
-                } else {
-                    checkPageCount(context, uri, password).resolve(
-                        context,
-                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
-                        onUnreadable = { closePrompt() }
-                    ) { count ->
-                        unlockPassword = password
-                        showPages(count)
-                    }
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
                 // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
                 PdfAccess.Open -> showPages(getPageCount(context, uri, null))
             }
@@ -186,7 +190,7 @@ fun SplitView(
                         ) {
                             ToolFileCard(
                                 uri = selectedUri!!,
-                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = {
@@ -279,7 +283,7 @@ fun SplitView(
                                         uri = selectedUri!!,
                                         pageCount = pageCount,
                                         mode = PreviewMode.GRID,
-                                        password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                        password = null,
                                         accentColor = accentColor,
                                         selectedPages = selectedPages,
                                         onToggleSelection = { index ->
@@ -333,23 +337,7 @@ fun SplitView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = { check.stop(); closePrompt() },
-                    onUnlocked = { pass ->
-                        val source = selectedUri
-                        if (source != null) {
-                            check.start {
-                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val decrypted = decryptToCache(context, source, pass)
-                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
-                                    decryptedUri = copy.uri
-                                    unlockPassword = pass
-                                    selectedUri = copy.uri
-                                    pageCount = copy.pageCount
-                                    currentState = ToolState.CONFIGURING
-                                    fileToUnlock = null
-                                }
-                            }
-                        }
-                    },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
                     isLoading = check.running
@@ -358,10 +346,3 @@ fun SplitView(
         }
     }
 }
-
-/**
- * The password page previews need: none for the decrypted cache copy (so the fast native renderer is used), and the unlock password
- * when Split works on the original encrypted file, as it does when the preview hands over a password.
- */
-internal fun splitPreviewPassword(selectedUri: Uri?, decryptedUri: Uri?, unlockPassword: String): String? =
-    if (selectedUri != null && selectedUri == decryptedUri) null else unlockPassword.ifEmpty { null }
