@@ -43,9 +43,8 @@ fun SplitView(
     var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
+    // The source's open password, empty when it opens without one; the saved copies keep it.
     var unlockPassword by remember { mutableStateOf("") }
-    // Whether the source needs an open password, which the saved copy keeps; a handed-over one the file does not need is not kept.
-    var needsPassword by remember { mutableStateOf(false) }
     var rangeText by remember { mutableStateOf("") }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
@@ -85,28 +84,33 @@ fun SplitView(
         dropDecryptedCopy()
         selectedUri = uri
         sourceUri = uri
-        unlockPassword = password.orEmpty()
+        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
         unlockError = false
         check.start {
-            val access = inspectPdf(context, uri)
-            needsPassword = access == PdfAccess.Encrypted
-            when {
-                access == PdfAccess.Unreadable -> {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
                 // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
-                access == PdfAccess.Encrypted && password != null -> checkPageCount(context, uri, password).resolve(
-                    context,
-                    onWrongPassword = { unlockError = true; fileToUnlock = fileName },
-                    onUnreadable = { closePrompt() }
-                ) { count -> showPages(count) }
-                else -> showPages(getPageCount(context, uri, password))
+                PdfAccess.Encrypted -> if (password == null) {
+                    fileToUnlock = fileName
+                } else {
+                    checkPageCount(context, uri, password).resolve(
+                        context,
+                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                        onUnreadable = { closePrompt() }
+                    ) { count ->
+                        unlockPassword = password
+                        showPages(count)
+                    }
+                }
+                // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
+                PdfAccess.Open -> showPages(getPageCount(context, uri, null))
             }
         }
     }
@@ -192,7 +196,7 @@ fun SplitView(
                                     currentState = ToolState.SELECTING
                                 },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                keepsPassword = needsPassword
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -302,7 +306,7 @@ fun SplitView(
                         SuccessView(
                             message = stringResource(R.string.split_split_complete),
                             subMessage = stringResource(R.string.split_selected_pages_saved_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.takeIf { needsPassword }) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -319,7 +323,7 @@ fun SplitView(
                                     }
                                 }
                             },
-                            keepsPassword = needsPassword
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }

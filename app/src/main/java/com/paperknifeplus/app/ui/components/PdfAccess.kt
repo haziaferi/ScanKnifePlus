@@ -63,9 +63,6 @@ suspend fun inspectPdf(context: Context, uri: Uri, countOwnerPassword: Boolean =
     }
 }
 
-/** True when a tool must ask for a password: the file is [PdfAccess.Encrypted] and the caller was not handed one (e.g. by the preview). */
-fun needsUnlockPrompt(access: PdfAccess, password: String?): Boolean = access == PdfAccess.Encrypted && password == null
-
 /** What opening a file with a password found ([checkPassword]): what was read from it, a password that does not open it, or neither. */
 sealed interface PasswordCheck<out T> {
     /** The password opens the file; [value] is what the check read from it. */

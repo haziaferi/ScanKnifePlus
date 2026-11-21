@@ -69,31 +69,35 @@ fun CompressView(
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
-        unlockPassword = password.orEmpty()
+        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
         unlockError = false
         check.start {
-            val access = inspectPdf(context, uri)
-            when {
-                access == PdfAccess.Unreadable -> {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
                 // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
-                access == PdfAccess.Encrypted && password != null -> checkPageCount(context, uri, password).resolve(
-                    context,
-                    onWrongPassword = { unlockError = true; fileToUnlock = fileName },
-                    onUnreadable = { closePrompt() }
-                ) { count ->
-                    pageCount = count
-                    currentState = ToolState.CONFIGURING
+                PdfAccess.Encrypted -> if (password == null) {
+                    fileToUnlock = fileName
+                } else {
+                    checkPageCount(context, uri, password).resolve(
+                        context,
+                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                        onUnreadable = { closePrompt() }
+                    ) { count ->
+                        unlockPassword = password
+                        pageCount = count
+                        currentState = ToolState.CONFIGURING
+                    }
                 }
-                else -> {
-                    pageCount = getPageCount(context, uri, password)
+                // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
                     currentState = ToolState.CONFIGURING
                 }
             }

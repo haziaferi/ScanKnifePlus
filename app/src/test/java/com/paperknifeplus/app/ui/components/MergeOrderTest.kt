@@ -154,6 +154,14 @@ class RearrangeViewTest {
     }
 
     @Test
+    fun `a password handed over for a file that opens without one is dropped, so its pages count`() {
+        // An owner password only: the handed one is neither, so opening with it would fail.
+        showHanded(TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-rearrange.pdf"), "not-needed")
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("2 pages", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
     fun `a damaged protected file handed over with its password says it can't be read and goes back to choosing a file`() {
         showHanded(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "handed-damaged-rearrange.pdf"), TestPdfs.USER_PASSWORD)
         rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }

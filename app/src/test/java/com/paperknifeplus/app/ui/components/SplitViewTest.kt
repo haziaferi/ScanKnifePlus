@@ -129,4 +129,14 @@ class SplitViewTest {
         rule.onNodeWithText("Choose PDF").assertExists()
         rule.onNodeWithText("Password required").assertDoesNotExist()
     }
+
+    @Test
+    fun `a password handed over for a file that opens without one is dropped, so its pages count and render without it`() {
+        // An owner password only: the handed one is neither, so opening with it would fail.
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-split.pdf")
+        startSplit(uri, "not-needed")
+        waitForPages("0 / 2 pages selected")
+        rule.waitUntil(10_000) { thumbnailCached(uri, null) }
+        assertFalse(thumbnailCached(uri, "not-needed"))
+    }
 }

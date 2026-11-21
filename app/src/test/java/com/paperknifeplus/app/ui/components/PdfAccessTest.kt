@@ -9,7 +9,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -60,14 +59,6 @@ class PdfAccessTest {
         }
         org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStream(uri, throwing)
         assertEquals(PdfAccess.Unreadable, runBlocking { inspectPdf(context, uri) })
-    }
-
-    @Test
-    fun `only an encrypted file without a password needs the prompt`() {
-        assertTrue(needsUnlockPrompt(PdfAccess.Encrypted, null))
-        assertFalse(needsUnlockPrompt(PdfAccess.Encrypted, "pw"))
-        assertFalse(needsUnlockPrompt(PdfAccess.Open, null))
-        assertFalse(needsUnlockPrompt(PdfAccess.Unreadable, null))
     }
 
     private val locked by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "checked.pdf") }

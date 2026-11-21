@@ -156,15 +156,14 @@ fun SignView(
         fileSize = details.size
         unlockError = false
         check.start {
-            val access = inspectPdf(context, uri)
-            when {
-                access == PdfAccess.Unreadable -> {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password = null) -> fileToUnlock = fileName
-                else -> {
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> {
                     pageBoxes = readPageBoxes(context, uri, null)
                     currentState = ToolState.CONFIGURING
                 }

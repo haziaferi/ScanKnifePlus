@@ -97,4 +97,13 @@ class CompressViewTest {
         rule.onNodeWithText("Choose PDF").assertExists()
         rule.onNodeWithText("Password required").assertDoesNotExist()
     }
+
+    @Test
+    fun `a password handed over for a file that opens without one is dropped, so its pages count`() {
+        // An owner password only: the handed one is neither, so opening with it would fail.
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, initialPassword = "not-needed", onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("2 pages", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
 }
