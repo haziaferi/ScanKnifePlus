@@ -277,6 +277,21 @@ class PdDocumentPoolTest {
     }
 
     @Test
+    fun `a check whose read throws closes the document it loaded`() = runBlocking {
+        val pool = pool(3)
+        var read: FakeDoc? = null
+        val thrown = runCatching {
+            pool.check("a", { FakeDoc("a") }, rejects = { false }) { doc ->
+                read = doc
+                throw IllegalStateException("malformed outline")
+            }
+        }.exceptionOrNull()
+        assertTrue(thrown.toString(), thrown is IllegalStateException)
+        assertEquals(1, read!!.closes.get())
+        assertEquals(0, pool.size())
+    }
+
+    @Test
     fun `a stopped check ends with its cancellation even if closing its document throws`() = runBlocking {
         val pool = DocumentPool<String, FakeDoc>(3) { throw CloseFailed() }
         val reading = CountDownLatch(1)

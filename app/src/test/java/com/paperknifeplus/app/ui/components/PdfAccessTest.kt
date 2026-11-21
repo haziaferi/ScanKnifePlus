@@ -88,13 +88,11 @@ class PdfAccessTest {
         assertEquals(2, getPageCount(context, opened.uri, TestPdfs.USER_PASSWORD))
         assertEquals(1, opened.opens)
 
-        val damaged = TestPdfs.CountedSource(context, TestPdfs.damagedProtected(), "counted-damaged.pdf")
+        // It opens, and has no pages: the check parsed it, finds it unreadable and closes it, so the next count parses it again.
         val empty = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 0), "counted-empty.pdf")
-        for (source in listOf(damaged, empty)) {
-            assertEquals(PasswordCheck.Unreadable, checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
-            getPageCount(context, source.uri, TestPdfs.USER_PASSWORD)
-            assertEquals(source.uri.toString(), 2, source.opens)
-        }
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, empty.uri, TestPdfs.USER_PASSWORD))
+        getPageCount(context, empty.uri, TestPdfs.USER_PASSWORD)
+        assertEquals(2, empty.opens)
     }
 
     @Test
