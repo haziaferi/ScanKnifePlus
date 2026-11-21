@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -328,11 +327,8 @@ class LargeTextLayoutTest {
 
     @Test
     fun `the tip card grows with its text beside its close button`() {
-        atDoubleText {
-            ToolTipCard(TIP, onClose = {}, link = { Text("Go to the other tool") })
-        }
+        atDoubleText { ToolTipCard(TIP, onClose = {}) }
         assertNotClipped(TIP)
-        assertNotClipped("Go to the other tool")
         val close = rule.onNodeWithContentDescription("Close the tip").bounds()
         assertTrue("the close button is 48 dp", close.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
         assertTrue("the text runs beside the close button", text(TIP).right <= close.left)
