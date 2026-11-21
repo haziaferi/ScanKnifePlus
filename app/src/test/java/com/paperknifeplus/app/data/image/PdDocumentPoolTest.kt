@@ -259,17 +259,25 @@ class PdDocumentPoolTest {
         val pool = pool(3)
         val loading = CountDownLatch(1)
         val finish = CountDownLatch(1)
+        val released = CountDownLatch(1)
         val first = launch(Dispatchers.IO) {
-            pool.check("a", {
-                loading.countDown()
-                finish.await(5, TimeUnit.SECONDS)
-                FakeDoc("a")
-            }, rejects = { false }) {}
+            try {
+                pool.check("a", {
+                    loading.countDown()
+                    finish.await(5, TimeUnit.SECONDS)
+                    FakeDoc("a")
+                }, rejects = { false }) {}
+            } finally {
+                released.countDown()
+            }
         }
         assertTrue(loading.await(5, TimeUnit.SECONDS))
         first.cancel()
         val second = async(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }, rejects = { false }) { it } }
         finish.countDown()
+        // Blocks this thread, where the waiter resumes, until the first check has let go of the document: the waiter cannot take it first,
+        // so only its being counted when the document is published keeps the first check from closing it.
+        assertTrue(released.await(5, TimeUnit.SECONDS))
 
         val loaded = withTimeout(10_000) { second.await() }
         withTimeout(10_000) { first.join() }

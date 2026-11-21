@@ -128,6 +128,8 @@ class PdfAccessTest {
         // The same file and password again, as when the file is picked once more: this check waits for the first one's parse.
         val second = async(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
         withTimeout(10_000) { while (PdDocumentPool.waiters(source.uri, TestPdfs.USER_PASSWORD) == 0) delay(10) }
+        // Both checks go on on the IO threads, so which one first takes or lets go of the document is up to them; PdDocumentPoolTest holds
+        // the waiter back, so that only its being counted when the document is published can keep the document pooled.
         source.release()
 
         assertEquals(PasswordCheck.Opened(2), withTimeout(10_000) { second.await() })
