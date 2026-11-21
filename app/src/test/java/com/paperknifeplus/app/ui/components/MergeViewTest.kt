@@ -25,9 +25,10 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 import java.util.concurrent.TimeUnit
 
-/** Merge's screen: Change while added files are still being read. */
+/** Merge's screen: Change while added files are still being read, and running out of memory while saving. */
 @RunWith(RobolectricTestRunner::class)
 class MergeViewTest {
     @get:Rule(order = 0)
@@ -81,10 +82,32 @@ class MergeViewTest {
         rule.onNode(choose).assertExists()
     }
 
+    @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (created, file) = TestPdfs.createdDocument(context, "huge-merged.pdf")
+        val first = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(1), "huge-merge.pdf")
+        val added = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "merge-second.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(created, picked = listOf(added))) {
+                MergeView(initialUri = first.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { shown(ADD_MORE) }
+        rule.onNodeWithText(ADD_MORE).performClick()
+        rule.waitUntil(10_000) { shown(MERGE) }
+
+        first.runOutOfMemory()
+        rule.onNodeWithText(MERGE).performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the list.
+        rule.waitUntil(30_000) { shown(MERGE) && ShadowToast.getTextOfLatestToast() == "Error: test" }
+        assertFalse("the created file is removed", file.exists())
+    }
+
     /** The empty screen's button; its first step has the same words. */
     private val choose = hasText("Choose PDFs") and hasClickAction()
 
     private companion object {
         const val ADD_MORE = "Add more"
+        const val MERGE = "Merge 2 files"
     }
 }

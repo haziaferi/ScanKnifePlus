@@ -237,6 +237,26 @@ class LinksViewTest {
     }
 
     @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (created, file) = TestPdfs.createdDocument(context, "huge-unlinked.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.linksAndScript(), "huge-links.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(created)) {
+                LinksView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        waitFor(REMOVE)
+
+        source.runOutOfMemory()
+        rule.onNodeWithText(REMOVE).performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the choices.
+        rule.waitUntil(30_000) {
+            rule.onAllNodes(hasText(REMOVE)).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == "Error: test"
+        }
+        assertFalse("the created file is removed", file.exists())
+    }
+
+    @Test
     fun `TalkBack hears each count change`() {
         show(TestPdfs.linksAndScript(), "spoken.pdf")
         waitFor(REMOVE)

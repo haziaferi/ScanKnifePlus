@@ -467,6 +467,27 @@ class CropViewTest {
     }
 
     @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (created, file) = TestPdfs.createdDocument(context, "huge-cropped.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2), "huge-crop.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(created)) {
+                CropView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        waitFor(READY)
+        edge("Top edge").performSemanticsAction(SemanticsActions.SetProgress) { it(0.5f) }
+
+        source.runOutOfMemory()
+        rule.onNodeWithText(CROP).performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the frame.
+        rule.waitUntil(30_000) {
+            rule.onAllNodes(hasText(CROP)).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == "Error: test"
+        }
+        assertFalse("the created file is removed", file.exists())
+    }
+
+    @Test
     fun `a grid shows every page up to 15, and two rows with Show all for a longer file`() {
         var pages by mutableIntStateOf(GRID_ALL_UP_TO)
         val shown = mutableListOf<Int>()

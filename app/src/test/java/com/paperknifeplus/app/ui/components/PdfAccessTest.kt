@@ -13,6 +13,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
+import java.io.FilterInputStream
+import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
 class PdfAccessTest {
@@ -90,5 +92,22 @@ class PdfAccessTest {
         assertEquals(PasswordCheck.Unreadable, decryptToCache(context, huge, TestPdfs.USER_PASSWORD))
         val copies = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.map { it.name }
         assertEquals(listOf(File(opened.uri.path!!).name), copies)
+    }
+
+    @Test
+    fun `a copy written before the file turns out unreadable is deleted`() = runBlocking {
+        // A provider whose stream fails as it is closed, which is after the copy was written.
+        val uri = android.net.Uri.parse("content://com.paperknifeplus.app.test.closing/decrypted-then-failed.pdf")
+        val bytes = TestPdfs.userPassword(pages = 2)
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+            object : FilterInputStream(bytes.inputStream()) {
+                override fun close() {
+                    super.close()
+                    throw IOException("closing failed")
+                }
+            }
+        }
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, uri, TestPdfs.USER_PASSWORD))
+        assertEquals(emptyList<String>(), context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.map { it.name })
     }
 }

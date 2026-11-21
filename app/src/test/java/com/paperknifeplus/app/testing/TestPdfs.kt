@@ -1,17 +1,27 @@
 package com.paperknifeplus.app.testing
 
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.ProviderInfo
 import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCompositionContext
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.core.app.ActivityOptionsCompat
+import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
@@ -379,6 +389,35 @@ object TestPdfs {
     }
 
     private const val NULL_AUTHORITY = "com.paperknifeplus.app.test.nullstream"
+
+    /**
+     * An empty document [name] in a documents provider, as the system's save picker creates it before a tool writes, served so that the
+     * tool's clean-up after a failed save can remove it: its URI, and the file behind it. One per test, in a folder of its own.
+     */
+    fun createdDocument(context: Context, name: String): Pair<Uri, File> {
+        val folder = File(context.cacheDir, "documents").apply { deleteRecursively(); mkdirs() }
+        TestDocumentsProvider.install(folder)
+        val provider = ComponentName(context, TestDocumentsProvider::class.java)
+        Shadows.shadowOf(context.packageManager).apply {
+            addOrUpdateProvider(ProviderInfo().apply {
+                authority = TestDocumentsProvider.AUTHORITY
+                packageName = provider.packageName
+                this.name = provider.className
+            })
+            addIntentFilterForProvider(provider, IntentFilter(DocumentsContract.PROVIDER_INTERFACE))
+        }
+        val file = File(folder, name).apply { createNewFile() }
+        return DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/$name") to file
+    }
+
+    /** Pickers that answer a save with [output] and anything else (Choose PDF, Add more) with [picked]. */
+    fun savingTo(output: Uri, picked: Any? = null) = object : ActivityResultRegistryOwner {
+        override val activityResultRegistry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
+                dispatchResult(requestCode, if (contract is ActivityResultContracts.CreateDocument) output else picked)
+            }
+        }
+    }
 
     /**
      * [bytes] at a content [uri], each open a fresh stream. After [hold], the next stream opened stops at its first read until [release]:

@@ -22,6 +22,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
@@ -72,8 +73,8 @@ class MergeOrderTest {
 }
 
 /**
- * Rearrange end to end: pages that inherit Resources, MediaBox and Rotate from the page tree, a file unlocked at the prompt, and a password
- * handed over by the reader that is wrong or opens a damaged file.
+ * Rearrange end to end: pages that inherit Resources, MediaBox and Rotate from the page tree, a file unlocked at the prompt, a password
+ * handed over by the reader that is wrong or opens a damaged file, and running out of memory while saving.
  */
 @RunWith(RobolectricTestRunner::class)
 class RearrangeViewTest {
@@ -158,5 +159,25 @@ class RearrangeViewTest {
         rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
         rule.onNodeWithText("Choose PDF").assertExists()
         rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (output, created) = TestPdfs.createdDocument(context, "huge-rearranged.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2), "huge-rearrange.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output)) {
+                RearrangeView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() }
+
+        source.runOutOfMemory()
+        rule.onNodeWithText("Save PDF").performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the pages.
+        rule.waitUntil(30_000) {
+            rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == "Error: test"
+        }
+        assertFalse("the created file is removed", created.exists())
     }
 }

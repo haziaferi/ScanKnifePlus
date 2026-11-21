@@ -1,15 +1,8 @@
 package com.paperknifeplus.app.ui.components
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.IntentFilter
-import android.content.pm.ProviderInfo
-import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.LocalActivityResultRegistryOwner
-import androidx.activity.result.ActivityResultRegistry
-import androidx.activity.result.ActivityResultRegistryOwner
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -17,9 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
-import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -31,9 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows
 import org.robolectric.shadows.ShadowToast
-import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class DeleteViewTest {
@@ -93,42 +82,13 @@ class DeleteViewTest {
         assertTrue("no decrypted copy is left", context.cacheDir.listFiles().orEmpty().none { it.name.startsWith("decrypted_") })
     }
 
-    /**
-     * An empty document in a documents provider, as the system's save picker creates it before the tool writes, served so that the tool's
-     * clean-up after a failed save can remove it.
-     */
-    private fun createdDocument(name: String): Pair<Uri, File> {
-        val folder = File(context.cacheDir, "documents").apply { deleteRecursively(); mkdirs() }
-        TestDocumentsProvider.install(folder)
-        val provider = ComponentName(context, TestDocumentsProvider::class.java)
-        Shadows.shadowOf(context.packageManager).apply {
-            addOrUpdateProvider(ProviderInfo().apply {
-                authority = TestDocumentsProvider.AUTHORITY
-                packageName = provider.packageName
-                this.name = provider.className
-            })
-            addIntentFilterForProvider(provider, IntentFilter(DocumentsContract.PROVIDER_INTERFACE))
-        }
-        val file = File(folder, name).apply { createNewFile() }
-        return DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/$name") to file
-    }
-
-    /** A save picker the user picks [output] in. */
-    private fun savingTo(output: Uri) = object : ActivityResultRegistryOwner {
-        override val activityResultRegistry = object : ActivityResultRegistry() {
-            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-                dispatchResult(requestCode, output)
-            }
-        }
-    }
-
     @Test
     fun `running out of memory while saving shows the failure and removes the file the save created`() {
-        val (output, created) = createdDocument("huge-pages-deleted.pdf")
+        val (output, created) = TestPdfs.createdDocument(context, "huge-pages-deleted.pdf")
         assertTrue("the documents provider serves the created file", DocumentsContract.isDocumentUri(context, output))
         val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(3), "huge-delete.pdf")
         rule.setContent {
-            CompositionLocalProvider(LocalActivityResultRegistryOwner provides savingTo(output)) {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output)) {
                 DeleteView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }

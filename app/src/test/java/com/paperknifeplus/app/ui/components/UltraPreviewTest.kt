@@ -10,10 +10,13 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import coil.request.Options
 import com.paperknifeplus.app.data.image.PdfImageLoader
@@ -39,6 +42,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 import java.io.ByteArrayOutputStream
 
 @RunWith(RobolectricTestRunner::class)
@@ -217,5 +221,38 @@ class ToolHandOffTest {
         waitFor("• 1 page")
         rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
+    }
+}
+
+/** The reader's password prompt: a protected file that cannot be read closes the reader. */
+@RunWith(RobolectricTestRunner::class)
+class ReaderUnlockTest {
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
+    val rule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private var closed = 0
+
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(context)
+
+    private fun show(uri: Uri) = rule.setContent { UltraPreview(uri, "locked.pdf", 2, onDismiss = { closed++ }, onOpenInTool = { _, _, _ -> }) }
+
+    private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }
+
+    @Test
+    fun `a damaged protected file opened with its password says it can't be read and closes the reader`() {
+        show(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "reader-damaged.pdf"))
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+
+        rule.waitUntil(30_000) { closed == 1 }
+        assertEquals("Can't read this PDF.", ShadowToast.getTextOfLatestToast())
+        rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
+        assertTrue("no decrypted copy is left", decryptedCopies().isEmpty())
     }
 }
