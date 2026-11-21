@@ -90,11 +90,15 @@ fun MergeView(
 
     val imageLoader = PdfImageLoader.get(context)
 
-    /** Replaces the list, deleting the decrypted copies no remaining entry uses (entries for the same file share one). */
+    /**
+     * Replaces the list, deleting the decrypted copies no remaining entry uses (entries for the same file share one). An emptied list goes
+     * back to the pick screen.
+     */
     fun updateFiles(files: List<MergeFile>) {
         val kept = files.mapNotNullTo(HashSet()) { it.decryptedUri }
         selectedFiles.mapNotNull { it.decryptedUri }.filter { it !in kept }.forEach { deleteDecryptedCopy(context, it) }
         selectedFiles = files
+        if (files.isEmpty()) currentState = ToolState.SELECTING
     }
     DisposableEffect(Unit) { onDispose { selectedFiles.forEach { deleteDecryptedCopy(context, it.decryptedUri) } } }
 
@@ -187,7 +191,7 @@ fun MergeView(
                 processingTime,
                 onBack,
                 // Change stays tappable while more files are read; stopping that check keeps them off the emptied list.
-                onChange = if (selectedFiles.isNotEmpty()) ({ check.stop(); updateFiles(emptyList()); currentState = ToolState.SELECTING }) else null
+                onChange = if (selectedFiles.isNotEmpty()) ({ check.stop(); updateFiles(emptyList()) }) else null
             )
         }
     ) { padding ->
@@ -288,7 +292,7 @@ fun MergeView(
                             subMessage = stringResource(R.string.merge_successfully_joined_documents, selectedFiles.size),
                             result = mergedUri?.let { ToolResult(it, mergedName) },
                             onDone = onBack,
-                            onProcessMore = { updateFiles(emptyList()); mergedUri = null; currentState = ToolState.SELECTING },
+                            onProcessMore = { updateFiles(emptyList()); mergedUri = null },
                             onOpen = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, toolText(context, R.string.merge_merged_pdf), getPageCount(context, uri, null)) } } }
                         )
                     }
@@ -306,9 +310,10 @@ fun MergeView(
                             decrypted.resolve(
                                 context,
                                 onWrongPassword = { unlockError = true },
-                                // A file that cannot be read leaves the list, as it would not have joined it when added.
+                                // The entry that cannot be read leaves the list, as it would not have joined it when added; other entries of
+                                // the file stay, an unlocked one with its decrypted copy.
                                 onUnreadable = {
-                                    updateFiles(selectedFiles.filter { it.uri != currentFileToUnlock.uri })
+                                    updateFiles(selectedFiles.filter { it.id != currentFileToUnlock.id })
                                     fileToUnlock = null
                                     unlockError = false
                                 }

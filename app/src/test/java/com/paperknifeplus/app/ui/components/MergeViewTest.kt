@@ -7,11 +7,15 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
@@ -25,10 +29,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
 import java.util.concurrent.TimeUnit
 
-/** Merge's screen: Change while added files are still being read, and running out of memory while saving. */
+/**
+ * Merge's screen: Change while added files are still being read, running out of memory while saving, a file that cannot be read at its
+ * prompt or with a handed password, and the emptied list.
+ */
 @RunWith(RobolectricTestRunner::class)
 class MergeViewTest {
     @get:Rule(order = 0)
@@ -101,6 +109,84 @@ class MergeViewTest {
         // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the list.
         rule.waitUntil(30_000) { shown(MERGE) && ShadowToast.getTextOfLatestToast() == "Error: test" }
         assertFalse("the created file is removed", file.exists())
+    }
+
+    private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }
+
+    /** Types the password into the prompt opened for the [index]th locked entry of [name], and unlocks. */
+    private fun unlock(name: String, index: Int = 0) {
+        rule.onAllNodes(hasContentDescription("Unlock $name"))[index].performClick()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+    }
+
+    @Test
+    @Config(qualifiers = "w400dp-h1400dp") // Tall enough for all three entries to be laid out.
+    fun `an entry found unreadable at its prompt leaves the list alone, the same file's other entries staying`() {
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(pages = 2), "merge-twice.pdf")
+        val name = getUriDetails(context, source.uri).name
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(listOf(source.uri, source.uri))) {
+                MergeView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isNotEmpty() }
+        unlock(name)
+        rule.waitUntil(30_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isEmpty() }
+        val copy = decryptedCopies().single()
+        // The same file twice more, both locked.
+        rule.onNodeWithText(ADD_MORE).performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().size == 2 }
+
+        source.runOutOfMemory()
+        unlock(name)
+        rule.waitUntil(30_000) { !shown("Password required") && ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onAllNodes(hasContentDescription("Unlock $name")).assertCountEquals(1)
+        rule.onAllNodes(hasContentDescription("Remove $name")).assertCountEquals(2)
+        assertTrue("the unlocked entry keeps its decrypted copy", copy.exists())
+    }
+
+    @Test
+    fun `a password handed over for a file it can't read adds nothing`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "merge-handed-damaged.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(emptyList())) {
+                MergeView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(30_000) { shown("Choose PDFs") && ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNode(choose).assertExists()
+        rule.onNodeWithText("Locked").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the last entry found unreadable at its prompt goes back to the pick screen`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "merge-damaged.pdf")
+        val name = getUriDetails(context, source).name
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(emptyList())) {
+                MergeView(initialUri = source, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isNotEmpty() }
+        unlock(name)
+        rule.waitUntil(30_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNode(choose).assertExists()
+    }
+
+    @Test
+    fun `removing the last file goes back to the pick screen`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "merge-removed.pdf")
+        val name = getUriDetails(context, source).name
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(emptyList())) {
+                MergeView(initialUri = source, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.waitUntil(10_000) { shown(ADD_MORE) }
+        rule.onNode(hasContentDescription("Remove $name")).performClick()
+        rule.onNode(choose).assertExists()
+        rule.onNodeWithText("Change").assertDoesNotExist()
     }
 
     /** The empty screen's button; its first step has the same words. */
