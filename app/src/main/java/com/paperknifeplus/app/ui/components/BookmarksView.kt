@@ -90,14 +90,15 @@ fun BookmarksView(
         unlockPassword = ""
         unlockError = false
         check.start {
-            val access = inspectPdf(context, uri)
             // Files that open without a password (owner-password-only ones too) are read directly; the others ask for one.
-            if (access == PdfAccess.Unreadable) {
-                Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-                selectedUri = null
-                currentState = ToolState.SELECTING
-            } else {
-                extractBookmarks(uri, null)
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> extractBookmarks(uri, null)
             }
         }
     }

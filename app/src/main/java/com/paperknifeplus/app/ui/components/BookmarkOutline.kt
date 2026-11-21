@@ -59,10 +59,12 @@ internal class Outline(val bookmarks: List<Bookmark>, val pageCount: Int)
 /**
  * Reads the outline of [uri] opened with [password], told apart as [checkPassword] does: an outline or page tree that cannot be read
  * (PDFBox throws unchecked exceptions on some malformed files) is unreadable, as is a file that does not open for any other reason than its
- * password.
+ * password. With a password it is read through the page renderers' pool ([checkPooled]), where the file card's thumbnail finds it.
  */
-internal suspend fun loadOutline(context: Context, uri: Uri, password: String?): PasswordCheck<Outline> =
-    checkPassword(context, uri, password) { Outline(readOutline(it), it.numberOfPages) }
+internal suspend fun loadOutline(context: Context, uri: Uri, password: String?): PasswordCheck<Outline> {
+    val read = { document: PDDocument -> Outline(readOutline(document), document.numberOfPages) }
+    return if (password != null) checkPooled(context, uri, password, read) else checkPassword(context, uri, null, read)
+}
 
 /** This list without the item at [index] and the items nested under it (the ones right after it that are deeper). */
 fun List<Bookmark>.withoutBranch(index: Int): List<Bookmark> {

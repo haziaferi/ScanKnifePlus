@@ -95,7 +95,7 @@ suspend fun checkPageCount(context: Context, uri: Uri, password: String): Passwo
  * and page grid that follow a check that opened the file reuse the document it parsed. A check that is stopped, or that finds the file
  * unreadable, takes the document out of the pool and closes it, which would otherwise keep it and its temp file until it is evicted.
  */
-private suspend fun <T : Any> checkPooled(context: Context, uri: Uri, password: String, read: (PDDocument) -> T?): PasswordCheck<T> {
+internal suspend fun <T : Any> checkPooled(context: Context, uri: Uri, password: String, read: (PDDocument) -> T?): PasswordCheck<T> {
     val checked = try {
         tellApart(uri) { PdDocumentPool.withDocument(context, uri, password) { read(it) } }
     } catch (e: CancellationException) {
