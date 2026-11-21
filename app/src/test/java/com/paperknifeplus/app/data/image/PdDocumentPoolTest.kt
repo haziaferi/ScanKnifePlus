@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -184,7 +185,7 @@ class PdDocumentPoolTest {
                 loading.countDown()
                 finish.await(5, TimeUnit.SECONDS)
                 FakeDoc("b")
-            }, rejects = { false }) {}
+            }) {}
         }
         assertTrue(loading.await(5, TimeUnit.SECONDS))
         check.cancel()
@@ -266,14 +267,14 @@ class PdDocumentPoolTest {
                     loading.countDown()
                     finish.await(5, TimeUnit.SECONDS)
                     FakeDoc("a")
-                }, rejects = { false }) {}
+                }) {}
             } finally {
                 released.countDown()
             }
         }
         assertTrue(loading.await(5, TimeUnit.SECONDS))
         first.cancel()
-        val second = async(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }, rejects = { false }) { it } }
+        val second = async(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }) { it } }
         finish.countDown()
         // Blocks this thread, where the waiter resumes, until the first check has let go of the document: the waiter cannot take it first,
         // so only its being counted when the document is published keeps the first check from closing it.
@@ -295,10 +296,10 @@ class PdDocumentPoolTest {
                 loading.countDown()
                 finish.await(5, TimeUnit.SECONDS)
                 FakeDoc("a")
-            }, rejects = { false }) {}
+            }) {}
         }
         assertTrue(loading.await(5, TimeUnit.SECONDS))
-        val second = launch(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }, rejects = { false }) {} }
+        val second = launch(start = CoroutineStart.UNDISPATCHED) { pool.check("a", { error("loaded twice") }) {} }
         assertEquals(1, pool.waiters("a"))
         second.cancel()
         withTimeout(10_000) { second.join() }
@@ -314,7 +315,7 @@ class PdDocumentPoolTest {
     fun `a check that rejects a document another caller loaded leaves it pooled`() = runBlocking {
         val pool = pool(3)
         val loaded = pool.withDocument("a", { FakeDoc("a") }) { it }
-        assertEquals("rejected", pool.check("a", { error("loaded again") }, rejects = { true }) { "rejected" })
+        assertNull(pool.check<String>("a", { error("loaded again") }) { null })
         assertSame(loaded, pool.withDocument("a", { error("loaded again") }) { it })
         assertTrue(closed.isEmpty())
     }
@@ -323,10 +324,13 @@ class PdDocumentPoolTest {
     fun `a document a check rejects stays open while the check holds it, then closes once, and the next caller loads it again`() = runBlocking {
         val pool = pool(3)
         val loads = AtomicInteger()
-        val rejected = pool.check("a", { loads.incrementAndGet(); FakeDoc("a") }, rejects = { true }) { doc ->
+        var read: FakeDoc? = null
+        assertNull(pool.check<FakeDoc>("a", { loads.incrementAndGet(); FakeDoc("a") }) { doc ->
             assertEquals("open while the check reads it", 0, doc.closes.get())
-            doc
-        }
+            read = doc
+            null
+        })
+        val rejected = read!!
         assertEquals(1, rejected.closes.get())
 
         val next = pool.withDocument("a", { loads.incrementAndGet(); FakeDoc("a") }) { it }
@@ -342,7 +346,7 @@ class PdDocumentPoolTest {
         val pool = pool(3)
         var read: FakeDoc? = null
         val thrown = runCatching {
-            pool.check("a", { FakeDoc("a") }, rejects = { false }) { doc ->
+            pool.check<Unit>("a", { FakeDoc("a") }) { doc ->
                 read = doc
                 throw IllegalStateException("malformed outline")
             }
@@ -360,7 +364,7 @@ class PdDocumentPoolTest {
         // Its own scope, so that a check failing with the Error would not fail the test's.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val check = scope.async {
-            pool.check("a", { FakeDoc("a") }, rejects = { false }) {
+            pool.check("a", { FakeDoc("a") }) {
                 reading.countDown()
                 finish.await(5, TimeUnit.SECONDS)
             }

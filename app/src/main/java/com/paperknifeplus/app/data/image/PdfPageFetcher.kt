@@ -235,28 +235,28 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
      * also closes the documents its load evicts, once the waiters have the new one; a close that fails, even with an Error, is logged and
      * changes nothing for it.
      */
-    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, null, block)
+    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, check = false, block)
 
     /**
      * [withDocument] for a check that reads the file to tell whether it can be used: a document this call loaded leaves the pool again, and is
-     * closed, when [rejects] what [block] returned, when [block] throws, or when the call is stopped, unless another caller has taken it or
-     * waits for it. A document that was already pooled stays, whatever the check finds. A stopped check ends with its cancellation, even if
-     * closing its document or one its load evicted throws.
+     * closed, when [block] finds nothing (null), when it throws, or when the call is stopped, unless another caller has taken it or waits for
+     * it. A document that was already pooled stays, whatever the check finds. A stopped check ends with its cancellation, even if closing its
+     * document or one its load evicted throws.
      */
-    suspend fun <T> check(key: K, load: () -> D, rejects: (T) -> Boolean, block: suspend (D) -> T): T = use(key, load, rejects, block)
+    suspend fun <T : Any> check(key: K, load: () -> D, block: suspend (D) -> T?): T? = use(key, load, check = true, block)
 
     internal fun size(): Int = synchronized(lock) { entries.size }
 
     /** How many callers wait for [key]'s load in progress; 0 when none is. */
     internal fun waiters(key: K): Int = synchronized(lock) { loads[key]?.waiters ?: 0 }
 
-    private suspend fun <T> use(key: K, load: () -> D, rejects: ((T) -> Boolean)?, block: suspend (D) -> T): T {
+    private suspend fun <T> use(key: K, load: () -> D, check: Boolean, block: suspend (D) -> T): T {
         val entry = acquire(key, load)
         // Only a check drops a document; release keeps it if any other caller has taken it or waits for it, so it is one this call loaded.
-        var discard = rejects != null
+        var discard = check
         try {
             val result = entry.mutex.withLock { block(entry.document) }
-            if (rejects != null) discard = rejects(result) || !currentCoroutineContext().isActive
+            if (check) discard = result == null || !currentCoroutineContext().isActive
             return result
         } finally {
             val stopped = !currentCoroutineContext().isActive
@@ -385,7 +385,7 @@ object PdDocumentPool {
      */
     suspend fun <T : Any> check(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): T? =
         withContext(Dispatchers.IO) {
-            pool.check(Key(uri, password), { load(context, uri, password) }, rejects = { it == null }) { read(it) }
+            pool.check(Key(uri, password), { load(context, uri, password) }) { read(it) }
         }
 
     /** How many callers wait for the parse of [uri] with [password] in progress ([DocumentPool.waiters]). */
