@@ -225,12 +225,11 @@ private fun nameTreeLeaves(node: COSBase?, seen: MutableSet<COSDictionary> = ide
 
 /**
  * What [input], opened with [password], holds for [removeLinksPdf] to take out: [removeLinks] run once on a copy that is never saved, so a
- * screen can show the counts for every choice before anything is saved, without reading the file again. Throws on failure,
- * InvalidPasswordException for a wrong or missing password.
+ * screen can show the counts for every choice before anything is saved, without reading the file again. A wrong or missing password is
+ * told from a file that cannot be read as [checkPassword] does.
  */
-internal suspend fun findLinks(context: Context, input: Uri, password: String?): FoundLinks = withContext(Dispatchers.IO) {
-    withPdf(context, input, password) { removeLinks(it) }
-}
+internal suspend fun findLinks(context: Context, input: Uri, password: String?): PasswordCheck<FoundLinks> =
+    checkPassword(context, input, password) { removeLinks(it) }
 
 /**
  * Writes [input], opened with [password], to [output] without the links and scripts [removeLinks] takes out with [options], as protected as

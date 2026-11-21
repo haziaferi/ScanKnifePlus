@@ -46,7 +46,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -121,36 +120,26 @@ fun LinksView(
         currentState = ToolState.SELECTING
     }
 
-    // A file that is damaged, or too large to parse, says it cannot be read.
-    fun unreadable(source: Uri, e: Throwable) {
-        Log.w("LinksView", "Cannot count the links of $source", e)
-        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-        fileToUnlock = null
-        reset()
-    }
-
     // Finds what saving can remove from [source] opened with [pass]. As in Crop, a file that opens without a password keeps none, not even
     // one the reader [handed] over; a file that needs one tries [handed] next (its first read stops at the encryption), then asks for it.
+    // A file that is damaged, or too large to parse, says it cannot be read.
     suspend fun count(source: Uri, pass: String?, handed: String? = null) {
-        try {
-            val counts = findLinks(context, source, pass)
+        findLinks(context, source, pass).resolve(
+            context,
+            onWrongPassword = {
+                if (handed != null) {
+                    count(source, handed)
+                } else {
+                    unlockError = pass != null
+                    fileToUnlock = fileName
+                }
+            },
+            onUnreadable = { fileToUnlock = null; reset() }
+        ) { counts ->
             password = pass
             found = counts
             fileToUnlock = null
             currentState = ToolState.CONFIGURING
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: InvalidPasswordException) {
-            if (handed != null) {
-                count(source, handed)
-            } else {
-                unlockError = pass != null
-                fileToUnlock = fileName
-            }
-        } catch (e: Exception) {
-            unreadable(source, e)
-        } catch (e: OutOfMemoryError) {
-            unreadable(source, e)
         }
     }
 

@@ -505,9 +505,11 @@ suspend fun repairPdf(context: Context, inputUri: Uri, outputUri: Uri, password:
 }
 
 /**
- * Saves [document] as a new `decrypted_*.pdf` in [dir] and returns it. A partly written file is deleted before the failure is rethrown.
+ * Saves [document] without its encryption as a new `decrypted_*.pdf` in [dir] and returns it. A partly written file is deleted before the
+ * failure is rethrown.
  */
 internal fun saveDecryptedCopy(document: PDDocument, dir: File): File {
+    document.isAllSecurityToBeRemoved = true
     val file = File.createTempFile("decrypted_", ".pdf", dir)
     try {
         FileOutputStream(file).use { document.save(it) }
@@ -519,10 +521,8 @@ internal fun saveDecryptedCopy(document: PDDocument, dir: File): File {
 }
 
 /** Saves an unencrypted copy of [uri], opened with [password] through temp files ([withPdf]), in the cache folder. Blocking; throws on failure. */
-internal fun decryptedCopy(context: Context, uri: Uri, password: String): File = withPdf(context, uri, password) { document ->
-    document.isAllSecurityToBeRemoved = true
-    saveDecryptedCopy(document, context.cacheDir)
-}
+internal fun decryptedCopy(context: Context, uri: Uri, password: String): File =
+    withPdf(context, uri, password) { saveDecryptedCopy(it, context.cacheDir) }
 
 /** A decrypted cache copy ([decryptToCache]) and its page count. */
 class DecryptedCopy(val uri: Uri, val pageCount: Int)
@@ -538,7 +538,6 @@ suspend fun decryptToCache(context: Context, uri: Uri, password: String): Passwo
         checkPassword(context, uri, password) { document ->
             val pages = document.numberOfPages
             if (pages == 0) return@checkPassword null
-            document.isAllSecurityToBeRemoved = true
             val file = saveDecryptedCopy(document, context.cacheDir).also { copy = it }
             DecryptedCopy(Uri.fromFile(file), pages)
         }.also { if (it !is PasswordCheck.Opened) copy?.delete() }
