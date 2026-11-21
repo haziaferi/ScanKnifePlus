@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -30,13 +32,16 @@ import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -109,5 +114,30 @@ class PdfToImageTest {
         }
         // Once to find that it needs a password, once to check the password; as many as before the check told its outcomes apart.
         assertEquals(2, source.opens)
+    }
+
+    @Test
+    fun `running out of memory while exporting shows the failure and removes the file the save created`() {
+        val (output, created) = TestPdfs.createdDocument(context, "huge-pages.zip")
+        // Opening the output runs out of memory, as drawing a page at 3 times its size can.
+        Shadows.shadowOf(context.contentResolver).registerOutputStreamSupplier(output) { throw OutOfMemoryError("test") }
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(2), "exported.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output)) {
+                PdfToImageView(initialUri = uri, onBack = {})
+            }
+        }
+        rule.waitUntil(10_000) { shown(CONVERT) }
+
+        rule.onNodeWithText(CONVERT).performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the pages.
+        rule.waitUntil(30_000) { shown(CONVERT) && ShadowToast.getTextOfLatestToast() == "Error: test" }
+        assertFalse("the created file is removed", created.exists())
+    }
+
+    private fun shown(text: String) = rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty()
+
+    private companion object {
+        const val CONVERT = "Convert 2 pages to JPG"
     }
 }

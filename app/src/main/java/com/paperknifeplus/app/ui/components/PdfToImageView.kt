@@ -128,7 +128,9 @@ fun PdfToImageView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Each page is drawn as a bitmap of up to 3 times its size, which can run out of memory.
+                if (!isToolFailure(e)) throw e
                 Log.w("PdfToImageView", "Export failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
