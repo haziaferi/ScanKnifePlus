@@ -107,7 +107,7 @@ class MergeViewTest {
         first.runOutOfMemory()
         rule.onNodeWithText(MERGE).performClick()
         // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the list.
-        rule.waitUntil(30_000) { shown(MERGE) && ShadowToast.getTextOfLatestToast() == "Error: test" }
+        rule.waitUntil(30_000) { shown(MERGE) && ShadowToast.getTextOfLatestToast() == TestPdfs.OUT_OF_MEMORY }
         assertFalse("the created file is removed", file.exists())
     }
 

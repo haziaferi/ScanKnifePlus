@@ -110,7 +110,7 @@ class DeleteViewTest {
         rule.onNodeWithText("Delete 1 pages").performClick()
         // Back on page selection, which the failure handler shows after its message (reading the screen runs the main thread's queue).
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Delete 1 pages")).fetchSemanticsNodes().isNotEmpty() }
-        assertEquals("Error: test", ShadowToast.getTextOfLatestToast())
+        assertEquals(TestPdfs.OUT_OF_MEMORY, ShadowToast.getTextOfLatestToast())
         assertFalse("the created file is removed", created.exists())
     }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.paperknifeplus.app.R
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -43,6 +44,10 @@ fun ContentResolver.requireOutputStream(uri: Uri, mode: String = "wt"): OutputSt
  * for the heap. Cancellation is an exception too, so catch it first.
  */
 fun isToolFailure(e: Throwable): Boolean = e is Exception || e is OutOfMemoryError
+
+/** The toast for a tool failure [e] ([isToolFailure]): "Error: " and its message, in the app's own words when it ran out of memory. */
+fun toolFailureText(context: Context, e: Throwable): String =
+    toolText(context, R.string.tool_error, if (e is OutOfMemoryError) toolText(context, R.string.tool_out_of_memory) else e.message)
 
 /** Removes a document the system file picker created for an output that then failed or was cancelled. Never throws. */
 fun deleteCreatedDocument(context: Context, uri: Uri) {

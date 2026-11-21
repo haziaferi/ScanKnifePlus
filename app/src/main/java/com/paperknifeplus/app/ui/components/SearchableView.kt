@@ -205,7 +205,7 @@ internal fun SearchableView(
                 Log.w("SearchableView", "Making the PDF searchable failed", e)
                 deleteCreatedDocument(context, saveUri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }

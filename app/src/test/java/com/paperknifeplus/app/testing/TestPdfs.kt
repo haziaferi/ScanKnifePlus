@@ -71,6 +71,9 @@ object TestPdfs {
     const val USER_PASSWORD = "user-secret"
     const val OWNER_PASSWORD = "owner-secret"
 
+    /** What a tool says when it runs out of memory, as with an [OutOfMemorySource] (`toolFailureText`). */
+    const val OUT_OF_MEMORY = "Error: not enough memory for this file."
+
     /** Not a PDF at all. */
     val garbage: ByteArray = "this is not a pdf".toByteArray()
 

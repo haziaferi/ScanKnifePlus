@@ -49,7 +49,7 @@ class RotateViewTest {
         source.runOutOfMemory()
         rule.onNodeWithText("Save PDF").performClick()
         // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the pages.
-        rule.waitUntil(30_000) { shown("0 / 2 pages modified") && ShadowToast.getTextOfLatestToast() == "Error: test" }
+        rule.waitUntil(30_000) { shown("0 / 2 pages modified") && ShadowToast.getTextOfLatestToast() == TestPdfs.OUT_OF_MEMORY }
         assertFalse("the created file is removed", created.exists())
     }
 }

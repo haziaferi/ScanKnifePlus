@@ -458,6 +458,7 @@
     <string name="state_not_selected">Non selezionata</string>
     <string name="state_selected">Selezionata</string>
     <string name="tool_error">Errore: %1$s</string>
+    <string name="tool_out_of_memory">memoria insufficiente per questo file.</string>
     <string name="tool_field_title">Titolo</string>
     <plurals name="tool_file_details">
         <item quantity="one">%1$s • %2$d pagina</item>

@@ -191,7 +191,7 @@ class RearrangeViewTest {
         rule.onNodeWithText("Save PDF").performClick()
         // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the pages.
         rule.waitUntil(30_000) {
-            rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == "Error: test"
+            rule.onAllNodes(hasText("Save PDF")).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == TestPdfs.OUT_OF_MEMORY
         }
         assertFalse("the created file is removed", created.exists())
     }

@@ -106,7 +106,7 @@ fun ProtectView(
                 if (!isToolFailure(e)) throw e
                 Log.w("ProtectView", "Protect failed", e)
                 deleteCreatedDocument(context, uri)
-                Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                 currentState = ToolState.CONFIGURING
             }
         }
