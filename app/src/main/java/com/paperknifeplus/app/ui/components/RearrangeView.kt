@@ -271,7 +271,6 @@ fun RearrangeView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = null,
                             text = stringResource(R.string.rearrange_applying_new_order),
                             current = 0,
                             total = 0,
