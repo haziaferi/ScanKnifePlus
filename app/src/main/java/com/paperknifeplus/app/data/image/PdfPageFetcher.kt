@@ -223,8 +223,8 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
     private var clock = 0L
 
     /**
-     * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [load] threw, also to the callers that waited
-     * for that load. Blocking while loading.
+     * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
+     * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done.
      */
     suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T {
         val entry = acquire(key, load)
@@ -321,8 +321,9 @@ object PdDocumentPool {
     private val pool = DocumentPool<Key, PDDocument>(3) { it.close() }
 
     /**
-     * Runs [block] with the open document. Throws what loading it threw: InvalidPasswordException for a wrong or missing password,
-     * OutOfMemoryError for a file too large to parse, another exception for one that is missing or not a PDF.
+     * Runs [block] with the open document, parsed on the IO dispatcher if it is not pooled yet ([DocumentPool.withDocument]). Throws what
+     * [block] threw, or what loading threw: InvalidPasswordException for a wrong or missing password, OutOfMemoryError for a file too large
+     * to parse, another exception for one that is missing or not a PDF.
      */
     suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T =
         withContext(Dispatchers.IO) {

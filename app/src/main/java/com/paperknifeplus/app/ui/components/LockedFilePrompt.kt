@@ -104,8 +104,9 @@ internal inline fun <T> PasswordCheck<T>.resolve(
 /**
  * Asks for the password of [fileName]. The field is masked (with a show toggle) and kept out of the keyboard's learning. [isError] shows
  * "Incorrect password" until the user edits the field or submits again, so callers only need to set it after a failed attempt. While
- * [isLoading] (the password is being checked), Cancel and Back still [onDismiss] it, which stops the check ([FileCheck.stop]) and resets
- * the tool; only a tap outside does nothing then, so a stray touch cannot.
+ * [isLoading] (the password is being checked), Cancel and Back still [onDismiss] it, which stops the check ([FileCheck.stop]); only a tap
+ * outside does nothing then, so a stray touch cannot. Dismissed, most tools go back to choosing a file, Compare and Merge close the prompt
+ * and keep what they hold, and the reader closes.
  */
 @Composable
 fun LockedFilePrompt(
