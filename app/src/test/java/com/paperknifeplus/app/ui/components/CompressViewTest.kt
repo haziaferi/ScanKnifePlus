@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check, a damaged protected file, and a
- * password handed over by the reader that is wrong or opens a damaged file.
+ * password handed over by the reader that is right, wrong, opens a damaged file, or is not needed.
  */
 @RunWith(RobolectricTestRunner::class)
 class CompressViewTest {
@@ -79,6 +79,15 @@ class CompressViewTest {
         rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
         rule.onNodeWithText("Choose PDF").assertExists()
         assertEquals("no decrypted copy is left", before, cacheFiles())
+    }
+
+    @Test
+    fun `the right password handed over by the reader opens the options without asking`() {
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-right-compress.pdf")
+        rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasText("2 pages", substring = true)).assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
     }
 
     @Test
