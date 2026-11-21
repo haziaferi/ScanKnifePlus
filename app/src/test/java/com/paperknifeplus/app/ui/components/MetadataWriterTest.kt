@@ -10,6 +10,7 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -171,6 +172,20 @@ class MetadataWriterTest {
             assertNull(doc.documentCatalog.cosObject.getItem(COSName.METADATA))
             assertEquals("New Title", doc.documentInformation.title)
             assertEquals(2020, doc.documentInformation.modificationDate.get(Calendar.YEAR))
+        }
+    }
+
+    @Test
+    // rewritePdf, which Sign, Watermark, Page Numbers, Bookmarks and Unlock save through too.
+    fun `a protected source opens with its password and is saved edited, whole and without it`() {
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 3), "meta-locked.pdf")
+        val output = File(context.cacheDir, "meta-locked-out.pdf").apply { delete() }
+        val original = runBlocking { loadMetadata(context, input, TestPdfs.USER_PASSWORD) }!!
+        saveProperties(context, input, TestPdfs.USER_PASSWORD, Uri.fromFile(output), original, original.copy(title = "Unlocked"))
+        PDDocument.load(output).use { doc ->
+            assertFalse(doc.isEncrypted)
+            assertEquals(3, doc.numberOfPages)
+            assertEquals("Unlocked", doc.documentInformation.title)
         }
     }
 

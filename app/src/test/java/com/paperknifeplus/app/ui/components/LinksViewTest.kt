@@ -34,19 +34,19 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.CompositionJobs
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,8 +108,11 @@ class LinksViewTest {
     private fun show(bytes: ByteArray, name: String, password: String? = null): Uri =
         showUri(TestPdfs.write(context.cacheDir, bytes, name), password)
 
+    private val jobs = CompositionJobs()
+
     private fun showUri(input: Uri, password: String? = null): Uri {
         rule.setContent {
+            jobs.Watch()
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker) {
                 LinksView(initialUri = input, initialPassword = password, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
@@ -202,6 +205,55 @@ class LinksViewTest {
         rule.onNodeWithText("Choose PDF").assertExists()
     }
 
+    /** The files directly in the cache folder: PDFBox's temp files and decrypted copies would show here. */
+    private fun cacheFiles() = context.cacheDir.listFiles().orEmpty().filter { it.isFile }.map { it.name }.toSet()
+
+    @Test
+    fun `Cancel during the password check resets the tool, and the check leaves no late result and no temp file`() {
+        val source = TestPdfs.HeldSource(context, TestPdfs.linksAndScript(TestPdfs.USER_PASSWORD), "held-links.pdf")
+        showUri(source.uri)
+        waitFor("Password required")
+        val before = cacheFiles()
+        source.hold()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { source.reached.count == 0L }
+        val check = jobs.waitingOnIo()
+        assertTrue("the check is held in its read", check.isNotEmpty())
+
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        source.release()
+        assertTrue(source.closed.await(30, TimeUnit.SECONDS))
+        // Once the check has ended, its counts must not have reached the screen.
+        rule.waitUntil(30_000) { check.all { it.isCompleted } }
+        rule.waitForIdle()
+        rule.onNodeWithText(REMOVE).assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        assertEquals(before, cacheFiles())
+    }
+
+    @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (created, file) = TestPdfs.createdDocument(context, "huge-unlinked.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.linksAndScript(), "huge-links.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(created)) {
+                LinksView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        waitFor(REMOVE)
+
+        source.runOutOfMemory()
+        rule.onNodeWithText(REMOVE).performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the choices.
+        rule.waitUntil(30_000) {
+            rule.onAllNodes(hasText(REMOVE)).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == "Error: test"
+        }
+        assertFalse("the created file is removed", file.exists())
+    }
+
     @Test
     fun `TalkBack hears each count change`() {
         show(TestPdfs.linksAndScript(), "spoken.pdf")
@@ -264,16 +316,10 @@ class LinksViewTest {
     /** The name the file card shows for the file written as [name]. */
     private fun fileName(name: String): String = getUriDetails(context, Uri.fromFile(File(context.cacheDir, name))).name
 
-    /** [bytes] protected with [TestPdfs.USER_PASSWORD]. */
-    private fun locked(bytes: ByteArray): ByteArray = PDDocument.load(bytes).use { doc ->
-        doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
-        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-    }
-
     @Test
     fun `the password line shows only while the choices save something`() {
         // Three links on page 1, all to pages of the file, and no script.
-        show(locked(TestPdfs.linked(3)), "locked-inside.pdf", TestPdfs.USER_PASSWORD)
+        show(TestPdfs.protectedCopy(TestPdfs.linked(3)), "locked-inside.pdf", TestPdfs.USER_PASSWORD)
         waitFor(REMOVE)
         rule.onNodeWithText(PASSWORD_LINE).assertExists()
 

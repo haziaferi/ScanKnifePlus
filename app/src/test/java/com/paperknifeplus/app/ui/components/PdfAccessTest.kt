@@ -4,14 +4,20 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.File
+import java.io.FilterInputStream
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class PdfAccessTest {
@@ -55,11 +61,80 @@ class PdfAccessTest {
         assertEquals(PdfAccess.Unreadable, runBlocking { inspectPdf(context, uri) })
     }
 
+    private val locked by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "checked.pdf") }
+    private val damaged by lazy { TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "checked-damaged.pdf") }
+    private val withoutPages by lazy { TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 0), "checked-empty.pdf") }
+    private val huge by lazy {
+        TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(pages = 2), "huge-checked.pdf").apply { runOutOfMemory() }.uri
+    }
+
     @Test
-    fun `only an encrypted file without a password needs the prompt`() {
-        assertTrue(needsUnlockPrompt(PdfAccess.Encrypted, null))
-        assertFalse(needsUnlockPrompt(PdfAccess.Encrypted, "pw"))
-        assertFalse(needsUnlockPrompt(PdfAccess.Open, null))
-        assertFalse(needsUnlockPrompt(PdfAccess.Unreadable, null))
+    fun `a password check tells a wrong password from a damaged, empty or too large file`() = runBlocking {
+        assertEquals(PasswordCheck.Opened(2), checkPageCount(context, locked, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.WrongPassword, checkPageCount(context, locked, "wrong"))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, damaged, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, withoutPages, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, huge, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `only a page count check that opens the file keeps its document in the pool`() = runBlocking {
+        // A pooled document gives the page count again without opening the file.
+        val opened = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 2), "counted-opened.pdf")
+        assertEquals(PasswordCheck.Opened(2), checkPageCount(context, opened.uri, TestPdfs.USER_PASSWORD))
+        assertEquals(2, getPageCount(context, opened.uri, TestPdfs.USER_PASSWORD))
+        assertEquals(1, opened.opens)
+
+        val damaged = TestPdfs.CountedSource(context, TestPdfs.damagedProtected(), "counted-damaged.pdf")
+        val empty = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 0), "counted-empty.pdf")
+        for (source in listOf(damaged, empty)) {
+            assertEquals(PasswordCheck.Unreadable, checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
+            getPageCount(context, source.uri, TestPdfs.USER_PASSWORD)
+            assertEquals(source.uri.toString(), 2, source.opens)
+        }
+    }
+
+    @Test
+    fun `a stopped page count check leaves nothing in the pool`() = runBlocking {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-stopped-check.pdf")
+        source.hold()
+        val check = launch(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
+        assertTrue(source.reached.await(10, TimeUnit.SECONDS))
+        check.cancel()
+        // The parse goes on to the end, then the check finds itself stopped.
+        source.release()
+        withTimeout(10_000) { check.join() }
+
+        assertEquals(2, getPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
+        assertEquals("read again, not from the pool", 2, source.opens)
+    }
+
+    @Test
+    fun `decrypting tells them apart the same way, and keeps a copy only of a file it opened`() = runBlocking {
+        val opened = (decryptToCache(context, locked, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        assertEquals(2, opened.pageCount)
+        assertEquals(PasswordCheck.WrongPassword, decryptToCache(context, locked, "wrong"))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, damaged, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, withoutPages, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, huge, TestPdfs.USER_PASSWORD))
+        val copies = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.map { it.name }
+        assertEquals(listOf(File(opened.uri.path!!).name), copies)
+    }
+
+    @Test
+    fun `a copy written before the file turns out unreadable is deleted`() = runBlocking {
+        // A provider whose stream fails as it is closed, which is after the copy was written.
+        val uri = android.net.Uri.parse("content://com.paperknifeplus.app.test.closing/decrypted-then-failed.pdf")
+        val bytes = TestPdfs.userPassword(pages = 2)
+        org.robolectric.Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+            object : FilterInputStream(bytes.inputStream()) {
+                override fun close() {
+                    super.close()
+                    throw IOException("closing failed")
+                }
+            }
+        }
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, uri, TestPdfs.USER_PASSWORD))
+        assertEquals(emptyList<String>(), context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.map { it.name })
     }
 }

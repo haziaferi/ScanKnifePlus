@@ -4,9 +4,12 @@ import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import coil.request.Options
+import com.paperknifeplus.app.testing.TestPdfs
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,5 +49,11 @@ class PdfImageLoaderTest {
     @Test
     fun `there is one loader per process`() {
         assertSame(PdfImageLoader.get(context), PdfImageLoader.get(context))
+    }
+
+    @Test
+    fun `a page of a file too large to parse renders nothing, as any page that fails does, rather than throwing`() = runBlocking {
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(), "huge-fetched.pdf").apply { runOutOfMemory() }
+        assertNull(PdfPageFetcher(context, PdfPageRequest(huge.uri, 0, TestPdfs.USER_PASSWORD, 1f)).fetch())
     }
 }

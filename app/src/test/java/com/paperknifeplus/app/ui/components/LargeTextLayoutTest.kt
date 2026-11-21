@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -54,7 +53,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** At twice the text size, Settings rows and the tools' shared scaffold grow with their text instead of clipping it. */
+/**
+ * At twice the text size, Settings rows and the tools' shared scaffold grow with their text instead of clipping it, in English and, for the
+ * segmented control, in Italian.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
 // Twice the text size for every window, the sheets' dialogs too; LocalDensity alone would reach only the content window.
@@ -218,15 +220,12 @@ class LargeTextLayoutTest {
             "Links to pages of this file stay, such as a table of contents.", "Remove links and save PDF"
         )
         for (text in shown) assertNotClipped(text)
-        // A segment is one line that never wraps, so a label wider than the room it got would be cut at its end.
+        // These labels fit their rows: each is one line, the whole of it shown.
         for (label in segments) {
             val layout = layoutOf(label)
             assertTrue("$label is cut at its end", layout.multiParagraph.intrinsics.maxIntrinsicWidth <= layout.size.width + 0.5f)
         }
-        val width = rule.onRoot().bounds().width
-        for (node in rule.onAllNodes(SemanticsMatcher("any node") { true }, useUnmergedTree = true).fetchSemanticsNodes()) {
-            assertTrue("$node runs sideways", node.boundsInRoot.left >= -0.5f && node.boundsInRoot.right <= width + 0.5f)
-        }
+        assertNothingSideways()
     }
 
     @Test
@@ -260,8 +259,55 @@ class LargeTextLayoutTest {
         for (shown in listOf("ORIGINAL (A)", "a-long-contract-name-2026.pdf", "REVISED (B)", "Select file")) assertNotClipped(shown)
     }
 
+    /** [assertNotClipped], and every line within the width the text was given: a label that wraps is whole, one cut at its end is not. */
+    private fun assertFullyVisible(text: String) {
+        assertNotClipped(text)
+        val layout = layoutOf(text)
+        for (line in 0 until layout.lineCount) {
+            assertTrue("$text runs past the end of its room", layout.getLineRight(line) <= layout.size.width + 0.5f)
+        }
+    }
+
+    /** Fails when any node runs sideways out of the window. */
+    private fun assertNothingSideways() {
+        val width = rule.onRoot().bounds().width
+        for (node in rule.onAllNodes(SemanticsMatcher("any node") { true }, useUnmergedTree = true).fetchSemanticsNodes()) {
+            assertTrue("$node runs sideways", node.boundsInRoot.left >= -0.5f && node.boundsInRoot.right <= width + 0.5f)
+        }
+    }
+
     @Test
-    fun `the segmented control stacks into full-width rows of one height, never wrapping a row`() {
+    // An Italian phone, small, and tall, so the whole screen is laid out.
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Links' segments show whole, a stacked one wrapping rather than cut, and nothing sideways`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links-it.pdf")
+        // In the app's font, whose "Intervallo di pagine" is wider than its stacked row.
+        atDoubleText { MaterialTheme(typography = Typography) { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rimuovi i link e salva il PDF")).fetchSemanticsNodes().isNotEmpty() }
+        for (label in listOf("Tutte le pagine", "Intervallo di pagine", "Tutti i link", "Link esterni")) assertFullyVisible(label)
+        assertTrue("the long label wraps onto a second line", layoutOf("Intervallo di pagine").lineCount > 1)
+        assertNothingSideways()
+    }
+
+    @Test
+    // An Italian phone, small, and tall, so the whole screen is laid out.
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Crop's Pages segments show whole, a stacked one wrapping rather than cut, and nothing sideways`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(2), "large-crop-it.pdf")
+        // In the app's font, whose "Intervallo di pagine" is wider than its stacked row.
+        atDoubleText { MaterialTheme(typography = Typography) { CropView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Sposta un angolo per ritagliare")).fetchSemanticsNodes().isNotEmpty() }
+        for (label in listOf("Tutte le pagine", "Intervallo di pagine")) assertFullyVisible(label)
+        assertTrue("the long label wraps onto a second line", layoutOf("Intervallo di pagine").lineCount > 1)
+        assertNothingSideways()
+    }
+
+    @Test
+    fun `the segmented control stacks into full-width rows of one height while their labels fit them`() {
         // In the app's font, as the segments measure their labels in the font they are drawn in, and as wide as on a 320 dp phone.
         atDoubleText {
             MaterialTheme(typography = Typography) {
@@ -281,11 +327,8 @@ class LargeTextLayoutTest {
 
     @Test
     fun `the tip card grows with its text beside its close button`() {
-        atDoubleText {
-            ToolTipCard(TIP, onClose = {}, link = { Text("Go to the other tool") })
-        }
+        atDoubleText { ToolTipCard(TIP, onClose = {}) }
         assertNotClipped(TIP)
-        assertNotClipped("Go to the other tool")
         val close = rule.onNodeWithContentDescription("Close the tip").bounds()
         assertTrue("the close button is 48 dp", close.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
         assertTrue("the text runs beside the close button", text(TIP).right <= close.left)

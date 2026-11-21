@@ -14,7 +14,6 @@ import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.cos.COSObject
 import com.tom_roush.pdfbox.cos.COSStream
 import com.tom_roush.pdfbox.cos.COSString
-import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -146,7 +145,7 @@ internal fun redact(
 /**
  * Writes [input], opened with [password], to [output] redacted as [redact] does, pages rendered by the platform renderer unless [rasterizer]
  * gives another. The copy is as protected as the source with [keepProtection] ([sameProtection]), else not encrypted; it is buffered in
- * temp files. Returns the report; throws on failure, including IllegalArgumentException for a phrase that is too short.
+ * temp files ([withPdf]). Returns the report; throws on failure, including IllegalArgumentException for a phrase that is too short.
  */
 internal suspend fun redactPdf(
     context: Context,
@@ -159,22 +158,19 @@ internal suspend fun redactPdf(
     keepProtection: Boolean = false,
     rasterizer: (PDDocument) -> PageRasterizer = { NativePageRasterizer(context, input, if (it.isEncrypted) password.orEmpty() else null) }
 ): RedactReport = withContext(Dispatchers.IO) {
-    val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password.orEmpty(), memory).use { document ->
-            val protection = if (keepProtection) document.sameProtection(password.orEmpty()) else null
-            if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
-            val pages = rasterizer(document)
-            val report = try {
-                redact(document, boxes, phrase, fill, pages)
-            } finally {
-                (pages as? Closeable)?.close()
-            }
-            protection?.let(document::protect)
-            // No default author: a field the scrub emptied stays empty, whatever the default (which may be the phrase itself).
-            saveAndFlush(context, document, output, applyDefaults = false)
-            report
+    withPdf(context, input, password) { document ->
+        val protection = if (keepProtection) document.sameProtection(password.orEmpty()) else null
+        if (protection == null && document.isEncrypted) document.isAllSecurityToBeRemoved = true
+        val pages = rasterizer(document)
+        val report = try {
+            redact(document, boxes, phrase, fill, pages)
+        } finally {
+            (pages as? Closeable)?.close()
         }
+        protection?.let(document::protect)
+        // No default author: a field the scrub emptied stays empty, whatever the default (which may be the phrase itself).
+        saveAndFlush(context, document, output, applyDefaults = false)
+        report
     }
 }
 

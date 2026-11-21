@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -47,7 +48,7 @@ fun BookmarksView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var outputPageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var unlockPassword by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
@@ -63,21 +64,21 @@ fun BookmarksView(
         currentState = ToolState.SELECTING
     }
 
-    /** Reads the outline with [pass]; false if the document does not open with it. An unreadable outline is reported and resets. */
-    suspend fun extractBookmarks(uri: Uri, pass: String?): Boolean = when (val result = loadOutline(context, uri, pass)) {
-        is OutlineLoad.Loaded -> {
-            bookmarks = result.bookmarks
-            pageCount = result.pageCount
+    /**
+     * Reads the outline with [pass]. A file that does not open with it asks for its password (saying it is incorrect when one was given);
+     * one that cannot be read is reported and resets.
+     */
+    suspend fun extractBookmarks(uri: Uri, pass: String?) {
+        loadOutline(context, uri, pass).resolve(
+            context,
+            onWrongPassword = { unlockError = pass != null; fileToUnlock = fileName },
+            onUnreadable = { fileToUnlock = null; unlockError = false; reset() }
+        ) { outline ->
+            bookmarks = outline.bookmarks
+            pageCount = outline.pageCount
             unlockPassword = pass.orEmpty()
             currentState = ToolState.CONFIGURING
-            true
-        }
-        OutlineLoad.WrongPassword -> false
-        OutlineLoad.Unreadable -> {
-            Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
             fileToUnlock = null
-            reset()
-            true
         }
     }
 
@@ -88,18 +89,17 @@ fun BookmarksView(
         fileSize = details.size
         unlockPassword = ""
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            val access = inspectPdf(context, uri)
+        check.start {
             // Files that open without a password (owner-password-only ones too) are read directly; the others ask for one.
-            if (access == PdfAccess.Unreadable) {
-                Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-                selectedUri = null
-                currentState = ToolState.SELECTING
-            } else if (!extractBookmarks(uri, null)) {
-                fileToUnlock = fileName
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
+                PdfAccess.Encrypted -> fileToUnlock = fileName
+                PdfAccess.Open -> extractBookmarks(uri, null)
             }
-            isFileLoading = false
         }
     }
 
@@ -107,19 +107,15 @@ fun BookmarksView(
         uri?.let { handleFileSelection(it) }
     }
 
-    /** Runs [write] on the freshly loaded source into [saveUri], then records the result as [summary]. */
-    fun save(saveUri: Uri, summary: (Int) -> String, write: (source: PDDocument, saveUri: Uri) -> Unit) {
+    /** Runs [write] from the source, opened with its password, into [saveUri], then records the result as [summary]. */
+    fun save(saveUri: Uri, summary: (Int) -> String, write: (source: Uri, password: String) -> Unit) {
         val source = selectedUri ?: return
+        val password = unlockPassword
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, unlockPassword).use { document ->
-                        if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
-                        write(document, saveUri)
-                    }
-                }
+                write(source, password)
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, saveUri).name
                 val finalCount = getPageCount(context, saveUri, null)
@@ -134,7 +130,8 @@ fun BookmarksView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, saveUri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("BookmarksView", "Saving failed", e)
                 deleteCreatedDocument(context, saveUri)
                 withContext(Dispatchers.Main) {
@@ -146,20 +143,16 @@ fun BookmarksView(
     }
 
     val extractLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted()
-        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { document, saveUri ->
-            PDDocument().use { target ->
-                target.appendPagesFrom(pages.filter { it < document.numberOfPages }.map { document.getPage(it) })
-                saveAndFlush(context, target, saveUri)
-            }
+        val marked = bookmarks
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { source, password ->
+            extractBookmarkedPages(context, source, password, uri, marked)
         }
     }
 
     val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         val edited = bookmarks
-        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { document, saveUri ->
-            applyOutline(document, edited)
-            saveAndFlush(context, document, saveUri)
+        if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { source, password ->
+            rewritePdf(context, source, password, uri) { applyOutline(it, edited) }
         }
     }
 
@@ -173,7 +166,7 @@ fun BookmarksView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.bookmarks_reading_outlines))
             } else {
                 when (currentState) {
@@ -270,24 +263,16 @@ fun BookmarksView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                if (extractBookmarks(source, pass)) {
-                                    fileToUnlock = null
-                                } else {
-                                    unlockError = true
-                                }
-                                isFileLoading = false
-                            }
+                            check.start { extractBookmarks(source, pass) }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }
@@ -315,5 +300,19 @@ fun BookmarksView(
                 }) { Text(stringResource(R.string.action_add)) }
             }
         )
+    }
+}
+
+/**
+ * Writes the pages of [source] (opened with [password] through temp files, [withPdf]) that [bookmarks] lead to, once each and in page
+ * order, to [output] as a new document without encryption, as Bookmarks' Extract pages saves. Blocking; throws on failure.
+ */
+internal fun extractBookmarkedPages(context: Context, source: Uri, password: String, output: Uri, bookmarks: List<Bookmark>) {
+    withPdf(context, source, password) { document ->
+        val pages = bookmarks.mapNotNull { it.pageIndex }.distinct().sorted().filter { it < document.numberOfPages }
+        PDDocument().use { target ->
+            target.appendPagesFrom(pages.map { document.getPage(it) })
+            saveAndFlush(context, target, output)
+        }
     }
 }

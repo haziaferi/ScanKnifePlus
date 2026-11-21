@@ -16,11 +16,13 @@ import coil.fetch.FetchResult
 import coil.fetch.Fetcher
 import coil.request.Options
 import com.paperknifeplus.app.ui.components.BitmapPool
+import com.paperknifeplus.app.ui.components.requireInputStream
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.rendering.ImageType
 import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -204,8 +206,8 @@ object NativeRendererPool {
 
 /**
  * Thread-safe pool of open documents for the [maxEntries] keys used last, each used by one holder at a time (PDFBox documents are not
- * thread-safe); an evicted document is closed once its last holder is done. Loads run outside the lock, and of two concurrent loads of one
- * key the first published is kept and the other closed.
+ * thread-safe); an evicted document is closed once its last holder is done. Loads run outside the lock, one per key at a time: callers that
+ * find their key loading wait for that load rather than parse the file again.
  */
 class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val close: (D) -> Unit) {
     private class Entry<D>(val document: D) {
@@ -217,11 +219,15 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
 
     private val lock = Any()
     private val entries = HashMap<K, Entry<D>>()
+    private val loads = HashMap<K, CompletableDeferred<Unit>>()
     private var clock = 0L
 
-    /** Runs [block] with the document for [key], loading it with [load] if needed; null if [load] returns null. Blocking while loading. */
-    suspend fun <T> withDocument(key: K, load: () -> D?, block: suspend (D) -> T): T? {
-        val entry = acquire(key, load) ?: return null
+    /**
+     * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
+     * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done.
+     */
+    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T {
+        val entry = acquire(key, load)
         try {
             return entry.mutex.withLock { block(entry.document) }
         } finally {
@@ -229,34 +235,66 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
         }
     }
 
+    /** Takes [key]'s document out of the pool, if there; it is closed now, or once its last holder is done. */
+    fun evict(key: K) {
+        val idle = synchronized(lock) {
+            val entry = entries.remove(key) ?: return
+            entry.evicted = true
+            entry.document.takeIf { entry.refCount == 0 }
+        }
+        idle?.let(::closeQuietly)
+    }
+
     internal fun size(): Int = synchronized(lock) { entries.size }
 
-    private fun acquire(key: K, load: () -> D?): Entry<D>? {
-        synchronized(lock) { entries[key]?.let { return it.also { it.refCount++ } } }
-        val loaded = load() ?: return null
-        val toClose = mutableListOf<D>()
-        val entry = synchronized(lock) {
-            val existing = entries[key]
-            val entry = if (existing != null) {
-                toClose += loaded
-                existing
-            } else {
-                while (entries.size >= maxEntries) {
-                    val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
-                    entries.remove(oldKey)
-                    old.evicted = true
-                    if (old.refCount == 0) toClose += old.document
-                }
-                Entry(loaded).also {
-                    it.lastUsed = ++clock
-                    entries[key] = it
-                }
+    private suspend fun acquire(key: K, load: () -> D): Entry<D> {
+        while (true) {
+            var loading = false
+            val pending = synchronized(lock) {
+                entries[key]?.let { return it.also { it.refCount++ } }
+                loads.getOrPut(key) { CompletableDeferred<Unit>().also { loading = true } }
             }
-            entry.refCount++
-            entry
+            if (!loading) {
+                // Throws what the load threw; once it is published, the next turn takes the document, or loads again if it was evicted.
+                pending.await()
+                continue
+            }
+            val loaded = try {
+                load()
+            } catch (e: Throwable) {
+                synchronized(lock) { loads.remove(key) }
+                pending.completeExceptionally(e)
+                throw e
+            }
+            val (entry, evicted) = publish(key, loaded)
+            // The waiters take the document before the evicted ones are closed, so they neither wait on that nor hang if a close throws.
+            pending.complete(Unit)
+            try {
+                evicted.forEach(::closeQuietly)
+            } catch (e: Throwable) {
+                release(entry)
+                throw e
+            }
+            return entry
         }
-        toClose.forEach(::closeQuietly)
-        return entry
+    }
+
+    /** Adds [loaded] as [key]'s entry, held once, and returns it with the idle documents it evicted, for the caller to close. */
+    private fun publish(key: K, loaded: D): Pair<Entry<D>, List<D>> = synchronized(lock) {
+        loads.remove(key)
+        val evicted = mutableListOf<D>()
+        while (entries.size >= maxEntries) {
+            val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
+            entries.remove(oldKey)
+            old.evicted = true
+            if (old.refCount == 0) evicted += old.document
+        }
+        val entry = Entry(loaded).also {
+            it.lastUsed = ++clock
+            it.refCount++
+            entries[key] = it
+        }
+        entry to evicted
     }
 
     private fun release(entry: Entry<D>) {
@@ -282,22 +320,25 @@ object PdDocumentPool {
 
     private val pool = DocumentPool<Key, PDDocument>(3) { it.close() }
 
-    /** Runs [block] with the open document; null if it cannot be loaded (missing, wrong password, not a PDF). */
-    suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T? =
+    /**
+     * Runs [block] with the open document, parsed on the IO dispatcher if it is not pooled yet ([DocumentPool.withDocument]). Throws what
+     * [block] threw, or what loading threw: InvalidPasswordException for a wrong or missing password, OutOfMemoryError for a file too large
+     * to parse, another exception for one that is missing or not a PDF.
+     */
+    suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T =
         withContext(Dispatchers.IO) {
             pool.withDocument(Key(uri, password), { load(context, uri, password) }, block)
         }
 
-    private fun load(context: Context, uri: Uri, password: String?): PDDocument? = try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
+    /** Closes the document for [uri] and [password] if it is pooled, once no page is being drawn from it. */
+    fun evict(uri: Uri, password: String?) = pool.evict(Key(uri, password))
+
+    private fun load(context: Context, uri: Uri, password: String?): PDDocument =
+        context.contentResolver.requireInputStream(uri).use { stream ->
             // The parsed file is buffered in temp files rather than the heap, so large PDFs fit.
             val memory = MemoryUsageSetting.setupTempFileOnly()
             if (password != null) PDDocument.load(stream, password, memory) else PDDocument.load(stream, memory)
         }
-    } catch (e: Exception) {
-        Log.w(TAG, "Cannot load $uri", e)
-        null
-    }
 }
 
 // Caps concurrent renders across all documents; taken after the renderer or document, so a waiter never holds a permit.
@@ -379,6 +420,10 @@ class PdfPageFetcher(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Cannot render page ${data.pageIndex} of ${data.uri}", e)
+            null
+        } catch (e: OutOfMemoryError) {
+            // The document pool throws it for a file too large to parse.
+            Log.w(TAG, "Out of memory rendering page ${data.pageIndex} of ${data.uri}", e)
             null
         }
     }

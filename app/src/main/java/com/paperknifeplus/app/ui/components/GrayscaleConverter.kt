@@ -837,7 +837,8 @@ internal fun uprightPlacement(crop: PDRectangle, rotation: Int): Matrix {
 
 /**
  * [PageRasterizer] on the platform renderer, which unlike pdfbox-android draws every colour space and JPEG 2000 correctly, opened on first
- * use. It cannot open encrypted files, so when [password] is set the source is decrypted to a cache copy first, deleted on [close].
+ * use. It cannot open encrypted files, so when [password] is set the source is decrypted to a cache copy first ([decryptedCopy]), deleted
+ * on [close].
  */
 internal class NativePageRasterizer(private val context: Context, private val uri: Uri, private val password: String?) : PageRasterizer, Closeable {
     private var renderer: PdfRenderer? = null
@@ -853,12 +854,7 @@ internal class NativePageRasterizer(private val context: Context, private val ur
 
     private fun open(): PdfRenderer {
         val descriptor = if (password != null) {
-            val file = context.contentResolver.requireInputStream(uri).use { input ->
-                PDDocument.load(input, password).use { document ->
-                    document.isAllSecurityToBeRemoved = true
-                    saveDecryptedCopy(document, context.cacheDir)
-                }
-            }
+            val file = decryptedCopy(context, uri, password)
             copy = file
             ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         } else {

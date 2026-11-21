@@ -42,7 +42,7 @@ fun CompressView(
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
 
     var compressionLevel by remember { mutableStateOf("Recommended") }
@@ -50,7 +50,7 @@ fun CompressView(
     var progressPage by remember { mutableIntStateOf(0) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -58,30 +58,49 @@ fun CompressView(
     }
     DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
-        unlockPassword = password.orEmpty()
+        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            val access = inspectPdf(context, uri)
-            when {
-                access == PdfAccess.Unreadable -> {
+        check.start {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
-                else -> {
-                    pageCount = getPageCount(context, uri, password)
+                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
+                PdfAccess.Encrypted -> if (password == null) {
+                    fileToUnlock = fileName
+                } else {
+                    checkPageCount(context, uri, password).resolve(
+                        context,
+                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                        onUnreadable = { closePrompt() }
+                    ) { count ->
+                        unlockPassword = password
+                        pageCount = count
+                        currentState = ToolState.CONFIGURING
+                    }
+                }
+                // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
+                PdfAccess.Open -> {
+                    pageCount = getPageCount(context, uri, null)
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -116,7 +135,8 @@ fun CompressView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("CompressView", "Compression failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -133,7 +153,7 @@ fun CompressView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.compress_analyzing_file_structure))
             } else {
                 when (currentState) {
@@ -220,33 +240,27 @@ fun CompressView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so the preview can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                val count = copy?.let { getPageCount(context, it, null) } ?: 0
-                                if (copy != null && count > 0) {
-                                    decryptedUri = copy
+                                val decrypted = decryptToCache(context, source, pass)
+                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
+                                    decryptedUri = copy.uri
                                     unlockPassword = pass
-                                    selectedUri = copy
-                                    pageCount = count
+                                    selectedUri = copy.uri
+                                    pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    deleteDecryptedCopy(context, copy)
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

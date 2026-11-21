@@ -47,7 +47,7 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 
 /**
  * The shared page viewer (R3): "Page N of M" with 48 dp arrows ([onPageChange]) over [page] of [uri], opened with [password]. The page
- * keeps its displayed shape [aspect] (width over height), at most [pageHeight] high and as wide as the viewer, inside [pagePadding];
+ * keeps its displayed shape [aspect] (width over height), at most 226 dp high and as wide as the viewer, inside [pagePadding];
  * [overlay] draws over the page's own area, so fractions of its size are fractions of the page.
  */
 @Composable
@@ -59,7 +59,6 @@ fun PageViewer(
     aspect: Float,
     onPageChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    pageHeight: Dp = 226.dp,
     pagePadding: PaddingValues = PaddingValues(vertical = 8.dp),
     overlay: @Composable BoxScope.() -> Unit = {}
 ) {
@@ -82,7 +81,7 @@ fun PageViewer(
             PageArrow(Icons.AutoMirrored.Filled.KeyboardArrowRight, next, page < pageCount - 1) { onPageChange(page + 1) }
         }
         BoxWithConstraints(Modifier.fillMaxWidth().padding(pagePadding), contentAlignment = Alignment.Center) {
-            val width = min(maxWidth, pageHeight * aspect)
+            val width = min(maxWidth, 226.dp * aspect)
             Box(Modifier.size(width, width / aspect)) {
                 PdfPageImage(uri, password, page, width, priority = 1, modifier = Modifier.fillMaxSize())
                 overlay()

@@ -1,14 +1,27 @@
 package com.paperknifeplus.app.testing
 
+import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.ProviderInfo
 import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCompositionContext
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.core.app.ActivityOptionsCompat
+import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
 import com.tom_roush.pdfbox.cos.COSArray
 import com.tom_roush.pdfbox.cos.COSBase
 import com.tom_roush.pdfbox.cos.COSDictionary
@@ -40,8 +53,18 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
+import org.robolectric.Shadows
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FilterInputStream
+import java.io.InputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 
 /** In-memory PDFs for Robolectric tests, so no binary fixtures are checked in. Shared by every tool-screen test; edit only additively. */
 object TestPdfs {
@@ -55,14 +78,29 @@ object TestPdfs {
     fun plain(pages: Int = 1): ByteArray = build(pages) {}
 
     /** A PDF that needs [password] to open. */
-    fun userPassword(pages: Int = 1, password: String = USER_PASSWORD): ByteArray = build(pages) {
-        it.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
-    }
+    fun userPassword(pages: Int = 1, password: String = USER_PASSWORD): ByteArray = build(pages) { protect(it, password) }
 
     /** A PDF with only an owner password: it opens without one, but reports itself as encrypted. */
-    fun ownerOnly(pages: Int = 1): ByteArray = build(pages) {
-        it.protect(StandardProtectionPolicy(OWNER_PASSWORD, "", AccessPermission()).apply { encryptionKeyLength = 128 })
+    fun ownerOnly(pages: Int = 1): ByteArray = build(pages) { protect(it, "") }
+
+    /** [pdf] saved again needing [password] to open. */
+    fun protectedCopy(pdf: ByteArray, password: String = USER_PASSWORD): ByteArray = PDDocument.load(pdf).use { doc ->
+        protect(doc, password)
+        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
     }
+
+    /** [userPassword] whose catalog has lost its page tree: it asks for its password, and opened with it has no pages to read. */
+    fun damagedProtected(): ByteArray {
+        val text = String(userPassword(2), Charsets.ISO_8859_1)
+        // Same length, so the cross-reference offsets still hold.
+        val damaged = Regex("""/Pages (\d+ \d+ R)""").replace(text) { "/Pagez ${it.groupValues[1]}" }
+        check(damaged != text) { "the catalog's page tree is gone" }
+        return damaged.toByteArray(Charsets.ISO_8859_1)
+    }
+
+    /** Protects [doc] with [OWNER_PASSWORD] and the user password [password] (none for empty), 128-bit. */
+    private fun protect(doc: PDDocument, password: String) =
+        doc.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
 
     /** The font name every page of [inheritedAttributes] uses, and the attributes its Pages root carries. */
     val INHERITED_FONT: COSName = COSName.getPDFName("F1")
@@ -141,7 +179,7 @@ object TestPdfs {
         doc.getPage(0).annotations = listOf(link(700f), link(650f))
         doc.getPage(1).annotations = listOf(link(700f))
         doc.documentCatalog.openAction = PDActionJavaScript("app.alert('opened')")
-        if (password != null) doc.protect(StandardProtectionPolicy(OWNER_PASSWORD, password, AccessPermission()).apply { encryptionKeyLength = 128 })
+        if (password != null) protect(doc, password)
     }
 
     /** Text in the uncompressed content stream of page n (1-based) of [structured], to tell whether that page made it into a saved file. */
@@ -352,6 +390,134 @@ object TestPdfs {
 
     private const val NULL_AUTHORITY = "com.paperknifeplus.app.test.nullstream"
 
+    /**
+     * An empty document [name] in a documents provider, as the system's save picker creates it before a tool writes, served so that the
+     * tool's clean-up after a failed save can remove it: its URI, and the file behind it. One per test, in a folder of its own.
+     */
+    fun createdDocument(context: Context, name: String): Pair<Uri, File> {
+        val folder = File(context.cacheDir, "documents").apply { deleteRecursively(); mkdirs() }
+        TestDocumentsProvider.install(folder)
+        val provider = ComponentName(context, TestDocumentsProvider::class.java)
+        Shadows.shadowOf(context.packageManager).apply {
+            addOrUpdateProvider(ProviderInfo().apply {
+                authority = TestDocumentsProvider.AUTHORITY
+                packageName = provider.packageName
+                this.name = provider.className
+            })
+            addIntentFilterForProvider(provider, IntentFilter(DocumentsContract.PROVIDER_INTERFACE))
+        }
+        val file = File(folder, name).apply { createNewFile() }
+        return DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/$name") to file
+    }
+
+    /** Pickers that answer a save with [output] and anything else (Choose PDF, Add more) with [picked]. */
+    fun savingTo(output: Uri, picked: Any? = null) = object : ActivityResultRegistryOwner {
+        override val activityResultRegistry = object : ActivityResultRegistry() {
+            override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
+                dispatchResult(requestCode, if (contract is ActivityResultContracts.CreateDocument) output else picked)
+            }
+        }
+    }
+
+    /**
+     * [bytes] at a content [uri], each open a fresh stream. After [hold], the next stream opened stops at its first read until [release]:
+     * [reached] counts down when that read starts, [closed] when its reader closes it, so a test can act while a tool's check is running;
+     * [opens] counts every stream opened. Each test names its own [uri]: the app-wide document pool outlives a test, and would hand a later
+     * test a file with the same name.
+     */
+    class HeldSource(context: Context, private val bytes: ByteArray, name: String) {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.held/$name")
+        val reached = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        private val gate = CountDownLatch(1)
+        @Volatile private var holding = false
+        private val count = AtomicInteger()
+        val opens: Int get() = count.get()
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+                count.incrementAndGet()
+                if (holding) {
+                    holding = false
+                    Held(bytes.inputStream())
+                } else {
+                    bytes.inputStream()
+                }
+            }
+        }
+
+        fun hold() {
+            holding = true
+        }
+
+        fun release() = gate.countDown()
+
+        private inner class Held(source: InputStream) : FilterInputStream(source) {
+            private var waited = false
+
+            private fun await() {
+                if (waited) return
+                waited = true
+                reached.countDown()
+                gate.await(60, TimeUnit.SECONDS)
+            }
+
+            override fun read(): Int {
+                await()
+                return super.read()
+            }
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                await()
+                return super.read(b, off, len)
+            }
+
+            override fun close() {
+                super.close()
+                closed.countDown()
+            }
+        }
+    }
+
+    /**
+     * [bytes] at a content [uri], each open a fresh stream, until [runOutOfMemory]: then every read runs out of memory, as reading a file
+     * too large to parse would. Each test names its own [uri], as for [HeldSource].
+     */
+    class OutOfMemorySource(context: Context, private val bytes: ByteArray, name: String) {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.huge/$name")
+        @Volatile private var outOfMemory = false
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) { if (outOfMemory) OutOfMemoryStream() else bytes.inputStream() }
+        }
+
+        fun runOutOfMemory() {
+            outOfMemory = true
+        }
+
+        private class OutOfMemoryStream : InputStream() {
+            override fun read(): Int = throw OutOfMemoryError("test")
+            override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("test")
+        }
+    }
+
+    /**
+     * [bytes] at a content [uri], each open a fresh stream; [opens] counts them, so a test can tell how many times a tool parsed the file.
+     * Each test names its own [uri], as for [HeldSource].
+     */
+    class CountedSource(context: Context, private val bytes: ByteArray, name: String) {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.counted/$name")
+        private val count = AtomicInteger()
+        val opens: Int get() = count.get()
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+                count.incrementAndGet()
+                bytes.inputStream()
+            }
+        }
+    }
+
     private fun build(pages: Int, finish: (PDDocument) -> Unit): ByteArray = PDDocument().use { doc ->
         repeat(pages) { i ->
             val page = PDPage(PDRectangle.LETTER)
@@ -370,6 +536,34 @@ object TestPdfs {
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
         override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
         override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+}
+
+/**
+ * The coroutines of a composition's effects (its rememberCoroutineScope and LaunchedEffect jobs, and what they start), so a test can wait
+ * until work a screen began in the background has ended, rather than for a fixed time. Call [Watch] in the content beside the screen.
+ */
+class CompositionJobs {
+    private lateinit var root: Job
+
+    @Composable
+    fun Watch() {
+        // The context the composition's effects run in: every remembered scope's Job is a child of its Job.
+        root = rememberCompositionContext().effectCoroutineContext[Job]!!
+    }
+
+    /** The coroutines now waiting on a withContext(Dispatchers.IO) of their own: a tool's check held in its read is one. */
+    fun waitingOnIo(): Set<Job> {
+        val found = mutableSetOf<Job>()
+        fun visit(job: Job) {
+            for (child in job.children) {
+                val io = (child as? CoroutineScope)?.coroutineContext?.get(ContinuationInterceptor) === Dispatchers.IO
+                // A scope's own Job is no coroutine; a coroutine on IO under one was launched there, not waited on.
+                if (io && job is CoroutineScope) found += job else visit(child)
+            }
+        }
+        visit(root)
+        return found
     }
 }
 

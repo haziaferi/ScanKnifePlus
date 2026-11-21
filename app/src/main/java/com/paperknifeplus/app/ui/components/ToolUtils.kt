@@ -193,38 +193,32 @@ fun formatSize(bytes: Long): String {
     return String.format(Locale.getDefault(), "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
-/** The page count of [uri] opened with [password], read through the shared document pool; 0 if it cannot be opened. */
+/** The page count of [uri] opened with [password], read through the shared document pool; 0 if it cannot be opened, also for lack of memory. */
 suspend fun getPageCount(context: Context, uri: Uri, password: String?): Int = try {
-    PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages } ?: 0
+    PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages }
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
     Log.w(TAG, "Cannot count the pages of $uri", e)
     0
-}
-
-private fun loadPdf(context: Context, uri: Uri, password: String?, block: (PDDocument) -> Unit) {
-    context.contentResolver.requireInputStream(uri).use { input ->
-        (if (password != null) PDDocument.load(input, password) else PDDocument.load(input)).use(block)
-    }
+} catch (e: OutOfMemoryError) {
+    Log.w(TAG, "Out of memory counting the pages of $uri", e)
+    0
 }
 
 /**
  * Writes a gray copy of [inputUri], opened with [password], to [outputUri] with [GrayscaleConverter], which keeps text, links, forms, outline and
- * metadata; returns how many pages could only be stored as images. The copy is not encrypted. Pages are buffered in temp files.
+ * metadata; returns how many pages could only be stored as images. The copy is not encrypted. Pages are buffered in temp files ([withPdf]).
  */
 suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: Uri, password: String?, onProgress: (Int, Int) -> Unit): Int =
     withContext(Dispatchers.IO) {
-        val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
-        context.contentResolver.requireInputStream(inputUri).use { input ->
-            PDDocument.load(input, password.orEmpty(), memory).use { document ->
-                val encrypted = document.isEncrypted
-                if (encrypted) document.isAllSecurityToBeRemoved = true
-                NativePageRasterizer(context, inputUri, if (encrypted) password.orEmpty() else null).use { rasterizer ->
-                    val fallbacks = GrayscaleConverter(document, rasterizer).convert(onProgress)
-                    saveAndFlush(context, document, outputUri)
-                    fallbacks
-                }
+        withPdf(context, inputUri, password) { document ->
+            val encrypted = document.isEncrypted
+            if (encrypted) document.isAllSecurityToBeRemoved = true
+            NativePageRasterizer(context, inputUri, if (encrypted) password.orEmpty() else null).use { rasterizer ->
+                val fallbacks = GrayscaleConverter(document, rasterizer).convert(onProgress)
+                saveAndFlush(context, document, outputUri)
+                fallbacks
             }
         }
     }
@@ -286,9 +280,13 @@ internal fun compressImages(document: PDDocument, quality: Float, downscale: Flo
     }
 }
 
+/**
+ * Writes [inputUri], opened with [password], to [outputUri] with its images re-encoded for [level] ([compressImages]) and its encryption
+ * removed. The source is parsed through temp files ([withPdf]). Throws on failure.
+ */
 suspend fun compressPdf(context: Context, inputUri: Uri, outputUri: Uri, password: String?, level: String, onProgress: (Int, Int) -> Unit) =
     withContext(Dispatchers.IO) {
-        loadPdf(context, inputUri, password) { document ->
+        withPdf(context, inputUri, password) { document ->
             if (document.isEncrypted) document.isAllSecurityToBeRemoved = true
             val quality = when (level) { "Extreme" -> 0.4f; "Recommended" -> 0.7f; else -> 0.9f }
             val downscale = when (level) { "Extreme" -> 0.6f; "Recommended" -> 0.8f; else -> 1.0f }
@@ -411,7 +409,7 @@ suspend fun convertPdfToImages(
     onProgress: (Int, Int) -> Unit
 ) = withContext(Dispatchers.IO) {
     // Protected files are decrypted to a cache copy, which the native renderer can open; the copy is deleted whatever happens.
-    val decrypted = if (password != null) decryptToCache(context, pdfUri, password) else null
+    val decrypted = if (password != null) (decryptToCache(context, pdfUri, password) as? PasswordCheck.Opened)?.value?.uri else null
     try {
         val workingUri = decrypted ?: pdfUri
         context.contentResolver.requireOutputStream(outputUri).use { outputStream ->
@@ -498,17 +496,20 @@ fun saveAndFlush(context: Context, document: PDDocument, outputUri: Uri, applyDe
     }
 }
 
+/** Writes [inputUri], opened with [password], to [outputUri] as PDFBox parsed it, without encryption ([withPdf]). Throws on failure. */
 suspend fun repairPdf(context: Context, inputUri: Uri, outputUri: Uri, password: String?) = withContext(Dispatchers.IO) {
-    loadPdf(context, inputUri, password) { document ->
+    withPdf(context, inputUri, password) { document ->
         document.isAllSecurityToBeRemoved = true
         saveAndFlush(context, document, outputUri)
     }
 }
 
 /**
- * Saves [document] as a new `decrypted_*.pdf` in [dir] and returns it. A partly written file is deleted before the failure is rethrown.
+ * Saves [document] without its encryption as a new `decrypted_*.pdf` in [dir] and returns it. A partly written file is deleted before the
+ * failure is rethrown.
  */
 internal fun saveDecryptedCopy(document: PDDocument, dir: File): File {
+    document.isAllSecurityToBeRemoved = true
     val file = File.createTempFile("decrypted_", ".pdf", dir)
     try {
         FileOutputStream(file).use { document.save(it) }
@@ -519,23 +520,30 @@ internal fun saveDecryptedCopy(document: PDDocument, dir: File): File {
     }
 }
 
+/** Saves an unencrypted copy of [uri], opened with [password] through temp files ([withPdf]), in the cache folder. Blocking; throws on failure. */
+internal fun decryptedCopy(context: Context, uri: Uri, password: String): File =
+    withPdf(context, uri, password) { saveDecryptedCopy(it, context.cacheDir) }
+
+/** A decrypted cache copy ([decryptToCache]) and its page count. */
+class DecryptedCopy(val uri: Uri, val pageCount: Int)
+
 /**
- * Writes an unencrypted copy of [uri], opened with [password], to the cache folder and returns its file:// URI, or null if it cannot. The
- * native renderer cannot open protected files, so tools decrypt once and work on the copy; delete it with [deleteDecryptedCopy].
+ * Writes an unencrypted copy of [uri], opened with [password], to the cache folder and counts its pages, told apart as [checkPassword]
+ * does; a file without pages is unreadable. The native renderer cannot open protected files, so tools decrypt once and work on the copy;
+ * delete it with [deleteDecryptedCopy]. No failure leaves a copy behind, and neither does a stopped check ([FileCheck]).
  */
-suspend fun decryptToCache(context: Context, uri: Uri, password: String): Uri? = withContext(Dispatchers.IO) {
-    try {
-        val input = context.contentResolver.openInputStream(uri) ?: return@withContext null
-        input.use {
-            PDDocument.load(it, password).use { document ->
-                document.isAllSecurityToBeRemoved = true
-                Uri.fromFile(saveDecryptedCopy(document, context.cacheDir))
-            }
-        }
+suspend fun decryptToCache(context: Context, uri: Uri, password: String): PasswordCheck<DecryptedCopy> {
+    var copy: File? = null
+    return try {
+        checkPassword(context, uri, password) { document ->
+            val pages = document.numberOfPages
+            if (pages == 0) return@checkPassword null
+            val file = saveDecryptedCopy(document, context.cacheDir).also { copy = it }
+            DecryptedCopy(Uri.fromFile(file), pages)
+        }.also { if (it !is PasswordCheck.Opened) copy?.delete() }
     } catch (e: CancellationException) {
+        // Cancelled while decrypting, checkPassword drops the copy it made, so no caller could delete it.
+        copy?.delete()
         throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "Cannot decrypt $uri", e)
-        null
     }
 }

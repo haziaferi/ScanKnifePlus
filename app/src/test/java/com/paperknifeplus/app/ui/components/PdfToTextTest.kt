@@ -10,7 +10,6 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -41,14 +40,25 @@ class PdfToTextTest {
 
     @Test
     fun `a one-page PDF gives its text under a page header`() {
-        val text = extractPdfText(withText("Hello text layer").inputStream(), null)
+        val text = PDDocument.load(withText("Hello text layer")).use(::extractPdfText)
         assertTrue(text, text.startsWith("--- PAGE 1 ---\n"))
         assertTrue(text, text.contains("Hello text layer"))
     }
 
     @Test
-    fun `bytes that are not a PDF throw`() {
-        assertThrows(IOException::class.java) { extractPdfText(TestPdfs.garbage.inputStream(), null) }
+    fun `a protected file gives its text through the opener with its password`() = runBlocking {
+        val bytes = TestPdfs.protectedCopy(withText("Locked text layer"))
+        val locked = TestPdfs.write(context.cacheDir, bytes, "locked-text.pdf")
+        val expected = PDDocument.load(bytes, TestPdfs.USER_PASSWORD).use(::extractPdfText)
+        assertTrue(expected, expected.contains("Locked text layer"))
+        assertEquals(expected, processText(context, locked, TestPdfs.USER_PASSWORD).getOrThrow().first)
+        assertTrue(processText(context, locked, null).isFailure)
+    }
+
+    @Test
+    fun `running out of memory while opening the file is a failure result, not a crash`() = runBlocking {
+        val huge = TestPdfs.OutOfMemorySource(context, withText("Too much"), "huge-text.pdf").apply { runOutOfMemory() }
+        assertTrue(processText(context, huge.uri, null).exceptionOrNull() is OutOfMemoryError)
     }
 
     @Test

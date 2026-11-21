@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -19,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.IOException
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.CancellationException
@@ -45,14 +45,14 @@ fun ExtractImagesView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var extractedCount by remember { mutableIntStateOf(0) }
     var resultSummary by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
@@ -60,8 +60,7 @@ fun ExtractImagesView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -74,7 +73,6 @@ fun ExtractImagesView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -91,17 +89,10 @@ fun ExtractImagesView(
         if (uri == null || source == null) return@rememberLauncherForActivityResult
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                val counts = context.contentResolver.requireOutputStream(uri).use { output ->
-                    ZipOutputStream(output).use { zip ->
-                        context.contentResolver.requireInputStream(source).use { input ->
-                            PDDocument.load(input, unlockPassword).use { document ->
-                                writeImages(document, zip) { extractedCount = it }
-                            }
-                        }
-                    }
-                }
+                val counts = extractImagesZip(context, source, password, uri) { extractedCount = it }
                 counts.emptyReason(resources)?.let { throw IOException(it) }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
@@ -116,7 +107,8 @@ fun ExtractImagesView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("ExtractImagesView", "Extraction failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -139,7 +131,7 @@ fun ExtractImagesView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -206,32 +198,46 @@ fun ExtractImagesView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                val count = getPageCount(context, source, pass)
-                                if (count > 0) {
+                            check.start {
+                                val counted = checkPageCount(context, source, pass)
+                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { count ->
                                     unlockPassword = pass
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }
     }
 }
+
+/**
+ * Writes the images of [source] (opened with [password] through temp files, [withPdf]) into a ZIP at [output] with [writeImages], which
+ * reports the running count to [onWritten]; returns what it wrote. Blocking; throws on failure.
+ */
+internal fun extractImagesZip(context: Context, source: Uri, password: String, output: Uri, onWritten: (Int) -> Unit = {}): ExtractCounts =
+    withPdf(context, source, password) { document ->
+        context.contentResolver.requireOutputStream(output).use { stream ->
+            ZipOutputStream(stream).use { zip -> writeImages(document, zip, onWritten = onWritten) }
+        }
+    }

@@ -82,7 +82,7 @@ fun WatermarkView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -134,8 +134,7 @@ fun WatermarkView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -148,7 +147,6 @@ fun WatermarkView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -192,7 +190,8 @@ fun WatermarkView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("WatermarkView", "Watermarking failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -276,7 +275,7 @@ fun WatermarkView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.watermark_reading_document))
             } else {
                 when (currentState) {
@@ -348,30 +347,33 @@ fun WatermarkView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                val boxes = readPageBoxes(context, source, pass)
-                                if (boxes.isNotEmpty()) {
+                            check.start {
+                                val read = checkPageBoxes(context, source, pass)
+                                read.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { boxes ->
                                     unlockPassword = pass
                                     pageBoxes = boxes
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

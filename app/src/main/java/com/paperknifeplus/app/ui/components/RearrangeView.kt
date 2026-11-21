@@ -46,11 +46,12 @@ fun RearrangeView(
     var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
+    // The source's open password, empty when it opens without one; the saved copy keeps it.
     var unlockPassword by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -65,31 +66,50 @@ fun RearrangeView(
     }
     DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
         sourceUri = uri
-        unlockPassword = password.orEmpty()
+        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            val access = inspectPdf(context, uri)
-            when {
-                access == PdfAccess.Unreadable -> {
+        check.start {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
-                else -> {
-                    pageOrder = (0 until getPageCount(context, uri, password)).toList()
+                // A password the reader handed over is checked as one typed in the prompt: a wrong one opens the prompt with its error.
+                PdfAccess.Encrypted -> if (password == null) {
+                    fileToUnlock = fileName
+                } else {
+                    checkPageCount(context, uri, password).resolve(
+                        context,
+                        onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+                        onUnreadable = { closePrompt() }
+                    ) { count ->
+                        unlockPassword = password
+                        pageOrder = (0 until count).toList()
+                        currentState = ToolState.CONFIGURING
+                    }
+                }
+                // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
+                PdfAccess.Open -> {
+                    pageOrder = (0 until getPageCount(context, uri, null)).toList()
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -123,7 +143,8 @@ fun RearrangeView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("RearrangeView", "Rearranging failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
@@ -140,7 +161,7 @@ fun RearrangeView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.rearrange_preparing_rearrange_grid))
             } else {
                 when (currentState) {
@@ -165,7 +186,8 @@ fun RearrangeView(
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
@@ -256,7 +278,7 @@ fun RearrangeView(
                         SuccessView(
                             message = stringResource(R.string.rearrange_rearrange_complete),
                             subMessage = stringResource(R.string.rearrange_page_order_updated_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -264,7 +286,8 @@ fun RearrangeView(
                                 selectedPageIndex = null
                                 currentState = ToolState.SELECTING
                             },
-                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) } }
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) } },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }
@@ -312,32 +335,27 @@ fun RearrangeView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                if (copy != null) {
-                                    val count = getPageCount(context, copy, null)
-                                    decryptedUri = copy
+                                val decrypted = decryptToCache(context, source, pass)
+                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
+                                    decryptedUri = copy.uri
                                     unlockPassword = pass
-                                    selectedUri = copy
-                                    pageOrder = (0 until count).toList()
+                                    selectedUri = copy.uri
+                                    pageOrder = (0 until copy.pageCount).toList()
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

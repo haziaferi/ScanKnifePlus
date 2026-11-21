@@ -1,19 +1,26 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
@@ -101,6 +108,32 @@ class ReviewScreenTest {
         rule.onNodeWithText("1").performClick()
         rule.onNodeWithContentDescription("Add page").performClick()
         assertEquals(listOf("move -1", "select p1", "add"), calls)
+    }
+
+    @Test
+    fun `a long scan composes only the thumbnails in view, and the strip scrolls to the rest`() {
+        show(ReviewUi(CaptureMode.MULTI, pages(40), selectedId = "p1"))
+        rule.onNodeWithContentDescription("Page 2").assertIsDisplayed()
+        rule.onAllNodesWithContentDescription("Page 40").assertCountEquals(0)
+        rule.onNodeWithContentDescription("Add page").assertDoesNotExist()
+
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(40)
+        rule.onNodeWithContentDescription("Add page").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Page 40").assertIsDisplayed()
+        rule.onAllNodesWithContentDescription("Page 2").assertCountEquals(0)
+        rule.onNodeWithText("40").performClick()
+        assertEquals(listOf("select p40"), calls)
+    }
+
+    @Test
+    fun `moving a page before the first in view leaves the strip where it was, the moved page in view`() {
+        var ui by mutableStateOf(ReviewUi(CaptureMode.MULTI, pages(40), selectedId = "p2"))
+        rule.setContent { PaperKnifePlusTheme(themeMode = ThemeMode.LIGHT) { ReviewScreen(ui, actions) } }
+        rule.onNodeWithText("2").assertIsSelected()
+
+        ui = ui.copy(pages = ui.pages.toMutableList().apply { add(0, removeAt(1)) })
+        rule.onNodeWithText("1").assertIsSelected().assertIsDisplayed()
+        rule.onNodeWithText("2").assertIsDisplayed()
     }
 
     @Test

@@ -341,7 +341,7 @@ class RemoveLinksTest {
     fun `the counts before saving are what saving removes for every choice, and the file is left as it was`() {
         val bytes = fixture()
         val input = TestPdfs.write(context.cacheDir, bytes, "links-count.pdf")
-        val found = runBlocking { findLinks(context, input, null) }
+        val found = runBlocking { (findLinks(context, input, null) as PasswordCheck.Opened).value }
         assertTrue(File(input.path!!).readBytes().contentEquals(bytes))
         assertEquals(FoundLinks(inside = listOf(0, 1, 0), leaving = listOf(1, 0, 2), automatic = AUTOMATIC), found)
 
@@ -361,7 +361,7 @@ class RemoveLinksTest {
             output.delete()
             assertEquals("$options saved", expected, runBlocking { removeLinksPdf(context, input, Uri.fromFile(output), null, options) })
             // The saved file holds what was found less what was removed, and nothing that runs on its own.
-            val left = runBlocking { findLinks(context, Uri.fromFile(output), null) }
+            val left = runBlocking { (findLinks(context, Uri.fromFile(output), null) as PasswordCheck.Opened).value }
             assertEquals("$options left", LinkRemoval(found.removal(LinkOptions()).links - expected.links, 0), left.removal(LinkOptions()))
         }
     }

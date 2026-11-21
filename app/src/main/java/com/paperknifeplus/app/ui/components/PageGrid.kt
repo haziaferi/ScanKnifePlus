@@ -39,7 +39,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onVisibilityChanged
 import androidx.compose.ui.res.pluralStringResource
@@ -76,9 +75,9 @@ private val MINIATURE_SIDE = 64.dp
  * The shared page grid (U1): [pageCount] miniatures, five per row, rows wrapping, nothing scrolling sideways. A file of more than
  * [GRID_ALL_UP_TO] pages shows two rows and "Show all N pages", which opens the rest in place.
  *
- * Each tile is the [miniature] of its page (0-based index) with its number under it, the accent ring and a check when [isSelected], and the
- * [badge] in the other corner when there is one. A tap does what the screen needs ([onTap], read out as [tapLabel]); touch and hold, or the
- * TalkBack action "Read page N", opens the readable page card ([onRead]).
+ * Each tile is the [miniature] of its page (0-based index) with its number under it, and the accent ring and a check when [isSelected]. A
+ * tap does what the screen needs ([onTap], read out as [tapLabel]); touch and hold, or the TalkBack action "Read page N", opens the readable
+ * page card ([onRead]).
  */
 @Composable
 fun PageGrid(
@@ -88,7 +87,6 @@ fun PageGrid(
     onTap: (Int) -> Unit,
     onRead: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    badge: ((Int) -> String?)? = null,
     miniature: @Composable (Int) -> Unit
 ) {
     var expanded by rememberSaveable(pageCount) { mutableStateOf(false) }
@@ -105,7 +103,6 @@ fun PageGrid(
                                 index = index,
                                 selected = isSelected(index),
                                 tapLabel = tapLabel(index),
-                                badge = badge?.invoke(index),
                                 onTap = { onTap(index) },
                                 onRead = { onRead(index) },
                                 modifier = Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(row, 1, column, 1) }
@@ -128,14 +125,13 @@ fun PageGrid(
     }
 }
 
-/** One tile of [PageGrid]: the miniature with its ring, check and badge, its number under it, and its tap and touch and hold. */
+/** One tile of [PageGrid]: the miniature with its ring and check, its number under it, and its tap and touch and hold. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PageTile(
     index: Int,
     selected: Boolean,
     tapLabel: String,
-    badge: String?,
     onTap: () -> Unit,
     onRead: () -> Unit,
     modifier: Modifier,
@@ -176,13 +172,12 @@ private fun PageTile(
         ) {
             miniature()
             if (selected) {
-                TileDot(colors.primary, Modifier.align(Alignment.TopEnd).offset(9.dp, (-9).dp)) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).offset(9.dp, (-9).dp).defaultMinSize(22.dp, 22.dp).background(colors.primary, CircleShape)
+                        .padding(horizontal = 5.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(14.dp))
-                }
-            }
-            if (badge != null) {
-                TileDot(colors.inverseSurface, Modifier.align(Alignment.TopStart).offset((-9).dp, (-9).dp)) {
-                    Text(badge, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 16.sp, color = colors.inverseOnSurface)
                 }
             }
         }
@@ -194,15 +189,6 @@ private fun PageTile(
             color = colors.onBackground
         )
     }
-}
-
-/** A round mark on a miniature's corner: the selection check or a count badge. */
-@Composable
-private fun TileDot(color: Color, modifier: Modifier, content: @Composable () -> Unit) {
-    Box(
-        modifier.defaultMinSize(22.dp, 22.dp).background(color, CircleShape).padding(horizontal = 5.dp),
-        contentAlignment = Alignment.Center
-    ) { content() }
 }
 
 /**

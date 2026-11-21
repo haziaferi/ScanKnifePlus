@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -112,5 +113,30 @@ class SplitViewTest {
         waitForPages("0 / 1 page selected")
         rule.waitUntil(10_000) { thumbnailCached(plain, null) }
         assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `a wrong password handed over by the reader opens the prompt with its error`() {
+        startSplit(TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-wrong-split.pdf"), "wrong")
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Incorrect password, try again.").assertExists()
+    }
+
+    @Test
+    fun `a damaged protected file handed over with its password says it can't be read and goes back to choosing a file`() {
+        startSplit(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "handed-damaged-split.pdf"), TestPdfs.USER_PASSWORD)
+        rule.waitUntil(10_000) { ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a password handed over for a file that opens without one is dropped, so its pages count and render without it`() {
+        // An owner password only: the handed one is neither, so opening with it would fail.
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 2), "handed-owner-only-split.pdf")
+        startSplit(uri, "not-needed")
+        waitForPages("0 / 2 pages selected")
+        rule.waitUntil(10_000) { thumbnailCached(uri, null) }
+        assertFalse(thumbnailCached(uri, "not-needed"))
     }
 }
