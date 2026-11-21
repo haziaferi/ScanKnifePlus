@@ -158,7 +158,7 @@ fun RotateView(
                                 password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                onChange = { dropDecryptedCopy(); selectedUri = null; pageRotations = emptyMap(); currentState = ToolState.SELECTING },
                                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
                                 // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
                                 keepsPassword = unlockPassword.isNotEmpty()
@@ -271,6 +271,7 @@ fun RotateView(
                                     unlockPassword = pass
                                     selectedUri = copy.uri
                                     pageCount = copy.pageCount
+                                    pageRotations = (0 until copy.pageCount).associateWith { 0 }
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 }
