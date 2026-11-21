@@ -86,12 +86,25 @@ sealed interface PasswordCheck<out T> {
 suspend fun <T : Any> checkPassword(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): PasswordCheck<T> =
     tellApart(uri) { withPdf(context, uri, password, read) }
 
-/**
- * The page count of [uri] opened with [password], told apart as [checkPassword] does; a file without pages is unreadable. It is read
- * through the page renderers' document pool, so the thumbnails and page grid that follow reuse the document this check parsed.
- */
+/** The page count of [uri] opened with [password], told apart as [checkPassword] does; a file without pages is unreadable ([checkPooled]). */
 suspend fun checkPageCount(context: Context, uri: Uri, password: String): PasswordCheck<Int> =
-    tellApart(uri) { PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages }.takeIf { it > 0 } }
+    checkPooled(context, uri, password) { document -> document.numberOfPages.takeIf { it > 0 } }
+
+/**
+ * [read] on [uri] opened with [password] through the page renderers' document pool, told apart as [checkPassword] does. The thumbnails
+ * and page grid that follow a check that opened the file reuse the document it parsed. A check that is stopped, or that finds the file
+ * unreadable, takes the document out of the pool and closes it, which would otherwise keep it and its temp file until it is evicted.
+ */
+private suspend fun <T : Any> checkPooled(context: Context, uri: Uri, password: String, read: (PDDocument) -> T?): PasswordCheck<T> {
+    val checked = try {
+        tellApart(uri) { PdDocumentPool.withDocument(context, uri, password) { read(it) } }
+    } catch (e: CancellationException) {
+        PdDocumentPool.evict(uri, password)
+        throw e
+    }
+    if (checked !is PasswordCheck.Opened) PdDocumentPool.evict(uri, password)
+    return checked
+}
 
 /** What [read] found on [uri], told apart as [checkPassword] says. */
 private suspend fun <T : Any> tellApart(uri: Uri, read: suspend () -> T?): PasswordCheck<T> = withContext(Dispatchers.IO) {

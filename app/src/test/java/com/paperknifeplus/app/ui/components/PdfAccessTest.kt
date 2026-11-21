@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -15,6 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import java.io.File
 import java.io.FilterInputStream
 import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class PdfAccessTest {
@@ -80,6 +84,38 @@ class PdfAccessTest {
         assertEquals(PasswordCheck.Unreadable, checkPageCount(context, damaged, TestPdfs.USER_PASSWORD))
         assertEquals(PasswordCheck.Unreadable, checkPageCount(context, withoutPages, TestPdfs.USER_PASSWORD))
         assertEquals(PasswordCheck.Unreadable, checkPageCount(context, huge, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `only a page count check that opens the file keeps its document in the pool`() = runBlocking {
+        // A pooled document gives the page count again without opening the file.
+        val opened = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 2), "counted-opened.pdf")
+        assertEquals(PasswordCheck.Opened(2), checkPageCount(context, opened.uri, TestPdfs.USER_PASSWORD))
+        assertEquals(2, getPageCount(context, opened.uri, TestPdfs.USER_PASSWORD))
+        assertEquals(1, opened.opens)
+
+        val damaged = TestPdfs.CountedSource(context, TestPdfs.damagedProtected(), "counted-damaged.pdf")
+        val empty = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 0), "counted-empty.pdf")
+        for (source in listOf(damaged, empty)) {
+            assertEquals(PasswordCheck.Unreadable, checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
+            getPageCount(context, source.uri, TestPdfs.USER_PASSWORD)
+            assertEquals(source.uri.toString(), 2, source.opens)
+        }
+    }
+
+    @Test
+    fun `a stopped page count check leaves nothing in the pool`() = runBlocking {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-stopped-check.pdf")
+        source.hold()
+        val check = launch(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
+        assertTrue(source.reached.await(10, TimeUnit.SECONDS))
+        check.cancel()
+        // The parse goes on to the end, then the check finds itself stopped.
+        source.release()
+        withTimeout(10_000) { check.join() }
+
+        assertEquals(2, getPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
+        assertEquals("read again, not from the pool", 2, source.opens)
     }
 
     @Test

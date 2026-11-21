@@ -421,8 +421,9 @@ object TestPdfs {
 
     /**
      * [bytes] at a content [uri], each open a fresh stream. After [hold], the next stream opened stops at its first read until [release]:
-     * [reached] counts down when that read starts, [closed] when its reader closes it, so a test can act while a tool's check is running.
-     * Each test names its own [uri]: the app-wide document pool outlives a test, and would hand a later test a file with the same name.
+     * [reached] counts down when that read starts, [closed] when its reader closes it, so a test can act while a tool's check is running;
+     * [opens] counts every stream opened. Each test names its own [uri]: the app-wide document pool outlives a test, and would hand a later
+     * test a file with the same name.
      */
     class HeldSource(context: Context, private val bytes: ByteArray, name: String) {
         val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.held/$name")
@@ -430,9 +431,12 @@ object TestPdfs {
         val closed = CountDownLatch(1)
         private val gate = CountDownLatch(1)
         @Volatile private var holding = false
+        private val count = AtomicInteger()
+        val opens: Int get() = count.get()
 
         init {
             Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+                count.incrementAndGet()
                 if (holding) {
                     holding = false
                     Held(bytes.inputStream())

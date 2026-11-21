@@ -235,6 +235,16 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
         }
     }
 
+    /** Takes [key]'s document out of the pool, if there; it is closed now, or once its last holder is done. */
+    fun evict(key: K) {
+        val idle = synchronized(lock) {
+            val entry = entries.remove(key) ?: return
+            entry.evicted = true
+            entry.document.takeIf { entry.refCount == 0 }
+        }
+        idle?.let(::closeQuietly)
+    }
+
     internal fun size(): Int = synchronized(lock) { entries.size }
 
     private suspend fun acquire(key: K, load: () -> D): Entry<D> {
@@ -318,6 +328,9 @@ object PdDocumentPool {
         withContext(Dispatchers.IO) {
             pool.withDocument(Key(uri, password), { load(context, uri, password) }, block)
         }
+
+    /** Closes the document for [uri] and [password] if it is pooled, once no page is being drawn from it. */
+    fun evict(uri: Uri, password: String?) = pool.evict(Key(uri, password))
 
     private fun load(context: Context, uri: Uri, password: String?): PDDocument =
         context.contentResolver.requireInputStream(uri).use { stream ->
