@@ -158,7 +158,9 @@ fun RotateView(
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -230,7 +232,7 @@ fun RotateView(
                         SuccessView(
                             message = stringResource(R.string.rotate_rotate_complete),
                             subMessage = stringResource(R.string.rotate_orientation_updated_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -240,7 +242,8 @@ fun RotateView(
                                 pageRotations = emptyMap()
                                 currentState = ToolState.SELECTING
                             },
-                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }

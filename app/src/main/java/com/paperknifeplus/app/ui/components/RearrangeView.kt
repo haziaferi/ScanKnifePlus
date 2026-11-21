@@ -47,6 +47,8 @@ fun RearrangeView(
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var unlockPassword by remember { mutableStateOf("") }
+    // Whether the source needs an open password, which the saved copy keeps; a handed-over one the file does not need is not kept.
+    var needsPassword by remember { mutableStateOf(false) }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
@@ -76,6 +78,7 @@ fun RearrangeView(
         unlockError = false
         check.start {
             val access = inspectPdf(context, uri)
+            needsPassword = access == PdfAccess.Encrypted
             when {
                 access == PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -163,7 +166,8 @@ fun RearrangeView(
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                keepsPassword = needsPassword
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
@@ -254,7 +258,7 @@ fun RearrangeView(
                         SuccessView(
                             message = stringResource(R.string.rearrange_rearrange_complete),
                             subMessage = stringResource(R.string.rearrange_page_order_updated_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.takeIf { needsPassword }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -262,7 +266,8 @@ fun RearrangeView(
                                 selectedPageIndex = null
                                 currentState = ToolState.SELECTING
                             },
-                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) } }
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageOrder.size) } },
+                            keepsPassword = needsPassword
                         )
                     }
                 }

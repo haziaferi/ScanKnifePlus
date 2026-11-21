@@ -182,7 +182,9 @@ fun DeleteView(
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -293,7 +295,7 @@ fun DeleteView(
                         SuccessView(
                             message = stringResource(R.string.delete_delete_complete),
                             subMessage = stringResource(R.string.delete_selected_pages_were_removed),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -310,6 +312,7 @@ fun DeleteView(
                                     }
                                 }
                             },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }
