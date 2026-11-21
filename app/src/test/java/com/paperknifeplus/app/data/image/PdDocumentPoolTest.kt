@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -159,5 +160,62 @@ class PdDocumentPoolTest {
         // Neither holds "b" any more, so evicting it closes it.
         pool.withDocument("c", { FakeDoc("c") }) {}
         assertEquals(listOf("b"), closed.map { it.key })
+    }
+
+    @Test
+    fun `a caller stopped while it waits for a load lets the load finish, and holds nothing`() = runBlocking {
+        val pool = pool(1)
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val first = async(Dispatchers.IO) {
+            pool.withDocument("a", {
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("a")
+            }) { it }
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        val waiter = launch(start = CoroutineStart.UNDISPATCHED) { pool.withDocument("a", { error("loaded twice") }) {} }
+        waiter.cancel()
+        finish.countDown()
+
+        val loaded = withTimeout(10_000) { first.await() }
+        assertTrue(waiter.isCancelled)
+        assertSame(loaded, pool.withDocument("a", { error("loaded again") }) { it })
+        // Nobody holds "a" any more, so evicting it closes it.
+        pool.withDocument("b", { FakeDoc("b") }) {}
+        assertEquals(listOf("a"), closed.map { it.key })
+    }
+
+    @Test
+    fun `a caller whose key is evicted before its turn loads it again`() = runBlocking {
+        val pool = pool(1)
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val published = CountDownLatch(1)
+        val first = async(Dispatchers.IO) {
+            pool.withDocument("a", {
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("a")
+            }) {
+                published.countDown()
+                it
+            }
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        val loads = AtomicInteger()
+        // The waiter's turn comes when this thread next suspends; until then nothing here does.
+        val waiter = async(start = CoroutineStart.UNDISPATCHED) { pool.withDocument("a", { loads.incrementAndGet(); FakeDoc("a") }) { it } }
+        finish.countDown()
+        assertTrue(published.await(5, TimeUnit.SECONDS))
+        pool.withDocument("b", { FakeDoc("b") }) {} // Evicts the published "a".
+
+        val again = withTimeout(10_000) { waiter.await() }
+        val loaded = first.await()
+        assertEquals(1, loads.get())
+        assertFalse(again === loaded)
+        assertEquals(1, loaded.closes.get())
+        assertEquals(0, again.closes.get())
     }
 }
