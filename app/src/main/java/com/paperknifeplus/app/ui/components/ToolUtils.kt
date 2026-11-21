@@ -216,7 +216,7 @@ suspend fun performGrayscaleRewrite(context: Context, inputUri: Uri, outputUri: 
         withPdf(context, inputUri, null) { document ->
             val encrypted = document.isEncrypted
             if (encrypted) document.isAllSecurityToBeRemoved = true
-            // A file with only an owner password is still encrypted, so its fallback pages are drawn from a copy decrypted with no password.
+            // A file with only an owner password is still encrypted; its fallback pages are drawn from a copy decrypted with no password.
             NativePageRasterizer(context, inputUri, if (encrypted) "" else null).use { rasterizer ->
                 val fallbacks = GrayscaleConverter(document, rasterizer).convert(onProgress)
                 saveAndFlush(context, document, outputUri)
