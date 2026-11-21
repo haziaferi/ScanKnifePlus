@@ -11,9 +11,11 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
@@ -119,6 +121,28 @@ class SplitViewTest {
         extractAll(1)
         rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
         PDDocument.load(output).use { assertEquals(1, it.numberOfPages) }
+    }
+
+    @Test
+    fun `a file unlocked at the prompt after Change starts with no page selected`() {
+        val first = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "split-selected-first.pdf")
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "split-then-locked.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(locked, Uri.fromFile(output))) {
+                SplitView(initialUri = first, onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        waitForPages("0 / 3 pages selected")
+        rule.onNodeWithText("Select all").performClick()
+        waitForPages("3 / 3 pages selected")
+
+        rule.onNodeWithText("Change").performClick()
+        rule.onNodeWithText("Choose PDF").performClick()
+        waitForPages("Password required")
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        // Not the first file's 3 pages out of this one's 2.
+        waitForPages("0 / 2 pages selected")
     }
 
     @Test
