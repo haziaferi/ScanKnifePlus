@@ -36,7 +36,6 @@ fun UnlockView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var password by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
@@ -88,7 +87,8 @@ fun UnlockView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                rewritePdf(context, source, password, uri) {}
+                // The decrypted copy, which opens without a password.
+                rewritePdf(context, source, "", uri) {}
                 val timeStr = formatElapsed(startTime)
                 val name = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -172,7 +172,6 @@ fun UnlockView(
                             onProcessMore = {
                                 dropDecryptedCopy()
                                 selectedUri = null
-                                password = ""
                                 currentState = ToolState.SELECTING
                             },
                             onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
@@ -196,11 +195,10 @@ fun UnlockView(
                         val source = selectedUri
                         if (source != null) {
                             check.start {
-                                // Decrypted once to a cache copy, so the cover preview can use the fast native renderer.
+                                // Decrypted once to a cache copy, which the cover preview and the save read.
                                 val decrypted = decryptToCache(context, source, pass)
                                 decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
                                     decryptedUri = copy.uri
-                                    password = pass
                                     selectedUri = copy.uri
                                     pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
