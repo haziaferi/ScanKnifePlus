@@ -40,11 +40,11 @@ fun RepairView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
@@ -52,8 +52,7 @@ fun RepairView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -66,7 +65,6 @@ fun RepairView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -116,7 +114,7 @@ fun RepairView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.repair_analyzing_structure))
             } else {
                 when (currentState) {
@@ -181,12 +179,11 @@ fun RepairView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 val count = getPageCount(context, source, pass)
                                 if (count > 0) {
                                     unlockPassword = pass
@@ -196,13 +193,12 @@ fun RepairView(
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

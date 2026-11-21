@@ -93,7 +93,7 @@ fun SignView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageBoxes by remember { mutableStateOf<List<PageBox>>(emptyList()) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -155,8 +155,7 @@ fun SignView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
@@ -170,7 +169,6 @@ fun SignView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -305,7 +303,7 @@ fun SignView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -379,12 +377,11 @@ fun SignView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 val boxes = readPageBoxes(context, source, pass)
                                 if (boxes.isNotEmpty()) {
                                     unlockPassword = pass
@@ -394,13 +391,12 @@ fun SignView(
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

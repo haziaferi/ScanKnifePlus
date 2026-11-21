@@ -96,7 +96,7 @@ internal fun SearchableView(
     var pageCount by remember { mutableIntStateOf(0) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
 
     var language by remember { mutableStateOf(defaultOcrLanguage(locale)) }
     var reading by remember { mutableStateOf(OcrReading.AUTOMATIC) }
@@ -109,7 +109,7 @@ internal fun SearchableView(
     var outputName by remember { mutableStateOf("") }
     var result by remember { mutableStateOf<SearchableResult?>(null) }
     var job by remember { mutableStateOf<Job?>(null) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     // Reading finishes the page it is on and waits while the app is in the background (decision of 2026-10-20, item 6).
     val running = remember { MutableStateFlow(true) }
@@ -133,8 +133,7 @@ internal fun SearchableView(
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -146,7 +145,6 @@ internal fun SearchableView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -226,7 +224,7 @@ internal fun SearchableView(
         topBar = {
             val title = stringResource(R.string.tool_searchable)
             val subtitle = stringResource(R.string.scan_ocr_searchable_hint)
-            if (currentState == ToolState.SELECTING && !isFileLoading) {
+            if (currentState == ToolState.SELECTING && !check.running) {
                 // The empty screen's own button picks a PDF; photos come from this one.
                 ToolTopBar(
                     title = title,
@@ -242,7 +240,7 @@ internal fun SearchableView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -337,12 +335,11 @@ internal fun SearchableView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 val count = getPageCount(context, source, pass)
                                 if (count > 0) {
                                     unlockPassword = pass
@@ -352,13 +349,12 @@ internal fun SearchableView(
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

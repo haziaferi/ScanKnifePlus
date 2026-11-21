@@ -48,11 +48,11 @@ fun ProtectView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
@@ -60,8 +60,7 @@ fun ProtectView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -74,7 +73,6 @@ fun ProtectView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -120,7 +118,7 @@ fun ProtectView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -211,6 +209,7 @@ fun ProtectView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = {
+                        check.stop()
                         fileToUnlock = null
                         unlockError = false
                         selectedUri = null
@@ -219,8 +218,7 @@ fun ProtectView(
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 val count = getPageCount(context, source, pass)
                                 if (count > 0) {
                                     unlockPassword = pass
@@ -230,13 +228,12 @@ fun ProtectView(
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

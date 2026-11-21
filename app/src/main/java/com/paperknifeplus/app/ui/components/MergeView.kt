@@ -80,7 +80,7 @@ fun MergeView(
     var nextFileId by remember { mutableLongStateOf(0L) }
     var processingTime by remember { mutableStateOf("") }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var mergedUri by remember { mutableStateOf<Uri?>(null) }
     var mergedName by remember { mutableStateOf("") }
 
@@ -100,8 +100,7 @@ fun MergeView(
 
     fun handleUris(uris: List<Uri>, password: String? = null) {
         if (uris.isNotEmpty()) {
-            isFileLoading = true
-            scope.launch {
+            check.start {
                 var unreadable = 0
                 val newFiles = uris.mapNotNull { uri ->
                     val details = getUriDetails(context, uri)
@@ -112,14 +111,13 @@ fun MergeView(
                         }
                         PdfAccess.Encrypted -> {
                             // A password handed over by the preview unlocks the file right away, as the unlock prompt would.
-                            val copy = password?.let { decryptToCache(context, uri, it) }
+                            val copy = password?.let { decryptAndCount(context, uri, it) }
                             if (copy == null) {
                                 MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
                             } else {
-                                val count = getPageCount(context, copy, null)
                                 MergeFile(
                                     nextFileId++, uri, details.name, details.size,
-                                    isLocked = true, password = password, isUnlocked = true, decryptedUri = copy, pageCount = count
+                                    isLocked = true, password = password, isUnlocked = true, decryptedUri = copy.uri, pageCount = copy.pageCount
                                 )
                             }
                         }
@@ -131,7 +129,6 @@ fun MergeView(
                     selectedFiles = selectedFiles + newFiles
                     currentState = ToolState.CONFIGURING
                 }
-                isFileLoading = false
             }
         }
     }
@@ -190,7 +187,7 @@ fun MergeView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.merge_reading_files))
             } else {
                 when (currentState) {
@@ -297,25 +294,28 @@ fun MergeView(
                 val currentFileToUnlock = fileToUnlock!!
                 LockedFilePrompt(
                     fileName = currentFileToUnlock.name,
-                    onDismiss = { fileToUnlock = null; unlockError = false },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false },
                     onUnlocked = { password ->
-                        isFileLoading = true
-                        scope.launch {
-                            val decryptedUri = decryptToCache(context, currentFileToUnlock.uri, password)
-                            if (decryptedUri != null) {
-                                val count = getPageCount(context, decryptedUri, null)
-                                updateFiles(selectedFiles.map { if (it.uri == currentFileToUnlock.uri) it.copy(isUnlocked = true, password = password, decryptedUri = decryptedUri, pageCount = count) else it })
+                        check.start {
+                            val copy = decryptAndCount(context, currentFileToUnlock.uri, password)
+                            if (copy != null) {
+                                updateFiles(selectedFiles.map {
+                                    if (it.uri == currentFileToUnlock.uri) {
+                                        it.copy(isUnlocked = true, password = password, decryptedUri = copy.uri, pageCount = copy.pageCount)
+                                    } else {
+                                        it
+                                    }
+                                })
                                 fileToUnlock = null
                                 unlockError = false
                             } else {
                                 unlockError = true
                             }
-                            isFileLoading = false
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

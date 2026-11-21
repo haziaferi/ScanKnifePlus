@@ -1,5 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
+import android.os.SystemClock
+import android.view.MotionEvent
 import androidx.activity.ComponentDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -7,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -77,17 +80,35 @@ class LockedFilePromptTest {
         rule.waitForIdle()
     }
 
+    /** A tap at the window's top-left corner, outside the prompt's card, as the system hands it to the dialog. */
+    private fun tapOutside() {
+        rule.waitForIdle()
+        rule.runOnUiThread {
+            val dialog = ShadowDialog.getLatestDialog()
+            val time = SystemClock.uptimeMillis()
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                MotionEvent.obtain(time, time, action, 1f, 1f, 0).also { dialog.onTouchEvent(it) }.recycle()
+            }
+        }
+        rule.waitForIdle()
+    }
+
     @Test
-    fun `Back closes the prompt, but not while the password is being checked`() {
+    fun `while the password is checked, Cancel and Back still close the prompt, and a tap outside does not`() {
         var dismissed = 0
         var loading by mutableStateOf(true)
         rule.setContent { LockedFilePrompt(fileName = "a.pdf", onDismiss = { dismissed++ }, onUnlocked = {}, isLoading = loading) }
 
-        pressBack()
-        assertEquals(0, dismissed)
-
-        loading = false
-        pressBack()
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
         assertEquals(1, dismissed)
+        pressBack()
+        assertEquals(2, dismissed)
+        tapOutside()
+        assertEquals(2, dismissed)
+
+        // Not checking, a tap outside closes it too.
+        loading = false
+        tapOutside()
+        assertEquals(3, dismissed)
     }
 }

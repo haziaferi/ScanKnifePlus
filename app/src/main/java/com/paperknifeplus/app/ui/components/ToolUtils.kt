@@ -524,18 +524,44 @@ internal fun decryptedCopy(context: Context, uri: Uri, password: String): File =
 /**
  * Writes an unencrypted copy of [uri], opened with [password], to the cache folder ([decryptedCopy]) and returns its file:// URI, or null if
  * it cannot, also for lack of memory. The native renderer cannot open protected files, so tools decrypt once and work on the copy; delete it
- * with [deleteDecryptedCopy].
+ * with [deleteDecryptedCopy]. Cancelled, it leaves no copy behind.
  */
-suspend fun decryptToCache(context: Context, uri: Uri, password: String): Uri? = withContext(Dispatchers.IO) {
-    try {
-        Uri.fromFile(decryptedCopy(context, uri, password))
+suspend fun decryptToCache(context: Context, uri: Uri, password: String): Uri? {
+    var copy: File? = null
+    return try {
+        withContext(Dispatchers.IO) {
+            try {
+                Uri.fromFile(decryptedCopy(context, uri, password).also { copy = it })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Cannot decrypt $uri", e)
+                null
+            } catch (e: OutOfMemoryError) {
+                Log.w(TAG, "Out of memory decrypting $uri", e)
+                null
+            }
+        }
     } catch (e: CancellationException) {
+        // Cancelled while decrypting, withContext drops the copy it made, so no caller could delete it.
+        copy?.delete()
         throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "Cannot decrypt $uri", e)
-        null
-    } catch (e: OutOfMemoryError) {
-        Log.w(TAG, "Out of memory decrypting $uri", e)
-        null
+    }
+}
+
+/** A decrypted cache copy ([decryptToCache]) and its page count. */
+class DecryptedCopy(val uri: Uri, val pageCount: Int)
+
+/**
+ * [decryptToCache], then the page count of the copy; null when [password] does not open [uri]. Cancelled while counting, it deletes the
+ * copy, so a stopped check ([FileCheck]) leaves none behind.
+ */
+suspend fun decryptAndCount(context: Context, uri: Uri, password: String): DecryptedCopy? {
+    val copy = decryptToCache(context, uri, password) ?: return null
+    return try {
+        DecryptedCopy(copy, getPageCount(context, copy, null))
+    } catch (e: CancellationException) {
+        deleteDecryptedCopy(context, copy)
+        throw e
     }
 }

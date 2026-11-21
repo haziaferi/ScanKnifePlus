@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
@@ -47,6 +48,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -200,6 +202,33 @@ class LinksViewTest {
         showUri(counting(TestPdfs.linksAndScript(), failure = OutOfMemoryError("test")))
         rule.waitUntil(60_000) { ShadowToast.getTextOfLatestToast() == UNREADABLE }
         rule.onNodeWithText("Choose PDF").assertExists()
+    }
+
+    /** The files directly in the cache folder: PDFBox's temp files and decrypted copies would show here. */
+    private fun cacheFiles() = context.cacheDir.listFiles().orEmpty().filter { it.isFile }.map { it.name }.toSet()
+
+    @Test
+    fun `Cancel during the password check resets the tool, and the check leaves no late result and no temp file`() {
+        val source = TestPdfs.HeldSource(context, TestPdfs.linksAndScript(TestPdfs.USER_PASSWORD))
+        showUri(source.uri)
+        waitFor("Password required")
+        val before = cacheFiles()
+        source.hold()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { source.reached.count == 0L }
+
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        source.release()
+        assertTrue(source.closed.await(30, TimeUnit.SECONDS))
+        // The check has read the file; its counts must never reach the screen.
+        assertThrows(ComposeTimeoutException::class.java) {
+            rule.waitUntil(2_000) { rule.onAllNodes(hasText(REMOVE)).fetchSemanticsNodes().isNotEmpty() }
+        }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        assertEquals(before, cacheFiles())
     }
 
     @Test

@@ -1,0 +1,63 @@
+package com.paperknifeplus.app.ui.components
+
+import android.content.Context
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.TestPdfs
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.util.concurrent.TimeUnit
+
+/** Compress, a tool that decrypts a protected file to a cache copy: Cancel during the password check. */
+@RunWith(RobolectricTestRunner::class)
+class CompressViewTest {
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
+    val rule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(context)
+
+    /** The files directly in the cache folder: decrypted copies and PDFBox's temp files would show here. */
+    private fun cacheFiles() = context.cacheDir.listFiles().orEmpty().filter { it.isFile }.map { it.name }.toSet()
+
+    @Test
+    fun `Cancel during the password check resets the tool, and the check leaves no copy and no late result`() {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-compress.pdf")
+        rule.setContent { CompressView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        val before = cacheFiles()
+        source.hold()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { source.reached.count == 0L }
+
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
+        rule.onNodeWithText("Password required").assertDoesNotExist()
+        rule.onNodeWithText("Choose PDF").assertExists()
+        source.release()
+        // The check goes on to write its decrypted copy, then finds itself cancelled and deletes it.
+        assertTrue(source.closed.await(30, TimeUnit.SECONDS))
+        rule.waitUntil(10_000) { cacheFiles() == before }
+        rule.onNodeWithText("Choose PDF").assertExists()
+        rule.onNodeWithText("Compress and save PDF").assertDoesNotExist()
+        assertEquals(before, cacheFiles())
+    }
+}

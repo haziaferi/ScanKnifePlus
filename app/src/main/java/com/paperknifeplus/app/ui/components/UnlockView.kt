@@ -40,12 +40,12 @@ fun UnlockView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -60,8 +60,7 @@ fun UnlockView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -71,7 +70,6 @@ fun UnlockView(
                 PdfAccess.Encrypted -> fileToUnlock = fileName
                 PdfAccess.Open -> Toast.makeText(context, toolText(context, R.string.unlock_file_is_not_encrypted), Toast.LENGTH_SHORT).show()
             }
-            isFileLoading = false
         }
     }
 
@@ -121,7 +119,7 @@ fun UnlockView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -188,6 +186,7 @@ fun UnlockView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = {
+                        check.stop()
                         fileToUnlock = null
                         unlockError = false
                         selectedUri = null
@@ -196,27 +195,25 @@ fun UnlockView(
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so the cover preview can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
+                                val copy = decryptAndCount(context, source, pass)
                                 if (copy != null) {
-                                    decryptedUri = copy
+                                    decryptedUri = copy.uri
                                     password = pass
-                                    selectedUri = copy
-                                    pageCount = getPageCount(context, copy, null)
+                                    selectedUri = copy.uri
+                                    pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

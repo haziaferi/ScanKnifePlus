@@ -2,6 +2,7 @@ package com.paperknifeplus.app.testing
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.os.Handler
@@ -40,8 +41,13 @@ import com.tom_roush.pdfbox.pdmodel.interactive.form.PDAcroForm
 import com.tom_roush.pdfbox.pdmodel.interactive.form.PDTextField
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric
+import org.robolectric.Shadows
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FilterInputStream
+import java.io.InputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** In-memory PDFs for Robolectric tests, so no binary fixtures are checked in. Shared by every tool-screen test; edit only additively. */
 object TestPdfs {
@@ -351,6 +357,61 @@ object TestPdfs {
     }
 
     private const val NULL_AUTHORITY = "com.paperknifeplus.app.test.nullstream"
+
+    /**
+     * [bytes] at a content [uri], each open a fresh stream. After [hold], the next stream opened stops at its first read until [release]:
+     * [reached] counts down when that read starts, [closed] when its reader closes it, so a test can act while a tool's check is running.
+     */
+    class HeldSource(context: Context, private val bytes: ByteArray, name: String = "held.pdf") {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.held/$name")
+        val reached = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        private val gate = CountDownLatch(1)
+        @Volatile private var holding = false
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+                if (holding) {
+                    holding = false
+                    Held(bytes.inputStream())
+                } else {
+                    bytes.inputStream()
+                }
+            }
+        }
+
+        fun hold() {
+            holding = true
+        }
+
+        fun release() = gate.countDown()
+
+        private inner class Held(source: InputStream) : FilterInputStream(source) {
+            private var waited = false
+
+            private fun await() {
+                if (waited) return
+                waited = true
+                reached.countDown()
+                gate.await(60, TimeUnit.SECONDS)
+            }
+
+            override fun read(): Int {
+                await()
+                return super.read()
+            }
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                await()
+                return super.read(b, off, len)
+            }
+
+            override fun close() {
+                super.close()
+                closed.countDown()
+            }
+        }
+    }
 
     private fun build(pages: Int, finish: (PDDocument) -> Unit): ByteArray = PDDocument().use { doc ->
         repeat(pages) { i ->

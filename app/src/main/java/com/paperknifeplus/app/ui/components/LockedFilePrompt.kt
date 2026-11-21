@@ -25,11 +25,63 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.paperknifeplus.app.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
+/**
+ * The check a tool runs on the file it was given, one at a time: reading it, or trying a password in [LockedFilePrompt], whose Cancel and
+ * Back [stop] it. [start] stops the check before it, so a new file's check replaces the old one. A stopped check never applies its result:
+ * each check applies it only after a `withContext(Dispatchers.IO)` returns, which then throws CancellationException. Use on the main thread.
+ */
+@Stable
+class FileCheck internal constructor(private val scope: CoroutineScope) {
+    private var job: Job? = null
+
+    /** True from [start] until the check ends or is stopped: the tool shows that it is loading, and the prompt its spinner. */
+    var running by mutableStateOf(false)
+        private set
+
+    /** Stops the running check, then runs [check]. */
+    fun start(check: suspend () -> Unit) {
+        stop()
+        running = true
+        val launched = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                check()
+            } finally {
+                // A stopped check ends later, after the next may have started, so only the current one clears the state.
+                if (job === coroutineContext[Job]) {
+                    job = null
+                    running = false
+                }
+            }
+        }
+        job = launched
+        launched.start()
+    }
+
+    /** Cancels the running check, if any, so its result is never applied. */
+    fun stop() {
+        job?.cancel()
+        job = null
+        running = false
+    }
+}
+
+/** A [FileCheck] that lives as long as the tool's screen. */
+@Composable
+fun rememberFileCheck(): FileCheck {
+    val scope = rememberCoroutineScope()
+    return remember(scope) { FileCheck(scope) }
+}
 
 /**
  * Asks for the password of [fileName]. The field is masked (with a show toggle) and kept out of the keyboard's learning. [isError] shows
  * "Incorrect password" until the user edits the field or submits again, so callers only need to set it after a failed attempt. While
- * [isLoading], nothing dismisses it.
+ * [isLoading] (the password is being checked), Cancel and Back still [onDismiss] it, which stops the check ([FileCheck.stop]) and resets
+ * the tool; only a tap outside does nothing then, so a stray touch cannot.
  */
 @Composable
 fun LockedFilePrompt(
@@ -51,8 +103,7 @@ fun LockedFilePrompt(
 
     Dialog(
         onDismissRequest = onDismiss,
-        // Like Cancel, Back and a tap outside do nothing while the password is checked: the tool would reset under the running check.
-        properties = DialogProperties(dismissOnBackPress = !isLoading, dismissOnClickOutside = !isLoading, usePlatformDefaultWidth = false)
+        properties = DialogProperties(dismissOnClickOutside = !isLoading, usePlatformDefaultWidth = false)
     ) {
         Surface(
             modifier = Modifier
@@ -151,7 +202,6 @@ fun LockedFilePrompt(
 
                 TextButton(
                     onClick = onDismiss,
-                    enabled = !isLoading,
                     modifier = Modifier.padding(top = 8.dp)
                 ) {
                     Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)

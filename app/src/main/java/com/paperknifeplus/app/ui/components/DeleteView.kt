@@ -51,12 +51,12 @@ fun DeleteView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -73,20 +73,16 @@ fun DeleteView(
     }
 
     // An encrypted file is decrypted to a cache copy once, so page previews can use the fast native renderer.
-    fun unlock(source: Uri, password: String) {
-        isFileLoading = true
-        scope.launch {
-            val copy = decryptToCache(context, source, password)
-            if (copy != null) {
-                decryptedUri = copy
-                unlockPassword = password
-                showPages(copy, getPageCount(context, copy, null))
-                fileToUnlock = null
-            } else {
-                unlockError = true
-                fileToUnlock = fileName
-            }
-            isFileLoading = false
+    suspend fun unlock(source: Uri, password: String) {
+        val copy = decryptAndCount(context, source, password)
+        if (copy != null) {
+            decryptedUri = copy.uri
+            unlockPassword = password
+            showPages(copy.uri, copy.pageCount)
+            fileToUnlock = null
+        } else {
+            unlockError = true
+            fileToUnlock = fileName
         }
     }
 
@@ -99,25 +95,15 @@ fun DeleteView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
-                    isFileLoading = false
                 }
-                PdfAccess.Encrypted -> if (password == null) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
-                } else {
-                    unlock(uri, password)
-                }
-                PdfAccess.Open -> {
-                    showPages(uri, getPageCount(context, uri, null))
-                    isFileLoading = false
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
+                PdfAccess.Open -> showPages(uri, getPageCount(context, uri, null))
             }
         }
     }
@@ -170,7 +156,7 @@ fun DeleteView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -333,16 +319,17 @@ fun DeleteView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = {
+                        check.stop()
                         fileToUnlock = null
                         unlockError = false
                         dropDecryptedCopy()
                         selectedUri = null
                         currentState = ToolState.SELECTING
                     },
-                    onUnlocked = { pass -> selectedUri?.let { unlock(it, pass) } },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

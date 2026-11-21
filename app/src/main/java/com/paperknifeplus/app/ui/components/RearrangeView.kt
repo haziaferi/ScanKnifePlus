@@ -50,7 +50,7 @@ fun RearrangeView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageOrder by remember { mutableStateOf<List<Int>>(emptyList()) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
@@ -74,8 +74,7 @@ fun RearrangeView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
@@ -89,7 +88,6 @@ fun RearrangeView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -140,7 +138,7 @@ fun RearrangeView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.rearrange_preparing_rearrange_grid))
             } else {
                 when (currentState) {
@@ -312,32 +310,29 @@ fun RearrangeView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
+                                val copy = decryptAndCount(context, source, pass)
                                 if (copy != null) {
-                                    val count = getPageCount(context, copy, null)
-                                    decryptedUri = copy
+                                    decryptedUri = copy.uri
                                     unlockPassword = pass
-                                    selectedUri = copy
-                                    pageOrder = (0 until count).toList()
+                                    selectedUri = copy.uri
+                                    pageOrder = (0 until copy.pageCount).toList()
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

@@ -33,7 +33,6 @@ import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import kotlin.math.max
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,7 +42,6 @@ fun CompareView(
     onOpenPreview: (Uri, String, Int) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val accentColor = MaterialTheme.colorScheme.primary
 
     var fileA by remember { mutableStateOf<Uri?>(null) }
@@ -56,7 +54,7 @@ fun CompareView(
     var isComparing by remember { mutableStateOf(false) }
     var fileToUnlock by remember { mutableStateOf<Pair<Uri, String>?>(null) } // Uri, target ("A" or "B")
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
 
     fun setFile(target: String, uri: Uri, password: String) {
         val name = getUriDetails(context, uri).name
@@ -72,15 +70,13 @@ fun CompareView(
     }
 
     fun handleFileSelection(uri: Uri, target: String) {
-        isFileLoading = true
         unlockError = false
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                 PdfAccess.Encrypted -> fileToUnlock = uri to target
                 PdfAccess.Open -> setFile(target, uri, "")
             }
-            isFileLoading = false
         }
     }
 
@@ -115,7 +111,7 @@ fun CompareView(
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.compare_analyzing_document))
             } else if (!isComparing) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
@@ -156,22 +152,20 @@ fun CompareView(
                 val (uri, target) = fileToUnlock!!
                 LockedFilePrompt(
                     fileName = getUriDetails(context, uri).name,
-                    onDismiss = { fileToUnlock = null; unlockError = false },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false },
                     onUnlocked = { pass ->
-                        isFileLoading = true
-                        scope.launch {
+                        check.start {
                             if (getPageCount(context, uri, pass) > 0) {
                                 setFile(target, uri, pass)
                                 fileToUnlock = null
                             } else {
                                 unlockError = true
                             }
-                            isFileLoading = false
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

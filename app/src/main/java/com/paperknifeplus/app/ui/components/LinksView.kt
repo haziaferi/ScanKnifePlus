@@ -97,11 +97,11 @@ fun LinksView(
     var removed by remember { mutableStateOf<LinkRemoval?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var outputName by remember { mutableStateOf("") }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
     val pageCount = found?.pageCount ?: 0
     val range = PageRanges.parseList(rangeText, pageCount)
     // A range not typed or with an error takes no page's links yet.
@@ -161,11 +161,7 @@ fun LinksView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            count(uri, null, handed = given)
-            isFileLoading = false
-        }
+        check.start { count(uri, null, handed = given) }
     }
 
     LaunchedEffect(initialUri) {
@@ -216,7 +212,7 @@ fun LinksView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -330,20 +326,14 @@ fun LinksView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val source = sourceUri
-                        if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                count(source, pass)
-                                isFileLoading = false
-                            }
-                        }
+                        if (source != null) check.start { count(source, pass) }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

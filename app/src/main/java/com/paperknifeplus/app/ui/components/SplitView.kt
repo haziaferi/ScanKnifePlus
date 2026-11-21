@@ -51,12 +51,12 @@ fun SplitView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -73,8 +73,7 @@ fun SplitView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             val access = inspectPdf(context, uri)
             when {
                 access == PdfAccess.Unreadable -> {
@@ -90,7 +89,6 @@ fun SplitView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -143,7 +141,7 @@ fun SplitView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -310,6 +308,7 @@ fun SplitView(
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
                     onDismiss = {
+                        check.stop()
                         fileToUnlock = null
                         unlockError = false
                         selectedUri = null
@@ -318,29 +317,26 @@ fun SplitView(
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                val count = copy?.let { getPageCount(context, it, null) } ?: 0
-                                if (copy != null && count > 0) {
-                                    decryptedUri = copy
+                                val copy = decryptAndCount(context, source, pass)
+                                if (copy != null && copy.pageCount > 0) {
+                                    decryptedUri = copy.uri
                                     unlockPassword = pass
-                                    selectedUri = copy
-                                    pageCount = count
+                                    selectedUri = copy.uri
+                                    pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
                                 } else {
-                                    deleteDecryptedCopy(context, copy)
+                                    deleteDecryptedCopy(context, copy?.uri)
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

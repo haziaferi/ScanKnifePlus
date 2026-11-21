@@ -168,11 +168,11 @@ fun CropView(
     var readPage by remember { mutableStateOf<Int?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var outputName by remember { mutableStateOf("") }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
     val viewerInView = remember { BringIntoViewRequester() }
     val pageCount = boxes.size
     val range = PageRanges.parseList(rangeText, pageCount)
@@ -218,8 +218,7 @@ fun CropView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -228,7 +227,6 @@ fun CropView(
                 PdfAccess.Encrypted -> if (given == null) fileToUnlock = fileName else open(uri, given)
                 PdfAccess.Open -> open(uri, null)
             }
-            isFileLoading = false
         }
     }
 
@@ -289,7 +287,7 @@ fun CropView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -430,20 +428,14 @@ fun CropView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val unlocking = sourceUri
-                        if (unlocking != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                open(unlocking, pass)
-                                isFileLoading = false
-                            }
-                        }
+                        if (unlocking != null) check.start { open(unlocking, pass) }
                     },
                     isError = unlockError,
                     accentColor = MaterialTheme.colorScheme.primary,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

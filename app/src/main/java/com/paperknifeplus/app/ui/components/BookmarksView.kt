@@ -48,7 +48,7 @@ fun BookmarksView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var outputPageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var unlockPassword by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
@@ -89,8 +89,7 @@ fun BookmarksView(
         fileSize = details.size
         unlockPassword = ""
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             val access = inspectPdf(context, uri)
             // Files that open without a password (owner-password-only ones too) are read directly; the others ask for one.
             if (access == PdfAccess.Unreadable) {
@@ -100,7 +99,6 @@ fun BookmarksView(
             } else if (!extractBookmarks(uri, null)) {
                 fileToUnlock = fileName
             }
-            isFileLoading = false
         }
     }
 
@@ -167,7 +165,7 @@ fun BookmarksView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.bookmarks_reading_outlines))
             } else {
                 when (currentState) {
@@ -264,24 +262,22 @@ fun BookmarksView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 if (extractBookmarks(source, pass)) {
                                     fileToUnlock = null
                                 } else {
                                     unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }
