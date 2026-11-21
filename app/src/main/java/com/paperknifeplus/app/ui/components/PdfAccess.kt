@@ -90,18 +90,11 @@ suspend fun checkPageCount(context: Context, uri: Uri, password: String): Passwo
 /**
  * [read] on [uri] opened with [password] through the page renderers' document pool, told apart as [checkPassword] does. The thumbnails
  * and page grid that follow a check that opened the file reuse the document it parsed. A check that is stopped, or that finds the file
- * unreadable, takes the document out of the pool and closes it, which would otherwise keep it and its temp file until it is evicted.
+ * unreadable, closes the document it parsed ([PdDocumentPool.check]), which would otherwise stay pooled with its temp file until it was the
+ * least recently used; a document another caller uses stays.
  */
-internal suspend fun <T : Any> checkPooled(context: Context, uri: Uri, password: String, read: (PDDocument) -> T?): PasswordCheck<T> {
-    val checked = try {
-        tellApart(uri) { PdDocumentPool.withDocument(context, uri, password) { read(it) } }
-    } catch (e: CancellationException) {
-        PdDocumentPool.evict(uri, password)
-        throw e
-    }
-    if (checked !is PasswordCheck.Opened) PdDocumentPool.evict(uri, password)
-    return checked
-}
+internal suspend fun <T : Any> checkPooled(context: Context, uri: Uri, password: String, read: (PDDocument) -> T?): PasswordCheck<T> =
+    tellApart(uri) { PdDocumentPool.check(context, uri, password, read) }
 
 /** What [read] found on [uri], told apart as [checkPassword] says. */
 private suspend fun <T : Any> tellApart(uri: Uri, read: suspend () -> T?): PasswordCheck<T> = withContext(Dispatchers.IO) {

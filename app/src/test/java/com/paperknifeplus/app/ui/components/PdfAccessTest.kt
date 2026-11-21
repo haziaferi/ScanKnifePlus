@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -107,6 +109,34 @@ class PdfAccessTest {
 
         assertEquals(2, getPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
         assertEquals("read again, not from the pool", 2, source.opens)
+    }
+
+    @Test
+    fun `a stopped check leaves its document to a check of the same file that waits for it`() = runBlocking {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-checked-twice.pdf")
+        source.hold()
+        val first = launch(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
+        assertTrue(source.reached.await(10, TimeUnit.SECONDS))
+        first.cancel()
+        // The same file and password again, as when the file is picked once more: this check waits for the first one's parse.
+        val second = async(Dispatchers.Default) { checkPageCount(context, source.uri, TestPdfs.USER_PASSWORD) }
+        delay(500) // Time for the second check to reach the parse in progress.
+        source.release()
+
+        assertEquals(PasswordCheck.Opened(2), withTimeout(10_000) { second.await() })
+        withTimeout(10_000) { first.join() }
+        assertEquals(2, getPageCount(context, source.uri, TestPdfs.USER_PASSWORD))
+        assertEquals("parsed once, then read from the pool", 1, source.opens)
+    }
+
+    @Test
+    fun `a check that finds the file unreadable leaves a document another caller loaded`() = runBlocking {
+        val empty = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 0), "counted-empty-shared.pdf")
+        // Loaded by another caller, as a page thumbnail would: it opens, and has no pages.
+        assertEquals(0, getPageCount(context, empty.uri, TestPdfs.USER_PASSWORD))
+        assertEquals(PasswordCheck.Unreadable, checkPageCount(context, empty.uri, TestPdfs.USER_PASSWORD))
+        getPageCount(context, empty.uri, TestPdfs.USER_PASSWORD)
+        assertEquals("still pooled", 1, empty.opens)
     }
 
     @Test

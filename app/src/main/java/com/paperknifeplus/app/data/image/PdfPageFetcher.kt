@@ -210,65 +210,83 @@ object NativeRendererPool {
  * find their key loading wait for that load rather than parse the file again.
  */
 class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val close: (D) -> Unit) {
-    private class Entry<D>(val document: D) {
+    /** A pooled [document]; [shared] once a caller other than the one that loaded it has taken it or waited for it. */
+    private class Entry<K, D>(val key: K, val document: D, var shared: Boolean) {
         val mutex = Mutex()
         var refCount = 0
         var lastUsed = 0L
         var evicted = false
     }
 
+    /** A load in progress, and how many callers wait for it. */
+    private class Load {
+        val done = CompletableDeferred<Unit>()
+        var waiters = 0
+    }
+
     private val lock = Any()
-    private val entries = HashMap<K, Entry<D>>()
-    private val loads = HashMap<K, CompletableDeferred<Unit>>()
+    private val entries = HashMap<K, Entry<K, D>>()
+    private val loads = HashMap<K, Load>()
     private var clock = 0L
 
     /**
      * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
      * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done.
      */
-    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T {
-        val entry = acquire(key, load)
-        try {
-            return entry.mutex.withLock { block(entry.document) }
-        } finally {
-            release(entry)
-        }
-    }
+    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, null, block)
 
-    /** Takes [key]'s document out of the pool, if there; it is closed now, or once its last holder is done. */
-    fun evict(key: K) {
-        val idle = synchronized(lock) {
-            val entry = entries.remove(key) ?: return
-            entry.evicted = true
-            entry.document.takeIf { entry.refCount == 0 }
-        }
-        idle?.let(::closeQuietly)
-    }
+    /**
+     * [withDocument] for a check that reads the file to tell whether it can be used: a document this call loaded leaves the pool again, and is
+     * closed, when [rejects] what [block] returned, when [block] throws, or when the call is stopped, unless another caller has taken it or
+     * waits for it. A document that was already pooled stays, whatever the check finds.
+     */
+    suspend fun <T> check(key: K, load: () -> D, rejects: (T) -> Boolean, block: suspend (D) -> T): T = use(key, load, rejects, block)
 
     internal fun size(): Int = synchronized(lock) { entries.size }
 
-    private suspend fun acquire(key: K, load: () -> D): Entry<D> {
+    private suspend fun <T> use(key: K, load: () -> D, rejects: ((T) -> Boolean)?, block: suspend (D) -> T): T {
+        val entry = acquire(key, load)
+        // Only a check drops a document; release keeps it if any other caller has taken it or waits for it, so it is one this call loaded.
+        var discard = rejects != null
+        try {
+            val result = entry.mutex.withLock { block(entry.document) }
+            if (rejects != null) discard = rejects(result) || !currentCoroutineContext().isActive
+            return result
+        } finally {
+            release(entry, discard)
+        }
+    }
+
+    /** [key]'s entry, held once. */
+    private suspend fun acquire(key: K, load: () -> D): Entry<K, D> {
         while (true) {
             var loading = false
             val pending = synchronized(lock) {
-                entries[key]?.let { return it.also { it.refCount++ } }
-                loads.getOrPut(key) { CompletableDeferred<Unit>().also { loading = true } }
+                entries[key]?.let {
+                    it.refCount++
+                    it.shared = true
+                    return it
+                }
+                loads[key]?.also { it.waiters++ } ?: Load().also {
+                    loading = true
+                    loads[key] = it
+                }
             }
             if (!loading) {
                 // Throws what the load threw; once it is published, the next turn takes the document, or loads again if it was evicted.
-                pending.await()
+                pending.done.await()
                 continue
             }
             val loaded = try {
                 load()
             } catch (e: Throwable) {
                 synchronized(lock) { loads.remove(key) }
-                pending.completeExceptionally(e)
+                pending.done.completeExceptionally(e)
                 throw e
             }
-            val (entry, evicted) = publish(key, loaded)
+            val (entry, evicted) = publish(key, loaded, pending)
             // The waiters take the document before the evicted ones are closed, so they neither wait on that nor hang if a close throws.
-            pending.complete(Unit)
+            pending.done.complete(Unit)
             try {
                 evicted.forEach(::closeQuietly)
             } catch (e: Throwable) {
@@ -280,7 +298,7 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
     }
 
     /** Adds [loaded] as [key]'s entry, held once, and returns it with the idle documents it evicted, for the caller to close. */
-    private fun publish(key: K, loaded: D): Pair<Entry<D>, List<D>> = synchronized(lock) {
+    private fun publish(key: K, loaded: D, load: Load): Pair<Entry<K, D>, List<D>> = synchronized(lock) {
         loads.remove(key)
         val evicted = mutableListOf<D>()
         while (entries.size >= maxEntries) {
@@ -289,7 +307,7 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
             old.evicted = true
             if (old.refCount == 0) evicted += old.document
         }
-        val entry = Entry(loaded).also {
+        val entry = Entry(key, loaded, shared = load.waiters > 0).also {
             it.lastUsed = ++clock
             it.refCount++
             entries[key] = it
@@ -297,9 +315,14 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
         entry to evicted
     }
 
-    private fun release(entry: Entry<D>) {
+    /** Lets go of [entry]; with [discard], also takes it out of the pool if no other caller has taken it or waits for it. */
+    private fun release(entry: Entry<K, D>, discard: Boolean = false) {
         val closeNow = synchronized(lock) {
             entry.lastUsed = ++clock
+            if (discard && !entry.shared && entries[entry.key] === entry) {
+                entries.remove(entry.key)
+                entry.evicted = true
+            }
             --entry.refCount == 0 && entry.evicted
         }
         if (closeNow) closeQuietly(entry.document)
@@ -330,8 +353,15 @@ object PdDocumentPool {
             pool.withDocument(Key(uri, password), { load(context, uri, password) }, block)
         }
 
-    /** Closes the document for [uri] and [password] if it is pooled, once no page is being drawn from it. */
-    fun evict(uri: Uri, password: String?) = pool.evict(Key(uri, password))
+    /**
+     * [read] on the document, as [withDocument] runs a block, for a check that tells whether the file can be used ([DocumentPool.check]): a
+     * document it parsed is closed again if [read] finds nothing (null) or throws, or the check is stopped, unless another caller has taken
+     * it or waits for it.
+     */
+    suspend fun <T : Any> check(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): T? =
+        withContext(Dispatchers.IO) {
+            pool.check(Key(uri, password), { load(context, uri, password) }, rejects = { it == null }) { read(it) }
+        }
 
     private fun load(context: Context, uri: Uri, password: String?): PDDocument =
         context.contentResolver.requireInputStream(uri).use { stream ->
