@@ -157,7 +157,7 @@ fun CompareView(
                     onDismiss = { check.stop(); fileToUnlock = null; unlockError = false },
                     onUnlocked = { pass ->
                         check.start {
-                            // A file that cannot be read closes the prompt, its card left empty.
+                            // A file that cannot be read closes the prompt; its card keeps the file it held, if any.
                             checkPageCount(context, uri, pass).resolve(
                                 context,
                                 onWrongPassword = { unlockError = true },

@@ -81,8 +81,9 @@ fun rememberFileCheck(): FileCheck {
 
 /**
  * Applies a password check's outcome the one way every tool does: [onOpened] with what it read; for a wrong password [onWrongPassword],
- * where the prompt says it is incorrect; for a file that cannot be read, the tools' unreadable message and [onUnreadable], which closes the
- * prompt and resets the tool. Inline, so the handlers can suspend and return from the check.
+ * where the prompt says it is incorrect; for a file that cannot be read, the tools' unreadable message and [onUnreadable]. There most tools
+ * close the prompt and go back to choosing a file; the reader closes, Compare closes the prompt and leaves its cards as they were, and Merge
+ * takes the file off its list. Inline, so the handlers can suspend and return from the check.
  */
 internal inline fun <T> PasswordCheck<T>.resolve(
     context: Context,
