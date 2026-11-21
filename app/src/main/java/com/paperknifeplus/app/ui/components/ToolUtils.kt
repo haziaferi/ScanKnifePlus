@@ -193,13 +193,16 @@ fun formatSize(bytes: Long): String {
     return String.format(Locale.getDefault(), "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }
 
-/** The page count of [uri] opened with [password], read through the shared document pool; 0 if it cannot be opened. */
+/** The page count of [uri] opened with [password], read through the shared document pool; 0 if it cannot be opened, also for lack of memory. */
 suspend fun getPageCount(context: Context, uri: Uri, password: String?): Int = try {
     PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages } ?: 0
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {
     Log.w(TAG, "Cannot count the pages of $uri", e)
+    0
+} catch (e: OutOfMemoryError) {
+    Log.w(TAG, "Out of memory counting the pages of $uri", e)
     0
 }
 
@@ -553,14 +556,14 @@ suspend fun decryptToCache(context: Context, uri: Uri, password: String): Uri? {
 class DecryptedCopy(val uri: Uri, val pageCount: Int)
 
 /**
- * [decryptToCache], then the page count of the copy; null when [password] does not open [uri]. Cancelled while counting, it deletes the
- * copy, so a stopped check ([FileCheck]) leaves none behind.
+ * [decryptToCache], then the page count of the copy; null when [password] does not open [uri]. A count that throws, a stopped check
+ * ([FileCheck]) included, deletes the copy, so none is left behind.
  */
 suspend fun decryptAndCount(context: Context, uri: Uri, password: String): DecryptedCopy? {
     val copy = decryptToCache(context, uri, password) ?: return null
     return try {
         DecryptedCopy(copy, getPageCount(context, copy, null))
-    } catch (e: CancellationException) {
+    } catch (e: Throwable) {
         deleteDecryptedCopy(context, copy)
         throw e
     }

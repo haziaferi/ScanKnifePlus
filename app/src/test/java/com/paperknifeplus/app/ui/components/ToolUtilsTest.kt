@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
@@ -156,6 +157,13 @@ class ToolUtilsTest {
         assertEquals(3, getPageCount(context, source, TestPdfs.USER_PASSWORD))
         assertEquals(0, getPageCount(context, source, "wrong"))
         assertEquals(0, getPageCount(context, source, null))
+    }
+
+    @Test
+    fun `a file too large to parse gives no pooled document and no page count, not a crash`() = runBlocking {
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2)).apply { runOutOfMemory() }
+        assertNull(PdDocumentPool.withDocument(context, huge.uri, null) { it.numberOfPages })
+        assertEquals(0, getPageCount(context, huge.uri, null))
     }
 
     @Test

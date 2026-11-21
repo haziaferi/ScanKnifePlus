@@ -282,7 +282,7 @@ object PdDocumentPool {
 
     private val pool = DocumentPool<Key, PDDocument>(3) { it.close() }
 
-    /** Runs [block] with the open document; null if it cannot be loaded (missing, wrong password, not a PDF). */
+    /** Runs [block] with the open document; null if it cannot be loaded (missing, wrong password, not a PDF, too large to parse). */
     suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T? =
         withContext(Dispatchers.IO) {
             pool.withDocument(Key(uri, password), { load(context, uri, password) }, block)
@@ -296,6 +296,9 @@ object PdDocumentPool {
         }
     } catch (e: Exception) {
         Log.w(TAG, "Cannot load $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Out of memory loading $uri", e)
         null
     }
 }
