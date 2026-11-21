@@ -413,6 +413,28 @@ object TestPdfs {
         }
     }
 
+    /**
+     * [bytes] at a content [uri], each open a fresh stream, until [runOutOfMemory]: then every read runs out of memory, as reading a file
+     * too large to parse would.
+     */
+    class OutOfMemorySource(context: Context, private val bytes: ByteArray, name: String = "huge.pdf") {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.huge/$name")
+        @Volatile private var outOfMemory = false
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) { if (outOfMemory) OutOfMemoryStream() else bytes.inputStream() }
+        }
+
+        fun runOutOfMemory() {
+            outOfMemory = true
+        }
+
+        private class OutOfMemoryStream : InputStream() {
+            override fun read(): Int = throw OutOfMemoryError("test")
+            override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("test")
+        }
+    }
+
     private fun build(pages: Int, finish: (PDDocument) -> Unit): ByteArray = PDDocument().use { doc ->
         repeat(pages) { i ->
             val page = PDPage(PDRectangle.LETTER)

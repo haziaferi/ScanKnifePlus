@@ -200,7 +200,8 @@ internal fun SearchableView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, saveUri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("SearchableView", "Making the PDF searchable failed", e)
                 deleteCreatedDocument(context, saveUri)
                 withContext(Dispatchers.Main) {

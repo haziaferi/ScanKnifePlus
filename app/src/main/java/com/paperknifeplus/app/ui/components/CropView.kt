@@ -276,7 +276,8 @@ fun CropView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("CropView", "Cropping failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
