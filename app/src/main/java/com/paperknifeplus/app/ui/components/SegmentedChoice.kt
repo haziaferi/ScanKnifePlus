@@ -44,8 +44,9 @@ private val MARK_GAP = 4.dp
 
 /**
  * The one control for a small single choice (R2): [options] as segments of one line and one height (48 dp at least), the [selected] one
- * tonal with a check. When the labels, measured at the current text size, do not fit one row, the segments stack as full-width rows; a
- * row never wraps. Each segment is a radio button of one group.
+ * tonal with a check. When the labels, measured at the current text size, do not fit one row, the segments stack as full-width rows, where
+ * a label too long even for its row wraps onto a second line and its row grows; the single row's segments never wrap. Each segment is a
+ * radio button of one group.
  */
 @Composable
 fun SegmentedChoice(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -83,7 +84,14 @@ fun SegmentedChoice(options: List<String>, selected: Int, onSelect: (Int) -> Uni
                 } else if (stacked) {
                     Spacer(Modifier.size(MARK + MARK_GAP))
                 }
-                Text(options[index], style = style, color = if (on) colors.onPrimaryContainer else colors.onSurface, maxLines = 1, softWrap = false)
+                // Stacking is decided from the measured labels above, never by wrapping; once stacked, a label too long for its row wraps.
+                Text(
+                    options[index],
+                    style = style,
+                    color = if (on) colors.onPrimaryContainer else colors.onSurface,
+                    maxLines = if (stacked) Int.MAX_VALUE else 1,
+                    softWrap = stacked
+                )
             }
         }
         if (stacked) {
