@@ -149,21 +149,27 @@ class GrayscaleDeviceTest {
 
     /**
      * A file with only an owner password reaches Grayscale as it is, still encrypted (one that needs a password reaches it as a decrypted
-     * copy), and the platform renderer draws its fallback page from a copy decrypted without a password.
+     * copy), and the platform renderer draws its fallback pages from a copy decrypted without a password. The copy is looked for when the
+     * second page starts: the renderer opens on the first fallback page and keeps its copy until the conversion is done.
      */
     @Test
-    fun anOwnerProtectedFileWithAFallbackPageConvertsThroughADecryptedCopyItThenDeletes() {
+    fun anOwnerProtectedFileWithFallbackPagesConvertsThroughADecryptedCopyItThenDeletes() {
         val source = file("owner-locked-colour-key")
         PDDocument().use { doc ->
+            fallbackPage(doc)
             fallbackPage(doc)
             doc.protect(StandardProtectionPolicy("owner-secret", "", AccessPermission()).apply { encryptionKeyLength = 128 })
             doc.save(source)
         }
         assertTrue("encrypted", PDDocument.load(source).use { it.isEncrypted })
         val before = decryptedCopies()
+        var during = emptySet<File>()
         val output = file("owner-locked-gray")
-        val imagePages = runBlocking { performGrayscaleRewrite(context, Uri.fromFile(source), Uri.fromFile(output)) { _, _ -> } }
-        assertEquals(1, imagePages)
+        val imagePages = runBlocking {
+            performGrayscaleRewrite(context, Uri.fromFile(source), Uri.fromFile(output)) { page, _ -> if (page == 2) during = decryptedCopies() - before }
+        }
+        assertEquals(2, imagePages)
+        assertEquals("the renderer reads a decrypted copy", 1, during.size)
         PDDocument.load(output).use { doc ->
             assertFalse(doc.isEncrypted)
             assertEquals(90, doc.getPage(0).rotation)
