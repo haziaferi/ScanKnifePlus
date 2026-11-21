@@ -40,9 +40,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
-import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
-import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination
@@ -318,16 +316,10 @@ class LinksViewTest {
     /** The name the file card shows for the file written as [name]. */
     private fun fileName(name: String): String = getUriDetails(context, Uri.fromFile(File(context.cacheDir, name))).name
 
-    /** [bytes] protected with [TestPdfs.USER_PASSWORD]. */
-    private fun locked(bytes: ByteArray): ByteArray = PDDocument.load(bytes).use { doc ->
-        doc.protect(StandardProtectionPolicy(TestPdfs.OWNER_PASSWORD, TestPdfs.USER_PASSWORD, AccessPermission()).apply { encryptionKeyLength = 128 })
-        ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
-    }
-
     @Test
     fun `the password line shows only while the choices save something`() {
         // Three links on page 1, all to pages of the file, and no script.
-        show(locked(TestPdfs.linked(3)), "locked-inside.pdf", TestPdfs.USER_PASSWORD)
+        show(TestPdfs.protectedCopy(TestPdfs.linked(3)), "locked-inside.pdf", TestPdfs.USER_PASSWORD)
         waitFor(REMOVE)
         rule.onNodeWithText(PASSWORD_LINE).assertExists()
 
