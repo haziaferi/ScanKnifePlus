@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.data.image
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -9,10 +10,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -83,34 +84,49 @@ class PdDocumentPoolTest {
     }
 
     @Test
-    fun `a failed load gives null and caches nothing`() = runBlocking {
+    fun `two concurrent first loads of one key parse it once and share the document`() = runBlocking {
         val pool = pool(3)
-        assertEquals(null, pool.withDocument("a", { null }) { "used" })
-        assertEquals(0, pool.size())
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val loads = AtomicInteger()
+        val first = async(Dispatchers.IO) {
+            pool.withDocument("a", {
+                loads.incrementAndGet()
+                loading.countDown()
+                finish.await(5, TimeUnit.SECONDS)
+                FakeDoc("a")
+            }) { it }
+        }
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        // Runs on this thread until it waits for the load in progress.
+        val second = async(start = CoroutineStart.UNDISPATCHED) { pool.withDocument("a", { loads.incrementAndGet(); FakeDoc("a") }) { it } }
+        finish.countDown()
+        val seen = withTimeout(10_000) { listOf(first.await(), second.await()) }
+        assertEquals(1, loads.get())
+        assertSame(seen[0], seen[1])
+        assertTrue(closed.isEmpty())
     }
 
     @Test
-    fun `concurrent first loads keep one document and close the other`() = runBlocking {
+    fun `a failed load throws to every caller that waited for it and caches nothing`() = runBlocking {
         val pool = pool(3)
-        val bothLoading = CountDownLatch(2)
-        val loads = AtomicInteger()
-        val seen = withTimeout(10_000) {
-            (1..2).map {
-                async(Dispatchers.IO) {
-                    pool.withDocument("a", {
-                        val doc = FakeDoc("a")
-                        loads.incrementAndGet()
-                        bothLoading.countDown()
-                        bothLoading.await(5, TimeUnit.SECONDS)
-                        doc
-                    }) { it }
-                }
-            }.awaitAll()
+        val loading = CountDownLatch(1)
+        val fail = CountDownLatch(1)
+        val first = async(Dispatchers.IO) {
+            runCatching {
+                pool.withDocument("a", {
+                    loading.countDown()
+                    fail.await(5, TimeUnit.SECONDS)
+                    throw IOException("damaged")
+                }) { "used" }
+            }
         }
-        assertEquals(2, loads.get())
-        assertSame(seen[0], seen[1])
-        assertEquals(1, closed.size)
-        assertFalse(closed.single() === seen[0])
-        assertEquals(0, seen[0]!!.closes.get())
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        val second = async(start = CoroutineStart.UNDISPATCHED) { runCatching { pool.withDocument("a", { FakeDoc("a") }) { "used" } } }
+        fail.countDown()
+        val results = withTimeout(10_000) { listOf(first.await(), second.await()) }
+        assertTrue(results.toString(), results.all { it.exceptionOrNull() is IOException })
+        assertEquals(0, pool.size())
+        assertEquals("used", pool.withDocument("a", { FakeDoc("a") }) { "used" })
     }
 }

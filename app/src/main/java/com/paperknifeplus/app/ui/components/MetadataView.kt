@@ -82,9 +82,8 @@ fun MetadataView(
         currentState = ToolState.SELECTING
     }
 
-    /** Reads [uri]'s properties with [password] and shows them, or goes back to file selection when they cannot be read. */
-    suspend fun showProperties(uri: Uri, password: String?) {
-        val count = getPageCount(context, uri, password)
+    /** Shows [uri]'s properties, read with [password], and its [count] of pages, or goes back to file selection when they cannot be read. */
+    suspend fun showProperties(uri: Uri, password: String?, count: Int) {
         val properties = loadMetadata(context, uri, password)
         if (properties == null) {
             Toast.makeText(context, toolText(context, R.string.metadata_could_not_read_file_properties), Toast.LENGTH_LONG).show()
@@ -116,7 +115,7 @@ fun MetadataView(
                     backToSelection()
                 }
                 PdfAccess.Encrypted -> fileToUnlock = fileName
-                PdfAccess.Open -> showProperties(uri, null)
+                PdfAccess.Open -> showProperties(uri, null, getPageCount(context, uri, null))
             }
         }
     }
@@ -260,9 +259,9 @@ fun MetadataView(
                         if (source != null) {
                             check.start {
                                 val counted = checkPageCount(context, source, pass)
-                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) {
+                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { count ->
                                     unlockPassword = pass
-                                    showProperties(source, pass)
+                                    showProperties(source, pass, count)
                                 }
                             }
                         }

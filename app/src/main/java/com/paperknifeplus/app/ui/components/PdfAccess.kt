@@ -3,6 +3,7 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
@@ -82,22 +83,28 @@ sealed interface PasswordCheck<out T> {
  * [PasswordCheck.Unreadable], so a damaged protected file is not taken for a wrong password. Cancellation is rethrown.
  */
 suspend fun <T : Any> checkPassword(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): PasswordCheck<T> =
-    withContext(Dispatchers.IO) {
-        try {
-            withPdf(context, uri, password, read)?.let { PasswordCheck.Opened(it) } ?: PasswordCheck.Unreadable
-        } catch (e: InvalidPasswordException) {
-            PasswordCheck.WrongPassword
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Cannot read $uri", e)
-            PasswordCheck.Unreadable
-        } catch (e: OutOfMemoryError) {
-            Log.w(TAG, "Out of memory reading $uri", e)
-            PasswordCheck.Unreadable
-        }
-    }
+    tellApart(uri) { withPdf(context, uri, password, read) }
 
-/** The page count of [uri] opened with [password], told apart as [checkPassword] does; a file without pages is unreadable. */
+/**
+ * The page count of [uri] opened with [password], told apart as [checkPassword] does; a file without pages is unreadable. It is read
+ * through the page renderers' document pool, so the thumbnails and page grid that follow reuse the document this check parsed.
+ */
 suspend fun checkPageCount(context: Context, uri: Uri, password: String): PasswordCheck<Int> =
-    checkPassword(context, uri, password) { document -> document.numberOfPages.takeIf { it > 0 } }
+    tellApart(uri) { PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages }.takeIf { it > 0 } }
+
+/** What [read] found on [uri], told apart as [checkPassword] says. */
+private suspend fun <T : Any> tellApart(uri: Uri, read: suspend () -> T?): PasswordCheck<T> = withContext(Dispatchers.IO) {
+    try {
+        read()?.let { PasswordCheck.Opened(it) } ?: PasswordCheck.Unreadable
+    } catch (e: InvalidPasswordException) {
+        PasswordCheck.WrongPassword
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Cannot read $uri", e)
+        PasswordCheck.Unreadable
+    } catch (e: OutOfMemoryError) {
+        Log.w(TAG, "Out of memory reading $uri", e)
+        PasswordCheck.Unreadable
+    }
+}

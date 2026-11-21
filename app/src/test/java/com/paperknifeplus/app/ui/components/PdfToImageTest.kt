@@ -1,6 +1,10 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.net.Uri
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -9,11 +13,19 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
+import coil.request.Options
+import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.data.image.PdfPageKeyer
+import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -24,19 +36,31 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PdfToImageTest {
     @get:Rule(order = 0)
     val pump = ComposeSnapshotPump()
 
     @get:Rule(order = 1)
-    val rule = createComposeRule()
+    val rule = createAndroidComposeRule<ComponentActivity>()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Before
     fun setUp() = PDFBoxResourceLoader.init(context)
+
+    /** Whether page [index] of [uri] at [scale] with [password] is cached; Coil only loads what is drawn, and Robolectric never draws. */
+    private fun pageCached(uri: Uri, index: Int, password: String?, scale: Float): Boolean {
+        rule.runOnUiThread {
+            val root = rule.activity.window.decorView
+            root.draw(Canvas(Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)))
+        }
+        val key = PdfPageKeyer().key(PdfPageRequest(uri, index, password, scale), Options(context))
+        return PdfImageLoader.get(context).memoryCache!!.keys.any { it.key == key }
+    }
 
     @Test
     fun `a document opens with every page selected`() {
@@ -69,5 +93,21 @@ class PdfToImageTest {
         tile.performSemanticsAction(SemanticsActions.OnClick)
         tile.assertIsOff()
         rule.onNode(hasText("Convert 2 pages to JPG")).assertExists()
+    }
+
+    @Test
+    fun `unlocking a protected file parses it twice, the thumbnail and page grid reusing what the password check read`() {
+        val source = TestPdfs.CountedSource(context, TestPdfs.userPassword(pages = 4), "counted-pdf2img.pdf")
+        rule.setContent { PdfToImageView(initialUri = source.uri, onBack = {}) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 4 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.waitUntil(30_000) {
+            pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE) && pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, 0.6f)
+        }
+        // Once to find that it needs a password, once to check the password; as many as before the check told its outcomes apart.
+        assertEquals(2, source.opens)
     }
 }

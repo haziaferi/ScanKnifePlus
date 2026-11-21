@@ -195,7 +195,7 @@ fun formatSize(bytes: Long): String {
 
 /** The page count of [uri] opened with [password], read through the shared document pool; 0 if it cannot be opened, also for lack of memory. */
 suspend fun getPageCount(context: Context, uri: Uri, password: String?): Int = try {
-    PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages } ?: 0
+    PdDocumentPool.withDocument(context, uri, password) { it.numberOfPages }
 } catch (e: CancellationException) {
     throw e
 } catch (e: Exception) {

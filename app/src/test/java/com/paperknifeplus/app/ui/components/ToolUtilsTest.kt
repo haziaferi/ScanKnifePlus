@@ -161,7 +161,7 @@ class ToolUtilsTest {
     @Test
     fun `a file too large to parse gives no pooled document and no page count, not a crash`() = runBlocking {
         val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2)).apply { runOutOfMemory() }
-        assertNull(PdDocumentPool.withDocument(context, huge.uri, null) { it.numberOfPages })
+        assertThrows(OutOfMemoryError::class.java) { runBlocking { PdDocumentPool.withDocument(context, huge.uri, null) { it.numberOfPages } } }
         assertEquals(0, getPageCount(context, huge.uri, null))
     }
 

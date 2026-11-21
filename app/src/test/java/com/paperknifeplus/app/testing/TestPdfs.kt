@@ -50,6 +50,7 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -453,6 +454,20 @@ object TestPdfs {
         private class OutOfMemoryStream : InputStream() {
             override fun read(): Int = throw OutOfMemoryError("test")
             override fun read(b: ByteArray, off: Int, len: Int): Int = throw OutOfMemoryError("test")
+        }
+    }
+
+    /** [bytes] at a content [uri], each open a fresh stream; [opens] counts them, so a test can tell how many times a tool parsed the file. */
+    class CountedSource(context: Context, private val bytes: ByteArray, name: String) {
+        val uri: Uri = Uri.parse("content://com.paperknifeplus.app.test.counted/$name")
+        private val count = AtomicInteger()
+        val opens: Int get() = count.get()
+
+        init {
+            Shadows.shadowOf(context.contentResolver).registerInputStreamSupplier(uri) {
+                count.incrementAndGet()
+                bytes.inputStream()
+            }
         }
     }
 
