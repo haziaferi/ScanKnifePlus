@@ -27,7 +27,8 @@ private const val TAG = "PdfAccess"
 
 /**
  * [block] on [input] opened with [password] (none for null), parsed through temp files in the cache so that a large PDF does not exhaust
- * the heap: the one way the tools open a PDF with PDFBox. Throws on failure, InvalidPasswordException for a wrong or missing password, and
+ * the heap: the opener for the tools' passes over a whole document. Merge and Split, the page renderers' document pool and Ultra Preview
+ * open PDFs their own way, also through temp files. Throws on failure, InvalidPasswordException for a wrong or missing password, and
  * OutOfMemoryError when even that is not enough. Blocking; inline, so [block] can report progress on the main thread.
  */
 internal inline fun <T> withPdf(context: Context, input: Uri, password: String?, block: (PDDocument) -> T): T =

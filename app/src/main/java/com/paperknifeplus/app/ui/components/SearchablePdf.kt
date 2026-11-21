@@ -15,7 +15,6 @@ import com.haziaferi.scanknifeplus.scanner.cv.PageSize
 import com.haziaferi.scanknifeplus.scanner.export.PdfImageRect
 import com.tom_roush.pdfbox.cos.COSDictionary
 import com.tom_roush.pdfbox.cos.COSName
-import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDResources
@@ -160,17 +159,14 @@ internal suspend fun makeSearchable(
     onPage: (Int, Int) -> Unit = { _, _ -> },
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ): SearchableResult = withContext(dispatcher) {
-    val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(context.cacheDir)
-    context.contentResolver.requireInputStream(source).use { input ->
-        PDDocument.load(input, password, memory).use { document ->
-            val protection = document.sameProtection(password)
-            val result = renders(source, if (document.isEncrypted) password else null).use { pages ->
-                SearchableReader(context, document, pages, options, longEdgeMm).read(openEngine, running, onPage)
-            }
-            protection?.let(document::protect)
-            saveAndFlush(context, document, output)
-            result
+    withPdf(context, source, password) { document ->
+        val protection = document.sameProtection(password)
+        val result = renders(source, if (document.isEncrypted) password else null).use { pages ->
+            SearchableReader(context, document, pages, options, longEdgeMm).read(openEngine, running, onPage)
         }
+        protection?.let(document::protect)
+        saveAndFlush(context, document, output)
+        result
     }
 }
 
