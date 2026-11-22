@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -86,6 +87,8 @@ import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -287,7 +290,7 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
             colors = SliderDefaults.colors(
                 thumbColor = c.acf, activeTrackColor = c.acf, inactiveTrackColor = c.sf2, activeTickColor = c.acf, inactiveTickColor = c.bd
             ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { stateDescription = label }
+            modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).semantics { stateDescription = label }
         )
         Text(stringResource(R.string.scan_split_hint), style = scanText(13, FontWeight.Medium), color = c.mu)
     }
@@ -310,7 +313,8 @@ private fun PageActions(ui: ReviewUi, actions: ReviewActions) {
     val enabled = ui.pages.isNotEmpty() && !ui.busy
     val group = stringResource(R.string.scan_page_actions)
     Row(
-        Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp).fillMaxWidth().semantics { contentDescription = group },
+        // One height for the four, so a label that wraps grows its peers with it.
+        Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp).fillMaxWidth().height(IntrinsicSize.Min).semantics { contentDescription = group },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -333,7 +337,8 @@ private fun RowScope.ActionButton(
     Column(
         Modifier
             .weight(1f)
-            .heightIn(min = 64.dp)
+            .fillMaxHeight()
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(14.dp))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .alpha(if (enabled) 1f else 0.4f)
@@ -367,7 +372,7 @@ private fun ReadingBar(progress: ReadingProgress, onSaveWithoutText: () -> Unit)
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
             )
             Box(
-                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSaveWithoutText)
+                Modifier.inlineTarget().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onSaveWithoutText)
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -399,7 +404,7 @@ private fun UndoBar(number: Int, onUndo: () -> Unit) {
             modifier = Modifier.weight(1f)
         )
         Box(
-            Modifier.heightIn(min = 48.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onUndo)
+            Modifier.inlineTarget().widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onUndo)
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -427,15 +432,16 @@ private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit, onRetry: (() 
     ) {
         Text(stringResource(text), style = scanText(14, FontWeight.SemiBold), color = c.warnFg, modifier = Modifier.weight(1f))
         Box(
-            Modifier.heightIn(min = 48.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onDismiss)
+            Modifier.inlineTarget().widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onDismiss)
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(stringResource(R.string.scan_dismiss), style = scanText(15, FontWeight.ExtraBold), color = c.warnFg)
         }
         onRetry?.let {
+            Spacer(Modifier.width(TargetStep.INLINE_GAP))
             Box(
-                Modifier.heightIn(min = 48.dp).widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = it)
+                Modifier.inlineTarget().widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = it)
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -540,7 +546,7 @@ private fun OutlinedIconButton(icon: ImageVector, description: String, enabled: 
     val c = LocalScanPalette.current
     Box(
         Modifier
-            .size(48.dp)
+            .size(TargetStep.ACT.hit)
             .clip(CircleShape)
             .border(1.dp, c.bd, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)

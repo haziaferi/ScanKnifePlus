@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.io.File
 
 /** What the Scanner shows, in plain values, so the screen can be drawn without a camera. */
@@ -111,7 +113,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                 val close = stringResource(R.string.scan_close)
                 Box(
                     Modifier
-                        .size(48.dp)
+                        .size(TargetStep.ACT.hit)
                         .clip(CircleShape)
                         .background(k.offBg)
                         .semantics { contentDescription = close }
@@ -125,7 +127,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     val label = stringResource(if (ui.autoCapture) R.string.scan_auto_on else R.string.scan_auto_off)
                     Box(
                         Modifier
-                            .heightIn(min = 48.dp)
+                            .heightIn(min = TargetStep.ACT.drawn)
                             .clip(RoundedCornerShape(24.dp))
                             .background(if (ui.autoCapture) k.onBg else k.offBg)
                             .toggleable(value = ui.autoCapture, role = Role.Switch, onValueChange = { actions.onToggleAuto() })
@@ -142,7 +144,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     val torchState = stringResource(if (ui.torchOn) R.string.scan_state_on else R.string.scan_state_off)
                     Box(
                         Modifier
-                            .size(48.dp)
+                            .size(TargetStep.ACT.hit)
                             .clip(CircleShape)
                             .background(if (ui.torchOn) k.torchBg else k.offBg)
                             .toggleable(value = ui.torchOn, role = Role.Switch, onValueChange = { actions.onToggleTorch() })
@@ -240,7 +242,7 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
                 val selected = ui.mode == mode
                 Box(
                     Modifier
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = TargetStep.ACT.drawn)
                         .clip(RoundedCornerShape(24.dp))
                         .then(if (selected) Modifier.background(k.onCam.copy(alpha = 0.22f)) else Modifier)
                         .selectable(selected = selected, enabled = ui.canChangeMode || selected, role = Role.RadioButton) { onMode(mode) }
@@ -315,7 +317,7 @@ private fun DoneButton(enabled: Boolean, onDone: () -> Unit, modifier: Modifier)
     val k = LocalScanPalette.current.camera
     Box(
         modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(24.dp))
             .background(k.doneBg.copy(alpha = if (enabled) 1f else 0.5f))
             .clickable(enabled = enabled, role = Role.Button, onClick = onDone)
@@ -353,7 +355,7 @@ private fun Banner(text: String, retry: (() -> Unit)?, dismiss: (() -> Unit)?) {
     ) {
         Text(text, style = scanText(14, FontWeight.SemiBold), color = k.onCam, modifier = Modifier.padding(vertical = 6.dp))
         if (retry != null || dismiss != null) {
-            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
                 dismiss?.let { BannerButton(stringResource(R.string.scan_dismiss), it) }
                 retry?.let { BannerButton(stringResource(R.string.scan_retry), it) }
             }
@@ -361,12 +363,13 @@ private fun Banner(text: String, retry: (() -> Unit)?, dismiss: (() -> Unit)?) {
     }
 }
 
+/** A banner's text button (T3). */
 @Composable
 private fun BannerButton(label: String, onClick: () -> Unit) {
     val k = LocalScanPalette.current.camera
     Box(
         Modifier
-            .heightIn(min = 48.dp)
+            .inlineTarget()
             .widthIn(min = 64.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
@@ -392,7 +395,7 @@ private fun BoxScope.PermissionPrompt(@StringRes body: Int, @StringRes button: I
         Text(stringResource(body), style = scanText(15, FontWeight.Medium), color = k.onCam, textAlign = TextAlign.Center)
         Box(
             Modifier
-                .heightIn(min = 56.dp)
+                .heightIn(min = TargetStep.COMMIT.drawn)
                 .clip(RoundedCornerShape(16.dp))
                 .background(k.doneBg)
                 .clickable(role = Role.Button, onClick = onClick)

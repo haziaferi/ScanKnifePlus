@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
@@ -54,6 +57,7 @@ import com.haziaferi.scanknifeplus.scanner.cv.Pt
 import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -99,13 +103,13 @@ internal fun CropScreen(source: File, start: Quad?, onApply: (Quad) -> Unit, onC
                 )
                 corners.forEachIndexed { i, f ->
                     val name = stringResource(names[i])
-                    val half = with(density) { 24.dp.toPx() }
+                    val half = with(density) { (TargetStep.ACT.hit / 2).toPx() }
                     Box(
                         Modifier
                             .offset {
                                 IntOffset((rect.left + f.x * rect.width - half).roundToInt(), (rect.top + f.y * rect.height - half).roundToInt())
                             }
-                            .size(48.dp)
+                            .size(TargetStep.ACT.hit)
                             .semantics { contentDescription = name }
                             .pointerInput(i) {
                                 detectDragGestures { change, drag ->
@@ -124,14 +128,16 @@ internal fun CropScreen(source: File, start: Quad?, onApply: (Quad) -> Unit, onC
                 }
             }
         }
+        // Cancel grows with Apply, so the two are one height (R14 rule 1).
         Row(
-            Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
+            Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FlowButton(stringResource(R.string.scan_cancel), filled = false, enabled = true, onClick = onCancel)
+            FlowButton(stringResource(R.string.scan_cancel), filled = false, enabled = true, onClick = onCancel, modifier = Modifier.fillMaxHeight())
             Spacer(Modifier.weight(1f))
-            FlowButton(stringResource(R.string.scan_apply), filled = true, enabled = imageSize != null) {
+            FlowButton(stringResource(R.string.scan_apply), filled = true, enabled = imageSize != null, modifier = Modifier.fillMaxHeight()) {
                 val q = corners.map { Pt(it.x.toDouble(), it.y.toDouble()) }
                 onApply(Quad(q[0], q[1], q[2], q[3]))
             }
@@ -139,13 +145,13 @@ internal fun CropScreen(source: File, start: Quad?, onApply: (Quad) -> Unit, onC
     }
 }
 
-/** A 48 dp pill button of the flow's screens: filled with the accent for the screen's main action, outlined otherwise. */
+/** A pill button of the flow's screens: filled with the accent for the screen's main action (T1), outlined otherwise (T2). */
 @Composable
-internal fun FlowButton(label: String, filled: Boolean, enabled: Boolean, onClick: () -> Unit) {
+internal fun FlowButton(label: String, filled: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = LocalScanPalette.current
     Box(
-        Modifier
-            .heightIn(min = 48.dp)
+        modifier
+            .heightIn(min = if (filled) TargetStep.COMMIT.drawn else TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(24.dp))
             .then(
                 if (filled) {
