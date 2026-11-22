@@ -178,10 +178,10 @@ fun UnifiedPdfPreview(
                             ) { Icon(Icons.Filled.Check, null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText, modifier = Modifier.padding(4.dp)) }
                         }
                         if (!disableLightbox && showZoomIcon) {
-                            DenseTargets {
+                            DenseTargets { dense ->
                                 Surface(
                                     onClick = { lightboxPage = index },
-                                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn),
+                                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense),
                                     color = pageBadge, shape = CircleShape
                                 ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
                             }

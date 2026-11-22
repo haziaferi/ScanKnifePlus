@@ -215,10 +215,10 @@ fun ImageToPdfView(
                                         }
 
                                         // T4: inside the tile, the remove button answers only where it is drawn.
-                                        DenseTargets {
+                                        DenseTargets { dense ->
                                             IconButton(
                                                 onClick = { selectedUris = selectedUris.filterIndexed { i, _ -> i != index }; if (isSelected) selectedIndex = null },
-                                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn)
+                                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense)
                                             ) {
                                                 Icon(
                                                     Icons.Filled.Close, stringResource(R.string.action_remove_image, index + 1), tint = pageBadgeText,

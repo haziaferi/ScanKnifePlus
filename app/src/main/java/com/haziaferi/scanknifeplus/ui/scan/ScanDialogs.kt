@@ -204,7 +204,10 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
     }
 }
 
-/** One choice of [options] as a row of chips, [selected] marked; the chips' hit areas keep the rows [TargetStep.INLINE_GAP] apart. */
+/**
+ * One choice of [options] as a row of chips (T3), [selected] marked; drawn chips sit [TargetStep.INLINE_GAP] apart, across and down, since
+ * each chip's 48 dp hit area already holds the vertical gap.
+ */
 @Composable
 private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
     FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {

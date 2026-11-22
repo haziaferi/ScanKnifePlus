@@ -1,14 +1,17 @@
 package com.paperknifeplus.app.ui.theme
 
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -38,24 +41,30 @@ enum class TargetStep(val drawn: Dp, val hit: Dp) {
 }
 
 /**
- * T3 for a hand-made control: lays out [TargetStep.INLINE]'s hit area and draws the rest of the chain at least [TargetStep.INLINE]'s drawn
- * height in its middle, so the control's shape, clickable and padding come after it. Compose's minimum touch target makes the drawn part
- * answer touches across the whole hit area.
+ * T3 for a hand-made control: draws the rest of the chain at least [TargetStep.INLINE]'s drawn height, with half of
+ * [TargetStep.INLINE_GAP] laid out above and below it, so the control's shape, clickable and padding come after it. Compose's minimum touch
+ * target makes the drawn part answer touches across the 48 dp hit area; at large text the margin stays, so drawn neighbours keep the gap.
  */
 fun Modifier.inlineTarget(): Modifier =
-    sizeIn(minWidth = TargetStep.INLINE.hit, minHeight = TargetStep.INLINE.hit).wrapContentSize().heightIn(min = TargetStep.INLINE.drawn)
+    sizeIn(minWidth = TargetStep.INLINE.hit).wrapContentWidth().padding(vertical = TargetStep.INLINE_GAP / 2).heightIn(min = TargetStep.INLINE.drawn)
+
+/** Marks a control as T4 in the semantics tree, so a check of the ladder holds it to [TargetStep.DENSE] rather than 48 dp. */
+internal val DenseTarget = SemanticsPropertyKey<Unit>("DenseTarget")
 
 /**
  * Holds T4 controls: each answers touches only where it is drawn ([TargetStep.DENSE]), not across Compose's 48 dp minimum touch target, so
- * the controls of one page tile never take each other's touches or the tile's.
+ * the controls of one page tile never take each other's touches or the tile's. [content] puts the modifier it is given on each control,
+ * which marks it as T4.
  */
 @Composable
-fun DenseTargets(content: @Composable () -> Unit) {
+fun DenseTargets(content: @Composable (Modifier) -> Unit) {
     val base = LocalViewConfiguration.current
     val dense = remember(base) {
         object : ViewConfiguration by base {
             override val minimumTouchTargetSize = DpSize(TargetStep.DENSE.hit, TargetStep.DENSE.hit)
         }
     }
-    CompositionLocalProvider(LocalViewConfiguration provides dense, content = content)
+    CompositionLocalProvider(LocalViewConfiguration provides dense) { content(DenseMark) }
 }
+
+private val DenseMark = Modifier.semantics { this[DenseTarget] = Unit }

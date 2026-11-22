@@ -395,10 +395,13 @@ private fun PhotosCard(photos: List<Uri>, onChange: () -> Unit, modifier: Modifi
     }
 }
 
-/** One choice of [options] as a row of chips, [selected] marked. */
+/**
+ * One choice of [options] as a row of chips (T3), [selected] marked; drawn chips sit [TargetStep.INLINE_GAP] apart, across and down, since
+ * each chip's 48 dp hit area already holds the vertical gap.
+ */
 @Composable
 private fun <T> ChoiceChips(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
-    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
         for (option in options) {
             FilterChip(
                 selected = option == selected,
