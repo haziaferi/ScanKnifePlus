@@ -326,11 +326,28 @@ class LargeTextLayoutTest {
     }
 
     @Test
+    fun `Home's Import photos and Open PDF grow to one height`() {
+        // In the app's font, on the 6T's width, where Import photos wraps and Open PDF does not.
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                Column(Modifier.width(384.dp)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
+            }
+        }
+        assertTrue("Import photos wraps", layoutOf("Import photos").lineCount > 1)
+        val photos = rule.onNode(hasText("Import photos") and hasClickAction()).bounds()
+        val pdf = rule.onNode(hasText("Open PDF") and hasClickAction()).bounds()
+        assertEquals("the peers are one height", photos.height, pdf.height, 0.5f)
+        assertEquals("side by side", photos.top, pdf.top, 0.5f)
+    }
+
+    @Test
     fun `the tip card grows with its text beside its close button`() {
         atDoubleText { ToolTipCard(TIP, onClose = {}) }
         assertNotClipped(TIP)
-        val close = rule.onNodeWithContentDescription("Close the tip").bounds()
-        assertTrue("the close button is 48 dp", close.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
+        val closeNode = rule.onNodeWithContentDescription("Close the tip")
+        val close = closeNode.bounds()
+        // T3: drawn 40 dp, answering touches across 48.
+        assertTrue("the close button takes 48 dp of touch", closeNode.fetchSemanticsNode().touchBoundsInRoot.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
         assertTrue("the text runs beside the close button", text(TIP).right <= close.left)
     }
 
