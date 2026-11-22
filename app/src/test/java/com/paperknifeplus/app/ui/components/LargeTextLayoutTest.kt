@@ -14,6 +14,9 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
@@ -326,18 +329,26 @@ class LargeTextLayoutTest {
     }
 
     @Test
-    fun `Home's Import photos and Open PDF grow to one height`() {
-        // In the app's font, on the 6T's width, where Import photos wraps and Open PDF does not.
+    @Config(qualifiers = "w600dp-h2400dp")
+    fun `Home's Import photos and Open PDF grow to one height on every width`() {
+        // Phone widths in steps, so the two labels wrap onto different numbers of lines at some of them, as on the 6T.
+        var width by mutableStateOf(300.dp)
         atDoubleText {
             MaterialTheme(typography = Typography) {
-                Column(Modifier.width(384.dp)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
+                Column(Modifier.width(width)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
             }
         }
-        assertTrue("Import photos wraps", layoutOf("Import photos").lineCount > 1)
-        val photos = rule.onNode(hasText("Import photos") and hasClickAction()).bounds()
-        val pdf = rule.onNode(hasText("Open PDF") and hasClickAction()).bounds()
-        assertEquals("the peers are one height", photos.height, pdf.height, 0.5f)
-        assertEquals("side by side", photos.top, pdf.top, 0.5f)
+        var differentLines = false
+        for (w in 300..440 step 10) {
+            width = w.dp
+            rule.waitForIdle()
+            differentLines = differentLines || layoutOf("Import photos").lineCount != layoutOf("Open PDF").lineCount
+            val photos = rule.onNode(hasText("Import photos") and hasClickAction()).bounds()
+            val pdf = rule.onNode(hasText("Open PDF") and hasClickAction()).bounds()
+            assertEquals("the peers are one height at $w dp", photos.height, pdf.height, 0.5f)
+            assertEquals("side by side at $w dp", photos.top, pdf.top, 0.5f)
+        }
+        assertTrue("at some width one label wraps more than the other", differentLines)
     }
 
     @Test

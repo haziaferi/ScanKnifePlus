@@ -49,6 +49,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,8 +59,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * R14 on every screen Robolectric can compose, on the 6T's width and tall enough that nothing scrolls: every hit area at least 24 dp and none
- * overlapping another ([assertTargetsFit]). [TargetWalkTest] walks them at the default text size, [TargetWalkLargeTextTest] at twice it. The
- * camera preview is out of reach; the scanner's controls are walked over an empty preview.
+ * overlapping another ([assertTargetsFit]). [TargetWalkTest] walks them at the default text size, [TargetWalkLargeTextTest] at twice it,
+ * [TargetWalkSmallPhoneTest] at twice it on 320 dp. The camera preview is out of reach; the scanner's controls are walked over an empty
+ * preview.
  */
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
 @Config(qualifiers = "w384dp-h2400dp")
@@ -227,7 +229,7 @@ abstract class TargetWalk(private val fontScale: Float) {
     }
 
     @Test
-    fun `the scanner's controls`() {
+    open fun `the scanner's controls`() {
         show {
             ScannerScreen(
                 ScannerUi(mode = CaptureMode.MULTI, liveDetection = true, torchAvailable = true, count = 2, shutterEnabled = true, storeFailed = true),
@@ -244,11 +246,11 @@ abstract class TargetWalk(private val fontScale: Float) {
     }
 
     @Composable
-    private fun launch(id: String, uri: Uri?) = ToolCatalog.byId(id)!!.screen(ToolLaunch(uri, null, onBack = {}, onOpenPreview = { _, _, _ -> }))
+    private fun ToolScreen(id: String, uri: Uri?) = ToolCatalog.byId(id)!!.screen(ToolLaunch(uri, null, onBack = {}, onOpenPreview = { _, _, _ -> }))
 
     /** The tool [id] with no file. */
     private fun empty(id: String) {
-        show { launch(id, null) }
+        show { ToolScreen(id, null) }
         walk("$id, empty")
     }
 
@@ -258,7 +260,7 @@ abstract class TargetWalk(private val fontScale: Float) {
      */
     private fun configuring(id: String, pdf: ByteArray = TestPdfs.plain(3)) {
         val uri = TestPdfs.write(context.cacheDir, pdf, "walk-$id.pdf")
-        show { launch(id, uri) }
+        show { ToolScreen(id, uri) }
         rule.waitUntil("$id shows its file", 30_000) { shown("Document") }
         walk("$id, configuring")
     }
@@ -301,7 +303,7 @@ abstract class TargetWalk(private val fontScale: Float) {
     @Test fun `Metadata empty`() = empty("metadata")
     @Test fun `Metadata configuring`() = configuring("metadata")
     @Test fun `PDF to images empty`() = empty("pdf2img")
-    @Test fun `PDF to images configuring`() = configuring("pdf2img")
+    @Test open fun `PDF to images configuring`() = configuring("pdf2img")
     @Test fun `PDF to ZIP empty`() = empty("pdf2zip")
     @Test fun `PDF to ZIP configuring`() = configuring("pdf2zip")
     @Test fun `Extract images empty`() = empty("extract-images")
@@ -319,7 +321,7 @@ abstract class TargetWalk(private val fontScale: Float) {
         val images = (1..3).map { TestPdfs.write(context.cacheDir, png, "walk-photo-$it.png") }
         val output = Uri.fromFile(File(context.cacheDir, "walk-images.pdf"))
         show {
-            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output, picked = images)) { launch("img2pdf", null) }
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output, picked = images)) { ToolScreen("img2pdf", null) }
         }
         rule.onNode(hasText("Choose images") and hasClickAction()).performClick()
         rule.waitUntil(60_000) { shown("walk-photo-1") || rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size > 4 }
@@ -334,3 +336,19 @@ class TargetWalkTest : TargetWalk(fontScale = 1f)
 @RunWith(RobolectricTestRunner::class)
 @Config(fontScale = 2f)
 class TargetWalkLargeTextTest : TargetWalk(fontScale = 2f)
+
+/**
+ * Twice the text size on a 320 dp phone. Robolectric's font runs narrower than the 6T's, so labels that wrap on the 6T at 384 dp wrap here
+ * only at 320: the Save PDF dialog's commit is one of them.
+ */
+@RunWith(RobolectricTestRunner::class)
+@Config(fontScale = 2f, qualifiers = "w320dp-h2400dp")
+class TargetWalkSmallPhoneTest : TargetWalk(fontScale = 2f) {
+    @Ignore("L7 layout/scanner: at 2.0x on 320 dp Done reaches under the centred shutter (13 x 50 dp)")
+    @Test
+    override fun `the scanner's controls`() = super.`the scanner's controls`()
+
+    @Ignore("L6 layout/segmented: at 2.0x on 320 dp the format and quality segments squeeze under 48 dp wide, so their hit areas overlap")
+    @Test
+    override fun `PDF to images configuring`() = super.`PDF to images configuring`()
+}
