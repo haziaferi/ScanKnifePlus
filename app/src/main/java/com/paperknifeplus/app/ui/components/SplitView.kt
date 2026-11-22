@@ -43,6 +43,7 @@ fun SplitView(
     var sourceUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
+    // The source's open password, empty when it opens without one; the saved copies keep it.
     var unlockPassword by remember { mutableStateOf("") }
     var rangeText by remember { mutableStateOf("") }
     var selectedPages by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -51,12 +52,12 @@ fun SplitView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -64,33 +65,57 @@ fun SplitView(
     }
     DisposableEffect(Unit) { onDispose { deleteDecryptedCopy(context, decryptedUri) } }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
+    fun showPages(count: Int) {
+        pageCount = count
+        selectedPages = emptySet()
+        rangeText = ""
+        currentState = ToolState.CONFIGURING
+    }
+
+    // A protected file is decrypted once to a cache copy, so page previews can use the fast native renderer; saving reads the original
+    // with its password. A wrong password, typed or handed over by the reader, opens the prompt with its error.
+    suspend fun unlock(source: Uri, password: String) {
+        decryptToCache(context, source, password).resolve(
+            context,
+            onWrongPassword = { unlockError = true; fileToUnlock = fileName },
+            onUnreadable = { closePrompt() }
+        ) { copy ->
+            decryptedUri = copy.uri
+            unlockPassword = password
+            selectedUri = copy.uri
+            showPages(copy.pageCount)
+            fileToUnlock = null
+        }
+    }
+
     fun handleFileSelection(uri: Uri, password: String? = null) {
         dropDecryptedCopy()
         selectedUri = uri
         sourceUri = uri
-        unlockPassword = password.orEmpty()
+        unlockPassword = ""
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            val access = inspectPdf(context, uri)
-            when {
-                access == PdfAccess.Unreadable -> {
+        check.start {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
                 }
-                needsUnlockPrompt(access, password) -> fileToUnlock = fileName
-                else -> {
-                    pageCount = getPageCount(context, uri, password)
-                    selectedPages = emptySet()
-                    rangeText = ""
-                    currentState = ToolState.CONFIGURING
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
+                // As in Delete and Crop, a file that opens without a password keeps none, not even one the reader handed over.
+                PdfAccess.Open -> showPages(getPageCount(context, uri, null))
             }
-            isFileLoading = false
         }
     }
 
@@ -125,11 +150,12 @@ fun SplitView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("SplitView", "Split failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -142,7 +168,7 @@ fun SplitView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -164,7 +190,7 @@ fun SplitView(
                         ) {
                             ToolFileCard(
                                 uri = selectedUri!!,
-                                password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = {
@@ -173,7 +199,8 @@ fun SplitView(
                                     selectedUri = null
                                     currentState = ToolState.SELECTING
                                 },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -256,7 +283,7 @@ fun SplitView(
                                         uri = selectedUri!!,
                                         pageCount = pageCount,
                                         mode = PreviewMode.GRID,
-                                        password = splitPreviewPassword(selectedUri, decryptedUri, unlockPassword),
+                                        password = null,
                                         accentColor = accentColor,
                                         selectedPages = selectedPages,
                                         onToggleSelection = { index ->
@@ -272,7 +299,6 @@ fun SplitView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.split_extracting_specified_pages),
                             current = progressCount,
                             total = selectedPages.size,
@@ -283,7 +309,7 @@ fun SplitView(
                         SuccessView(
                             message = stringResource(R.string.split_split_complete),
                             subMessage = stringResource(R.string.split_selected_pages_saved_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -300,6 +326,7 @@ fun SplitView(
                                     }
                                 }
                             },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }
@@ -308,47 +335,13 @@ fun SplitView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = {
-                        fileToUnlock = null
-                        unlockError = false
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    },
-                    onUnlocked = { pass ->
-                        val source = selectedUri
-                        if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                val count = copy?.let { getPageCount(context, it, null) } ?: 0
-                                if (copy != null && count > 0) {
-                                    decryptedUri = copy
-                                    unlockPassword = pass
-                                    selectedUri = copy
-                                    pageCount = count
-                                    currentState = ToolState.CONFIGURING
-                                    fileToUnlock = null
-                                } else {
-                                    deleteDecryptedCopy(context, copy)
-                                    unlockError = true
-                                }
-                                isFileLoading = false
-                            }
-                        }
-                    },
+                    onDismiss = { check.stop(); closePrompt() },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }
     }
 }
-
-/**
- * The password page previews need: none for the decrypted cache copy (so the fast native renderer is used), and the unlock password
- * when Split works on the original encrypted file, as it does when the preview hands over a password.
- */
-internal fun splitPreviewPassword(selectedUri: Uri?, decryptedUri: Uri?, unlockPassword: String): String? =
-    if (selectedUri != null && selectedUri == decryptedUri) null else unlockPassword.ifEmpty { null }

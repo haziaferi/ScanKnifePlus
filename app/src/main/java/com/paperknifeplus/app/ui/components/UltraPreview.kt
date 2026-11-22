@@ -61,7 +61,6 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -195,9 +194,8 @@ fun UltraPreview(
     var source by remember(uri) { mutableStateOf(ReaderSource(uri)) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isDecrypting by remember { mutableStateOf(false) }
     var activePageCount by remember { mutableIntStateOf(pageCount) }
-    var loadJob by remember { mutableStateOf<Job?>(null) }
+    val check = rememberFileCheck()
 
     // The shared loader's fetcher and keyer with a larger cache of its own, for the sharp pages shown here.
     val imageLoader = remember {
@@ -210,49 +208,53 @@ fun UltraPreview(
         onDispose { deleteDecryptedCopy(context, source.displayUri) }
     }
 
-    // Opens the file, or with [password] its decrypted copy; run again after unlocking, cancelling the previous load.
-    fun initializeReader(password: String?) {
-        loadJob?.cancel()
-        loadJob = scope.launch {
-            isInitializing = true
-            if (password == null) {
-                when (inspectPdf(context, uri)) {
-                    PdfAccess.Unreadable -> {
-                        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-                        onDismiss()
-                        return@launch
-                    }
-                    PdfAccess.Encrypted -> {
-                        fileToUnlock = fileName
-                        isInitializing = false
-                        return@launch
-                    }
-                    PdfAccess.Open -> {}
+    // Opens the file, or with [password] its decrypted copy; run again after unlocking, stopping the previous load. The prompt stays open
+    // while the password is checked, so its Cancel and Back can stop the check.
+    fun initializeReader(password: String?) = check.start {
+        isInitializing = true
+        if (password == null) {
+            when (inspectPdf(context, uri)) {
+                PdfAccess.Unreadable -> {
+                    Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
+                    onDismiss()
+                    return@start
                 }
-            } else {
-                isDecrypting = true
-                val copy = decryptToCache(context, uri, password)
-                isDecrypting = false
-                if (copy == null) {
-                    unlockError = true
+                PdfAccess.Encrypted -> {
                     fileToUnlock = fileName
                     isInitializing = false
-                    return@launch
+                    return@start
                 }
+                PdfAccess.Open -> {}
+            }
+        } else {
+            val decrypted = decryptToCache(context, uri, password)
+            decrypted.resolve(
+                context,
+                onWrongPassword = {
+                    unlockError = true
+                    isInitializing = false
+                    return@start
+                },
+                onUnreadable = {
+                    onDismiss()
+                    return@start
+                }
+            ) { copy ->
                 deleteDecryptedCopy(context, source.displayUri)
-                source = source.unlocked(copy, password)
+                source = source.unlocked(copy.uri, password)
+                fileToUnlock = null
             }
-
-            val document = loadReaderDocument(context, source.displayUri)
-            if (document == null) {
-                Toast.makeText(context, toolText(context, R.string.reader_failed_to_load_document), Toast.LENGTH_SHORT).show()
-            } else {
-                activePageCount = document.pages.size
-                pageBoxes = document.pages
-                links = document.links
-            }
-            isInitializing = false
         }
+
+        val document = loadReaderDocument(context, source.displayUri)
+        if (document == null) {
+            Toast.makeText(context, toolText(context, R.string.reader_failed_to_load_document), Toast.LENGTH_SHORT).show()
+        } else {
+            activePageCount = document.pages.size
+            pageBoxes = document.pages
+            links = document.links
+        }
+        isInitializing = false
     }
 
     LaunchedEffect(uri) {
@@ -519,13 +521,10 @@ fun UltraPreview(
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(top = 100.dp)) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = onDismiss,
-                    onUnlocked = { pass ->
-                        fileToUnlock = null
-                        initializeReader(pass)
-                    },
+                    onDismiss = { check.stop(); onDismiss() },
+                    onUnlocked = { pass -> initializeReader(pass) },
                     accentColor = MaterialTheme.colorScheme.primary,
-                    isLoading = isDecrypting,
+                    isLoading = check.running,
                     isError = unlockError
                 )
             }

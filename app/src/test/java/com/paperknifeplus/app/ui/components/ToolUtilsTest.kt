@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
@@ -43,19 +44,20 @@ class ToolUtilsTest {
     private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }
 
     @Test
-    fun `decryptToCache gives null and writes nothing when the provider has no stream`() = runBlocking {
-        assertNull(decryptToCache(context, TestPdfs.nullStreamUri(), TestPdfs.USER_PASSWORD))
+    fun `decryptToCache finds nothing to read and writes nothing when the provider has no stream`() = runBlocking {
+        assertEquals(PasswordCheck.Unreadable, decryptToCache(context, TestPdfs.nullStreamUri(), TestPdfs.USER_PASSWORD))
         assertEquals(emptyList<File>(), decryptedCopies())
     }
 
     @Test
-    fun `decryptToCache writes a unique, unencrypted copy`() = runBlocking {
+    fun `decryptToCache writes a unique, unencrypted copy with its page count`() = runBlocking {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked.pdf")
-        val first = decryptToCache(context, source, TestPdfs.USER_PASSWORD)!!
-        val second = decryptToCache(context, source, TestPdfs.USER_PASSWORD)!!
-        assertTrue(first != second)
-        PDDocument.load(File(first.path!!)).use { assertEquals(2, it.numberOfPages) }
-        assertNull(decryptToCache(context, source, "wrong"))
+        val first = (decryptToCache(context, source, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        val second = (decryptToCache(context, source, TestPdfs.USER_PASSWORD) as PasswordCheck.Opened).value
+        assertTrue(first.uri != second.uri)
+        assertEquals(2, first.pageCount)
+        PDDocument.load(File(first.uri.path!!)).use { assertEquals(2, it.numberOfPages) }
+        assertEquals(PasswordCheck.WrongPassword, decryptToCache(context, source, "wrong"))
         assertEquals(2, decryptedCopies().size)
     }
 
@@ -156,6 +158,32 @@ class ToolUtilsTest {
         assertEquals(0, getPageCount(context, source, null))
     }
 
+    @Test
+    fun `a file too large to parse gives no pooled document and no page count, not a crash`() = runBlocking {
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2), "huge-count.pdf").apply { runOutOfMemory() }
+        assertThrows(OutOfMemoryError::class.java) { runBlocking { PdDocumentPool.withDocument(context, huge.uri, null) { it.numberOfPages } } }
+        assertEquals(0, getPageCount(context, huge.uri, null))
+    }
+
+    @Test
+    fun `Repair opens a protected file with its password, Compress an owner-protected one, both saving it whole and open`() = runBlocking {
+        val content = TestPdfs.someWithText(3, setOf(2))
+        val source = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(content), "protected-whole.pdf")
+        val repaired = File(context.cacheDir, "repaired.pdf")
+        repairPdf(context, source, Uri.fromFile(repaired), TestPdfs.USER_PASSWORD)
+        // Compress gets a file that opens without a password: a protected file's decrypted copy, or one with only an owner password.
+        val ownerProtected = TestPdfs.write(context.cacheDir, TestPdfs.protectedCopy(content, password = ""), "owner-protected-whole.pdf")
+        val compressed = File(context.cacheDir, "compressed-protected.pdf")
+        compressPdf(context, ownerProtected, Uri.fromFile(compressed), "Recommended") { _, _ -> }
+        for (output in listOf(repaired, compressed)) {
+            PDDocument.load(output).use {
+                assertFalse(it.isEncrypted)
+                assertEquals(3, it.numberOfPages)
+                assertTrue(String(it.getPage(2).contents.use { s -> s.readBytes() }, Charsets.ISO_8859_1).contains(TestPdfs.textMarker(3)))
+            }
+        }
+    }
+
     /** A Flate-free 1-bit image of [width] x [height] pixels; uncompressed, so a JPEG of it would be far smaller. */
     private fun oneBitImage(document: PDDocument, width: Int, height: Int, stencil: Boolean): PDImageXObject {
         val bytes = ByteArray((width + 7) / 8 * height) { if (it % 7 == 0) 0x0F else 0x00 }
@@ -177,7 +205,7 @@ class ToolUtilsTest {
     private fun compress(input: ByteArray, level: String): File {
         val source = TestPdfs.write(context.cacheDir, input, "to-compress.pdf")
         val output = File(context.cacheDir, "compressed.pdf")
-        runBlocking { compressPdf(context, source, Uri.fromFile(output), null, level) { _, _ -> } }
+        runBlocking { compressPdf(context, source, Uri.fromFile(output), level) { _, _ -> } }
         return output
     }
 

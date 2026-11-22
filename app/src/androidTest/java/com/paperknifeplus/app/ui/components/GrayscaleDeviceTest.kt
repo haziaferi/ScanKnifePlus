@@ -18,10 +18,14 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.common.PDStream
+import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
+import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.abs
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -99,26 +103,30 @@ class GrayscaleDeviceTest {
         }
     }
 
+    /** A [turnedPage] whose lower-left quarter is red through a colour-key masked RGB image, which the converter does not map: it falls back. */
+    private fun fallbackPage(doc: PDDocument): PDPage {
+        val red = doc.document.createCOSStream().apply {
+            createOutputStream().use { it.write(byteArrayOf(-1, 0, 0)) }
+            setItem(COSName.TYPE, COSName.XOBJECT)
+            setItem(COSName.SUBTYPE, COSName.IMAGE)
+            setInt(COSName.WIDTH, 1)
+            setInt(COSName.HEIGHT, 1)
+            setInt(COSName.BITS_PER_COMPONENT, 8)
+            setItem(COSName.COLORSPACE, COSName.DEVICERGB)
+            setItem(COSName.MASK, ints(0, 0, 0, 0, 0, 0))
+        }
+        return turnedPage(doc, "q 306 0 0 396 0 0 cm /Im0 Do Q") { page ->
+            page.resources = PDResources(COSDictionary().apply {
+                setItem(COSName.XOBJECT, COSDictionary().apply { setItem(COSName.getPDFName("Im0"), red) })
+            })
+        }
+    }
+
     @Test
     fun aFallbackPageShowsUprightAndGrayWithItsAnnotationKept() {
         val source = file("colour-key")
         PDDocument().use { doc ->
-            // A colour-key masked RGB image is something the converter does not map, so the page falls back.
-            val red = doc.document.createCOSStream().apply {
-                createOutputStream().use { it.write(byteArrayOf(-1, 0, 0)) }
-                setItem(COSName.TYPE, COSName.XOBJECT)
-                setItem(COSName.SUBTYPE, COSName.IMAGE)
-                setInt(COSName.WIDTH, 1)
-                setInt(COSName.HEIGHT, 1)
-                setInt(COSName.BITS_PER_COMPONENT, 8)
-                setItem(COSName.COLORSPACE, COSName.DEVICERGB)
-                setItem(COSName.MASK, ints(0, 0, 0, 0, 0, 0))
-            }
-            turnedPage(doc, "q 306 0 0 396 0 0 cm /Im0 Do Q") { page ->
-                page.resources = PDResources(COSDictionary().apply {
-                    setItem(COSName.XOBJECT, COSDictionary().apply { setItem(COSName.getPDFName("Im0"), red) })
-                })
-            }
+            fallbackPage(doc)
             doc.save(source)
         }
         val output = file("gray")
@@ -135,6 +143,42 @@ class GrayscaleDeviceTest {
         assertNear(54, shown.getPixel(200, 200), "red quarter, now gray")
         assertNear(255, shown.getPixel(1300, 300), "blank area")
         shown.recycle()
+    }
+
+    private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }.toSet()
+
+    /**
+     * A file with only an owner password reaches Grayscale as it is, still encrypted (one that needs a password reaches it as a decrypted
+     * copy), and the platform renderer draws its fallback pages from a copy decrypted without a password. The copy is looked for when the
+     * second page starts: the renderer opens on the first fallback page and keeps its copy until the conversion is done.
+     */
+    @Test
+    fun anOwnerProtectedFileWithFallbackPagesConvertsThroughADecryptedCopyItThenDeletes() {
+        val source = file("owner-locked-colour-key")
+        PDDocument().use { doc ->
+            fallbackPage(doc)
+            fallbackPage(doc)
+            doc.protect(StandardProtectionPolicy("owner-secret", "", AccessPermission()).apply { encryptionKeyLength = 128 })
+            doc.save(source)
+        }
+        assertTrue("encrypted", PDDocument.load(source).use { it.isEncrypted })
+        val before = decryptedCopies()
+        var during = emptySet<File>()
+        val output = file("owner-locked-gray")
+        val imagePages = runBlocking {
+            performGrayscaleRewrite(context, Uri.fromFile(source), Uri.fromFile(output)) { page, _ -> if (page == 2) during = decryptedCopies() - before }
+        }
+        assertEquals(2, imagePages)
+        assertEquals("the renderer reads a decrypted copy", 1, during.size)
+        PDDocument.load(output).use { doc ->
+            assertFalse(doc.isEncrypted)
+            assertEquals(90, doc.getPage(0).rotation)
+        }
+        val shown = render(output, 1650, 1275)
+        assertNear(54, shown.getPixel(200, 200), "red quarter, now gray")
+        assertNear(255, shown.getPixel(1300, 300), "blank area")
+        shown.recycle()
+        assertEquals("the renderer's decrypted copy is deleted", before, decryptedCopies())
     }
 
     @Test

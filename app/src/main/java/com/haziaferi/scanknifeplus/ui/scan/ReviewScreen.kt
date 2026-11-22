@@ -5,11 +5,11 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -456,10 +458,14 @@ private fun Footer(ui: ReviewUi, actions: ReviewActions) {
             if (ui.mode == CaptureMode.SINGLE) {
                 Spacer(Modifier.weight(1f))
             } else {
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Lazy, so a long scan composes and loads only the thumbnails in view. Not keyed: keyed, the strip would follow the first
+                // page in view when it moves, so a page moved before it would leave the view.
+                LazyRow(Modifier.weight(1f), contentPadding = PaddingValues(2.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     val selectedId = ui.pages.getOrNull(ui.selectedIndex)?.id
-                    ui.pages.forEachIndexed { i, page -> Thumbnail(page, i + 1, page.id == selectedId) { actions.onSelect(page.id) } }
-                    AddPageButton(actions.onAddPage)
+                    itemsIndexed(ui.pages) { i, page ->
+                        Thumbnail(page, i + 1, page.id == selectedId) { actions.onSelect(page.id) }
+                    }
+                    item { AddPageButton(actions.onAddPage) }
                 }
             }
             FlowButton(stringResource(R.string.scan_done), filled = true, enabled = ui.canSave, onClick = actions.onDone)

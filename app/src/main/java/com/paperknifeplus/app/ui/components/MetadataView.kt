@@ -70,11 +70,11 @@ fun MetadataView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun backToSelection() {
         selectedUri = null
@@ -82,9 +82,8 @@ fun MetadataView(
         currentState = ToolState.SELECTING
     }
 
-    /** Reads [uri]'s properties with [password] and shows them, or goes back to file selection when they cannot be read. */
-    suspend fun showProperties(uri: Uri, password: String?) {
-        val count = getPageCount(context, uri, password)
+    /** Shows [uri]'s properties, read with [password], and its [count] of pages, or goes back to file selection when they cannot be read. */
+    suspend fun showProperties(uri: Uri, password: String?, count: Int) {
         val properties = loadMetadata(context, uri, password)
         if (properties == null) {
             Toast.makeText(context, toolText(context, R.string.metadata_could_not_read_file_properties), Toast.LENGTH_LONG).show()
@@ -109,17 +108,15 @@ fun MetadataView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     backToSelection()
                 }
                 PdfAccess.Encrypted -> fileToUnlock = fileName
-                PdfAccess.Open -> showProperties(uri, null)
+                PdfAccess.Open -> showProperties(uri, null, getPageCount(context, uri, null))
             }
-            isFileLoading = false
         }
     }
 
@@ -153,11 +150,12 @@ fun MetadataView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("MetadataView", "Saving properties failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -170,7 +168,7 @@ fun MetadataView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.metadata_reading_file_properties))
             } else {
                 when (currentState) {
@@ -246,27 +244,31 @@ fun MetadataView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                if (getPageCount(context, source, pass) > 0) {
+                            check.start {
+                                val counted = checkPageCount(context, source, pass)
+                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { count ->
                                     unlockPassword = pass
-                                    showProperties(source, pass)
-                                } else {
-                                    unlockError = true
+                                    showProperties(source, pass, count)
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }
@@ -324,26 +326,27 @@ internal data class PdfProperties(
     val producer: String
 )
 
-/** [uri]'s document information, opened with [password]; null when the file cannot be read, so the screen can say so. */
+/** [uri]'s document information, opened with [password]; null when the file cannot be read, also for lack of memory, so the screen can say so. */
 internal suspend fun loadMetadata(context: Context, uri: Uri, password: String?): PdfProperties? = withContext(Dispatchers.IO) {
     try {
-        context.contentResolver.requireInputStream(uri).use { input ->
-            PDDocument.load(input, password.orEmpty()).use { document ->
-                val info = document.documentInformation
-                PdfProperties(
-                    info.title.orEmpty(),
-                    info.author.orEmpty(),
-                    info.subject.orEmpty(),
-                    info.keywords.orEmpty(),
-                    info.creator.orEmpty(),
-                    info.producer.orEmpty()
-                )
-            }
+        withPdf(context, uri, password) { document ->
+            val info = document.documentInformation
+            PdfProperties(
+                info.title.orEmpty(),
+                info.author.orEmpty(),
+                info.subject.orEmpty(),
+                info.keywords.orEmpty(),
+                info.creator.orEmpty(),
+                info.producer.orEmpty()
+            )
         }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Log.w("MetadataView", "Cannot read the properties of $uri", e)
+        null
+    } catch (e: OutOfMemoryError) {
+        Log.w("MetadataView", "Out of memory reading the properties of $uri", e)
         null
     }
 }

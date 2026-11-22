@@ -47,11 +47,11 @@ fun RotateView(
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -68,8 +68,7 @@ fun RotateView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -84,7 +83,6 @@ fun RotateView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -118,11 +116,12 @@ fun RotateView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("RotateView", "Rotation failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -135,7 +134,7 @@ fun RotateView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -159,8 +158,10 @@ fun RotateView(
                                 password = null,
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                onChange = { dropDecryptedCopy(); selectedUri = null; pageRotations = emptyMap(); currentState = ToolState.SELECTING },
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -221,7 +222,6 @@ fun RotateView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.rotate_applying_rotations_to_document),
                             current = 0,
                             total = 0,
@@ -232,7 +232,7 @@ fun RotateView(
                         SuccessView(
                             message = stringResource(R.string.rotate_rotate_complete),
                             subMessage = stringResource(R.string.rotate_orientation_updated_successfully),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -242,41 +242,45 @@ fun RotateView(
                                 pageRotations = emptyMap()
                                 currentState = ToolState.SELECTING
                             },
-                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
+                            onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
+                            check.start {
                                 // Decrypted once to a cache copy, so page previews can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                if (copy != null) {
-                                    val count = getPageCount(context, copy, null)
-                                    decryptedUri = copy
+                                val decrypted = decryptToCache(context, source, pass)
+                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
+                                    decryptedUri = copy.uri
                                     unlockPassword = pass
-                                    selectedUri = copy
-                                    pageCount = count
+                                    selectedUri = copy.uri
+                                    pageCount = copy.pageCount
+                                    pageRotations = (0 until copy.pageCount).associateWith { 0 }
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

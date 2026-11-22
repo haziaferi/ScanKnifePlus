@@ -51,12 +51,12 @@ fun DeleteView(
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var showRangeInput by remember { mutableStateOf(false) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -72,21 +72,23 @@ fun DeleteView(
         currentState = ToolState.CONFIGURING
     }
 
+    // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+    fun closePrompt() {
+        fileToUnlock = null
+        unlockError = false
+        dropDecryptedCopy()
+        selectedUri = null
+        currentState = ToolState.SELECTING
+    }
+
     // An encrypted file is decrypted to a cache copy once, so page previews can use the fast native renderer.
-    fun unlock(source: Uri, password: String) {
-        isFileLoading = true
-        scope.launch {
-            val copy = decryptToCache(context, source, password)
-            if (copy != null) {
-                decryptedUri = copy
-                unlockPassword = password
-                showPages(copy, getPageCount(context, copy, null))
-                fileToUnlock = null
-            } else {
-                unlockError = true
-                fileToUnlock = fileName
-            }
-            isFileLoading = false
+    suspend fun unlock(source: Uri, password: String) {
+        val decrypted = decryptToCache(context, source, password)
+        decrypted.resolve(context, onWrongPassword = { unlockError = true; fileToUnlock = fileName }, onUnreadable = { closePrompt() }) { copy ->
+            decryptedUri = copy.uri
+            unlockPassword = password
+            showPages(copy.uri, copy.pageCount)
+            fileToUnlock = null
         }
     }
 
@@ -99,25 +101,15 @@ fun DeleteView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
                     selectedUri = null
                     currentState = ToolState.SELECTING
-                    isFileLoading = false
                 }
-                PdfAccess.Encrypted -> if (password == null) {
-                    fileToUnlock = fileName
-                    isFileLoading = false
-                } else {
-                    unlock(uri, password)
-                }
-                PdfAccess.Open -> {
-                    showPages(uri, getPageCount(context, uri, null))
-                    isFileLoading = false
-                }
+                PdfAccess.Encrypted -> if (password == null) fileToUnlock = fileName else unlock(uri, password)
+                PdfAccess.Open -> showPages(uri, getPageCount(context, uri, null))
             }
         }
     }
@@ -153,11 +145,12 @@ fun DeleteView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("DeleteView", "Delete failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -170,7 +163,7 @@ fun DeleteView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -196,7 +189,9 @@ fun DeleteView(
                                 name = fileName,
                                 details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
                                 onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                keepsPassword = unlockPassword.isNotEmpty()
                             )
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(
@@ -296,7 +291,6 @@ fun DeleteView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = unlockPassword.ifEmpty { null },
                             text = stringResource(R.string.delete_removing_selected_pages),
                             current = progressCount,
                             total = pagesToDeleteSet.size,
@@ -307,7 +301,7 @@ fun DeleteView(
                         SuccessView(
                             message = stringResource(R.string.delete_delete_complete),
                             subMessage = stringResource(R.string.delete_selected_pages_were_removed),
-                            result = outputUri?.let { ToolResult(it, fileName) },
+                            result = outputUri?.let { ToolResult(it, fileName, password = unlockPassword.ifEmpty { null }) },
                             onDone = onBack,
                             onProcessMore = {
                                 dropDecryptedCopy()
@@ -324,6 +318,7 @@ fun DeleteView(
                                     }
                                 }
                             },
+                            keepsPassword = unlockPassword.isNotEmpty()
                         )
                     }
                 }
@@ -332,17 +327,11 @@ fun DeleteView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = {
-                        fileToUnlock = null
-                        unlockError = false
-                        dropDecryptedCopy()
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    },
-                    onUnlocked = { pass -> selectedUri?.let { unlock(it, pass) } },
+                    onDismiss = { check.stop(); closePrompt() },
+                    onUnlocked = { pass -> selectedUri?.let { source -> check.start { unlock(source, pass) } } },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

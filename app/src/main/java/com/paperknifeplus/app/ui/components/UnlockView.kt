@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,16 +36,15 @@ fun UnlockView(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var decryptedUri by remember { mutableStateOf<Uri?>(null) }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
-    var password by remember { mutableStateOf("") }
     var fileName by remember { mutableStateOf("") }
     var fileSize by remember { mutableStateOf("") }
     var pageCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
 
     fun dropDecryptedCopy() {
         deleteDecryptedCopy(context, decryptedUri)
@@ -61,8 +59,7 @@ fun UnlockView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri, countOwnerPassword = true)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -72,7 +69,6 @@ fun UnlockView(
                 PdfAccess.Encrypted -> fileToUnlock = fileName
                 PdfAccess.Open -> Toast.makeText(context, toolText(context, R.string.unlock_file_is_not_encrypted), Toast.LENGTH_SHORT).show()
             }
-            isFileLoading = false
         }
     }
 
@@ -91,12 +87,8 @@ fun UnlockView(
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
             try {
-                context.contentResolver.requireInputStream(source).use { input ->
-                    PDDocument.load(input, password).use { document ->
-                        document.isAllSecurityToBeRemoved = true
-                        saveAndFlush(context, document, uri)
-                    }
-                }
+                // The decrypted copy, which opens without a password.
+                rewritePdf(context, source, "", uri) {}
                 val timeStr = formatElapsed(startTime)
                 val name = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -109,11 +101,12 @@ fun UnlockView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("UnlockView", "Unlock failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.SELECTING
                 }
             }
@@ -126,7 +119,7 @@ fun UnlockView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -164,7 +157,6 @@ fun UnlockView(
                     ToolState.PROCESSING -> {
                         ProcessingStateView(
                             uri = selectedUri,
-                            password = password,
                             text = stringResource(R.string.unlock_decrypting_document),
                             current = 0,
                             total = 0,
@@ -180,7 +172,6 @@ fun UnlockView(
                             onProcessMore = {
                                 dropDecryptedCopy()
                                 selectedUri = null
-                                password = ""
                                 currentState = ToolState.SELECTING
                             },
                             onOpen = { outputUri?.let { uri -> onOpenPreview(uri, fileName, pageCount) } }
@@ -190,38 +181,35 @@ fun UnlockView(
             }
             
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = {
-                        fileToUnlock = null
-                        unlockError = false
-                        selectedUri = null
-                        currentState = ToolState.SELECTING
-                    },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                // Decrypted once to a cache copy, so the cover preview can use the fast native renderer.
-                                val copy = decryptToCache(context, source, pass)
-                                if (copy != null) {
-                                    decryptedUri = copy
-                                    password = pass
-                                    selectedUri = copy
-                                    pageCount = getPageCount(context, copy, null)
+                            check.start {
+                                // Decrypted once to a cache copy, which the cover preview and the save read.
+                                val decrypted = decryptToCache(context, source, pass)
+                                decrypted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { copy ->
+                                    decryptedUri = copy.uri
+                                    selectedUri = copy.uri
+                                    pageCount = copy.pageCount
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

@@ -29,8 +29,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 
-/** Make PDF searchable end to end on its screen, with the fake engine and page images. */
+/** Make PDF searchable end to end on its screen, with the fake engine and page images; running out of memory while saving. */
 @RunWith(RobolectricTestRunner::class)
 class SearchableViewTest {
     @get:Rule(order = 0)
@@ -104,5 +105,25 @@ class SearchableViewTest {
         assertEquals(1, engine.reads.size)
         assertFalse(output.exists())
         assertTrue(SessionManager.history.isEmpty())
+    }
+
+    @Test
+    fun `running out of memory while saving shows the failure and removes the file the save created`() {
+        val (created, file) = TestPdfs.createdDocument(context, "huge-searchable-out.pdf")
+        val source = TestPdfs.OutOfMemorySource(context, TestPdfs.plain(2), "huge-searchable.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(created)) {
+                SearchableView(initialUri = source.uri, onBack = {}, onOpenPreview = { _, _, _ -> }, openEngine = { engine }, renders = { _, _, _ -> renders })
+            }
+        }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Make searchable")).fetchSemanticsNodes().isNotEmpty() }
+
+        source.runOutOfMemory()
+        rule.onNodeWithText("Make searchable").performClick()
+        // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the options.
+        rule.waitUntil(30_000) {
+            rule.onAllNodes(hasText("Make searchable")).fetchSemanticsNodes().isNotEmpty() && ShadowToast.getTextOfLatestToast() == TestPdfs.OUT_OF_MEMORY
+        }
+        assertFalse("the created file is removed", file.exists())
     }
 }

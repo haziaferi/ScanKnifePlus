@@ -80,7 +80,7 @@ fun MergeView(
     var nextFileId by remember { mutableLongStateOf(0L) }
     var processingTime by remember { mutableStateOf("") }
     var progressCount by remember { mutableIntStateOf(0) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var mergedUri by remember { mutableStateOf<Uri?>(null) }
     var mergedName by remember { mutableStateOf("") }
 
@@ -90,18 +90,21 @@ fun MergeView(
 
     val imageLoader = PdfImageLoader.get(context)
 
-    /** Replaces the list, deleting the decrypted copies no remaining entry uses (entries for the same file share one). */
+    /**
+     * Replaces the list, deleting the decrypted copies no remaining entry uses (entries for the same file share one). An emptied list goes
+     * back to the pick screen.
+     */
     fun updateFiles(files: List<MergeFile>) {
         val kept = files.mapNotNullTo(HashSet()) { it.decryptedUri }
         selectedFiles.mapNotNull { it.decryptedUri }.filter { it !in kept }.forEach { deleteDecryptedCopy(context, it) }
         selectedFiles = files
+        if (files.isEmpty()) currentState = ToolState.SELECTING
     }
     DisposableEffect(Unit) { onDispose { selectedFiles.forEach { deleteDecryptedCopy(context, it.decryptedUri) } } }
 
     fun handleUris(uris: List<Uri>, password: String? = null) {
         if (uris.isNotEmpty()) {
-            isFileLoading = true
-            scope.launch {
+            check.start {
                 var unreadable = 0
                 val newFiles = uris.mapNotNull { uri ->
                     val details = getUriDetails(context, uri)
@@ -112,15 +115,17 @@ fun MergeView(
                         }
                         PdfAccess.Encrypted -> {
                             // A password handed over by the preview unlocks the file right away, as the unlock prompt would.
-                            val copy = password?.let { decryptToCache(context, uri, it) }
-                            if (copy == null) {
-                                MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
-                            } else {
-                                val count = getPageCount(context, copy, null)
-                                MergeFile(
-                                    nextFileId++, uri, details.name, details.size,
-                                    isLocked = true, password = password, isUnlocked = true, decryptedUri = copy, pageCount = count
+                            when (val decrypted = password?.let { decryptToCache(context, uri, it) }) {
+                                is PasswordCheck.Opened -> MergeFile(
+                                    nextFileId++, uri, details.name, details.size, isLocked = true, password = password, isUnlocked = true,
+                                    decryptedUri = decrypted.value.uri, pageCount = decrypted.value.pageCount
                                 )
+                                PasswordCheck.Unreadable -> {
+                                    unreadable++
+                                    null
+                                }
+                                // No password, or a wrong one: listed locked, for the prompt.
+                                else -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = true)
                             }
                         }
                         PdfAccess.Open -> MergeFile(nextFileId++, uri, details.name, details.size, isLocked = false, pageCount = getPageCount(context, uri, null))
@@ -131,7 +136,6 @@ fun MergeView(
                     selectedFiles = selectedFiles + newFiles
                     currentState = ToolState.CONFIGURING
                 }
-                isFileLoading = false
             }
         }
     }
@@ -166,11 +170,12 @@ fun MergeView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("MergeView", "Merge failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -185,12 +190,13 @@ fun MergeView(
                 stringResource(R.string.merge_join_multiple_documents),
                 processingTime,
                 onBack,
-                onChange = if (selectedFiles.isNotEmpty()) ({ updateFiles(emptyList()); currentState = ToolState.SELECTING }) else null
+                // Change stays tappable while more files are read; stopping that check keeps them off the emptied list.
+                onChange = if (selectedFiles.isNotEmpty()) ({ check.stop(); updateFiles(emptyList()) }) else null
             )
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.merge_reading_files))
             } else {
                 when (currentState) {
@@ -286,7 +292,7 @@ fun MergeView(
                             subMessage = stringResource(R.string.merge_successfully_joined_documents, selectedFiles.size),
                             result = mergedUri?.let { ToolResult(it, mergedName) },
                             onDone = onBack,
-                            onProcessMore = { updateFiles(emptyList()); mergedUri = null; currentState = ToolState.SELECTING },
+                            onProcessMore = { updateFiles(emptyList()); mergedUri = null },
                             onOpen = { mergedUri?.let { uri -> scope.launch { onOpenPreview(uri, toolText(context, R.string.merge_merged_pdf), getPageCount(context, uri, null)) } } }
                         )
                     }
@@ -297,25 +303,36 @@ fun MergeView(
                 val currentFileToUnlock = fileToUnlock!!
                 LockedFilePrompt(
                     fileName = currentFileToUnlock.name,
-                    onDismiss = { fileToUnlock = null; unlockError = false },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false },
                     onUnlocked = { password ->
-                        isFileLoading = true
-                        scope.launch {
-                            val decryptedUri = decryptToCache(context, currentFileToUnlock.uri, password)
-                            if (decryptedUri != null) {
-                                val count = getPageCount(context, decryptedUri, null)
-                                updateFiles(selectedFiles.map { if (it.uri == currentFileToUnlock.uri) it.copy(isUnlocked = true, password = password, decryptedUri = decryptedUri, pageCount = count) else it })
+                        check.start {
+                            val decrypted = decryptToCache(context, currentFileToUnlock.uri, password)
+                            decrypted.resolve(
+                                context,
+                                onWrongPassword = { unlockError = true },
+                                // The entry that cannot be read leaves the list, as it would not have joined it when added; other entries of
+                                // the file stay, an unlocked one with its decrypted copy.
+                                onUnreadable = {
+                                    updateFiles(selectedFiles.filter { it.id != currentFileToUnlock.id })
+                                    fileToUnlock = null
+                                    unlockError = false
+                                }
+                            ) { copy ->
+                                updateFiles(selectedFiles.map {
+                                    if (it.uri == currentFileToUnlock.uri) {
+                                        it.copy(isUnlocked = true, password = password, decryptedUri = copy.uri, pageCount = copy.pageCount)
+                                    } else {
+                                        it
+                                    }
+                                })
                                 fileToUnlock = null
                                 unlockError = false
-                            } else {
-                                unlockError = true
                             }
-                            isFileLoading = false
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

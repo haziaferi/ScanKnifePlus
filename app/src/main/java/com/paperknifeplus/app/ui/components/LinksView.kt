@@ -46,7 +46,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
-import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -97,11 +96,11 @@ fun LinksView(
     var removed by remember { mutableStateOf<LinkRemoval?>(null) }
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
     var processingTime by remember { mutableStateOf("") }
     var outputUri by remember { mutableStateOf<Uri?>(null) }
     var outputName by remember { mutableStateOf("") }
-    val showLoadingWarning = rememberLoadingWarning(isFileLoading || currentState == ToolState.PROCESSING)
+    val showLoadingWarning = rememberLoadingWarning(check.running || currentState == ToolState.PROCESSING)
     val pageCount = found?.pageCount ?: 0
     val range = PageRanges.parseList(rangeText, pageCount)
     // A range not typed or with an error takes no page's links yet.
@@ -121,36 +120,26 @@ fun LinksView(
         currentState = ToolState.SELECTING
     }
 
-    // A file that is damaged, or too large to parse, says it cannot be read.
-    fun unreadable(source: Uri, e: Throwable) {
-        Log.w("LinksView", "Cannot count the links of $source", e)
-        Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
-        fileToUnlock = null
-        reset()
-    }
-
     // Finds what saving can remove from [source] opened with [pass]. As in Crop, a file that opens without a password keeps none, not even
     // one the reader [handed] over; a file that needs one tries [handed] next (its first read stops at the encryption), then asks for it.
+    // A file that is damaged, or too large to parse, says it cannot be read.
     suspend fun count(source: Uri, pass: String?, handed: String? = null) {
-        try {
-            val counts = findLinks(context, source, pass)
+        findLinks(context, source, pass).resolve(
+            context,
+            onWrongPassword = {
+                if (handed != null) {
+                    count(source, handed)
+                } else {
+                    unlockError = pass != null
+                    fileToUnlock = fileName
+                }
+            },
+            onUnreadable = { fileToUnlock = null; reset() }
+        ) { counts ->
             password = pass
             found = counts
             fileToUnlock = null
             currentState = ToolState.CONFIGURING
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: InvalidPasswordException) {
-            if (handed != null) {
-                count(source, handed)
-            } else {
-                unlockError = pass != null
-                fileToUnlock = fileName
-            }
-        } catch (e: Exception) {
-            unreadable(source, e)
-        } catch (e: OutOfMemoryError) {
-            unreadable(source, e)
         }
     }
 
@@ -161,11 +150,7 @@ fun LinksView(
         fileName = details.name
         fileSize = details.size
         unlockError = false
-        isFileLoading = true
-        scope.launch {
-            count(uri, null, handed = given)
-            isFileLoading = false
-        }
+        check.start { count(uri, null, handed = given) }
     }
 
     LaunchedEffect(initialUri) {
@@ -199,11 +184,12 @@ fun LinksView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("LinksView", "Removing links failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -216,7 +202,7 @@ fun LinksView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(showLoadingWarning, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -330,20 +316,14 @@ fun LinksView(
             if (fileToUnlock != null) {
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; reset() },
+                    onDismiss = { check.stop(); fileToUnlock = null; unlockError = false; reset() },
                     onUnlocked = { pass ->
                         val source = sourceUri
-                        if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                count(source, pass)
-                                isFileLoading = false
-                            }
-                        }
+                        if (source != null) check.start { count(source, pass) }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
             }
         }

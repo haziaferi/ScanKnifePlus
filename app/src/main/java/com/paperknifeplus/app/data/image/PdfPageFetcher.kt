@@ -16,11 +16,13 @@ import coil.fetch.FetchResult
 import coil.fetch.Fetcher
 import coil.request.Options
 import com.paperknifeplus.app.ui.components.BitmapPool
+import com.paperknifeplus.app.ui.components.requireInputStream
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.rendering.ImageType
 import com.tom_roush.pdfbox.rendering.PDFRenderer
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -204,64 +206,136 @@ object NativeRendererPool {
 
 /**
  * Thread-safe pool of open documents for the [maxEntries] keys used last, each used by one holder at a time (PDFBox documents are not
- * thread-safe); an evicted document is closed once its last holder is done. Loads run outside the lock, and of two concurrent loads of one
- * key the first published is kept and the other closed.
+ * thread-safe); an evicted document is closed once its last holder is done. Loads run outside the lock, one per key at a time: callers that
+ * find their key loading wait for that load rather than parse the file again.
  */
 class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val close: (D) -> Unit) {
-    private class Entry<D>(val document: D) {
+    /** A pooled [document]; [shared] once a caller other than its loader has taken it, or still waited for it when it was published. */
+    private class Entry<K, D>(val key: K, val document: D, var shared: Boolean) {
         val mutex = Mutex()
         var refCount = 0
         var lastUsed = 0L
         var evicted = false
     }
 
+    /** A load in progress, and how many callers wait for it. */
+    private class Load {
+        val done = CompletableDeferred<Unit>()
+        var waiters = 0
+    }
+
     private val lock = Any()
-    private val entries = HashMap<K, Entry<D>>()
+    private val entries = HashMap<K, Entry<K, D>>()
+    private val loads = HashMap<K, Load>()
     private var clock = 0L
 
-    /** Runs [block] with the document for [key], loading it with [load] if needed; null if [load] returns null. Blocking while loading. */
-    suspend fun <T> withDocument(key: K, load: () -> D?, block: suspend (D) -> T): T? {
-        val entry = acquire(key, load) ?: return null
-        try {
-            return entry.mutex.withLock { block(entry.document) }
-        } finally {
-            release(entry)
-        }
-    }
+    /**
+     * Runs [block] with the document for [key], loading it with [load] if needed. Throws what [block] threw, or what [load] threw, also to
+     * the callers that waited for that load. The caller that loads blocks while it does; the others suspend until it is done. That caller
+     * also closes the documents its load evicts, once the waiters have the new one; a close that fails, even with an Error, is logged and
+     * changes nothing for it.
+     */
+    suspend fun <T> withDocument(key: K, load: () -> D, block: suspend (D) -> T): T = use(key, load, check = false, block)
+
+    /**
+     * [withDocument] for a check that reads the file to tell whether it can be used: a document this call loaded leaves the pool again, and is
+     * closed, when [block] finds nothing (null), when it throws, or when the call is stopped, unless another caller has taken it or waits for
+     * it. A document that was already pooled stays, whatever the check finds. A stopped check ends with its cancellation, even if closing its
+     * document or one its load evicted throws.
+     */
+    suspend fun <T : Any> check(key: K, load: () -> D, block: suspend (D) -> T?): T? = use(key, load, check = true, block)
 
     internal fun size(): Int = synchronized(lock) { entries.size }
 
-    private fun acquire(key: K, load: () -> D?): Entry<D>? {
-        synchronized(lock) { entries[key]?.let { return it.also { it.refCount++ } } }
-        val loaded = load() ?: return null
-        val toClose = mutableListOf<D>()
-        val entry = synchronized(lock) {
-            val existing = entries[key]
-            val entry = if (existing != null) {
-                toClose += loaded
-                existing
-            } else {
-                while (entries.size >= maxEntries) {
-                    val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
-                    entries.remove(oldKey)
-                    old.evicted = true
-                    if (old.refCount == 0) toClose += old.document
-                }
-                Entry(loaded).also {
-                    it.lastUsed = ++clock
-                    entries[key] = it
-                }
+    /** How many callers wait for [key]'s load in progress; 0 when none is. */
+    internal fun waiters(key: K): Int = synchronized(lock) { loads[key]?.waiters ?: 0 }
+
+    private suspend fun <T> use(key: K, load: () -> D, check: Boolean, block: suspend (D) -> T): T {
+        val entry = acquire(key, load)
+        // Only a check drops a document; release keeps it if any other caller has taken it or waits for it, so it is one this call loaded.
+        var discard = check
+        try {
+            val result = entry.mutex.withLock { block(entry.document) }
+            if (check) discard = result == null || !currentCoroutineContext().isActive
+            return result
+        } finally {
+            val stopped = !currentCoroutineContext().isActive
+            try {
+                release(entry, discard)
+            } catch (e: Throwable) {
+                if (!stopped) throw e
+                Log.w(TAG, "Could not close a document", e)
             }
-            entry.refCount++
-            entry
         }
-        toClose.forEach(::closeQuietly)
-        return entry
     }
 
-    private fun release(entry: Entry<D>) {
+    /** [key]'s entry, held once. */
+    private suspend fun acquire(key: K, load: () -> D): Entry<K, D> {
+        while (true) {
+            var loading = false
+            val pending = synchronized(lock) {
+                entries[key]?.let {
+                    it.refCount++
+                    it.shared = true
+                    return it
+                }
+                loads[key]?.also { it.waiters++ } ?: Load().also {
+                    loading = true
+                    loads[key] = it
+                }
+            }
+            if (!loading) {
+                // Throws what the load threw; once it is published, the next turn takes the document, or loads again if it was evicted.
+                try {
+                    pending.done.await()
+                } catch (e: Throwable) {
+                    // Stopped while the load goes on: this caller no longer waits, so the document is not shared on its account.
+                    synchronized(lock) { if (loads[key] === pending) pending.waiters-- }
+                    throw e
+                }
+                continue
+            }
+            val loaded = try {
+                load()
+            } catch (e: Throwable) {
+                synchronized(lock) { loads.remove(key) }
+                pending.done.completeExceptionally(e)
+                throw e
+            }
+            val (entry, evicted) = publish(key, loaded, pending)
+            // The waiters take the document before the evicted ones are closed, so they do not wait on that.
+            pending.done.complete(Unit)
+            evicted.forEach(::closeEvicted)
+            return entry
+        }
+    }
+
+    /** Adds [loaded] as [key]'s entry, held once, and returns it with the idle documents it evicted, for the caller to close. */
+    private fun publish(key: K, loaded: D, load: Load): Pair<Entry<K, D>, List<D>> = synchronized(lock) {
+        loads.remove(key)
+        val evicted = mutableListOf<D>()
+        while (entries.size >= maxEntries) {
+            val (oldKey, old) = entries.entries.minBy { it.value.lastUsed }
+            entries.remove(oldKey)
+            old.evicted = true
+            if (old.refCount == 0) evicted += old.document
+        }
+        val entry = Entry(key, loaded, shared = load.waiters > 0).also {
+            it.lastUsed = ++clock
+            it.refCount++
+            entries[key] = it
+        }
+        entry to evicted
+    }
+
+    /** Lets go of [entry]; with [discard], also takes it out of the pool if no other caller has taken it or waits for it. */
+    private fun release(entry: Entry<K, D>, discard: Boolean = false) {
         val closeNow = synchronized(lock) {
             entry.lastUsed = ++clock
+            if (discard && !entry.shared && entries[entry.key] === entry) {
+                entries.remove(entry.key)
+                entry.evicted = true
+            }
             --entry.refCount == 0 && entry.evicted
         }
         if (closeNow) closeQuietly(entry.document)
@@ -274,30 +348,55 @@ class DocumentPool<K : Any, D : Any>(private val maxEntries: Int, private val cl
             Log.w(TAG, "Could not close a document", e)
         }
     }
+
+    /** Closes a document a load evicted. No caller holds it, so a close that fails, even with an Error, is logged and changes nothing. */
+    private fun closeEvicted(document: D) {
+        try {
+            close(document)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Could not close an evicted document", e)
+        }
+    }
 }
 
-/** PDFBox documents for password-protected pages and the PDFBox fallback, keyed by URI and password. */
+/**
+ * PDFBox documents, keyed by URI and password: for password-protected pages and the PDFBox fallback, and the documents the password checks
+ * (`checkPageCount`) and Bookmarks' outline read, which those pages then reuse.
+ */
 object PdDocumentPool {
     private data class Key(val uri: Uri, val password: String?)
 
     private val pool = DocumentPool<Key, PDDocument>(3) { it.close() }
 
-    /** Runs [block] with the open document; null if it cannot be loaded (missing, wrong password, not a PDF). */
-    suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T? =
+    /**
+     * Runs [block] with the open document, parsed on the IO dispatcher if it is not pooled yet ([DocumentPool.withDocument]). Throws what
+     * [block] threw, or what loading threw: InvalidPasswordException for a wrong or missing password, OutOfMemoryError for a file too large
+     * to parse, another exception for one that is missing or not a PDF.
+     */
+    suspend fun <T> withDocument(context: Context, uri: Uri, password: String?, block: suspend (PDDocument) -> T): T =
         withContext(Dispatchers.IO) {
             pool.withDocument(Key(uri, password), { load(context, uri, password) }, block)
         }
 
-    private fun load(context: Context, uri: Uri, password: String?): PDDocument? = try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
+    /**
+     * [read] on the document, as [withDocument] runs a block, for a check that tells whether the file can be used ([DocumentPool.check]): a
+     * document it parsed is closed again if [read] finds nothing (null) or throws, or the check is stopped, unless another caller has taken
+     * it or waits for it.
+     */
+    suspend fun <T : Any> check(context: Context, uri: Uri, password: String?, read: (PDDocument) -> T?): T? =
+        withContext(Dispatchers.IO) {
+            pool.check(Key(uri, password), { load(context, uri, password) }) { read(it) }
+        }
+
+    /** How many callers wait for the parse of [uri] with [password] in progress ([DocumentPool.waiters]). */
+    internal fun waiters(uri: Uri, password: String?): Int = pool.waiters(Key(uri, password))
+
+    private fun load(context: Context, uri: Uri, password: String?): PDDocument =
+        context.contentResolver.requireInputStream(uri).use { stream ->
             // The parsed file is buffered in temp files rather than the heap, so large PDFs fit.
             val memory = MemoryUsageSetting.setupTempFileOnly()
             if (password != null) PDDocument.load(stream, password, memory) else PDDocument.load(stream, memory)
         }
-    } catch (e: Exception) {
-        Log.w(TAG, "Cannot load $uri", e)
-        null
-    }
 }
 
 // Caps concurrent renders across all documents; taken after the renderer or document, so a waiter never holds a permit.
@@ -379,6 +478,10 @@ class PdfPageFetcher(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Cannot render page ${data.pageIndex} of ${data.uri}", e)
+            null
+        } catch (e: OutOfMemoryError) {
+            // The document pool throws it for a file too large to parse.
+            Log.w(TAG, "Out of memory rendering page ${data.pageIndex} of ${data.uri}", e)
             null
         }
     }

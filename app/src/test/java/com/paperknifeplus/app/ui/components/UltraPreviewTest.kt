@@ -1,25 +1,25 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.core.app.ActivityOptionsCompat
-import coil.request.Options
-import com.paperknifeplus.app.data.image.PdfImageLoader
-import com.paperknifeplus.app.data.image.PdfPageKeyer
-import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.CompositionJobs
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.TestPdfs
@@ -30,7 +30,6 @@ import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -39,7 +38,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowToast
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 class UltraPreviewTest {
@@ -145,7 +147,10 @@ class UltraPreviewTest {
     }
 }
 
-/** Tools opened from the preview with the password the file was unlocked with: they use it, and forget it for the next file. */
+/**
+ * Tools opened from the preview with the password the file was unlocked with: they use it, and forget it for the next file. Compress keeps
+ * no password to forget: it saves an unprotected copy.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ToolHandOffTest {
@@ -160,29 +165,20 @@ class ToolHandOffTest {
     @Before
     fun setUp() = PDFBoxResourceLoader.init(context)
 
-    private fun pickerReturning(result: Uri) = object : ActivityResultRegistryOwner {
+    /** A file picker the user picks [picked] in, and a save picker the user picks [saved] in. */
+    private fun pickerReturning(picked: Uri, saved: Uri) = object : ActivityResultRegistryOwner {
         override val activityResultRegistry = object : ActivityResultRegistry() {
             override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-                dispatchResult(requestCode, result)
+                dispatchResult(requestCode, if (contract is ActivityResultContracts.CreateDocument) saved else picked)
             }
         }
     }
 
-    private fun show(picked: Uri, content: @Composable () -> Unit) = rule.setContent {
-        CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked), content = content)
+    private fun show(picked: Uri, saved: Uri = picked, content: @Composable () -> Unit) = rule.setContent {
+        CompositionLocalProvider(LocalActivityResultRegistryOwner provides pickerReturning(picked, saved), content = content)
     }
 
     private fun waitFor(text: String) = rule.waitUntil(30_000) { rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
-
-    /** Whether a first-page thumbnail of [uri] at [scale] rendered with [password] is cached; Coil only loads what is drawn. */
-    private fun thumbnailCached(uri: Uri, password: String?, scale: Float): Boolean {
-        rule.runOnUiThread {
-            val root = rule.activity.window.decorView
-            root.draw(Canvas(Bitmap.createBitmap(root.width.coerceAtLeast(1), root.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)))
-        }
-        val key = PdfPageKeyer().key(PdfPageRequest(uri, 0, password, scale), Options(context))
-        return PdfImageLoader.get(context).memoryCache!!.keys.any { it.key == key }
-    }
 
     @Test
     fun `Merge unlocks a file handed over with its password`() {
@@ -194,28 +190,87 @@ class ToolHandOffTest {
     }
 
     @Test
-    fun `Compress forgets the handed-over password after CHANGE`() {
-        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-compress.pdf")
-        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-compress.pdf")
-        show(plain) { CompressView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+    fun `Rearrange forgets the handed-over password after CHANGE`() {
+        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
+        // An owner password only: the handed one is neither, so saving with it would fail.
+        val next = TestPdfs.write(context.cacheDir, TestPdfs.ownerOnly(pages = 1), "owner-only-rearrange.pdf")
+        val output = File(context.cacheDir, "handed-change-rearranged.pdf").apply { delete() }
+        show(next, saved = Uri.fromFile(output)) {
+            RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> })
+        }
         waitFor("2 pages")
+        rule.onNodeWithText(PASSWORD_LINE).assertExists()
         rule.onNodeWithText("Change").performClick()
         rule.onNodeWithText("Choose PDF").performClick()
         waitFor("• 1 page")
-        rule.waitUntil(30_000) { thumbnailCached(plain, null, THUMBNAIL_SCALE) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE))
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+
+        rule.onNodeWithText("Save PDF").performClick()
+        waitFor("Rearrange complete")
+        rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
+        PDDocument.load(output).use { assertEquals(1, it.numberOfPages) }
+    }
+
+    private companion object {
+        const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
+    }
+}
+
+/** The reader's password prompt: a protected file that cannot be read closes the reader, and Cancel stops a check in progress. */
+@RunWith(RobolectricTestRunner::class)
+class ReaderUnlockTest {
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
+    val rule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private var closed = 0
+
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(context)
+
+    private fun show(uri: Uri) = rule.setContent { UltraPreview(uri, "locked.pdf", 2, onDismiss = { closed++ }, onOpenInTool = { _, _, _ -> }) }
+
+    private fun decryptedCopies() = context.cacheDir.listFiles().orEmpty().filter { it.name.startsWith("decrypted_") }
+
+    @Test
+    fun `a damaged protected file opened with its password says it can't be read and closes the reader`() {
+        show(TestPdfs.write(context.cacheDir, TestPdfs.damagedProtected(), "reader-damaged.pdf"))
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+
+        rule.waitUntil(30_000) { closed == 1 }
+        assertEquals("Can't read this PDF.", ShadowToast.getTextOfLatestToast())
+        rule.onNodeWithText("Incorrect password, try again.").assertDoesNotExist()
+        assertTrue("no decrypted copy is left", decryptedCopies().isEmpty())
     }
 
     @Test
-    fun `Rearrange forgets the handed-over password after CHANGE`() {
-        val locked = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-rearrange.pdf")
-        val plain = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "plain-rearrange.pdf")
-        show(plain) { RearrangeView(initialUri = locked, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        waitFor("2 pages")
-        rule.onNodeWithText("Change").performClick()
-        rule.onNodeWithText("Choose PDF").performClick()
-        waitFor("• 1 page")
-        rule.waitUntil(30_000) { thumbnailCached(plain, null, 0.6f) }
-        assertFalse(thumbnailCached(plain, TestPdfs.USER_PASSWORD, 0.6f))
+    fun `the prompt stays open while the password is checked, and Cancel stops the check and closes the reader`() {
+        val source = TestPdfs.HeldSource(context, TestPdfs.userPassword(pages = 2), "held-reader.pdf")
+        val jobs = CompositionJobs()
+        rule.setContent {
+            jobs.Watch()
+            UltraPreview(source.uri, "locked.pdf", 2, onDismiss = { closed++ }, onOpenInTool = { _, _, _ -> })
+        }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Password required")).fetchSemanticsNodes().isNotEmpty() }
+        source.hold()
+        rule.onNode(hasSetTextAction()).performTextInput(TestPdfs.USER_PASSWORD)
+        rule.onNodeWithText("Unlock").performClick()
+        rule.waitUntil(10_000) { source.reached.count == 0L }
+        val check = jobs.waitingOnIo()
+        assertTrue("the check is held in its read", check.isNotEmpty())
+
+        rule.onNodeWithText("Password required").assertExists()
+        rule.onNodeWithText("Cancel").assertIsEnabled().performClick()
+        assertEquals(1, closed)
+        source.release()
+        assertTrue(source.closed.await(30, TimeUnit.SECONDS))
+        // The stopped check goes on to write its decrypted copy, then finds itself cancelled and deletes it.
+        rule.waitUntil(30_000) { check.all { it.isCompleted } }
+        assertTrue("no decrypted copy is left", decryptedCopies().isEmpty())
     }
 }

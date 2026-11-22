@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.widget.Toast
@@ -60,7 +61,7 @@ fun PdfToZipView(
 
     var fileToUnlock by remember { mutableStateOf<String?>(null) }
     var unlockError by remember { mutableStateOf(false) }
-    var isFileLoading by remember { mutableStateOf(false) }
+    val check = rememberFileCheck()
 
     fun handleFileSelection(uri: Uri) {
         selectedUri = uri
@@ -69,8 +70,7 @@ fun PdfToZipView(
         val details = getUriDetails(context, uri)
         fileName = details.name
         fileSize = details.size
-        isFileLoading = true
-        scope.launch {
+        check.start {
             when (inspectPdf(context, uri)) {
                 PdfAccess.Unreadable -> {
                     Toast.makeText(context, toolText(context, R.string.tool_unreadable), Toast.LENGTH_LONG).show()
@@ -83,7 +83,6 @@ fun PdfToZipView(
                     currentState = ToolState.CONFIGURING
                 }
             }
-            isFileLoading = false
         }
     }
 
@@ -101,28 +100,10 @@ fun PdfToZipView(
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val sourceName = fileName
+        val password = unlockPassword
         scope.launch(Dispatchers.IO) {
             try {
-                // The source is read into memory once, as before, so no input stream stays open across the export.
-                val bytes = context.contentResolver.requireInputStream(source).use { it.readBytes() }
-                context.contentResolver.requireOutputStream(uri).use { os ->
-                    ZipOutputStream(os).use { zipOut ->
-                        PDDocument.load(bytes, unlockPassword).use { sourceDoc ->
-                            for (i in 0 until sourceDoc.numberOfPages) {
-                                withContext(Dispatchers.Main) { progressCount = i + 1 }
-                                // Saved to a buffer: PDDocument.save closes the stream it writes to, which would close the ZIP.
-                                val pageBytes = PDDocument().use { single ->
-                                    single.appendPageFrom(sourceDoc.getPage(i))
-                                    ByteArrayOutputStream().also { single.save(it) }.toByteArray()
-                                }
-                                zipOut.putNextEntry(ZipEntry(zipPageEntryName(sourceName, i + 1)))
-                                zipOut.write(pageBytes)
-                                zipOut.closeEntry()
-                            }
-                        }
-                        zipOut.finish()
-                    }
-                }
+                zipPages(context, source, password, sourceName, uri) { page -> withContext(Dispatchers.Main) { progressCount = page } }
                 val timeStr = formatElapsed(startTime)
                 val outputName = getUriDetails(context, uri).name
                 withContext(Dispatchers.Main) {
@@ -135,11 +116,12 @@ fun PdfToZipView(
             } catch (e: CancellationException) {
                 deleteCreatedDocument(context, uri)
                 throw e
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                if (!isToolFailure(e)) throw e
                 Log.w("PdfToZipView", "Archiving failed", e)
                 deleteCreatedDocument(context, uri)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show()
                     currentState = ToolState.CONFIGURING
                 }
             }
@@ -152,7 +134,7 @@ fun PdfToZipView(
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (isFileLoading) {
+            if (check.running) {
                 LoadingStateView(false, stringResource(R.string.tool_preparing))
             } else {
                 when (currentState) {
@@ -210,31 +192,59 @@ fun PdfToZipView(
             }
 
             if (fileToUnlock != null) {
+                // Cancel, Back, and a file that cannot be read close the prompt and go back to choosing a file.
+                fun closePrompt() {
+                    fileToUnlock = null
+                    unlockError = false
+                    selectedUri = null
+                    currentState = ToolState.SELECTING
+                }
                 LockedFilePrompt(
                     fileName = fileToUnlock!!,
-                    onDismiss = { fileToUnlock = null; unlockError = false; selectedUri = null; currentState = ToolState.SELECTING },
+                    onDismiss = { check.stop(); closePrompt() },
                     onUnlocked = { pass ->
                         val source = selectedUri
                         if (source != null) {
-                            isFileLoading = true
-                            scope.launch {
-                                val count = getPageCount(context, source, pass)
-                                if (count > 0) {
+                            check.start {
+                                val counted = checkPageCount(context, source, pass)
+                                counted.resolve(context, onWrongPassword = { unlockError = true }, onUnreadable = { closePrompt() }) { count ->
                                     unlockPassword = pass
                                     pageCount = count
                                     currentState = ToolState.CONFIGURING
                                     fileToUnlock = null
-                                } else {
-                                    unlockError = true
                                 }
-                                isFileLoading = false
                             }
                         }
                     },
                     isError = unlockError,
                     accentColor = accentColor,
-                    isLoading = isFileLoading
+                    isLoading = check.running
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Writes every page of [source] (opened with [password] through temp files, [withPdf]) as a PDF of its own into a ZIP at [output], each
+ * entry named after [sourceName] ([zipPageEntryName]); [onPage] hears each page's number (from 1) before it is written. Throws on failure.
+ */
+internal suspend fun zipPages(context: Context, source: Uri, password: String, sourceName: String, output: Uri, onPage: suspend (Int) -> Unit) {
+    withPdf(context, source, password) { sourceDoc ->
+        context.contentResolver.requireOutputStream(output).use { os ->
+            ZipOutputStream(os).use { zipOut ->
+                for (i in 0 until sourceDoc.numberOfPages) {
+                    onPage(i + 1)
+                    // Saved to a buffer: PDDocument.save closes the stream it writes to, which would close the ZIP.
+                    val pageBytes = PDDocument().use { single ->
+                        single.appendPageFrom(sourceDoc.getPage(i))
+                        ByteArrayOutputStream().also { single.save(it) }.toByteArray()
+                    }
+                    zipOut.putNextEntry(ZipEntry(zipPageEntryName(sourceName, i + 1)))
+                    zipOut.write(pageBytes)
+                    zipOut.closeEntry()
+                }
+                zipOut.finish()
             }
         }
     }

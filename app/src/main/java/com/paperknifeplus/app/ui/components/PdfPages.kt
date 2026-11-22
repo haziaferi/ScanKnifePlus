@@ -460,27 +460,25 @@ suspend fun rotatePages(context: Context, input: Uri, output: Uri, password: Str
 }
 
 /**
- * Copies the pages of [input] at [indices] that exist, in page order, into a new document as [appendPagesFrom] does and writes it to
- * [output], as protected as [input] was. Returns the number of pages written; throws on failure.
+ * Copies the pages of [input] (parsed through temp files, [withPdf]) at [indices] that exist, in page order, into a new document as
+ * [appendPagesFrom] does and writes it to [output], as protected as [input] was. Returns the number of pages written; throws on failure.
  */
 suspend fun extractPages(context: Context, input: Uri, output: Uri, password: String, indices: Collection<Int>): Int = withContext(Dispatchers.IO) {
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, password).use { document ->
-            PDDocument().use { target ->
-                val kept = indices.filter { it < document.numberOfPages }.sorted()
-                target.appendPagesFrom(kept.map { document.getPage(it) })
-                document.sameProtection(password)?.let(target::protect)
-                saveAndFlush(context, target, output)
-                kept.size
-            }
+    withPdf(context, input, password) { document ->
+        PDDocument().use { target ->
+            val kept = indices.filter { it < document.numberOfPages }.sorted()
+            target.appendPagesFrom(kept.map { document.getPage(it) })
+            document.sameProtection(password)?.let(target::protect)
+            saveAndFlush(context, target, output)
+            kept.size
         }
     }
 }
 
 /**
- * Writes [input] (opened with [unlockPassword] if it has one) to [output] encrypted with AES-256, [newPassword] opening it with the
- * permissions and owner password of [options] ([protectionPolicy]). Throws on failure; the password may also be rejected with
- * IllegalArgumentException by SASLprep.
+ * Writes [input] (opened with [unlockPassword] if it has one, through temp files: [withPdf]) to [output] encrypted with AES-256,
+ * [newPassword] opening it with the permissions and owner password of [options] ([protectionPolicy]). Throws on failure; the password may
+ * also be rejected with IllegalArgumentException by SASLprep.
  */
 suspend fun protectPdf(
     context: Context,
@@ -490,10 +488,8 @@ suspend fun protectPdf(
     newPassword: String,
     options: ProtectOptions = ProtectOptions()
 ) = withContext(Dispatchers.IO) {
-    context.contentResolver.requireInputStream(input).use { stream ->
-        PDDocument.load(stream, unlockPassword.orEmpty()).use { document ->
-            document.protect(protectionPolicy(newPassword, options))
-            saveAndFlush(context, document, output)
-        }
+    withPdf(context, input, unlockPassword) { document ->
+        document.protect(protectionPolicy(newPassword, options))
+        saveAndFlush(context, document, output)
     }
 }

@@ -3,6 +3,7 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.cos.COSName
 import kotlinx.coroutines.runBlocking
@@ -19,6 +20,7 @@ import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.destination.P
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDDocumentOutline
 import com.tom_roush.pdfbox.pdmodel.interactive.documentnavigation.outline.PDOutlineItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -163,13 +165,34 @@ class BookmarkOutlineTest {
     }
 
     @Test
-    fun `an outline that fails to read is reported unreadable, a wrong password is not`() = runBlocking {
+    fun `a damaged file, or one too large to parse, is reported unreadable, a wrong password is not`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val uri = Uri.fromFile(File(context.cacheDir, "outlined.pdf").apply { writeBytes(outlined()) })
-        assertEquals(OutlineLoad.Unreadable, loadOutline(context, uri, null) { throw IllegalStateException("malformed") })
-        assertEquals(5, (loadOutline(context, uri, null) as OutlineLoad.Loaded).bookmarks.size)
-        val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(com.paperknifeplus.app.testing.TestPdfs.userPassword()) })
-        assertEquals(OutlineLoad.WrongPassword, loadOutline(context, locked, "wrong"))
+        assertEquals(5, (loadOutline(context, uri, null) as PasswordCheck.Opened).value.bookmarks.size)
+        // Its page tree is gone, so it does not parse, even with its password.
+        val damaged = Uri.fromFile(File(context.cacheDir, "damaged-outline.pdf").apply { writeBytes(TestPdfs.damagedProtected()) })
+        assertEquals(PasswordCheck.Unreadable, loadOutline(context, damaged, TestPdfs.USER_PASSWORD))
+        val locked = Uri.fromFile(File(context.cacheDir, "locked-outline.pdf").apply { writeBytes(TestPdfs.userPassword()) })
+        assertEquals(PasswordCheck.WrongPassword, loadOutline(context, locked, "wrong"))
+        val huge = TestPdfs.OutOfMemorySource(context, TestPdfs.userPassword(), "huge-outline.pdf").apply { runOutOfMemory() }
+        assertEquals(PasswordCheck.Unreadable, loadOutline(context, huge.uri, TestPdfs.USER_PASSWORD))
+    }
+
+    @Test
+    fun `Extract pages opens a protected file with its password and writes each bookmarked page once, in order, without it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val source = Uri.fromFile(File(context.cacheDir, "bookmarked.pdf").apply { writeBytes(TestPdfs.protectedCopy(TestPdfs.structured())) })
+        val output = File(context.cacheDir, "bookmarked-pages.pdf")
+        val marks = listOf(Bookmark("Last", 3), Bookmark("Second", 1), Bookmark("Again", 1), Bookmark("Nowhere", null), Bookmark("Gone", 9))
+        extractBookmarkedPages(context, source, TestPdfs.USER_PASSWORD, Uri.fromFile(output), marks)
+        PDDocument.load(output).use { doc ->
+            assertFalse(doc.isEncrypted)
+            val shown = doc.pages.map { page -> String(page.contents.use { it.readBytes() }, Charsets.ISO_8859_1) }
+            assertEquals(2, shown.size)
+            assertTrue(shown[0].contains(TestPdfs.structuredMarker(2)))
+            assertTrue(shown[1].contains(TestPdfs.structuredMarker(4)))
+        }
     }
 }
