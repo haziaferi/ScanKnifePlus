@@ -253,19 +253,20 @@ private fun ConflictActions(item: FolderItem, onOpen: (() -> Unit)?, onOpenOrigi
     ) {
         Text(stringResource(R.string.history_conflict_note, original), fontSize = 13.sp, lineHeight = 18.sp, color = LocalScanPalette.current.mu)
         if (onOpen != null || onOpenOriginal != null) {
+            // Buttons on one line grow to one height (R14 rule 1).
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                onOpen?.let { RowButton(stringResource(R.string.history_open), it) }
-                onOpenOriginal?.let { RowButton(stringResource(R.string.history_conflict_open_original, original), it) }
+                onOpen?.let { RowButton(stringResource(R.string.history_open), it, Modifier.fillMaxRowHeight()) }
+                onOpenOriginal?.let { RowButton(stringResource(R.string.history_conflict_open_original, original), it, Modifier.fillMaxRowHeight()) }
             }
         }
     }
 }
 
 @Composable
-private fun RowButton(label: String, onClick: () -> Unit) {
+private fun RowButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier.heightIn(min = TargetStep.ACT.drawn),
+        modifier = modifier.heightIn(min = TargetStep.ACT.drawn),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)

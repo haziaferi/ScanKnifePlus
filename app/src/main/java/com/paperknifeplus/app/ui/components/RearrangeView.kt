@@ -218,8 +218,9 @@ fun RearrangeView(
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                                     shape = RoundedCornerShape(20.dp)
                                 ) {
+                                    // The arrows and Move to grow together (R14 rule 1).
                                     Row(
-                                        modifier = Modifier.padding(12.dp),
+                                        modifier = Modifier.padding(12.dp).height(IntrinsicSize.Min),
                                         horizontalArrangement = Arrangement.SpaceAround,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -236,7 +237,7 @@ fun RearrangeView(
                                                 }
                                             },
                                             enabled = selectedPageIndex != null && selectedPageIndex!! > 0,
-                                            modifier = Modifier.size(TargetStep.ACT.hit)
+                                            modifier = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -245,7 +246,7 @@ fun RearrangeView(
                                             onClick = { showMoveToDialog = true },
                                             enabled = selectedPageIndex != null,
                                             shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
+                                            modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                         ) {
                                             Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                         }
@@ -263,7 +264,7 @@ fun RearrangeView(
                                                 }
                                             },
                                             enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1,
-                                            modifier = Modifier.size(TargetStep.ACT.hit)
+                                            modifier = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }

@@ -300,20 +300,20 @@ fun PageNumbersView(
 
                         Spacer(Modifier.height(16.dp))
 
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // The colour button (T2) grows with the field beside it.
+                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
                                 label = { Text(stringResource(R.string.page_numbers_format_n), fontSize = 12.sp) },
-                                modifier = Modifier.weight(1.5f),
+                                modifier = Modifier.weight(1.5f).fillMaxHeight(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor, focusedLabelColor = accentColor)
                             )
 
-                            // T2, as high as the field beside it.
                             Surface(
-                                modifier = Modifier.weight(1f).heightIn(min = OutlinedTextFieldDefaults.MinHeight),
+                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                 onClick = { showColorSheet = true }

@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -77,6 +79,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -241,33 +244,67 @@ fun ToolTopBar(
     onShowTip: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
+    val icon = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
     Surface(modifier = Modifier.fillMaxWidth(), color = colors.background) {
-        Row(
+        BarRow(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(TargetStep.ACT.hit)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
-            }
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text(
-                    title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colors.onBackground,
-                    modifier = Modifier.semantics { heading() }
-                )
-                if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
-            }
-            if (showChange) {
-                TextButton(onClick = onChange, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
-                    Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+            leading = {
+                IconButton(onClick = onBack, modifier = icon) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
+                }
+            },
+            middle = {
+                Column(Modifier.padding(start = 4.dp)) {
+                    Text(
+                        title,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.onBackground,
+                        modifier = Modifier.semantics { heading() }
+                    )
+                    if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                }
+            },
+            trailing = {
+                if (showChange || onShowTip != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (showChange) {
+                            TextButton(onClick = onChange, modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)) {
+                                Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                            }
+                        }
+                        if (onShowTip != null) {
+                            IconButton(onClick = onShowTip, modifier = icon) {
+                                Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
+                            }
+                        }
+                    }
                 }
             }
-            if (onShowTip != null) {
-                IconButton(onClick = onShowTip, modifier = Modifier.size(TargetStep.ACT.hit)) {
-                    Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
-                }
+        )
+    }
+}
+
+/**
+ * A bar's row: the [leading] and [trailing] controls are peers, measured at the height of the taller (R14 rule 1); [middle] takes the width
+ * between them. The row is as tall as the tallest of the three, each centred in it.
+ */
+@Composable
+private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
+    Layout(contents = listOf(leading, middle, trailing), modifier = modifier) { (lead, mid, trail), constraints ->
+        val controls = (lead + trail).maxOfOrNull { it.minIntrinsicHeight(it.maxIntrinsicWidth(Constraints.Infinity)) } ?: 0
+        val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
+        val leadPlaced = lead.map { it.measure(peer(constraints.maxWidth)) }
+        val leadWidth = leadPlaced.sumOf { it.width }
+        val trailPlaced = trail.map { it.measure(peer(constraints.maxWidth - leadWidth)) }
+        val rest = (constraints.maxWidth - leadWidth - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
+        val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
+        val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(constraints.maxWidth, height) {
+            var x = 0
+            for (p in leadPlaced + midPlaced + trailPlaced) {
+                p.place(x, (height - p.height) / 2)
+                x += p.width
             }
         }
     }
