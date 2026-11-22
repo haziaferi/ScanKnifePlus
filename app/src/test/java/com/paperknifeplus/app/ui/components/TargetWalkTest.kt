@@ -229,7 +229,7 @@ abstract class TargetWalk(private val fontScale: Float) {
     }
 
     @Test
-    open fun `the scanner's controls`() {
+    fun `the scanner's controls`() {
         show {
             ScannerScreen(
                 ScannerUi(mode = CaptureMode.MULTI, liveDetection = true, torchAvailable = true, count = 2, shutterEnabled = true, storeFailed = true),
@@ -324,7 +324,10 @@ abstract class TargetWalk(private val fontScale: Float) {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output, picked = images)) { ToolScreen("img2pdf", null) }
         }
         rule.onNode(hasText("Choose images") and hasClickAction()).performClick()
-        rule.waitUntil(60_000) { shown("walk-photo-1") || rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().size > 4 }
+        // The tiles' remove buttons are T4: wait for one, so the walk holds them to their step.
+        rule.waitUntil("the first tile's remove button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Remove image 1")).fetchSemanticsNodes().isNotEmpty()
+        }
         walk("img2pdf, configuring")
     }
 }
@@ -344,11 +347,20 @@ class TargetWalkLargeTextTest : TargetWalk(fontScale = 2f)
 @RunWith(RobolectricTestRunner::class)
 @Config(fontScale = 2f, qualifiers = "w320dp-h2400dp")
 class TargetWalkSmallPhoneTest : TargetWalk(fontScale = 2f) {
-    @Ignore("L7 layout/scanner: at 2.0x on 320 dp Done reaches under the centred shutter (13 x 50 dp)")
-    @Test
-    override fun `the scanner's controls`() = super.`the scanner's controls`()
-
-    @Ignore("L6 layout/segmented: at 2.0x on 320 dp the format and quality segments squeeze under 48 dp wide, so their hit areas overlap")
+    @Ignore(PDF_TO_IMAGES_ON_SMALL_PHONES)
     @Test
     override fun `PDF to images configuring`() = super.`PDF to images configuring`()
 }
+
+/** The default text size on a 320 dp phone. */
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w320dp-h2400dp")
+class TargetWalkSmallPhoneDefaultTextTest : TargetWalk(fontScale = 1f) {
+    @Ignore(PDF_TO_IMAGES_ON_SMALL_PHONES)
+    @Test
+    override fun `PDF to images configuring`() = super.`PDF to images configuring`()
+}
+
+/** Fails at 1.0x and 2.0x on 320 dp alike, and passes on 384 dp at both. */
+private const val PDF_TO_IMAGES_ON_SMALL_PHONES =
+    "L6 layout/segmented: on 320 dp, at any text size, PDF to images' format and quality segments squeeze under 48 dp wide, so their hit areas overlap"

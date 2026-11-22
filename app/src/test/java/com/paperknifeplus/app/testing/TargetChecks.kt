@@ -8,26 +8,29 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import com.paperknifeplus.app.ui.theme.DenseTarget
+import com.paperknifeplus.app.ui.theme.DenseTargets
+import com.paperknifeplus.app.ui.theme.TargetStep
 import org.junit.Assert.fail
 
 /**
- * R14's checks over every target on screen, in every window (a dialog or sheet is its own root): each hit area is at least 24 x 24 dp, and
- * no two hit areas overlap, touching edges aside. A hit area is the node's touch bounds, which include Compose's minimum touch target, cut to
+ * R14's checks over every target on screen, in every window (a dialog or sheet is its own root): each hit area is at least its step's,
+ * 48 x 48 dp, or 24 x 24 dp for a T4 control (marked by [DenseTargets]), and no two hit areas overlap, touching edges aside. A hit area is
+ * the node's touch bounds, which include Compose's minimum touch target, cut to
  * its window and, for a node scrolled partly out of view, to what shows of it; a node out of its window is not on screen. A target inside
  * another (a tile's zoom in its tile) overlaps it by design and takes the touches it covers, and a backdrop as large as its window (a
  * sheet's scrim) lies under everything in it, so neither pair is compared.
  */
 fun SemanticsNodeInteractionsProvider.assertTargetsFit(density: Density, where: String) {
-    val floor = with(density) { FLOOR.toPx() } - TOLERANCE
     val problems = mutableListOf<String>()
     val targets = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).fetchSemanticsNodes()
         .map(::Target)
         .filter { !it.hit.isEmpty && !it.backdrop }
     for (target in targets.filter { it.whole }) {
         val hit = target.hit
-        if (hit.width < floor || hit.height < floor) problems += "${target.name} is ${dp(hit.width, density)} x ${dp(hit.height, density)} dp"
+        val least = with(density) { (if (target.dense) TargetStep.DENSE.hit else TargetStep.ACT.hit).toPx() } - TOLERANCE
+        if (hit.width < least || hit.height < least) problems += "${target.name} is ${dp(hit.width, density)} x ${dp(hit.height, density)} dp"
     }
     for ((i, a) in targets.withIndex()) {
         for (b in targets.drop(i + 1)) {
@@ -41,15 +44,15 @@ fun SemanticsNodeInteractionsProvider.assertTargetsFit(density: Density, where: 
     if (problems.isNotEmpty()) fail("$where:\n" + problems.joinToString("\n"))
 }
 
-/** The smallest hit area R14 allows, T4's. */
-private val FLOOR = 24.dp
-
 /** Half a pixel, for rounding in layout. */
 private const val TOLERANCE = 0.5f
 
 private class Target(val node: SemanticsNode) {
     private val window: SemanticsNode = generateSequence(node) { it.parent }.last()
     val root: Int = window.id
+
+    /** A T4 control, held to 24 dp. */
+    val dense: Boolean = DenseTarget in node.config
 
     private val bounds = Rect(node.positionInRoot, node.size.toSize())
 

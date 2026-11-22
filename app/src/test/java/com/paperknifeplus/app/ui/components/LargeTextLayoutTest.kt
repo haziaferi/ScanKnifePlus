@@ -18,13 +18,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -37,15 +41,22 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
+import com.haziaferi.scanknifeplus.ui.folder.FolderItem
+import com.haziaferi.scanknifeplus.ui.folder.FolderKind
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
+import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
+import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -349,6 +360,134 @@ class LargeTextLayoutTest {
             assertEquals("side by side at $w dp", photos.top, pdf.top, 0.5f)
         }
         assertTrue("at some width one label wraps more than the other", differentLines)
+    }
+
+    @Test
+    @Config(qualifiers = "w600dp-h2400dp")
+    fun `History's Open and Open original grow to one height when they share a line`() {
+        val lease = FolderItem("f1", "Lease of the flat on the second floor.pdf", FolderKind.SCAN, 1_200, 3_000, Uri.parse("content://folder/lease.pdf"))
+        val copy = FolderItem(
+            "f2", "Lease.lost.pdf", FolderKind.CONFLICT, 900, 1_000, Uri.parse("content://folder/lost.pdf"), originalName = lease.name, original = lease
+        )
+        var width by mutableStateOf(300.dp)
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                Column(Modifier.width(width)) { HistoryView(onItemClick = { _, _, _ -> }, folder = HistoryFolder("Scans", listOf(lease, copy))) }
+            }
+        }
+        var sharedLine = false
+        for (w in 300..600 step 20) {
+            width = w.dp
+            rule.waitForIdle()
+            val open = rule.onNode(hasText("Open") and hasClickAction()).bounds()
+            val original = rule.onNode(hasText("Open ${lease.name}") and hasClickAction()).bounds()
+            if (abs(open.top - original.top) < 0.5f) {
+                sharedLine = sharedLine || layoutOf("Open ${lease.name}").lineCount > 1
+                assertEquals("one line, one height at $w dp", original.height, open.height, 0.5f)
+            }
+        }
+        assertTrue("at some width Open sits beside an Open original that wraps", sharedLine)
+    }
+
+    @Test
+    fun `the top bar's Back grows with the text action beside it`() {
+        atDoubleText { MaterialTheme(typography = Typography) { ToolTopBar(title = "Merge", subtitle = "Combine PDFs", showChange = true, onBack = {}, onShowTip = {}) } }
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("Change has grown past 48 dp", change.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        assertEquals("Back is as high as Change", change.height, back.height, 0.5f)
+        assertEquals("the (i) is as high as Change", change.height, tip.height, 0.5f)
+    }
+
+    @Test
+    // The 6T's height, so the tool's grid and its bar share the screen as on the phone.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Rearrange's arrows grow with Move to`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Move to…")).fetchSemanticsNodes().isNotEmpty() }
+        val moveTo = rule.onNode(hasText("Move to…") and hasClickAction()).bounds()
+        assertTrue("Move to has grown past 48 dp", moveTo.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        for (arrow in listOf("Move back", "Move forward")) {
+            assertEquals("$arrow is as high as Move to", moveTo.height, rule.onNode(hasContentDescription(arrow) and hasClickAction()).bounds().height, 0.5f)
+        }
+    }
+
+    @Test
+    // The 6T's height, so the numbering sheet shows whole.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Page numbers' colour button grows with the format field beside it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-numbers.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the options button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNode(hasContentDescription("Numbering options") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        val field = rule.onNode(hasSetTextAction() and hasText("Format ({n})")).bounds()
+        val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
+        assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
+        assertEquals("the colour button is as high as the field", field.height, colour.height, 0.5f)
+    }
+
+    /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */
+    private fun assertChipGaps(labels: List<String>) {
+        val gap = with(rule.density) { TargetStep.INLINE_GAP.toPx() }
+        val chips = labels.map { rule.onNode(hasText(it) and hasClickAction()).bounds() }.sortedWith(compareBy({ it.top }, { it.left }))
+        var lines = 1
+        for ((a, b) in chips.zipWithNext()) {
+            if (abs(a.top - b.top) < 0.5f) {
+                assertEquals("drawn chips on a line are 8 dp apart", gap, b.left - a.right, 0.5f)
+            } else {
+                lines++
+                assertEquals("lines of drawn chips are 8 dp apart", gap, b.top - a.bottom, 0.5f)
+            }
+        }
+        assertTrue("the chips wrap onto more than one line", lines > 1)
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `the Save PDF dialog's chips sit 8 dp apart across and down`() {
+        atDoubleText { MaterialTheme(typography = Typography) { SaveDialog(onSave = {}, onDismiss = {}) } }
+        assertChipGaps(listOf("A4", "Letter", "Legal", "Fit"))
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `Make searchable's chips sit 8 dp apart across and down`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "large-searchable.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the reading chips show", 60_000) { rule.onAllNodes(hasText("Receipts")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Receipts"))
+        assertChipGaps(listOf("Automatic", "Tables", "Receipts"))
+    }
+
+    @Test
+    // The 6T's height, where the grid shares the screen with the options button.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Page numbers' options button takes a tap over the tiles scrolled under it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(12), "large-numbers-tap.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the options button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
+        }
+        val grid = rule.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("Page 1"))).bounds()
+        val options = rule.onNode(hasContentDescription("Numbering options") and hasClickAction())
+        // The grid clips its tiles at its bottom, above the button, so no tile can take a touch there.
+        assertTrue("the grid ends above the options button", grid.bottom <= options.bounds().top + 0.5f)
+        options.performTouchInput { click(Offset(centerX, 1f)) }
+        rule.waitForIdle()
+        assertTrue("the numbering sheet opens", rule.onAllNodes(hasText("Color")).fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

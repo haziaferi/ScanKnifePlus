@@ -10,10 +10,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
@@ -29,6 +34,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /** One member of each R14 step is drawn at its step's height and answers touches across its step's hit area. */
@@ -98,6 +104,30 @@ class TargetStepsTest {
                 assertTrue("${other.id} is within 12 dp of the zoom's centre", distance(centre, other.touchBoundsInRoot) >= px(12.dp) - 0.5f)
             }
         }
+    }
+
+    @Test
+    // The 6T's screen, so the grid scrolls under the Select all row as on the phone.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Split's Select all takes a tap over the tiles scrolled under it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(12), "steps-split.pdf")
+        rule.setContent { SplitView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil("Select all shows", 60_000) { rule.onAllNodes(hasText("Select all")).fetchSemanticsNodes().isNotEmpty() }
+        val grid = rule.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("Page 1")))
+        // Half a tile up, so the top row is cut by the grid's edge, under the row of buttons.
+        grid.performTouchInput { swipeUp(startY = centerY + 60f, endY = centerY - 60f) }
+        rule.waitForIdle()
+        val selectAll = rule.onNode(hasText("Select all") and hasClickAction())
+        val cut = rule.onAllNodes(hasClickAction() and hasContentDescription("Page", substring = true)).fetchSemanticsNodes()
+            .filter { !it.boundsInRoot.isEmpty && it.boundsInRoot.height < it.size.height - 0.5f }
+        assertTrue("a tile is cut at the grid's top", cut.isNotEmpty())
+        // The grid clips its tiles at its top, below the buttons, so a touch on a button never reaches a tile.
+        assertTrue("the grid starts below Select all", grid.node().boundsInRoot.top >= selectAll.node().boundsInRoot.bottom - 0.5f)
+        selectAll.performTouchInput { click(Offset(centerX, height - 1f)) }
+        rule.waitForIdle()
+        assertTrue("Select all took the tap", rule.onAllNodes(hasText("12 / 12 pages selected")).fetchSemanticsNodes().isNotEmpty())
     }
 
     private fun distance(point: Offset, rect: Rect): Float {
