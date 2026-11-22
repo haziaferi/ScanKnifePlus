@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -174,6 +175,7 @@ fun UltraPreview(
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
+    var headerHeight by remember { mutableStateOf(0.dp) }
     var targetScale by remember { mutableFloatStateOf(1f) }
     var targetOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -313,7 +315,8 @@ fun UltraPreview(
                                 translationX = offset.x
                                 translationY = offset.y
                             },
-                        contentPadding = PaddingValues(top = 80.dp, bottom = 100.dp), // Top padding keeps the first page clear of the header.
+                        // The top padding keeps the first page, and its links, clear of the header, which grows with the text.
+                        contentPadding = PaddingValues(top = maxOf(80.dp, headerHeight), bottom = 100.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         userScrollEnabled = scale == 1f
@@ -458,7 +461,7 @@ fun UltraPreview(
         }
 
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 4.dp
         ) {
