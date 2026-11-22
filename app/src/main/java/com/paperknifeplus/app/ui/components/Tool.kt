@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -91,6 +92,8 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.util.UUID
 import kotlinx.coroutines.delay
 
@@ -223,8 +226,8 @@ fun rememberToolOutputs(toolId: String): ToolOutputs {
 }
 
 /**
- * The top bar of the tool screens, Settings and About: a 48 dp back button named [backLabel], [title] over [subtitle], a [changeLabel]
- * button (Change) when [showChange], and the (i) that brings a closed tip back ([onShowTip], R4) when there is one.
+ * The top bar of the tool screens, Settings and About: a back button named [backLabel], [title] over [subtitle], a [changeLabel] button
+ * (Change) when [showChange], and the (i) that brings a closed tip back ([onShowTip], R4) when there is one; the three are T2.
  */
 @Composable
 fun ToolTopBar(
@@ -243,7 +246,7 @@ fun ToolTopBar(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onBack, modifier = Modifier.size(TargetStep.ACT.hit)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
             }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
@@ -257,12 +260,12 @@ fun ToolTopBar(
                 if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
             }
             if (showChange) {
-                TextButton(onClick = onChange, modifier = Modifier.heightIn(min = 48.dp)) {
+                TextButton(onClick = onChange, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
                     Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
                 }
             }
             if (onShowTip != null) {
-                IconButton(onClick = onShowTip, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = onShowTip, modifier = Modifier.size(TargetStep.ACT.hit)) {
                     Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
                 }
             }
@@ -414,7 +417,7 @@ fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 /**
  * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
  * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
- * to save ([secondary], T2) shows it beside the action.
+ * to save ([secondary], T2) shows it beside the action, the two one height.
  */
 @Composable
 fun ToolConfigLayout(
@@ -434,12 +437,12 @@ fun ToolConfigLayout(
             if (secondary == null) {
                 ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.fillMaxWidth(), enabled = actionEnabled, icon = actionIcon)
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.weight(1f), enabled = actionEnabled, icon = actionIcon)
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.weight(1f).fillMaxHeight(), enabled = actionEnabled, icon = actionIcon)
                     ToolSecondaryButton(
                         secondary.label,
                         onClick = secondary.onClick,
-                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         enabled = secondary.enabled
                     )
                 }
@@ -479,8 +482,7 @@ internal const val THUMBNAIL_SCALE = 0.4f
 
 /**
  * The picked file as a small card (2b): its first page (from [uri], opened with [password]), [name] over [details] (size and pages), the
- * [PasswordLine] when the tool's output [keepsPassword], and Change ([onChange], T3: 40 dp visible in a 48 dp target). The name wraps
- * rather than clips.
+ * [PasswordLine] when the tool's output [keepsPassword], and Change ([onChange], T3). The name wraps rather than clips.
  */
 @Composable
 fun ToolFileCard(
@@ -501,18 +503,21 @@ fun ToolFileCard(
                 Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta)
                 if (keepsPassword) PasswordLine()
             }
-            Box(
-                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable(role = Role.Button, onClick = onChange),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    Modifier.heightIn(min = 40.dp).border(1.dp, colors.outline, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                }
-            }
+            CardChange(onChange)
         }
+    }
+}
+
+/** A file card's Change (T3): an outlined pill. */
+@Composable
+internal fun CardChange(onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier.inlineTarget().clip(RoundedCornerShape(20.dp)).border(1.dp, colors.outline, RoundedCornerShape(20.dp))
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
     }
 }
 
@@ -650,7 +655,7 @@ fun ToolStatusText(text: String) {
     )
 }
 
-/** One choice of a single-choice option: a card of at least 56 dp with a radio button, [title] and [description]; selected is tonal. */
+/** One choice of a single-choice option (T2): a card with a radio button, [title] and [description]; selected is tonal. */
 @Composable
 fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -660,7 +665,7 @@ fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick
         border = BorderStroke(1.dp, if (selected) colors.onPrimaryContainer else colors.outline),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(16.dp))
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
     ) {
@@ -675,7 +680,7 @@ fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick
     }
 }
 
-/** A tool's rank-1 action (T1): filled with the primary role, at least 56 dp high, its label growing with the text size. */
+/** A tool's rank-1 action (T1): filled with the primary role, its label growing with the text size. */
 @Composable
 fun ToolPrimaryButton(
     text: String,
@@ -687,7 +692,7 @@ fun ToolPrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 56.dp),
+        modifier = modifier.heightIn(min = TargetStep.COMMIT.drawn),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
@@ -704,7 +709,7 @@ fun ToolPrimaryButton(
     }
 }
 
-/** A tool's second action (T2): outlined, at least 48 dp high. */
+/** A tool's second action (T2): outlined. */
 @Composable
 fun ToolSecondaryButton(
     text: String,
@@ -716,7 +721,7 @@ fun ToolSecondaryButton(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = TargetStep.ACT.drawn),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.surfaceVariant),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground)
