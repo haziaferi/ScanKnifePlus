@@ -96,10 +96,11 @@ fun PdfToTextView(
                 } catch (e: CancellationException) {
                     deleteCreatedDocument(context, saveUri)
                     throw e
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
+                    if (!isToolFailure(e)) throw e
                     Log.w("PdfToTextView", "Saving the text failed", e)
                     deleteCreatedDocument(context, saveUri)
-                    withContext(Dispatchers.Main) { Toast.makeText(context, toolText(context, R.string.tool_error, e.message), Toast.LENGTH_LONG).show() }
+                    withContext(Dispatchers.Main) { Toast.makeText(context, toolFailureText(context, e), Toast.LENGTH_LONG).show() }
                 }
             }
         }
