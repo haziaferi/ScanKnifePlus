@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -208,9 +209,9 @@ fun PageNumbersView(
                                     onClick = { showSettingsSheet = true },
                                     color = accentColor.copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
+                                    modifier = Modifier.width(80.dp).heightIn(min = TargetStep.ACT.drawn)
                                 ) {
-                                    Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.page_numbers_numbering_options), tint = accentColor, modifier = Modifier.size(24.dp))
                                     }
                                 }
@@ -310,8 +311,9 @@ fun PageNumbersView(
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor, focusedLabelColor = accentColor)
                             )
 
+                            // T2, as high as the field beside it.
                             Surface(
-                                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = OutlinedTextFieldDefaults.MinHeight),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                 onClick = { showColorSheet = true }

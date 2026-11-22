@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -234,7 +235,8 @@ fun RearrangeView(
                                                     }
                                                 }
                                             },
-                                            enabled = selectedPageIndex != null && selectedPageIndex!! > 0
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! > 0,
+                                            modifier = Modifier.size(TargetStep.ACT.hit)
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -242,7 +244,8 @@ fun RearrangeView(
                                         Button(
                                             onClick = { showMoveToDialog = true },
                                             enabled = selectedPageIndex != null,
-                                            shape = RoundedCornerShape(12.dp)
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
                                         ) {
                                             Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                         }
@@ -259,7 +262,8 @@ fun RearrangeView(
                                                     }
                                                 }
                                             },
-                                            enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1,
+                                            modifier = Modifier.size(TargetStep.ACT.hit)
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -314,23 +318,26 @@ fun RearrangeView(
                         }
                     },
                     confirmButton = {
-                        TextButton(onClick = {
-                            val target = moveToInput.toIntOrNull()?.let { it - 1 }
-                            if (target != null && target in 0 until pageOrder.size && selectedPageIndex != null) {
-                                val newList = pageOrder.toMutableList()
-                                val item = newList.removeAt(selectedPageIndex!!)
-                                newList.add(target, item)
-                                pageOrder = newList
-                                selectedPageIndex = target
+                        DialogButtons {
+                            DialogButton(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant) {
                                 showMoveToDialog = false
                                 moveToInput = ""
-                            } else {
-                                Toast.makeText(context, toolText(context, R.string.rearrange_invalid_page_number), Toast.LENGTH_SHORT).show()
                             }
-                        }) { Text(stringResource(R.string.action_move), color = accentColor, fontWeight = FontWeight.Black) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showMoveToDialog = false; moveToInput = "" }) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            DialogButton(stringResource(R.string.action_move), color = accentColor, weight = FontWeight.Black) {
+                                val target = moveToInput.toIntOrNull()?.let { it - 1 }
+                                if (target != null && target in 0 until pageOrder.size && selectedPageIndex != null) {
+                                    val newList = pageOrder.toMutableList()
+                                    val item = newList.removeAt(selectedPageIndex!!)
+                                    newList.add(target, item)
+                                    pageOrder = newList
+                                    selectedPageIndex = target
+                                    showMoveToDialog = false
+                                    moveToInput = ""
+                                } else {
+                                    Toast.makeText(context, toolText(context, R.string.rearrange_invalid_page_number), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     }
                 )
             }

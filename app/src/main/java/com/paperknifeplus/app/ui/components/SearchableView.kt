@@ -60,6 +60,7 @@ import com.haziaferi.scanknifeplus.ui.scan.defaultOcrLanguage
 import com.haziaferi.scanknifeplus.ui.scan.handwrittenNotice
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -282,7 +283,7 @@ internal fun SearchableView(
                                 ChoiceChips(OcrReading.entries, reading, ::readingLabel) { reading = it }
                                 if (source != null) {
                                     Row(
-                                        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = redo, role = Role.Switch) { redo = it },
+                                        Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).toggleable(value = redo, role = Role.Switch) { redo = it },
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
@@ -389,7 +390,7 @@ private fun PhotosCard(photos: List<Uri>, onChange: () -> Unit, modifier: Modifi
                 color = colors.onSurface,
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
             )
-            ToolSecondaryButton(stringResource(R.string.tool_change), onClick = onChange)
+            CardChange(onChange)
         }
     }
 }
@@ -403,7 +404,7 @@ private fun <T> ChoiceChips(options: List<T>, selected: T, label: (T) -> Int, on
                 selected = option == selected,
                 onClick = { onPick(option) },
                 label = { Text(stringResource(label(option)), fontSize = 14.sp) },
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = TargetStep.INLINE.drawn),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary,
                     selectedLabelColor = MaterialTheme.colorScheme.onPrimary

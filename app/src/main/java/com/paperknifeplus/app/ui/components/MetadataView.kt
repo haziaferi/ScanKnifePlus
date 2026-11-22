@@ -303,7 +303,7 @@ fun MetadataEditField(label: String, value: String, accentColor: Color, onValueC
         TextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            modifier = Modifier.fillMaxWidth(),
             colors = TextFieldDefaults.colors(
                 unfocusedContainerColor = Color.Transparent,
                 focusedContainerColor = Color.Transparent,

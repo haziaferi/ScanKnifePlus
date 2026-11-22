@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -199,7 +200,7 @@ fun BookmarksView(
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     ToolStatusText(stringResource(R.string.bookmarks_bookmarks, bookmarks.size))
-                                    Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                                    Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
                                         Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
                                         Spacer(Modifier.width(8.dp))
                                         Text(stringResource(R.string.action_add), fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -297,7 +298,7 @@ fun BookmarksView(
                         bookmarks = bookmarks + Bookmark(title, p)
                         showAddDialog = false
                     }
-                }) { Text(stringResource(R.string.action_add)) }
+                }, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) { Text(stringResource(R.string.action_add)) }
             }
         )
     }
