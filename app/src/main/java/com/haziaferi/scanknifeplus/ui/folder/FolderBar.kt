@@ -21,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -38,12 +37,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.components.DialogButton
+import com.paperknifeplus.app.ui.components.DialogButtons
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /**
  * Home's folder bar (2b) on the bar token, apart from the ground: where files are saved, with Change; "Choose a folder" without one; that
  * the folder cannot be reached, with Choose again; or the copy of the scans into a new folder, with its progress. The whole bar opens Folder
- * setup (T2, at least 48 dp); the state is said in words, never by colour alone.
+ * setup (T2); the state is said in words, never by colour alone.
  */
 @Composable
 fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -65,7 +67,7 @@ fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Mo
             .clip(RoundedCornerShape(14.dp))
             .background(palette.bar)
             .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = 48.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
     ) {
@@ -95,11 +97,11 @@ fun FolderBlockedDialog(name: String?, onChooseAgain: () -> Unit, onPicker: () -
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.scan_folder_blocked_title)) },
         text = { Text(stringResource(R.string.scan_folder_blocked_body, name ?: stringResource(R.string.folder_your_folder))) },
-        confirmButton = { TextButton(onClick = onChooseAgain) { Text(stringResource(R.string.scan_folder_blocked_choose)) } },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_folder_blocked_later)) }
-                TextButton(onClick = onPicker) { Text(stringResource(R.string.scan_folder_blocked_picker)) }
+        confirmButton = {
+            DialogButtons {
+                DialogButton(stringResource(R.string.scan_folder_blocked_later), onClick = onDismiss)
+                DialogButton(stringResource(R.string.scan_folder_blocked_picker), onClick = onPicker)
+                DialogButton(stringResource(R.string.scan_folder_blocked_choose), onClick = onChooseAgain)
             }
         }
     )
@@ -118,7 +120,7 @@ fun CheckingFolderDialog(onCheck: () -> Unit, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_cancel)) } }
+        dismissButton = { DialogButton(stringResource(R.string.scan_cancel), onClick = onDismiss) }
     )
 }
 

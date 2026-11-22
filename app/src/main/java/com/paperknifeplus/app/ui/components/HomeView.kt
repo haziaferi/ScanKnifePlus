@@ -10,15 +10,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +56,8 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderBar
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -123,10 +127,10 @@ private fun HomeHeader(onAllTools: () -> Unit, onSettings: () -> Unit) {
     }
 }
 
-/** A 48 dp outlined round icon button (T2). */
+/** An outlined round icon button (T2). */
 @Composable
 private fun HeaderButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)) {
+    IconButton(onClick = onClick, modifier = Modifier.size(TargetStep.ACT.hit).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)) {
         Icon(icon, contentDescription = label, tint = MaterialTheme.colorScheme.onBackground)
     }
 }
@@ -164,20 +168,20 @@ private fun ScanCard(onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
                     Text(stringResource(R.string.home_scan_subtitle), fontSize = 14.sp, color = colors.onSurfaceVariant)
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CardButton(stringResource(R.string.home_import_photos), onImportPhotos, Modifier.weight(1f))
-                CardButton(stringResource(R.string.home_open_pdf), onOpenPdf, Modifier.weight(1f))
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CardButton(stringResource(R.string.home_import_photos), onImportPhotos, Modifier.weight(1f).fillMaxHeight())
+                CardButton(stringResource(R.string.home_open_pdf), onOpenPdf, Modifier.weight(1f).fillMaxHeight())
             }
         }
     }
 }
 
-/** An outlined card button of at least 48 dp (T2); its label wraps at large text sizes instead of clipping. */
+/** An outlined card button (T2); its label wraps at large text sizes instead of clipping. */
 @Composable
 private fun CardButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = TargetStep.ACT.drawn),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
@@ -228,7 +232,7 @@ internal fun FolderRecentList(recent: List<FolderItem>, onSeeAll: () -> Unit, on
     }
 }
 
-/** The Recent heading with See all, which opens History. */
+/** The Recent heading with See all (T3), which opens History. */
 @Composable
 private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -245,8 +249,7 @@ private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
         )
         Box(
             modifier = Modifier
-                .heightIn(min = 48.dp)
-                .widthIn(min = 48.dp)
+                .inlineTarget()
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(role = Role.Button, onClick = onSeeAll)
                 .padding(horizontal = 8.dp),

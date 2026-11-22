@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -199,23 +200,23 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
         title = { Text(stringResource(R.string.link_confirm_title), fontWeight = FontWeight.ExtraBold) },
         text = { Text(url) },
         confirmButton = {
-            TextButton(
-                onClick = {
-                    onDismiss()
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                    } catch (e: ActivityNotFoundException) {
-                        Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.heightIn(min = 48.dp)
-            ) {
-                Text(stringResource(R.string.history_open), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
-                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
+            DialogButtons {
+                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
+                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
+                }
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                        } catch (e: ActivityNotFoundException) {
+                            Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
+                ) {
+                    Text(stringResource(R.string.history_open), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
             }
         }
     )
@@ -250,12 +251,13 @@ private fun AboutFact(icon: ImageVector, title: String, body: String) {
     }
 }
 
-/** A credited project as one button that opens its repository: icon tile, [name], its [license] tag, [description] and an arrow. */
+/** A credited project as one button (T2) that opens its repository: icon tile, [name], its [license] tag, [description] and an arrow. */
 @Composable
 private fun CreditRow(icon: ImageVector, name: String, license: String, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -469,12 +471,12 @@ fun LicensePage() {
     }
 }
 
-/** A row of at least 60 dp that opens a sub-page: icon tile, [title] over [subtitle], and an arrow. */
+/** A row (T2) that opens a sub-page: icon tile, [title] over [subtitle], and an arrow. */
 @Composable
 private fun AboutMenuItem(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconTile(icon)
