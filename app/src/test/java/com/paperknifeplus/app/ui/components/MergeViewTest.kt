@@ -132,7 +132,8 @@ class MergeViewTest {
         }
         rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isNotEmpty() }
         unlock(name)
-        rule.waitUntil(30_000) { rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isEmpty() }
+        // The list, not the loading screen that stands in for it while the password is checked.
+        rule.waitUntil(30_000) { shown(ADD_MORE) && rule.onAllNodes(hasContentDescription("Unlock $name")).fetchSemanticsNodes().isEmpty() }
         val copy = decryptedCopies().single()
         // The same file twice more, both locked.
         rule.onNodeWithText(ADD_MORE).performClick()
@@ -140,7 +141,7 @@ class MergeViewTest {
 
         source.runOutOfMemory()
         unlock(name)
-        rule.waitUntil(30_000) { !shown("Password required") && ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
+        rule.waitUntil(30_000) { shown(ADD_MORE) && !shown("Password required") && ShadowToast.getTextOfLatestToast() == "Can't read this PDF." }
         rule.onAllNodes(hasContentDescription("Unlock $name")).assertCountEquals(1)
         rule.onAllNodes(hasContentDescription("Remove $name")).assertCountEquals(2)
         assertTrue("the unlocked entry keeps its decrypted copy", copy.exists())
