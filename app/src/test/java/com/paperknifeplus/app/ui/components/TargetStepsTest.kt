@@ -103,12 +103,23 @@ class TargetStepsTest {
     @Test
     @Config(qualifiers = "w384dp-h832dp")
     fun `on the 6T Compare's bar is one line`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "steps-compare.pdf")
+        // With a file picked the bar offers Reset, as the app shows it.
+        rule.setContent { MaterialTheme(typography = Typography) { CompareView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("Reset shows", 60_000) { rule.onAllNodes(hasText("Reset") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        assertOneLineBar("Compare", "Back", listOf("Reset"))
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T a bar with Change and the (i) is one line`() {
+        // No screen shows both today; the bar allows it, as Crop shows the (i) and Merge shows Change.
         rule.setContent {
-            MaterialTheme(typography = Typography) {
-                ToolTopBar(title = "Compare", subtitle = "Visual difference", showChange = true, onBack = {}, changeLabel = "Reset", onShowTip = {})
-            }
+            MaterialTheme(typography = Typography) { ToolTopBar(title = "Merge", subtitle = "Combine PDFs", showChange = true, onBack = {}, onShowTip = {}) }
         }
-        assertOneLineBar("Compare", "Back", listOf("Reset", "Show the tip"))
+        assertOneLineBar("Merge with the (i)", "Back", listOf("Change", "Show the tip"))
     }
 
     @Test
@@ -120,7 +131,7 @@ class TargetStepsTest {
 
     @Test
     @Config(qualifiers = "w384dp-h832dp")
-    fun `on the 6T Settings' bar is one line`() {
+    fun `on the 6T Settings' Back is 48 dp`() {
         rule.setContent {
             MaterialTheme(typography = Typography) {
                 SettingsView(onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {})
@@ -131,7 +142,7 @@ class TargetStepsTest {
 
     @Test
     @Config(qualifiers = "w384dp-h832dp")
-    fun `on the 6T About's bar is one line`() {
+    fun `on the 6T About's Back is 48 dp`() {
         rule.setContent { MaterialTheme(typography = Typography) { AboutView(onBack = {}, loadNotices = { emptyList() }) } }
         assertOneLineBar("About", "Back", emptyList())
     }

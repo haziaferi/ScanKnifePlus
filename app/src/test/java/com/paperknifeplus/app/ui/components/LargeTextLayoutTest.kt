@@ -57,7 +57,6 @@ import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import java.util.Locale
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -476,7 +475,6 @@ class LargeTextLayoutTest {
         } else {
             assertEquals("on one line, Back is as high as the action", choose.height, backBounds.height, 0.5f)
         }
-        println("BAR ${Locale.getDefault().language} ${rule.onRoot().bounds().width / rule.density.density} dp: ${if (stacked) "stacked" else "one line"}")
         return stacked
     }
 
@@ -531,6 +529,28 @@ class LargeTextLayoutTest {
         assertTrue("the actions sit under the title", change.top >= text("Optimize PDF size").bottom - 0.5f)
         assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
         assertTrue("the actions end at the left edge, the (i) last", tip.right <= change.left + 0.5f && tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
+        assertTrue("Change has grown past 48 dp", change.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        assertEquals("Change and the (i) are one height", change.height, tip.height, 0.5f)
+    }
+
+    @Test
+    // The 6T's width, where a short title leaves the actions one line beside it, but too little room for the label on one line.
+    @Config(qualifiers = "w384dp-h2400dp")
+    fun `a wrapping action label leaves the (i) beside it 48 dp`() {
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, changeLabel = "Choose two images", onShowTip = {})
+            }
+        }
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Choose two images") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("one line", change.top < back.bottom && tip.top < back.bottom)
+        assertTrue("the label wraps", layoutOf("Choose two images").lineCount > 1)
+        assertNotClipped("Choose two images")
+        val step = with(rule.density) { 48.dp.toPx() } - 0.5f
+        assertTrue("the (i) is at least 48 x 48 dp: ${tip.width} x ${tip.height} px", tip.width >= step && tip.height >= step)
+        assertEquals("the (i) is as high as the label", change.height, tip.height, 0.5f)
     }
 
     /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */
