@@ -43,6 +43,7 @@ import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.launch
 
 /**
@@ -196,7 +197,7 @@ fun PageLightbox(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier.background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)
+                            modifier = Modifier.size(TargetStep.ACT.hit).background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)
                         ) {
                             Icon(Icons.Filled.Close, stringResource(R.string.action_close), tint = LocalScanPalette.current.camera.onCam)
                         }
@@ -215,7 +216,7 @@ fun PageLightbox(
                             } catch (e: Exception) {
                                 Toast.makeText(context, toolText(context, R.string.tool_share_failed), Toast.LENGTH_SHORT).show()
                             }
-                        }, modifier = Modifier.background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)) {
+                        }, modifier = Modifier.size(TargetStep.ACT.hit).background(LocalScanPalette.current.camera.ctrlOffBg, CircleShape)) {
                             Icon(Icons.Filled.Share, stringResource(R.string.action_share), tint = LocalScanPalette.current.camera.onCam)
                         }
                         Spacer(Modifier.width(8.dp))
@@ -223,7 +224,7 @@ fun PageLightbox(
                             onClick = { showJumpDialog = true },
                             color = LocalScanPalette.current.camera.ctrlOffBg,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.heightIn(min = 48.dp)
+                            modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
                         ) {
                             Text(
                                 counter,
@@ -259,7 +260,7 @@ fun PageLightbox(
                             contentColor = if (isSelected) LocalScanPalette.current.camera.doneFg else LocalScanPalette.current.camera.onCam
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.heightIn(min = 48.dp),
+                        modifier = Modifier.heightIn(min = TargetStep.ACT.drawn),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
                         if (isSelected) {

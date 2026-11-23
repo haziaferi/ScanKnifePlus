@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -198,7 +199,7 @@ fun PdfToImageView(
                                                     Surface(
                                                         selected = isSel,
                                                         onClick = { format = f },
-                                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                        modifier = Modifier.weight(1f).heightIn(min = TargetStep.ACT.drawn),
                                                         shape = RoundedCornerShape(8.dp),
                                                         color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                                                         border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
@@ -220,7 +221,7 @@ fun PdfToImageView(
                                                     Surface(
                                                         selected = isSel,
                                                         onClick = { quality = q },
-                                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                                        modifier = Modifier.weight(1f).heightIn(min = TargetStep.ACT.drawn),
                                                         shape = RoundedCornerShape(8.dp),
                                                         color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                                                         border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null

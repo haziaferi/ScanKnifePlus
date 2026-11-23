@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -208,9 +210,9 @@ fun PageNumbersView(
                                     onClick = { showSettingsSheet = true },
                                     color = accentColor.copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.width(80.dp).heightIn(min = 48.dp)
+                                    modifier = Modifier.width(80.dp).heightIn(min = TargetStep.ACT.drawn)
                                 ) {
-                                    Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn), contentAlignment = Alignment.Center) {
                                         Icon(Icons.Filled.KeyboardArrowUp, stringResource(R.string.page_numbers_numbering_options), tint = accentColor, modifier = Modifier.size(24.dp))
                                     }
                                 }
@@ -299,19 +301,24 @@ fun PageNumbersView(
 
                         Spacer(Modifier.height(16.dp))
 
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // The colour button (T2) grows with the field beside it, from the field's outline down: Material keeps half a
+                        // small label's line above the outline for the label to sit on.
+                        val labelRoom = with(LocalDensity.current) {
+                            MaterialTheme.typography.bodySmall.lineHeight.takeIf { it.isSp }?.toDp() ?: 16.sp.toDp()
+                        } / 2
+                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
                                 label = { Text(stringResource(R.string.page_numbers_format_n), fontSize = 12.sp) },
-                                modifier = Modifier.weight(1.5f),
+                                modifier = Modifier.weight(1.5f).fillMaxHeight(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = accentColor, focusedLabelColor = accentColor)
                             )
 
                             Surface(
-                                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                                modifier = Modifier.weight(1f).fillMaxHeight().padding(top = labelRoom).heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                 onClick = { showColorSheet = true }

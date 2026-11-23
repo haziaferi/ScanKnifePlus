@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /**
  * The All tools sheet: every [ToolCatalog] tool (decision 38). [fileName] is the file the chosen tool opens with, shown as a chip (35);
@@ -56,7 +57,7 @@ fun ToolPickerContent(onToolClick: (String) -> Unit, fileName: String? = null, o
     )
 }
 
-/** The pre-loaded file as a chip of at least 40 dp: label, name and a 48 dp remove button. */
+/** The pre-loaded file as a chip (T3 drawn): label, name and a remove button (T3). */
 @Composable
 private fun FileChip(fileName: String, onRemove: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -65,7 +66,7 @@ private fun FileChip(fileName: String, onRemove: () -> Unit) {
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            modifier = Modifier.heightIn(min = 40.dp)
+            modifier = Modifier.heightIn(min = TargetStep.INLINE.drawn)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 12.dp)) {
                 Icon(

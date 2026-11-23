@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -49,10 +51,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import coil.compose.AsyncImage
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.io.File
 
 /** What the Scanner shows, in plain values, so the screen can be drawn without a camera. */
@@ -111,7 +118,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                 val close = stringResource(R.string.scan_close)
                 Box(
                     Modifier
-                        .size(48.dp)
+                        .size(TargetStep.ACT.hit)
                         .clip(CircleShape)
                         .background(k.offBg)
                         .semantics { contentDescription = close }
@@ -125,7 +132,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     val label = stringResource(if (ui.autoCapture) R.string.scan_auto_on else R.string.scan_auto_off)
                     Box(
                         Modifier
-                            .heightIn(min = 48.dp)
+                            .heightIn(min = TargetStep.ACT.drawn)
                             .clip(RoundedCornerShape(24.dp))
                             .background(if (ui.autoCapture) k.onBg else k.offBg)
                             .toggleable(value = ui.autoCapture, role = Role.Switch, onValueChange = { actions.onToggleAuto() })
@@ -142,7 +149,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     val torchState = stringResource(if (ui.torchOn) R.string.scan_state_on else R.string.scan_state_off)
                     Box(
                         Modifier
-                            .size(48.dp)
+                            .size(TargetStep.ACT.hit)
                             .clip(CircleShape)
                             .background(if (ui.torchOn) k.torchBg else k.offBg)
                             .toggleable(value = ui.torchOn, role = Role.Switch, onValueChange = { actions.onToggleTorch() })
@@ -200,7 +207,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
         if (ui.permissionGranted) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
             ModeSelector(ui, actions.onMode)
             Spacer(Modifier.size(12.dp))
-            Box(
+            BoxWithConstraints(
                 Modifier
                     .fillMaxWidth()
                     .background(k.ctrlOffBg)
@@ -209,8 +216,10 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp)
             ) {
                 if (!single) {
-                    PageStack(ui, actions.onReview, Modifier.align(Alignment.CenterStart))
-                    DoneButton(ui.count > 0, actions.onReview, Modifier.align(Alignment.CenterEnd))
+                    // Each side slot ends where the centred shutter begins, so neither reaches its hit area (R14 rule 4).
+                    val side = Modifier.widthIn(max = (maxWidth - SHUTTER) / 2)
+                    PageStack(ui, actions.onReview, side.align(Alignment.CenterStart))
+                    DoneButton(ui.count > 0, actions.onReview, side.align(Alignment.CenterEnd))
                 }
                 Shutter(single, ui.shutterEnabled, actions.onShutter, Modifier.align(Alignment.Center))
             }
@@ -240,7 +249,7 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
                 val selected = ui.mode == mode
                 Box(
                     Modifier
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = TargetStep.ACT.drawn)
                         .clip(RoundedCornerShape(24.dp))
                         .then(if (selected) Modifier.background(k.onCam.copy(alpha = 0.22f)) else Modifier)
                         .selectable(selected = selected, enabled = ui.canChangeMode || selected, role = Role.RadioButton) { onMode(mode) }
@@ -255,13 +264,16 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
     }
 }
 
+/** The shutter (T1), drawn larger than its step. */
+private val SHUTTER = 76.dp
+
 @Composable
 private fun Shutter(single: Boolean, enabled: Boolean, onShutter: () -> Unit, modifier: Modifier) {
     val k = LocalScanPalette.current.camera
     val description = stringResource(if (single) R.string.scan_shutter_single else R.string.scan_shutter)
     Box(
         modifier
-            .size(76.dp)
+            .size(SHUTTER)
             .clip(CircleShape)
             .border(4.dp, k.shutter.copy(alpha = if (enabled) 1f else 0.5f), CircleShape)
             .semantics(mergeDescendants = true) { contentDescription = description }
@@ -315,15 +327,28 @@ private fun DoneButton(enabled: Boolean, onDone: () -> Unit, modifier: Modifier)
     val k = LocalScanPalette.current.camera
     Box(
         modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(24.dp))
             .background(k.doneBg.copy(alpha = if (enabled) 1f else 0.5f))
             .clickable(enabled = enabled, role = Role.Button, onClick = onDone)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .horizontalPaddingUpTo(20.dp, min = 8.dp)
+            .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(stringResource(R.string.scan_done), style = scanText(15, FontWeight.Bold), color = k.doneFg)
     }
+}
+
+/**
+ * Horizontal padding of [max] on each side that gives way down to [min] when the width allowed cannot hold the content beside all of it,
+ * so at large text a label loses padding before it breaks.
+ */
+private fun Modifier.horizontalPaddingUpTo(max: Dp, min: Dp): Modifier = layout { measurable, constraints ->
+    val most = max.roundToPx()
+    val room = if (constraints.hasBoundedWidth) (constraints.maxWidth - measurable.maxIntrinsicWidth(constraints.maxHeight)) / 2 else most
+    val pad = room.coerceIn(min.roundToPx(), most)
+    val placeable = measurable.measure(constraints.offset(horizontal = -2 * pad))
+    layout(constraints.constrainWidth(placeable.width + 2 * pad), placeable.height) { placeable.place(pad, 0) }
 }
 
 /** The camera's problems and the failed shots (7b) as banners under the header; text keeps its contrast on the camera scrim. */
@@ -353,7 +378,7 @@ private fun Banner(text: String, retry: (() -> Unit)?, dismiss: (() -> Unit)?) {
     ) {
         Text(text, style = scanText(14, FontWeight.SemiBold), color = k.onCam, modifier = Modifier.padding(vertical = 6.dp))
         if (retry != null || dismiss != null) {
-            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
                 dismiss?.let { BannerButton(stringResource(R.string.scan_dismiss), it) }
                 retry?.let { BannerButton(stringResource(R.string.scan_retry), it) }
             }
@@ -361,12 +386,13 @@ private fun Banner(text: String, retry: (() -> Unit)?, dismiss: (() -> Unit)?) {
     }
 }
 
+/** A banner's text button (T3). */
 @Composable
 private fun BannerButton(label: String, onClick: () -> Unit) {
     val k = LocalScanPalette.current.camera
     Box(
         Modifier
-            .heightIn(min = 48.dp)
+            .inlineTarget()
             .widthIn(min = 64.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(role = Role.Button, onClick = onClick)
@@ -392,7 +418,7 @@ private fun BoxScope.PermissionPrompt(@StringRes body: Int, @StringRes button: I
         Text(stringResource(body), style = scanText(15, FontWeight.Medium), color = k.onCam, textAlign = TextAlign.Center)
         Box(
             Modifier
-                .heightIn(min = 56.dp)
+                .heightIn(min = TargetStep.COMMIT.drawn)
                 .clip(RoundedCornerShape(16.dp))
                 .background(k.doneBg)
                 .clickable(role = Role.Button, onClick = onClick)

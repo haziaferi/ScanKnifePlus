@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.createBitmap
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import kotlin.math.ceil
@@ -400,18 +401,21 @@ fun WatermarkView(
                                 Text(stringResource(R.string.watermark_opacity), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 8.dp))
                                 Slider(value = activeOpacity, onValueChange = { activeOpacity = it }, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor))
                             }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { isFocusMode = false; activeWatermarkBitmap = null }, modifier = Modifier.weight(0.8f)) {
+                            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(
+                                    onClick = { isFocusMode = false; activeWatermarkBitmap = null },
+                                    modifier = Modifier.weight(0.8f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                ) {
                                     Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                                 }
-                                Row(Modifier.weight(2.5f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(Modifier.weight(2.5f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
                                         onClick = {
                                             activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = -1, shownOn = currentPage) }
                                             isFocusMode = false
                                             activeWatermarkBitmap = null
                                         },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
                                     ) { Text(stringResource(R.string.action_apply_to_all), fontSize = 14.sp, fontWeight = FontWeight.Black) }
@@ -421,7 +425,7 @@ fun WatermarkView(
                                             isFocusMode = false
                                             activeWatermarkBitmap = null
                                         },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
                                     ) { Text(stringResource(R.string.action_apply), fontSize = 14.sp, fontWeight = FontWeight.Black) }
                                 }
@@ -432,7 +436,7 @@ fun WatermarkView(
                             if (!hasAppliedOnThisPage) {
                                 Button(
                                     onClick = { showWatermarkOptions = true },
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn),
                                     shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
@@ -440,10 +444,10 @@ fun WatermarkView(
                                     Text(stringResource(R.string.watermark_add_watermark), fontWeight = FontWeight.Black)
                                 }
                             } else {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     OutlinedButton(
                                         onClick = { lightboxPage = null },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                     ) { Text(stringResource(R.string.action_add_more), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black) }
@@ -452,7 +456,7 @@ fun WatermarkView(
                                             lightboxPage = null
                                             saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf"))
                                         },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
                                     ) { Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black) }
                                 }
@@ -471,14 +475,14 @@ fun WatermarkView(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ToolSectionLabel(stringResource(R.string.watermark_templates))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(R.string.watermark_draft, R.string.watermark_confidential, R.string.watermark_approved).map { stringResource(it) }.forEach { template ->
                             Surface(
                                 onClick = {
                                     startPlacing(createTextBitmap(template, DocumentInk.TemplateGray), opacity = 0.5f)
                                     showWatermarkOptions = false
                                 },
-                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(12.dp),
                                 color = accentColor.copy(alpha = 0.05f),
                                 border = BorderStroke(1.dp, accentColor.copy(alpha = 0.1f))
@@ -530,7 +534,9 @@ fun WatermarkView(
                         startPlacing(createTextBitmap(text, selectedColor), opacity = 1f)
                         showTextInput = false
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor)) { Text(stringResource(R.string.action_continue)) }
+                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor), modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
+                    Text(stringResource(R.string.action_continue))
+                }
             }
         )
     }

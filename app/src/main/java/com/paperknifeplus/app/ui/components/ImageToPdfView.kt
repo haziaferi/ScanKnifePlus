@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.DenseTargets
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -212,11 +214,17 @@ fun ImageToPdfView(
                                             Text("${index + 1}", color = pageBadgeText, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                                         }
 
-                                        IconButton(
-                                            onClick = { selectedUris = selectedUris.filterIndexed { i, _ -> i != index }; if (isSelected) selectedIndex = null },
-                                            modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(48.dp)
-                                        ) {
-                                            Icon(Icons.Filled.Close, stringResource(R.string.action_remove_image, index + 1), tint = pageBadgeText, modifier = Modifier.background(pageBadge, CircleShape).padding(6.dp).size(16.dp))
+                                        // T4: inside the tile, the remove button answers only where it is drawn.
+                                        DenseTargets { dense ->
+                                            IconButton(
+                                                onClick = { selectedUris = selectedUris.filterIndexed { i, _ -> i != index }; if (isSelected) selectedIndex = null },
+                                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense)
+                                            ) {
+                                                Icon(
+                                                    Icons.Filled.Close, stringResource(R.string.action_remove_image, index + 1), tint = pageBadgeText,
+                                                    modifier = Modifier.background(pageBadge, CircleShape).padding(4.dp).size(16.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -244,7 +252,8 @@ fun ImageToPdfView(
                                                     selectedIndex = current - 1
                                                 }
                                             },
-                                            enabled = selectedIndex!! > 0
+                                            enabled = selectedIndex!! > 0,
+                                            modifier = Modifier.size(TargetStep.ACT.hit)
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -262,7 +271,8 @@ fun ImageToPdfView(
                                                     selectedIndex = current + 1
                                                 }
                                             },
-                                            enabled = selectedIndex!! < selectedUris.size - 1
+                                            enabled = selectedIndex!! < selectedUris.size - 1,
+                                            modifier = Modifier.size(TargetStep.ACT.hit)
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedIndex!! < selectedUris.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }

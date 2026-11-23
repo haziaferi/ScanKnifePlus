@@ -55,11 +55,11 @@ import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -451,7 +451,8 @@ private fun CropFrame(frame: CropArea, onChange: (CropArea) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = constraints.maxWidth.toFloat()
         val height = constraints.maxHeight.toFloat()
-        val half = with(LocalDensity.current) { (TARGET / 2).roundToPx() }
+        // A handle and an edge are T2: crop handles.
+        val half = with(LocalDensity.current) { (TargetStep.ACT.hit / 2).roundToPx() }
         Canvas(Modifier.fillMaxSize()) {
             drawCropFrame(frame, mark, dim, 2.dp.toPx())
             FrameCorner.entries.forEach { drawCornerMark(frame, it, mark) }
@@ -465,7 +466,7 @@ private fun CropFrame(frame: CropArea, onChange: (CropArea) -> Unit) {
             Box(
                 Modifier
                     .offset { IntOffset(x.roundToInt() - half, y.roundToInt() - half) }
-                    .size(TARGET)
+                    .size(TargetStep.ACT.hit)
                     .semantics {
                         contentDescription = label
                         progressBarRangeInfo = ProgressBarRangeInfo(frame.edge(edge), 0f..1f, steps = 99)
@@ -483,7 +484,7 @@ private fun CropFrame(frame: CropArea, onChange: (CropArea) -> Unit) {
             Box(
                 Modifier
                     .offset { IntOffset(x.roundToInt() - half, y.roundToInt() - half) }
-                    .size(TARGET)
+                    .size(TargetStep.ACT.hit)
                     .semantics {
                         contentDescription = label
                         hideFromAccessibility()
@@ -508,9 +509,6 @@ private fun CropFrame(frame: CropArea, onChange: (CropArea) -> Unit) {
         }
     }
 }
-
-/** The touch target of a frame handle (and of an edge for TalkBack). */
-private val TARGET: Dp = 48.dp
 
 /** The frame as a miniature in the grid shows it over its page: the outside dimmed and a thin frame, no handles. */
 @Composable

@@ -44,9 +44,10 @@ import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /**
- * The shared page viewer (R3): "Page N of M" with 48 dp arrows ([onPageChange]) over [page] of [uri], opened with [password]. The page
+ * The shared page viewer (R3): "Page N of M" with arrows (T2, [onPageChange]) over [page] of [uri], opened with [password]. The page
  * keeps its displayed shape [aspect] (width over height), at most 226 dp high and as wide as the viewer, inside [pagePadding];
  * [overlay] draws over the page's own area, so fractions of its size are fractions of the page.
  */
@@ -90,14 +91,14 @@ fun PageViewer(
     }
 }
 
-/** One of the viewer's arrows: an outlined 48 dp button named [label]; faded and inert when not [enabled]. */
+/** One of the viewer's arrows: an outlined button (T2) named [label]; faded and inert when not [enabled]. */
 @Composable
 private fun PageArrow(icon: ImageVector, label: String, enabled: Boolean, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     OutlinedIconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.size(48.dp),
+        modifier = Modifier.size(TargetStep.ACT.hit),
         border = BorderStroke(1.dp, if (enabled) colors.outline else colors.outline.copy(alpha = 0.4f))
     ) {
         Icon(icon, label, tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))

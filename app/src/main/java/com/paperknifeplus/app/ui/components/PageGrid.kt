@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /** Miniatures per grid row (U1). */
 private const val COLUMNS = 5
@@ -150,7 +151,7 @@ private fun PageTile(
                 customActions = listOf(CustomAccessibilityAction(read) { onRead(); true })
             }
             .combinedClickable(onClick = onTap, onLongClick = onRead)
-            .heightIn(min = 48.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .padding(top = 10.dp, bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)
@@ -173,7 +174,8 @@ private fun PageTile(
             miniature()
             if (selected) {
                 Box(
-                    Modifier.align(Alignment.TopEnd).offset(9.dp, (-9).dp).defaultMinSize(22.dp, 22.dp).background(colors.primary, CircleShape)
+                    Modifier.align(Alignment.TopEnd).offset(9.dp, (-9).dp).defaultMinSize(TargetStep.DENSE.drawn, TargetStep.DENSE.drawn)
+                        .background(colors.primary, CircleShape)
                         .padding(horizontal = 5.dp),
                     contentAlignment = Alignment.Center
                 ) {

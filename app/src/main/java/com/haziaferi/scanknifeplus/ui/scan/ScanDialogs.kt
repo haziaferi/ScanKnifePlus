@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -26,7 +25,6 @@ import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,7 +46,11 @@ import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.components.DialogButton
+import com.paperknifeplus.app.ui.components.DialogButtons
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.util.Locale
 
 /** The label of each of the scanner's filters, by their stable names (DocumentFilters.all, in picker order). */
@@ -102,7 +104,7 @@ internal fun FilterDialog(current: String?, onPick: (String) -> Unit, onDismiss:
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_cancel)) } }
+        dismissButton = { DialogButton(R.string.scan_cancel, onClick = onDismiss) }
     )
 }
 
@@ -159,13 +161,13 @@ internal fun SaveDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                onSave(SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null))
-            }, enabled = usable) {
-                Text(stringResource(if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder))
+            DialogButtons {
+                DialogButton(R.string.scan_cancel, onClick = onDismiss)
+                DialogButton(if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder, enabled = usable) {
+                    onSave(SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null))
+                }
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.scan_cancel)) } }
+        }
     )
 }
 
@@ -177,20 +179,24 @@ internal fun LeaveDialog(count: Int, onKeep: () -> Unit, onDiscard: () -> Unit, 
         title = { Text(stringResource(R.string.scan_leave_title)) },
         text = { Text(pluralStringResource(R.plurals.scan_leave_body, count, count)) },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onDiscard) { Text(stringResource(R.string.scan_discard), color = LocalScanPalette.current.danger) }
-                TextButton(onClick = onKeep) { Text(stringResource(R.string.scan_keep)) }
+            DialogButtons {
+                DialogButton(R.string.scan_cancel, onClick = onStay)
+                DialogButton(stringResource(R.string.scan_discard), color = LocalScanPalette.current.danger, onClick = onDiscard)
+                DialogButton(R.string.scan_keep, onClick = onKeep)
             }
-        },
-        dismissButton = { TextButton(onClick = onStay) { Text(stringResource(R.string.scan_cancel)) } }
+        }
     )
 }
+
+@Composable
+private fun DialogButton(@StringRes label: Int, enabled: Boolean = true, onClick: () -> Unit) =
+    DialogButton(stringResource(label), enabled = enabled, onClick = onClick)
 
 @Composable
 private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {
     val c = LocalScanPalette.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = c.acf, unselectedColor = c.bd))
@@ -198,10 +204,13 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
     }
 }
 
-/** One choice of [options] as a row of chips, [selected] marked. */
+/**
+ * One choice of [options] as a row of chips (T3), [selected] marked; drawn chips sit [TargetStep.INLINE_GAP] apart, across and down, since
+ * each chip's 48 dp hit area already holds the vertical gap.
+ */
 @Composable
 private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
-    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
         for (option in options) OptionChip(label(option), option == selected) { onPick(option) }
     }
 }
@@ -211,7 +220,7 @@ private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> Int, onPick
 private fun SwitchRow(@StringRes title: Int, @StringRes subtitle: Int?, checked: Boolean, onChange: (Boolean) -> Unit) {
     val c = LocalScanPalette.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
+        Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).toggleable(value = checked, role = Role.Switch, onValueChange = onChange),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -223,14 +232,14 @@ private fun SwitchRow(@StringRes title: Int, @StringRes subtitle: Int?, checked:
     }
 }
 
+/** A choice chip (T3). */
 @Composable
 private fun OptionChip(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {
     val c = LocalScanPalette.current
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(20.dp)
     Box(
         Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 48.dp)
+            .inlineTarget()
             .clip(shape)
             .then(if (selected) Modifier.background(c.acSoft).border(1.5.dp, c.ac, shape) else Modifier.border(1.dp, c.bd, shape))
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)

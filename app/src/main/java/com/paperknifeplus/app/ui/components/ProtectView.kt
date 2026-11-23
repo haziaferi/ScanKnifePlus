@@ -153,7 +153,7 @@ fun ProtectView(
                                     value = protectPassword,
                                     onValueChange = { protectPassword = it },
                                     label = { Text(stringResource(R.string.protect_new_password), fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = TextFieldDefaults.colors(
                                         focusedIndicatorColor = accentColor,

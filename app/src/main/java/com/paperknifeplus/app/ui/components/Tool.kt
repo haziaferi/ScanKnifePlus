@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -45,13 +47,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -76,6 +79,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -91,6 +95,8 @@ import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.util.UUID
 import kotlinx.coroutines.delay
 
@@ -223,8 +229,8 @@ fun rememberToolOutputs(toolId: String): ToolOutputs {
 }
 
 /**
- * The top bar of the tool screens, Settings and About: a 48 dp back button named [backLabel], [title] over [subtitle], a [changeLabel]
- * button (Change) when [showChange], and the (i) that brings a closed tip back ([onShowTip], R4) when there is one.
+ * The top bar of the tool screens, Settings and About: a back button named [backLabel], [title] over [subtitle], a [changeLabel] button
+ * (Change) when [showChange], and the (i) that brings a closed tip back ([onShowTip], R4) when there is one; the three are T2.
  */
 @Composable
 fun ToolTopBar(
@@ -239,31 +245,128 @@ fun ToolTopBar(
 ) {
     val colors = MaterialTheme.colorScheme
     Surface(modifier = Modifier.fillMaxWidth(), color = colors.background) {
-        Row(
+        BarRow(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
-            }
-            Column(Modifier.weight(1f).padding(start = 4.dp)) {
-                Text(
-                    title,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = colors.onBackground,
-                    modifier = Modifier.semantics { heading() }
-                )
-                if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
-            }
-            if (showChange) {
-                TextButton(onClick = onChange, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+            leading = {
+                RowIconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
+                }
+            },
+            middle = {
+                Column(Modifier.padding(start = 4.dp)) {
+                    Text(
+                        title,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = colors.onBackground,
+                        modifier = Modifier.semantics { heading() }
+                    )
+                    if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                }
+            },
+            trailing = {
+                if (showChange || onShowTip != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (showChange) {
+                            // Weighted, so the (i) is measured first and keeps its 48 dp when the label must wrap.
+                            TextButton(
+                                onClick = onChange,
+                                modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                            ) {
+                                Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                            }
+                        }
+                        if (onShowTip != null) {
+                            RowIconButton(onClick = onShowTip) {
+                                Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
+                            }
+                        }
+                    }
                 }
             }
-            if (onShowTip != null) {
-                IconButton(onClick = onShowTip, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
+        )
+    }
+}
+
+/**
+ * An icon button (T2) that grows with the peers in its row: the whole of its height takes the touch, so the row's hit areas leave no gap,
+ * while the press highlight stays a round 48 dp one, T2's drawn size (Material's IconButton draws 40 dp), and the icon stays centred. Use it
+ * inside a row of fixed height, as the top bar's or one with `IntrinsicSize.Min`.
+ */
+@Composable
+internal fun RowIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: @Composable () -> Unit) {
+    Box(
+        modifier
+            .sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit)
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = null,
+                indication = ripple(bounded = false, radius = TargetStep.ACT.hit / 2),
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.size(TargetStep.ACT.hit), contentAlignment = Alignment.Center) { icon() }
+    }
+}
+
+/**
+ * A bar: [leading], then [middle], then [trailing]. On one line when the title and the trailing group each get at least their longest word:
+ * the leading and trailing controls are then peers at the height of the taller (R14 rule 1), each measured at the width it gets, the title
+ * takes the width between, and each is centred in the row. Otherwise the trailing group moves under the title, at the end edge and its own
+ * width, so a line breaks between words; a word breaks only when it alone is wider than its line. The leading control then keeps its own
+ * step, level with the title's top, and the trailing controls share one height among themselves. Mirrors right to left.
+ */
+@Composable
+private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
+    Layout(contents = listOf(leading, middle, trailing), modifier = modifier) { (lead, mid, trail), constraints ->
+        val total = constraints.maxWidth
+        val leadWidths = lead.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), total) }
+        val leadWidth = leadWidths.sum()
+        val titleWord = mid.maxOfOrNull { it.minIntrinsicWidth(Constraints.Infinity) } ?: 0
+        val trailWord = trail.sumOf { it.minIntrinsicWidth(Constraints.Infinity) }
+        if (trail.isEmpty() || leadWidth + titleWord + trailWord <= total) {
+            val trailRoom = (total - leadWidth - titleWord).coerceAtLeast(0)
+            val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), trailRoom) }
+            val controls = (lead.zip(leadWidths) + trail.zip(trailWidths)).maxOfOrNull { (it, width) -> it.minIntrinsicHeight(width) } ?: 0
+            val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
+            val leadPlaced = lead.map { it.measure(peer(total)) }
+            val trailPlaced = trail.map { it.measure(peer(trailRoom)) }
+            val rest = (total - leadPlaced.sumOf { it.width } - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
+            val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
+            val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(total, height) {
+                var x = 0
+                for (p in leadPlaced + midPlaced + trailPlaced) {
+                    p.placeRelative(x, (height - p.height) / 2)
+                    x += p.width
+                }
+            }
+        } else {
+            val loose = Constraints(maxWidth = total)
+            val leadPlaced = lead.map { it.measure(loose) }
+            val rest = (total - leadPlaced.sumOf { it.width }).coerceAtLeast(0)
+            val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
+            // One height for the trailing controls, so a grown label and the (i) beside it stay peers (R14 rule 1).
+            val trailPlaced = trail.map {
+                val shared = it.minIntrinsicHeight(minOf(it.maxIntrinsicWidth(Constraints.Infinity), total))
+                it.measure(Constraints(maxWidth = total, minHeight = shared, maxHeight = shared))
+            }
+            val firstLine = maxOf(leadPlaced.maxOfOrNull { it.height } ?: 0, midPlaced.maxOfOrNull { it.height } ?: 0)
+            val height = (firstLine + trailPlaced.sumOf { it.height }).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(total, height) {
+                var x = 0
+                for (p in leadPlaced + midPlaced) {
+                    // A title shorter than the controls is centred on them; a taller one starts level with them.
+                    p.placeRelative(x, ((leadPlaced.maxOfOrNull { it.height } ?: 0) - p.height).coerceAtLeast(0) / 2)
+                    x += p.width
+                }
+                var y = firstLine
+                for (p in trailPlaced) {
+                    p.placeRelative(total - p.width, y)
+                    y += p.height
                 }
             }
         }
@@ -414,7 +517,7 @@ fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 /**
  * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
  * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
- * to save ([secondary], T2) shows it beside the action.
+ * to save ([secondary], T2) shows it beside the action, the two one height.
  */
 @Composable
 fun ToolConfigLayout(
@@ -434,12 +537,12 @@ fun ToolConfigLayout(
             if (secondary == null) {
                 ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.fillMaxWidth(), enabled = actionEnabled, icon = actionIcon)
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.weight(1f), enabled = actionEnabled, icon = actionIcon)
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.weight(1f).fillMaxHeight(), enabled = actionEnabled, icon = actionIcon)
                     ToolSecondaryButton(
                         secondary.label,
                         onClick = secondary.onClick,
-                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         enabled = secondary.enabled
                     )
                 }
@@ -479,8 +582,7 @@ internal const val THUMBNAIL_SCALE = 0.4f
 
 /**
  * The picked file as a small card (2b): its first page (from [uri], opened with [password]), [name] over [details] (size and pages), the
- * [PasswordLine] when the tool's output [keepsPassword], and Change ([onChange], T3: 40 dp visible in a 48 dp target). The name wraps
- * rather than clips.
+ * [PasswordLine] when the tool's output [keepsPassword], and Change ([onChange], T3). The name wraps rather than clips.
  */
 @Composable
 fun ToolFileCard(
@@ -501,18 +603,21 @@ fun ToolFileCard(
                 Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta)
                 if (keepsPassword) PasswordLine()
             }
-            Box(
-                Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).clickable(role = Role.Button, onClick = onChange),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    Modifier.heightIn(min = 40.dp).border(1.dp, colors.outline, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                }
-            }
+            CardChange(onChange)
         }
+    }
+}
+
+/** A file card's Change (T3): an outlined pill. */
+@Composable
+internal fun CardChange(onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        Modifier.inlineTarget().clip(RoundedCornerShape(20.dp)).border(1.dp, colors.outline, RoundedCornerShape(20.dp))
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
     }
 }
 
@@ -650,7 +755,7 @@ fun ToolStatusText(text: String) {
     )
 }
 
-/** One choice of a single-choice option: a card of at least 56 dp with a radio button, [title] and [description]; selected is tonal. */
+/** One choice of a single-choice option (T2): a card with a radio button, [title] and [description]; selected is tonal. */
 @Composable
 fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -660,7 +765,7 @@ fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick
         border = BorderStroke(1.dp, if (selected) colors.onPrimaryContainer else colors.outline),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(16.dp))
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
     ) {
@@ -675,7 +780,7 @@ fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick
     }
 }
 
-/** A tool's rank-1 action (T1): filled with the primary role, at least 56 dp high, its label growing with the text size. */
+/** A tool's rank-1 action (T1): filled with the primary role, its label growing with the text size. */
 @Composable
 fun ToolPrimaryButton(
     text: String,
@@ -687,7 +792,7 @@ fun ToolPrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 56.dp),
+        modifier = modifier.heightIn(min = TargetStep.COMMIT.drawn),
         shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primary,
@@ -704,7 +809,7 @@ fun ToolPrimaryButton(
     }
 }
 
-/** A tool's second action (T2): outlined, at least 48 dp high. */
+/** A tool's second action (T2): outlined. */
 @Composable
 fun ToolSecondaryButton(
     text: String,
@@ -716,7 +821,7 @@ fun ToolSecondaryButton(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = TargetStep.ACT.drawn),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, if (enabled) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.surfaceVariant),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground)

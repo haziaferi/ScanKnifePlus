@@ -7,7 +7,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,10 +46,10 @@ fun JumpToPageDialog(initialInput: String, pageCount: Int, onJump: (Int) -> Unit
             )
         },
         confirmButton = {
-            TextButton(onClick = go) { Text(stringResource(R.string.action_go), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface) }
+            DialogButtons {
+                DialogButton(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, onClick = onDismiss)
+                DialogButton(stringResource(R.string.action_go), color = MaterialTheme.colorScheme.primary, weight = FontWeight.Black, onClick = go)
+            }
         },
         shape = RoundedCornerShape(28.dp),
         containerColor = MaterialTheme.colorScheme.surface,

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.CancellationException
@@ -198,11 +199,11 @@ fun PdfToTextView(
                                         val clip = android.content.ClipData.newPlainText("PDF Text", extractedText)
                                         clipboard.setPrimaryClip(clip)
                                         Toast.makeText(context, toolText(context, R.string.pdf2text_copied_to_clipboard), Toast.LENGTH_SHORT).show()
-                                    }, modifier = Modifier.size(48.dp)) {
+                                    }, modifier = Modifier.size(TargetStep.ACT.hit)) {
                                         Icon(Icons.Filled.ContentCopy, stringResource(R.string.pdf2text_copy_text), tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                     Spacer(Modifier.width(8.dp))
-                                    IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.size(48.dp)) {
+                                    IconButton(onClick = { saveTxtLauncher.launch(outputFileName(pdfBaseName(fileName), "txt")) }, modifier = Modifier.size(TargetStep.ACT.hit)) {
                                         Icon(Icons.Filled.Save, stringResource(R.string.pdf2text_save_as_txt), tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(22.dp))
                                     }
                                 }

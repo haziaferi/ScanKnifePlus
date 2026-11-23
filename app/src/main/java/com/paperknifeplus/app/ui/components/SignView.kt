@@ -52,6 +52,7 @@ import androidx.core.graphics.createBitmap
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import java.io.File
@@ -421,9 +422,12 @@ fun SignView(
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(12.dp).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                         if (isFocusMode) {
-                            TextButton(onClick = { isFocusMode = false; activeSignatureBitmap = null }, modifier = Modifier.weight(1f)) {
+                            TextButton(
+                                onClick = { isFocusMode = false; activeSignatureBitmap = null },
+                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                            ) {
                                 Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
                             }
                             Button(
@@ -442,7 +446,7 @@ fun SignView(
                                     isFocusMode = false
                                     activeSignatureBitmap = null
                                 },
-                                modifier = Modifier.weight(1.5f).heightIn(min = 48.dp),
+                                modifier = Modifier.weight(1.5f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
                                 Text(stringResource(R.string.action_apply), fontWeight = FontWeight.Black)
@@ -453,7 +457,7 @@ fun SignView(
                             if (!hasAppliedOnThisPage) {
                                 Button(
                                     onClick = { showSignOptions = true },
-                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn),
                                     shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
@@ -461,10 +465,10 @@ fun SignView(
                                     Text(stringResource(R.string.sign_add_sign), fontWeight = FontWeight.Black)
                                 }
                             } else {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     OutlinedButton(
                                         onClick = { lightboxPage = null },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                     ) {
@@ -475,7 +479,7 @@ fun SignView(
                                             lightboxPage = null
                                             saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf"))
                                         },
-                                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
                                     ) {
                                         Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black)
@@ -730,7 +734,8 @@ fun SignaturePadDialog(
                 onClick = { if (strokes.isNotEmpty()) onSave(renderSignatureBitmap(strokes.map { it.toPath() to it.color }), shouldSaveSignature) },
                 colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                 shape = RoundedCornerShape(12.dp),
-                enabled = strokes.isNotEmpty()
+                enabled = strokes.isNotEmpty(),
+                modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
             ) { Text(stringResource(R.string.sign_adopt), fontWeight = FontWeight.Black) }
         }
     )

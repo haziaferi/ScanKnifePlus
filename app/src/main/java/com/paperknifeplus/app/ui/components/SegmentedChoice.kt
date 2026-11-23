@@ -35,6 +35,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 private val SEGMENT_STYLE = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 20.sp)
 private val SEGMENT_PAD = 10.dp
@@ -43,7 +44,7 @@ private val MARK = 18.dp
 private val MARK_GAP = 4.dp
 
 /**
- * The one control for a small single choice (R2): [options] as segments 48 dp high at least, the [selected] one tonal with a check. Side by
+ * The one control for a small single choice (R2): [options] as segments (T2), the [selected] one tonal with a check. Side by
  * side, the segments are one row of one line and one height, never wrapping. When the labels, measured at the current text size, do not fit
  * that row, the segments stack as full-width rows, and a label too long even for its row wraps onto more lines and its row grows. Each
  * segment is a radio button of one group.
@@ -66,7 +67,7 @@ fun SegmentedChoice(options: List<String>, selected: Int, onSelect: (Int) -> Uni
             Row(
                 Modifier
                     .then(if (stacked) Modifier.fillMaxWidth() else Modifier)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = TargetStep.ACT.drawn)
                     .then(if (on) Modifier.background(colors.primaryContainer) else Modifier)
                     .drawBehind {
                         // A divider drawn over the start of every segment but the first, so stacked rows gain no height from it.

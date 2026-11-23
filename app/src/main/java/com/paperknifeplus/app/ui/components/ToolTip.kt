@@ -56,7 +56,7 @@ fun rememberToolTip(toolId: String): ToolTipState {
 
 /**
  * A tip that points elsewhere (R4): a card in the screen, under the file card, so it scrolls with the body and covers nothing. An (i), [text]
- * and a 48 dp close button ([onClose]).
+ * and a close button ([onClose], T3 as Material draws it).
  */
 @Composable
 fun ToolTipCard(text: String, onClose: () -> Unit, modifier: Modifier = Modifier) {
@@ -70,7 +70,7 @@ fun ToolTipCard(text: String, onClose: () -> Unit, modifier: Modifier = Modifier
         Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Outlined.Info, contentDescription = null, tint = colors.onSurface, modifier = Modifier.padding(top = 14.dp).size(20.dp))
             Text(text, fontSize = 14.sp, lineHeight = 20.sp, color = colors.onSurface, modifier = Modifier.weight(1f).padding(top = 12.dp))
-            IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+            IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, stringResource(R.string.tip_close), tint = colors.onSurface, modifier = Modifier.size(22.dp))
             }
         }

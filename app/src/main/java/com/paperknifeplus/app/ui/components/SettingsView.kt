@@ -73,6 +73,7 @@ import com.haziaferi.scanknifeplus.ui.folder.folderName
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -242,13 +243,13 @@ fun SettingsView(
                     close()
                     Toast.makeText(context, historyCleared, Toast.LENGTH_SHORT).show()
                 },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.COMMIT.drawn),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.error, contentColor = colors.onError)
             ) {
                 Text(stringResource(R.string.settings_clear_history_confirm), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
-            TextButton(onClick = close, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            TextButton(onClick = close, modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn)) {
                 Text(stringResource(R.string.action_cancel), fontSize = 15.sp, color = colors.onSurface)
             }
         }
@@ -298,7 +299,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
 }
 
 /**
- * A one-line row of at least 60 dp: icon tile, [title], its current [value] and, with [chevron], an arrow; the whole row is one button.
+ * A one-line row (T2): icon tile, [title], its current [value] and, with [chevron], an arrow; the whole row is one button.
  * [tint] marks a destructive row (in words too: its title says what it does).
  */
 @Composable
@@ -314,7 +315,7 @@ private fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 60.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -361,7 +362,7 @@ private fun SheetBody(text: String) {
     Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-/** One choice of several as rows of at least 56 dp with a radio button; the chosen one is tonal and marked selected, not by colour alone. */
+/** One choice of several as rows (T2) with a radio button; the chosen one is tonal and marked selected, not by colour alone. */
 @Composable
 private fun <T> ChoiceList(options: List<T>, selected: (T) -> Boolean, label: @Composable (T) -> String, onSelect: (T) -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -371,7 +372,7 @@ private fun <T> ChoiceList(options: List<T>, selected: (T) -> Boolean, label: @C
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 56.dp)
+                    .heightIn(min = TargetStep.ACT.drawn)
                     .border(1.dp, if (on) colors.onPrimaryContainer else colors.outline, RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
                     .background(if (on) colors.primaryContainer else colors.surface)

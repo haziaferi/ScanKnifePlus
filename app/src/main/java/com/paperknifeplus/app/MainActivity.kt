@@ -89,6 +89,7 @@ import com.paperknifeplus.app.ui.components.getUriDetails
 import com.paperknifeplus.app.ui.components.sweepDecryptedCopies
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -383,7 +384,7 @@ internal fun MainBottomBar(currentScreen: String, onNavigate: (String) -> Unit, 
     }
 }
 
-/** A tab of at least 64 x 48 dp; selection shows as accent colour, a bolder label and the tab's selected state. */
+/** A tab (T2) at least 64 dp wide; selection shows as accent colour, a bolder label and the tab's selected state. */
 @Composable
 private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val palette = LocalScanPalette.current
@@ -391,7 +392,7 @@ private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick:
     Column(
         modifier = Modifier
             .widthIn(min = 64.dp)
-            .heightIn(min = 48.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clip(RoundedCornerShape(12.dp))
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -403,7 +404,7 @@ private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick:
     }
 }
 
-/** The Scan pill: at least 116 x 56 dp (T1), filled with the primary role. */
+/** The Scan pill (T1), at least 116 dp wide, filled with the primary role. */
 @Composable
 private fun ScanButton(onClick: () -> Unit) {
     Surface(
@@ -411,7 +412,7 @@ private fun ScanButton(onClick: () -> Unit) {
         shape = RoundedCornerShape(28.dp),
         color = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
-        modifier = Modifier.widthIn(min = 116.dp).heightIn(min = 56.dp)
+        modifier = Modifier.widthIn(min = 116.dp).heightIn(min = TargetStep.COMMIT.drawn)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
