@@ -286,24 +286,28 @@ fun ToolTopBar(
 }
 
 /**
- * A bar's row: the [leading] and [trailing] controls are peers, measured at the height of the taller (R14 rule 1); [middle] takes the width
- * between them. The row is as tall as the tallest of the three, each centred in it.
+ * A bar's row: the [leading] and [trailing] controls are peers, measured at the height of the taller (R14 rule 1), each at the width it
+ * gets, so a label that wraps raises them all; [middle] takes the width between them. The row is as tall as the tallest of the three, each
+ * centred in it, and mirrors right to left.
  */
 @Composable
 private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
     Layout(contents = listOf(leading, middle, trailing), modifier = modifier) { (lead, mid, trail), constraints ->
-        val controls = (lead + trail).maxOfOrNull { it.minIntrinsicHeight(it.maxIntrinsicWidth(Constraints.Infinity)) } ?: 0
+        val total = constraints.maxWidth
+        val leadWidths = lead.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), total) }
+        val leadWidth = leadWidths.sum()
+        val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), (total - leadWidth).coerceAtLeast(0)) }
+        val controls = (lead.zip(leadWidths) + trail.zip(trailWidths)).maxOfOrNull { (it, width) -> it.minIntrinsicHeight(width) } ?: 0
         val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
-        val leadPlaced = lead.map { it.measure(peer(constraints.maxWidth)) }
-        val leadWidth = leadPlaced.sumOf { it.width }
-        val trailPlaced = trail.map { it.measure(peer(constraints.maxWidth - leadWidth)) }
-        val rest = (constraints.maxWidth - leadWidth - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
+        val leadPlaced = lead.map { it.measure(peer(total)) }
+        val trailPlaced = trail.map { it.measure(peer(total - leadPlaced.sumOf { p -> p.width })) }
+        val rest = (total - leadPlaced.sumOf { it.width } - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
         val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
         val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
-        layout(constraints.maxWidth, height) {
+        layout(total, height) {
             var x = 0
             for (p in leadPlaced + midPlaced + trailPlaced) {
-                p.place(x, (height - p.height) / 2)
+                p.placeRelative(x, (height - p.height) / 2)
                 x += p.width
             }
         }
