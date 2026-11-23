@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
-import com.paperknifeplus.app.testing.firstDrawnRow
+import com.paperknifeplus.app.testing.drawnTop
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -127,8 +127,8 @@ class TargetStepsTest {
         val fieldNode = rule.onNode(hasSetTextAction() and hasText("Format ({n})"))
         val field = fieldNode.node().boundsInRoot
         val colour = rule.onNode(hasText("Color") and hasClickAction()).node().boundsInRoot
-        // The outline, where the field draws its border: right of the label, past the rounded corner.
-        val outlineTop = field.top + fieldNode.firstDrawnRow((field.width - px(24.dp)).toInt())
+        // The outline, where the field draws its border: right of the label's gap, past the 12 dp rounded corner.
+        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 18, 22, 26).map { (field.width - px(it.dp)).toInt() })
         assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, px(1.dp))
         assertEquals("the colour button ends with the field", field.bottom, colour.bottom, px(1.dp))
     }

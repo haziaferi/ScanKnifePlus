@@ -51,7 +51,7 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
-import com.paperknifeplus.app.testing.firstDrawnRow
+import com.paperknifeplus.app.testing.drawnTop
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
@@ -406,8 +406,8 @@ class LargeTextLayoutTest {
         val field = fieldNode.bounds()
         val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
         assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
-        // The outline, where the field draws its border: right of the label, past the rounded corner.
-        val outlineTop = field.top + fieldNode.firstDrawnRow((field.width - with(rule.density) { 24.dp.toPx() }).toInt())
+        // The outline, where the field draws its border: right of the label's gap, past the 12 dp rounded corner.
+        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 18, 22, 26).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
         val dp = with(rule.density) { 1.dp.toPx() }
         assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, dp)
         assertEquals("the colour button ends with the field", field.bottom, colour.bottom, dp)
@@ -425,20 +425,33 @@ class LargeTextLayoutTest {
         rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Sposta in…")).fetchSemanticsNodes().isNotEmpty() }
         assertNotClipped("Sposta in…", rule.onNode(hasText("Sposta in…"), useUnmergedTree = true))
         val moveTo = rule.onNode(hasText("Sposta in…") and hasClickAction()).bounds()
-        assertEquals("Move back is as high as Move to", moveTo.height, rule.onNode(hasContentDescription("Sposta indietro") and hasClickAction()).bounds().height, 0.5f)
+        for (arrow in listOf("Sposta indietro", "Sposta avanti")) {
+            assertEquals("$arrow is as high as Move to", moveTo.height, rule.onNode(hasContentDescription(arrow) and hasClickAction()).bounds().height, 0.5f)
+        }
     }
 
     @Test
     @Config(qualifiers = "it-w320dp-h2400dp")
-    fun `in Italian on a small phone the top bar's Reset shows uncut and its peers grow with it`() {
-        atDoubleText {
-            MaterialTheme(typography = Typography) {
-                ToolTopBar(title = "Confronta", subtitle = "Trova le differenze", showChange = true, onBack = {}, changeLabel = "Ripristina", onShowTip = {})
-            }
-        }
-        assertNotClipped("Ripristina")
-        val change = rule.onNode(hasText("Ripristina") and hasClickAction()).bounds()
-        assertEquals("Back is as high as Reset", change.height, rule.onNode(hasContentDescription("Indietro") and hasClickAction()).bounds().height, 0.5f)
+    fun `in Italian on a small phone Make searchable's top bar keeps its title, shows Choose images uncut, and its peers grow with it`() {
+        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        val title = "Rendi ricercabile un PDF"
+        val label = "Scegli le immagini"
+        assertTrue("the action's label wraps", layoutOf(label).lineCount > 1)
+        assertNotClipped(label)
+        assertNotClipped(title)
+        // The title keeps its longest word, or its share of the bar when that word is wider still.
+        val longestWord = layoutOf(title).multiParagraph.intrinsics.minIntrinsicWidth
+        // The bar's row is inset 4 dp and 12 dp, and the title 4 dp more.
+        val share = (rule.onRoot().bounds().width - with(rule.density) { 16.dp.toPx() }) * 0.4f - with(rule.density) { 4.dp.toPx() }
+        val given = layoutOf(title).layoutInput.constraints.maxWidth
+        assertTrue("the title is given $given px, not its longest word $longestWord or its share $share", given >= minOf(longestWord, share) - 1f)
+        val choose = rule.onNode(hasText(label) and hasClickAction()).bounds()
+        val back = rule.onNode(hasContentDescription("Indietro") and hasClickAction()).bounds()
+        assertEquals("Back takes the row's height to the touch", choose.height, back.height, 0.5f)
+        assertEquals("Back is 48 dp wide", with(rule.density) { 48.dp.toPx() }, back.width, 0.5f)
+        val icon = rule.onNode(hasContentDescription("Indietro"), useUnmergedTree = true).bounds()
+        assertEquals("the arrow is centred", back.center.y, icon.center.y, 0.5f)
+        // The round press highlight itself is not checked: Robolectric's captured image shows no ripple while the button is held.
     }
 
     @Test
