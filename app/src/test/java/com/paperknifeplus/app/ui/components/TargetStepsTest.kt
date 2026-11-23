@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -15,8 +16,10 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Dp
@@ -24,7 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.firstDrawnRow
 import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -104,6 +109,28 @@ class TargetStepsTest {
                 assertTrue("${other.id} is within 12 dp of the zoom's centre", distance(centre, other.touchBoundsInRoot) >= px(12.dp) - 0.5f)
             }
         }
+    }
+
+    @Test
+    // The 6T's screen, so the numbering sheet shows whole.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Page numbers' colour button starts at the format field's outline and ends with the field`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "steps-numbers.pdf")
+        rule.setContent { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the options button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNode(hasContentDescription("Numbering options") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        val fieldNode = rule.onNode(hasSetTextAction() and hasText("Format ({n})"))
+        val field = fieldNode.node().boundsInRoot
+        val colour = rule.onNode(hasText("Color") and hasClickAction()).node().boundsInRoot
+        // The outline, where the field draws its border: right of the label, past the rounded corner.
+        val outlineTop = field.top + fieldNode.firstDrawnRow((field.width - px(24.dp)).toInt())
+        assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, px(1.dp))
+        assertEquals("the colour button ends with the field", field.bottom, colour.bottom, px(1.dp))
     }
 
     @Test

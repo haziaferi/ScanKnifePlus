@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsMatcher
@@ -43,6 +44,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
@@ -52,6 +54,7 @@ import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
 import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.firstDrawnRow
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
@@ -365,7 +368,7 @@ class LargeTextLayoutTest {
     @Test
     @Config(qualifiers = "w600dp-h2400dp")
     fun `History's Open and Open original grow to one height when they share a line`() {
-        val lease = FolderItem("f1", "Lease of the flat on the second floor.pdf", FolderKind.SCAN, 1_200, 3_000, Uri.parse("content://folder/lease.pdf"))
+        val lease = FolderItem("f1", "Lease.pdf", FolderKind.SCAN, 1_200, 3_000, Uri.parse("content://folder/lease.pdf"))
         val copy = FolderItem(
             "f2", "Lease.lost.pdf", FolderKind.CONFLICT, 900, 1_000, Uri.parse("content://folder/lost.pdf"), originalName = lease.name, original = lease
         )
@@ -375,19 +378,17 @@ class LargeTextLayoutTest {
                 Column(Modifier.width(width)) { HistoryView(onItemClick = { _, _, _ -> }, folder = HistoryFolder("Scans", listOf(lease, copy))) }
             }
         }
-        // Robolectric's FlowRow moves a button that would wrap to a line of its own, so the 6T's case (Open beside a wrapped Open original)
-        // does not occur here; this holds the rule wherever the two do share a line.
-        var shown = 0
+        var compared = 0
         for (w in 300..600 step 20) {
             width = w.dp
             rule.waitForIdle()
             val open = rule.onNode(hasText("Open") and hasClickAction()).bounds()
             val original = rule.onNode(hasText("Open ${lease.name}") and hasClickAction()).bounds()
-            if (open.isEmpty || original.isEmpty) continue
-            shown++
-            if (abs(open.top - original.top) < 0.5f) assertEquals("one line, one height at $w dp", original.height, open.height, 0.5f)
+            if (open.isEmpty || original.isEmpty || abs(open.top - original.top) >= 0.5f) continue
+            compared++
+            assertEquals("one line, one height at $w dp", original.height, open.height, 0.5f)
         }
-        assertTrue("the buttons show at most widths", shown > 5)
+        assertTrue("Open and Open Lease.pdf share a line at some width", compared > 0)
     }
 
     @Test
@@ -430,10 +431,61 @@ class LargeTextLayoutTest {
         }
         rule.onNode(hasContentDescription("Numbering options") and hasClickAction()).performClick()
         rule.waitForIdle()
-        val field = rule.onNode(hasSetTextAction() and hasText("Format ({n})")).bounds()
+        val fieldNode = rule.onNode(hasSetTextAction() and hasText("Format ({n})"))
+        val field = fieldNode.bounds()
         val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
         assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
-        assertEquals("the colour button is as high as the field", field.height, colour.height, 0.5f)
+        // The outline, where the field draws its border: right of the label, past the rounded corner.
+        val outlineTop = field.top + fieldNode.firstDrawnRow((field.width - with(rule.density) { 24.dp.toPx() }).toInt())
+        val dp = with(rule.density) { 1.dp.toPx() }
+        assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, dp)
+        assertEquals("the colour button ends with the field", field.bottom, colour.bottom, dp)
+    }
+
+    @Test
+    // An Italian phone, small: Move to's label is longest there. Tall, so the screen's column has room for the bar (on 832 dp it squeezes
+    // the bar with the grid, which is L3's).
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Rearrange's Move to shows uncut beside its arrows`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange-it.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Sposta in…")).fetchSemanticsNodes().isNotEmpty() }
+        assertNotClipped("Sposta in…", rule.onNode(hasText("Sposta in…"), useUnmergedTree = true))
+        val moveTo = rule.onNode(hasText("Sposta in…") and hasClickAction()).bounds()
+        assertEquals("Move back is as high as Move to", moveTo.height, rule.onNode(hasContentDescription("Sposta indietro") and hasClickAction()).bounds().height, 0.5f)
+    }
+
+    @Test
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone the top bar's Reset shows uncut and its peers grow with it`() {
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                ToolTopBar(title = "Confronta", subtitle = "Trova le differenze", showChange = true, onBack = {}, changeLabel = "Ripristina", onShowTip = {})
+            }
+        }
+        assertNotClipped("Ripristina")
+        val change = rule.onNode(hasText("Ripristina") and hasClickAction()).bounds()
+        assertEquals("Back is as high as Reset", change.height, rule.onNode(hasContentDescription("Indietro") and hasClickAction()).bounds().height, 0.5f)
+    }
+
+    @Test
+    fun `the top bar mirrors right to left`() {
+        atDoubleText {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                ToolTopBar(title = "Merge", subtitle = null, showChange = true, onBack = {}, onShowTip = {})
+            }
+        }
+        val width = rule.onRoot().bounds().width
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        val title = text("Merge")
+        assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
+        assertTrue("the title is left of Back", title.right <= back.left + 0.5f)
+        assertTrue("the actions are left of the title", change.right <= title.left + 0.5f && tip.right <= change.left + 0.5f)
+        assertTrue("the (i) sits at the left edge", tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
     }
 
     /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */

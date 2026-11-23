@@ -58,9 +58,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * R14 on every screen Robolectric can compose, on the 6T's width and tall enough that nothing scrolls: every hit area at least 24 dp and none
- * overlapping another ([assertTargetsFit]). [TargetWalkTest] walks them at the default text size, [TargetWalkLargeTextTest] at twice it,
- * [TargetWalkSmallPhoneTest] at twice it on 320 dp. The camera preview is out of reach; the scanner's controls are walked over an empty
+ * R14 on every screen Robolectric can compose, tall enough that nothing scrolls: every hit area at least 48 x 48 dp, 24 x 24 dp for a T4
+ * control marked by DenseTargets, and none overlapping another ([assertTargetsFit]). Four walks: [TargetWalkTest] at the default text size
+ * and [TargetWalkLargeTextTest] at twice it, both on the 6T's 384 dp, then [TargetWalkSmallPhoneDefaultTextTest] and
+ * [TargetWalkSmallPhoneTest] at those sizes on 320 dp. The camera preview is out of reach; the scanner's controls are walked over an empty
  * preview.
  */
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
