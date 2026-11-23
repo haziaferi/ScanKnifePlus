@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /** Every [ToolCatalog] tool, grouped by [ToolCategory]; tapping one reports its id. [header] scrolls with the list. */
 @Composable
@@ -57,13 +58,13 @@ fun ToolsView(
     }
 }
 
-/** One tool: icon tile, name and description in a row of at least 56 dp. Accent-free (3d): the accent is kept for Scan. */
+/** One tool: icon tile, name and description in a row (T2). Accent-free (3d): the accent is kept for Scan. */
 @Composable
 private fun ToolRow(tool: Tool, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

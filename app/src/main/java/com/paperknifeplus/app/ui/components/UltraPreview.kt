@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -49,6 +50,7 @@ import coil.request.ImageRequest
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
@@ -173,6 +175,7 @@ fun UltraPreview(
     var pendingLink by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
+    var headerHeight by remember { mutableStateOf(0.dp) }
     var targetScale by remember { mutableFloatStateOf(1f) }
     var targetOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -312,7 +315,8 @@ fun UltraPreview(
                                 translationX = offset.x
                                 translationY = offset.y
                             },
-                        contentPadding = PaddingValues(top = 80.dp, bottom = 100.dp), // Top padding keeps the first page clear of the header.
+                        // The top padding keeps the first page, and its links, clear of the header, which grows with the text.
+                        contentPadding = PaddingValues(top = maxOf(80.dp, headerHeight), bottom = 100.dp),
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         userScrollEnabled = scale == 1f
@@ -377,7 +381,7 @@ fun UltraPreview(
                         .align(Alignment.CenterEnd)
                         .padding(end = 4.dp)
                         .fillMaxHeight(0.75f)
-                        .width(48.dp)
+                        .width(TargetStep.ACT.hit)
                         .onGloballyPositioned { trackHeight = it.size.height.toFloat() }
                         .pointerInput(activePageCount, trackHeight) {
                             detectTapGestures { offset ->
@@ -394,7 +398,7 @@ fun UltraPreview(
                     )
 
                     if (trackHeight > 0 && activePageCount > 1) {
-                        val minThumbHeight = 48.dp
+                        val minThumbHeight = TargetStep.ACT.hit
                         val thumbHeightFactor = 1f / activePageCount.coerceAtLeast(1)
                         val thumbHeightPx = with(density) {
                             (trackHeight * thumbHeightFactor.coerceIn(0.08f, 0.25f)).coerceAtLeast(minThumbHeight.toPx())
@@ -435,6 +439,7 @@ fun UltraPreview(
                             showJumpDialog = true
                         },
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        modifier = Modifier.heightIn(min = TargetStep.ACT.drawn),
                         shape = RoundedCornerShape(24.dp),
                         tonalElevation = 12.dp,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -456,7 +461,7 @@ fun UltraPreview(
         }
 
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().onSizeChanged { headerHeight = with(density) { it.height.toDp() } },
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
             tonalElevation = 4.dp
         ) {
@@ -465,7 +470,7 @@ fun UltraPreview(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(TargetStep.ACT.hit)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.tool_back), modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
 
@@ -485,11 +490,11 @@ fun UltraPreview(
                         } catch (e: Exception) {
                             Toast.makeText(context, toolText(context, R.string.tool_share_failed), Toast.LENGTH_SHORT).show()
                         }
-                    }) {
+                    }, modifier = Modifier.size(TargetStep.ACT.hit)) {
                         Icon(Icons.Filled.Share, stringResource(R.string.action_share), tint = MaterialTheme.colorScheme.onSurface)
                     }
 
-                    IconButton(onClick = { showToolPicker = true }) {
+                    IconButton(onClick = { showToolPicker = true }, modifier = Modifier.size(TargetStep.ACT.hit)) {
                         Icon(Icons.Filled.Add, stringResource(R.string.reader_tools), tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                     }
                 }

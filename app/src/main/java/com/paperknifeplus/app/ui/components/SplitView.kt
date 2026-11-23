@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -219,7 +220,7 @@ fun SplitView(
 
                                 AnimatedVisibility(visible = !showRangeInput) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).height(IntrinsicSize.Min),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Button(
@@ -228,7 +229,7 @@ fun SplitView(
                                                 selectedPages = all
                                                 rangeText = PageRanges.format(all)
                                             },
-                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                             shape = RoundedCornerShape(10.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
                                             contentPadding = PaddingValues(0.dp)
@@ -240,7 +241,7 @@ fun SplitView(
                                                 selectedPages = emptySet()
                                                 rangeText = ""
                                             },
-                                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                                            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                             shape = RoundedCornerShape(10.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
                                             contentPadding = PaddingValues(0.dp)

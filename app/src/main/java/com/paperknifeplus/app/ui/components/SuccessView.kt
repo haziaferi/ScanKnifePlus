@@ -5,9 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /** A file a tool saved, as its result screen shows it: [uri], the [name] the picker gave it, its [mime] type, and the [password] it opens with. */
 data class ToolResult(val uri: Uri, val name: String, val mime: String = PDF_MIME, val password: String? = null)
@@ -106,14 +110,14 @@ fun SuccessView(
                     val share = { shareFile(context, result.uri, result.name, result.mime) }
                     val shareLabel = stringResource(R.string.action_share)
                     if (onOpen != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ToolPrimaryButton(
                                 stringResource(R.string.history_open),
                                 onClick = onOpen,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).fillMaxHeight(),
                                 icon = Icons.AutoMirrored.Outlined.OpenInNew
                             )
-                            ToolSecondaryButton(shareLabel, onClick = share, modifier = Modifier.weight(1f).heightIn(min = 56.dp), icon = Icons.Outlined.Share)
+                            ToolSecondaryButton(shareLabel, onClick = share, modifier = Modifier.weight(1f).fillMaxHeight(), icon = Icons.Outlined.Share)
                         }
                     } else {
                         ToolPrimaryButton(shareLabel, onClick = share, modifier = Modifier.fillMaxWidth(), icon = Icons.Outlined.Share)
@@ -125,7 +129,7 @@ fun SuccessView(
 
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ToolSecondaryButton(stringResource(R.string.tool_process_more), onClick = onProcessMore, modifier = Modifier.fillMaxWidth())
-            TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
+            TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = TargetStep.ACT.drawn)) {
                 Text(stringResource(R.string.tool_back_to_tools), fontWeight = FontWeight.SemiBold, color = colors.onBackground, fontSize = 15.sp)
             }
         }

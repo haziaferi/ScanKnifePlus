@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,7 +66,7 @@ fun PageRangeField(value: String, onValueChange: (String) -> Unit, error: String
                 focusedBorderColor = colors.primary,
                 cursorColor = colors.primary
             ),
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics { if (error != null) this.error(error) }
+            modifier = Modifier.fillMaxWidth().semantics { if (error != null) this.error(error) }
         )
         if (error != null) {
             Row(

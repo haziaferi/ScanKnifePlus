@@ -32,6 +32,8 @@ import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.data.image.PdfPageRequest
+import com.paperknifeplus.app.ui.theme.DenseTargets
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 enum class PreviewMode {
     GRID,   // Scrollable grid (Split, etc.)
@@ -171,16 +173,18 @@ fun UnifiedPdfPreview(
                         Box(modifier = Modifier.fillMaxSize().background(if (isSelected) accentColor.copy(alpha = 0.15f) else Color.Transparent))
                         if (showSelectionIcon) {
                             Surface(
-                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
+                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(TargetStep.DENSE.drawn),
                                 color = if (isSelected) accentColor else pageBadge, shape = CircleShape
                             ) { Icon(Icons.Filled.Check, null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText, modifier = Modifier.padding(4.dp)) }
                         }
                         if (!disableLightbox && showZoomIcon) {
-                            Surface(
-                                onClick = { lightboxPage = index },
-                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(24.dp),
-                                color = pageBadge, shape = CircleShape
-                            ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
+                            DenseTargets { dense ->
+                                Surface(
+                                    onClick = { lightboxPage = index },
+                                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense),
+                                    color = pageBadge, shape = CircleShape
+                                ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
+                            }
                         }
                     }
                     itemOverlay?.invoke(this, index)

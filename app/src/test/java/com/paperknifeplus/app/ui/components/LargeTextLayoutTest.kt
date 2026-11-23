@@ -14,14 +14,22 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -34,15 +42,22 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
+import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.assertTargetsFit
+import com.paperknifeplus.app.testing.drawnTop
 import com.paperknifeplus.app.ui.theme.AppPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -131,8 +146,10 @@ class LargeTextLayoutTest {
         // The top bar's Change comes first in the tree, the file card's second.
         val changes = rule.onAllNodes(hasClickAction() and hasText("Change"))
         val barChange = changes[0].bounds()
-        assertTrue("the title runs under Change", text("Compress").right <= barChange.left)
-        assertTrue("the subtitle runs under Change", text("Optimize PDF size").right <= barChange.left)
+        // Beside the title, or under it when the bar stacks.
+        for (line in listOf("Compress", "Optimize PDF size")) {
+            assertTrue("$line keeps clear of Change", text(line).right <= barChange.left || text("Optimize PDF size").bottom <= barChange.top)
+        }
         assertTrue("the file name runs beside the card's Change", text(name).right <= changes[1].bounds().left)
 
         val shown = listOf("Compress", "Optimize PDF size", name, "1.2 MB • 3 pages", "Recommended", "Great balance of size and quality", label)
@@ -326,11 +343,279 @@ class LargeTextLayoutTest {
     }
 
     @Test
+    @Config(qualifiers = "w600dp-h2400dp")
+    fun `Home's Import photos and Open PDF grow to one height on every width`() {
+        // Phone widths in steps, so the two labels wrap onto different numbers of lines at some of them, as on the 6T.
+        var width by mutableStateOf(300.dp)
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                Column(Modifier.width(width)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
+            }
+        }
+        var differentLines = false
+        for (w in 300..440 step 10) {
+            width = w.dp
+            rule.waitForIdle()
+            differentLines = differentLines || layoutOf("Import photos").lineCount != layoutOf("Open PDF").lineCount
+            val photos = rule.onNode(hasText("Import photos") and hasClickAction()).bounds()
+            val pdf = rule.onNode(hasText("Open PDF") and hasClickAction()).bounds()
+            assertEquals("the peers are one height at $w dp", photos.height, pdf.height, 0.5f)
+            assertEquals("side by side at $w dp", photos.top, pdf.top, 0.5f)
+        }
+        assertTrue("at some width one label wraps more than the other", differentLines)
+    }
+
+    @Test
+    fun `the top bar's Back grows with the text action beside it`() {
+        // A short title, so the bar stays on one line at twice the text size.
+        atDoubleText { MaterialTheme(typography = Typography) { ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {}) } }
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("Change has grown past 48 dp", change.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        assertEquals("Back is as high as Change", change.height, back.height, 0.5f)
+        assertEquals("the (i) is as high as Change", change.height, tip.height, 0.5f)
+    }
+
+    @Test
+    // The 6T's height, so the tool's grid and its bar share the screen as on the phone.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Rearrange's arrows grow with Move to`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Move to…")).fetchSemanticsNodes().isNotEmpty() }
+        val moveTo = rule.onNode(hasText("Move to…") and hasClickAction()).bounds()
+        assertTrue("Move to has grown past 48 dp", moveTo.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        for (arrow in listOf("Move back", "Move forward")) {
+            assertEquals("$arrow is as high as Move to", moveTo.height, rule.onNode(hasContentDescription(arrow) and hasClickAction()).bounds().height, 0.5f)
+        }
+    }
+
+    @Test
+    // The 6T's height, so the numbering sheet shows whole.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Page numbers' colour button grows with the format field beside it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-numbers.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the options button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNode(hasContentDescription("Numbering options") and hasClickAction()).performClick()
+        rule.waitForIdle()
+        val fieldNode = rule.onNode(hasSetTextAction() and hasText("Format ({n})"))
+        val field = fieldNode.bounds()
+        val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
+        assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
+        // The outline, where the field draws its border: right of the label's gap, past the 12 dp rounded corner.
+        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 18, 22, 26).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
+        val dp = with(rule.density) { 1.dp.toPx() }
+        assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, dp)
+        assertEquals("the colour button ends with the field", field.bottom, colour.bottom, dp)
+    }
+
+    @Test
+    // An Italian phone, small: Move to's label is longest there. Tall, so the screen's column has room for the bar (on 832 dp it squeezes
+    // the bar with the grid, which is L3's).
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Rearrange's Move to shows uncut beside its arrows`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange-it.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Sposta in…")).fetchSemanticsNodes().isNotEmpty() }
+        assertNotClipped("Sposta in…", rule.onNode(hasText("Sposta in…"), useUnmergedTree = true))
+        val moveTo = rule.onNode(hasText("Sposta in…") and hasClickAction()).bounds()
+        for (arrow in listOf("Sposta indietro", "Sposta avanti")) {
+            assertEquals("$arrow is as high as Move to", moveTo.height, rule.onNode(hasContentDescription(arrow) and hasClickAction()).bounds().height, 0.5f)
+        }
+    }
+
+    /** Fails when [node], which shows [text], breaks a line inside a word: each line but the last ends at a space. */
+    private fun assertWholeWords(text: String, node: SemanticsNodeInteraction) {
+        val layout = layoutOf(node)
+        val s = layout.layoutInput.text.text
+        for (line in 0 until layout.lineCount - 1) {
+            val end = layout.getLineEnd(line)
+            assertTrue("$text breaks inside a word at line ${line + 1}", s[end - 1].isWhitespace() || s[end].isWhitespace())
+        }
+    }
+
+    /** The topmost node showing [text], as the bar's copy of a line the screen also shows lower down. */
+    private fun topmost(text: String): SemanticsNodeInteraction {
+        val nodes = rule.onAllNodesWithText(text, useUnmergedTree = true)
+        val tops = nodes.fetchSemanticsNodes().map { it.boundsInRoot.top }
+        return nodes[tops.indexOf(tops.min())]
+    }
+
+    /**
+     * Make searchable's empty screen at twice the text size: the bar's [title], [subtitle] and [label] whole and uncut, and nothing
+     * overlapping. Returns whether the bar stacked its action under the title; it is then at the end edge, and Back ([back]) level with the
+     * title's top.
+     */
+    private fun searchableBar(title: String, subtitle: String, label: String, back: String): Boolean {
+        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        for (shown in listOf(title, subtitle, label)) {
+            assertWholeWords(shown, topmost(shown))
+            assertNotClipped(shown, topmost(shown))
+        }
+        rule.assertTargetsFit(rule.density, "Make searchable's bar")
+        val backBounds = rule.onNode(hasContentDescription(back) and hasClickAction()).bounds()
+        val choose = rule.onNode(hasText(label) and hasClickAction()).bounds()
+        val stacked = choose.top >= topmost(subtitle).bounds().bottom - 0.5f
+        if (stacked) {
+            assertEquals("Back is level with the title's top", topmost(title).bounds().top, backBounds.top, 0.5f)
+            val line = rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().map { it.boundsInRoot }
+                .filter { it.top >= choose.top - 0.5f && it.bottom <= choose.bottom + 0.5f }
+            val end = rule.onRoot().bounds().width - with(rule.density) { 12.dp.toPx() }
+            assertEquals("the stacked action ends at the bar's end edge", end, line.maxOf { it.right }, 0.5f)
+        } else {
+            assertEquals("on one line, Back is as high as the action", choose.height, backBounds.height, 0.5f)
+        }
+        return stacked
+    }
+
+    @Test
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Make searchable's bar stacks Choose images under a whole title`() {
+        val stacked = searchableBar("Rendi ricercabile un PDF", "Aggiunge il testo riconosciuto, così puoi cercarlo e copiarlo", "Scegli le immagini", "Indietro")
+        assertTrue("the action moves under the title", stacked)
+    }
+
+    @Test
+    @Config(qualifiers = "it-w384dp-h2400dp")
+    fun `in Italian on the 6T Make searchable's bar keeps every word whole`() {
+        searchableBar("Rendi ricercabile un PDF", "Aggiunge il testo riconosciuto, così puoi cercarlo e copiarlo", "Scegli le immagini", "Indietro")
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h2400dp")
+    fun `in English on the 6T Make searchable's bar keeps every word whole`() {
+        searchableBar("Make PDF searchable", "Adds the recognised text so you can search and copy it", "Choose images", "Back")
+    }
+
+    @Test
+    fun `the top bar mirrors right to left`() {
+        atDoubleText {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {})
+            }
+        }
+        val width = rule.onRoot().bounds().width
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        val title = text("Sign")
+        assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
+        assertTrue("the title is left of Back", title.right <= back.left + 0.5f)
+        assertTrue("the actions are left of the title", change.right <= title.left + 0.5f && tip.right <= change.left + 0.5f)
+        assertTrue("the (i) sits at the left edge", tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
+    }
+
+    @Test
+    fun `a stacked top bar mirrors right to left`() {
+        atDoubleText {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                ToolTopBar(title = "Compress", subtitle = "Optimize PDF size", showChange = true, onBack = {}, onShowTip = {})
+            }
+        }
+        val width = rule.onRoot().bounds().width
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("the actions sit under the title", change.top >= text("Optimize PDF size").bottom - 0.5f)
+        assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
+        assertTrue("the actions end at the left edge, the (i) last", tip.right <= change.left + 0.5f && tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
+        assertTrue("Change has grown past 48 dp", change.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
+        assertEquals("Change and the (i) are one height", change.height, tip.height, 0.5f)
+    }
+
+    @Test
+    // The 6T's width, where a short title leaves the actions one line beside it, but too little room for the label on one line.
+    @Config(qualifiers = "w384dp-h2400dp")
+    fun `a wrapping action label leaves the (i) beside it 48 dp`() {
+        atDoubleText {
+            MaterialTheme(typography = Typography) {
+                ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, changeLabel = "Choose two images", onShowTip = {})
+            }
+        }
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Choose two images") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("one line", change.top < back.bottom && tip.top < back.bottom)
+        assertTrue("the label wraps", layoutOf("Choose two images").lineCount > 1)
+        assertNotClipped("Choose two images")
+        val step = with(rule.density) { 48.dp.toPx() } - 0.5f
+        assertTrue("the (i) is at least 48 x 48 dp: ${tip.width} x ${tip.height} px", tip.width >= step && tip.height >= step)
+        assertEquals("the (i) is as high as the label", change.height, tip.height, 0.5f)
+    }
+
+    /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */
+    private fun assertChipGaps(labels: List<String>) {
+        val gap = with(rule.density) { TargetStep.INLINE_GAP.toPx() }
+        val chips = labels.map { rule.onNode(hasText(it) and hasClickAction()).bounds() }.sortedWith(compareBy({ it.top }, { it.left }))
+        var lines = 1
+        for ((a, b) in chips.zipWithNext()) {
+            if (abs(a.top - b.top) < 0.5f) {
+                assertEquals("drawn chips on a line are 8 dp apart", gap, b.left - a.right, 0.5f)
+            } else {
+                lines++
+                assertEquals("lines of drawn chips are 8 dp apart", gap, b.top - a.bottom, 0.5f)
+            }
+        }
+        assertTrue("the chips wrap onto more than one line", lines > 1)
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `the Save PDF dialog's chips sit 8 dp apart across and down`() {
+        atDoubleText { MaterialTheme(typography = Typography) { SaveDialog(onSave = {}, onDismiss = {}) } }
+        assertChipGaps(listOf("A4", "Letter", "Legal", "Fit"))
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h2400dp")
+    fun `Make searchable's chips sit 8 dp apart across and down`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "large-searchable.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the reading chips show", 60_000) { rule.onAllNodes(hasText("Receipts")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Receipts"))
+        assertChipGaps(listOf("Automatic", "Tables", "Receipts"))
+    }
+
+    @Test
+    // The 6T's height, where the grid shares the screen with the options button.
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `Page numbers' options button takes a tap over the tiles scrolled under it`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(12), "large-numbers-tap.pdf")
+        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        rule.waitUntil("the options button shows", 60_000) {
+            rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
+        }
+        val grid = rule.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("Page 1"))).bounds()
+        val options = rule.onNode(hasContentDescription("Numbering options") and hasClickAction())
+        // The grid clips its tiles at its bottom, above the button, so no tile can take a touch there.
+        assertTrue("the grid ends above the options button", grid.bottom <= options.bounds().top + 0.5f)
+        options.performTouchInput { click(Offset(centerX, 1f)) }
+        rule.waitForIdle()
+        assertTrue("the numbering sheet opens", rule.onAllNodes(hasText("Color")).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
     fun `the tip card grows with its text beside its close button`() {
         atDoubleText { ToolTipCard(TIP, onClose = {}) }
         assertNotClipped(TIP)
-        val close = rule.onNodeWithContentDescription("Close the tip").bounds()
-        assertTrue("the close button is 48 dp", close.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
+        val closeNode = rule.onNodeWithContentDescription("Close the tip")
+        val close = closeNode.bounds()
+        // T3: drawn 40 dp, answering touches across 48.
+        assertTrue("the close button takes 48 dp of touch", closeNode.fetchSemanticsNode().touchBoundsInRoot.width >= with(rule.density) { 48.dp.toPx() } - 0.5f)
         assertTrue("the text runs beside the close button", text(TIP).right <= close.left)
     }
 

@@ -82,6 +82,7 @@ import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.ScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -252,19 +253,20 @@ private fun ConflictActions(item: FolderItem, onOpen: (() -> Unit)?, onOpenOrigi
     ) {
         Text(stringResource(R.string.history_conflict_note, original), fontSize = 13.sp, lineHeight = 18.sp, color = LocalScanPalette.current.mu)
         if (onOpen != null || onOpenOriginal != null) {
+            // Buttons on one line grow to one height (R14 rule 1).
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                onOpen?.let { RowButton(stringResource(R.string.history_open), it) }
-                onOpenOriginal?.let { RowButton(stringResource(R.string.history_conflict_open_original, original), it) }
+                onOpen?.let { RowButton(stringResource(R.string.history_open), it, Modifier.fillMaxRowHeight()) }
+                onOpenOriginal?.let { RowButton(stringResource(R.string.history_conflict_open_original, original), it, Modifier.fillMaxRowHeight()) }
             }
         }
     }
 }
 
 @Composable
-private fun RowButton(label: String, onClick: () -> Unit) {
+private fun RowButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     OutlinedButton(
         onClick = onClick,
-        modifier = Modifier.heightIn(min = 48.dp),
+        modifier = modifier.heightIn(min = TargetStep.ACT.drawn),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -300,7 +302,7 @@ private fun UnreadableCard(name: String, onChooseFolder: () -> Unit) {
         Text(stringResource(R.string.history_unreadable_body, name), fontSize = 14.sp, lineHeight = 20.sp, color = palette.warnFg)
         Button(
             onClick = onChooseFolder,
-            modifier = Modifier.heightIn(min = 56.dp),
+            modifier = Modifier.heightIn(min = TargetStep.COMMIT.drawn),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(containerColor = palette.warnFg, contentColor = palette.warnBg),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
@@ -345,7 +347,7 @@ private fun CardSlice(first: Boolean, last: Boolean, content: @Composable () -> 
     ) { content() }
 }
 
-/** One horizontally scrolling row of filter chips; the selected chip is tonal (3e) and also marked by semantics, not colour alone. */
+/** One horizontally scrolling row of filter chips, tabs (T2); the selected chip is tonal (3e) and also marked by semantics, not colour alone. */
 @Composable
 private fun FilterChips(options: List<HistoryFilter>, selected: HistoryFilter, onSelect: (HistoryFilter) -> Unit) {
     val colors = MaterialTheme.colorScheme
@@ -361,8 +363,8 @@ private fun FilterChips(options: List<HistoryFilter>, selected: HistoryFilter, o
             val on = option == selected
             Box(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
-                    .widthIn(min = 48.dp)
+                    .heightIn(min = TargetStep.ACT.drawn)
+                    .widthIn(min = TargetStep.ACT.hit)
                     .then(if (on) Modifier.background(colors.primaryContainer, RoundedCornerShape(24.dp)) else Modifier)
                     .border(1.dp, if (on) colors.onPrimaryContainer else colors.outline, RoundedCornerShape(24.dp))
                     .clip(RoundedCornerShape(24.dp))
@@ -418,8 +420,8 @@ internal fun folderMeta(context: Context, item: FolderItem): String {
 }
 
 /**
- * One output: icon tile, name, meta line and the type [tag] on its colours, so the type never rests on colour alone. The row reacts only with
- * an [onClick]; the share button shows only with an [onShare]. Names wrap rather than clip, so the row grows with the text size.
+ * One output: icon tile, name, meta line and the type [tag] on its colours, so the type never rests on colour alone. The row (T2) reacts only
+ * with an [onClick]; the share button (T3) shows only with an [onShare]. Names wrap rather than clip, so the row grows with the text size.
  */
 @Composable
 private fun OutputRow(
@@ -436,7 +438,7 @@ private fun OutputRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 60.dp)
+            .heightIn(min = TargetStep.ACT.drawn)
             .then(if (onClick != null) Modifier.clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick) else Modifier)
             .padding(start = 16.dp, end = if (onShare != null) 4.dp else 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

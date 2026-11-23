@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /** One ink the user can put into a document, with the [name] its swatch shows and a screen reader says. */
 class Ink(@StringRes val name: Int, val color: Color)
@@ -55,7 +56,7 @@ object DocumentInk {
 }
 
 /**
- * One ink as a 40 dp swatch in a 48 dp touch area, so a row of them keeps 8 dp between swatches. The ring marks the chosen ink, and the
+ * One ink as a swatch (T3), so a row of them keeps 8 dp between swatches. The ring marks the chosen ink, and the
  * swatch is a radio button named after its ink, so the choice never rests on colour alone.
  */
 @Composable
@@ -64,14 +65,14 @@ fun InkSwatch(ink: Ink, selected: Boolean, onClick: () -> Unit) {
     val label = stringResource(ink.name)
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(TargetStep.INLINE.hit)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
         Box(
             Modifier
-                .size(40.dp)
+                .size(TargetStep.INLINE.drawn)
                 .border(if (selected) 3.dp else 1.dp, if (selected) colors.onSurface else colors.outline, CircleShape)
                 .padding(5.dp)
                 .background(ink.color, CircleShape)

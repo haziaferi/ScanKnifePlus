@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
+import com.paperknifeplus.app.ui.theme.TargetStep
 
 /** The system folder picker, asking for a lasting read and write grant, which [AppFolder.choose] then persists. */
 private class OpenFolder : ActivityResultContracts.OpenDocumentTree() {
@@ -196,13 +197,13 @@ fun FolderSetupScreen(
         Button(
             onClick = onChoose,
             enabled = !choosing,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.COMMIT.drawn),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = palette.acf, contentColor = palette.onAcf)
         ) {
             Text(stringResource(R.string.folder_setup_choose), fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         }
-        TextButton(onClick = onNotNow, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(14.dp)) {
+        TextButton(onClick = onNotNow, modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn), shape = RoundedCornerShape(14.dp)) {
             Text(
                 stringResource(
                     when (status) {
