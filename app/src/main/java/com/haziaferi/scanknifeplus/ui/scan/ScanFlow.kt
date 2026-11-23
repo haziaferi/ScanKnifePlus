@@ -29,9 +29,6 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
@@ -49,7 +46,6 @@ import com.haziaferi.scanknifeplus.ui.folder.CheckingFolderDialog
 import com.haziaferi.scanknifeplus.ui.folder.FolderBlockedDialog
 import com.haziaferi.scanknifeplus.ui.folder.rememberFolderPicker
 import com.paperknifeplus.app.R
-import com.paperknifeplus.app.ui.theme.PlusJakartaSans
 
 /**
  * The document scanner: Scanner (or Review of the picked [importUris]), then Review, then a PDF saved into the user's [folder], or with the
@@ -460,10 +456,5 @@ private tailrec fun Context.findActivity(): ComponentActivity = when (this) {
     else -> error("ScanFlow needs a ComponentActivity")
 }
 
-/** The flow's text: the app font at [size] sp and [weight], growing with the system text size. */
-internal fun scanText(size: Int, weight: FontWeight): TextStyle =
-    TextStyle(fontFamily = PlusJakartaSans, fontWeight = weight, fontSize = size.sp, lineHeight = (size * LINE_HEIGHT).sp)
-
 private const val PDF_MIME = "application/pdf"
 private const val TXT_MIME = "text/plain"
-private const val LINE_HEIGHT = 1.45f

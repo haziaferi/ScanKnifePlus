@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FlashlightOn
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -49,7 +50,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainWidth
@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import coil.compose.AsyncImage
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.CameraText
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.inlineTarget
@@ -140,7 +141,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(label, style = scanText(14, FontWeight.Bold), color = if (ui.autoCapture) k.onFg else k.onCam)
+                        Text(label, style = MaterialTheme.typography.labelLarge, color = if (ui.autoCapture) k.onFg else k.onCam)
                     }
                 }
                 if (ui.torchAvailable) {
@@ -181,14 +182,14 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     Box(Modifier.size(10.dp).clip(CircleShape).background(k.outline))
                     Text(
                         stringResource(if (ui.mode == CaptureMode.BOOK) R.string.scan_hold_steady_book else R.string.scan_hold_steady),
-                        style = scanText(14, FontWeight.SemiBold), color = k.onCam
+                        style = CameraText, color = k.onCam
                     )
                 }
             }
             if (ui.lowLight) {
                 Text(
                     stringResource(R.string.scan_low_light),
-                    style = scanText(14, FontWeight.SemiBold),
+                    style = CameraText,
                     color = k.onCam,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
@@ -257,7 +258,7 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     val alpha = if (ui.canChangeMode || selected) 1f else 0.6f
-                    Text(stringResource(label), style = scanText(14, FontWeight.Bold), color = k.onCam.copy(alpha = alpha))
+                    Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = k.onCam.copy(alpha = alpha))
                 }
             }
         }
@@ -317,7 +318,7 @@ private fun PageStack(ui: ScannerUi, onReview: () -> Unit, modifier: Modifier) {
                 .padding(horizontal = 4.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text("${ui.count}", style = scanText(12, FontWeight.ExtraBold), color = k.doneFg)
+            Text("${ui.count}", style = MaterialTheme.typography.labelSmall, color = k.doneFg)
         }
     }
 }
@@ -335,7 +336,7 @@ private fun DoneButton(enabled: Boolean, onDone: () -> Unit, modifier: Modifier)
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(stringResource(R.string.scan_done), style = scanText(15, FontWeight.Bold), color = k.doneFg)
+        Text(stringResource(R.string.scan_done), style = MaterialTheme.typography.titleSmall, color = k.doneFg)
     }
 }
 
@@ -376,7 +377,7 @@ private fun Banner(text: String, retry: (() -> Unit)?, dismiss: (() -> Unit)?) {
             .semantics { liveRegion = LiveRegionMode.Polite }
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text(text, style = scanText(14, FontWeight.SemiBold), color = k.onCam, modifier = Modifier.padding(vertical = 6.dp))
+        Text(text, style = CameraText, color = k.onCam, modifier = Modifier.padding(vertical = 6.dp))
         if (retry != null || dismiss != null) {
             Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
                 dismiss?.let { BannerButton(stringResource(R.string.scan_dismiss), it) }
@@ -399,7 +400,7 @@ private fun BannerButton(label: String, onClick: () -> Unit) {
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, style = scanText(15, FontWeight.ExtraBold), color = k.onCam)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = k.onCam)
     }
 }
 
@@ -412,10 +413,10 @@ private fun BoxScope.PermissionPrompt(@StringRes body: Int, @StringRes button: I
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            stringResource(R.string.scan_permission_title), style = scanText(18, FontWeight.ExtraBold), color = k.onCam,
+            stringResource(R.string.scan_permission_title), style = MaterialTheme.typography.titleMedium, color = k.onCam,
             textAlign = TextAlign.Center
         )
-        Text(stringResource(body), style = scanText(15, FontWeight.Medium), color = k.onCam, textAlign = TextAlign.Center)
+        Text(stringResource(body), style = MaterialTheme.typography.bodyLarge, color = k.onCam, textAlign = TextAlign.Center)
         Box(
             Modifier
                 .heightIn(min = TargetStep.COMMIT.drawn)
@@ -425,7 +426,7 @@ private fun BoxScope.PermissionPrompt(@StringRes body: Int, @StringRes button: I
                 .padding(horizontal = 24.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(stringResource(button), style = scanText(16, FontWeight.Bold), color = k.doneFg)
+            Text(stringResource(button), style = MaterialTheme.typography.titleMedium, color = k.doneFg)
         }
     }
 }
