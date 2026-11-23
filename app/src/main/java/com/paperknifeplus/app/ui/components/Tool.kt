@@ -47,13 +47,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -244,12 +244,11 @@ fun ToolTopBar(
     onShowTip: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
-    val icon = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
     Surface(modifier = Modifier.fillMaxWidth(), color = colors.background) {
         BarRow(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 12.dp, top = 12.dp, bottom = 4.dp),
             leading = {
-                IconButton(onClick = onBack, modifier = icon) {
+                RowIconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, backLabel, tint = colors.onBackground)
                 }
             },
@@ -274,7 +273,7 @@ fun ToolTopBar(
                             }
                         }
                         if (onShowTip != null) {
-                            IconButton(onClick = onShowTip, modifier = icon) {
+                            RowIconButton(onClick = onShowTip) {
                                 Icon(Icons.Outlined.Info, stringResource(R.string.tip_show), tint = colors.onBackground, modifier = Modifier.size(22.dp))
                             }
                         }
@@ -286,9 +285,33 @@ fun ToolTopBar(
 }
 
 /**
+ * An icon button (T2) that grows with the peers in its row: the whole of its height takes the touch, so the row's hit areas leave no gap,
+ * while the press highlight stays Material's round 48 dp one and the icon stays centred. Use it inside a row of fixed height, as the top
+ * bar's or one with `IntrinsicSize.Min`.
+ */
+@Composable
+internal fun RowIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: @Composable () -> Unit) {
+    Box(
+        modifier
+            .sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit)
+            .fillMaxHeight()
+            .clickable(
+                interactionSource = null,
+                indication = ripple(bounded = false, radius = TargetStep.ACT.hit / 2),
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.size(TargetStep.ACT.hit), contentAlignment = Alignment.Center) { icon() }
+    }
+}
+
+/**
  * A bar's row: the [leading] and [trailing] controls are peers, measured at the height of the taller (R14 rule 1), each at the width it
- * gets, so a label that wraps raises them all; [middle] takes the width between them. The row is as tall as the tallest of the three, each
- * centred in it, and mirrors right to left.
+ * gets, so a label that wraps raises them all; [middle] takes the width between them, at least its longest word up to [TITLE_SHARE] of the
+ * row. The row is as tall as the tallest of the three, each centred in it, and mirrors right to left.
  */
 @Composable
 private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
@@ -296,11 +319,14 @@ private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: 
         val total = constraints.maxWidth
         val leadWidths = lead.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), total) }
         val leadWidth = leadWidths.sum()
-        val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), (total - leadWidth).coerceAtLeast(0)) }
+        // The title keeps its longest word, up to TITLE_SHARE of the row, before a trailing label may take the room.
+        val title = mid.maxOfOrNull { minOf(it.minIntrinsicWidth(Constraints.Infinity), (total * TITLE_SHARE).toInt()) } ?: 0
+        val trailRoom = (total - leadWidth - title).coerceAtLeast(0)
+        val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), trailRoom) }
         val controls = (lead.zip(leadWidths) + trail.zip(trailWidths)).maxOfOrNull { (it, width) -> it.minIntrinsicHeight(width) } ?: 0
         val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
         val leadPlaced = lead.map { it.measure(peer(total)) }
-        val trailPlaced = trail.map { it.measure(peer(total - leadPlaced.sumOf { p -> p.width })) }
+        val trailPlaced = trail.map { it.measure(peer(trailRoom)) }
         val rest = (total - leadPlaced.sumOf { it.width } - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
         val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
         val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
@@ -313,6 +339,9 @@ private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: 
         }
     }
 }
+
+/** The most of a bar's width the title keeps for its longest word, so a wrapping action label cannot squeeze it to nothing. */
+private const val TITLE_SHARE = 0.4f
 
 /**
  * The top bar of a tool screen in [state]: none while the tool works; on the result, how long it took ([processingTime]) under [title] and

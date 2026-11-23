@@ -224,7 +224,7 @@ fun RearrangeView(
                                         horizontalArrangement = Arrangement.SpaceAround,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        IconButton(
+                                        RowIconButton(
                                             onClick = {
                                                 selectedPageIndex?.let { current ->
                                                     if (current > 0) {
@@ -236,8 +236,7 @@ fun RearrangeView(
                                                     }
                                                 }
                                             },
-                                            enabled = selectedPageIndex != null && selectedPageIndex!! > 0,
-                                            modifier = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! > 0
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
@@ -251,7 +250,7 @@ fun RearrangeView(
                                             Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                         }
 
-                                        IconButton(
+                                        RowIconButton(
                                             onClick = {
                                                 selectedPageIndex?.let { current ->
                                                     if (current < pageOrder.size - 1) {
@@ -263,8 +262,7 @@ fun RearrangeView(
                                                     }
                                                 }
                                             },
-                                            enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1,
-                                            modifier = Modifier.sizeIn(minWidth = TargetStep.ACT.hit, minHeight = TargetStep.ACT.hit).fillMaxHeight()
+                                            enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
                                         ) {
                                             Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
