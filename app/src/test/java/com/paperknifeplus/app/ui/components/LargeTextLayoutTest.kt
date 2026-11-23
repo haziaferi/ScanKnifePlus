@@ -51,11 +51,13 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.assertTargetsFit
 import com.paperknifeplus.app.testing.drawnTop
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import java.util.Locale
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -145,8 +147,10 @@ class LargeTextLayoutTest {
         // The top bar's Change comes first in the tree, the file card's second.
         val changes = rule.onAllNodes(hasClickAction() and hasText("Change"))
         val barChange = changes[0].bounds()
-        assertTrue("the title runs under Change", text("Compress").right <= barChange.left)
-        assertTrue("the subtitle runs under Change", text("Optimize PDF size").right <= barChange.left)
+        // Beside the title, or under it when the bar stacks.
+        for (line in listOf("Compress", "Optimize PDF size")) {
+            assertTrue("$line keeps clear of Change", text(line).right <= barChange.left || text("Optimize PDF size").bottom <= barChange.top)
+        }
         assertTrue("the file name runs beside the card's Change", text(name).right <= changes[1].bounds().left)
 
         val shown = listOf("Compress", "Optimize PDF size", name, "1.2 MB • 3 pages", "Recommended", "Great balance of size and quality", label)
@@ -364,7 +368,8 @@ class LargeTextLayoutTest {
 
     @Test
     fun `the top bar's Back grows with the text action beside it`() {
-        atDoubleText { MaterialTheme(typography = Typography) { ToolTopBar(title = "Merge", subtitle = "Combine PDFs", showChange = true, onBack = {}, onShowTip = {}) } }
+        // A short title, so the bar stays on one line at twice the text size.
+        atDoubleText { MaterialTheme(typography = Typography) { ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {}) } }
         val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
         val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
         val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
@@ -430,46 +435,102 @@ class LargeTextLayoutTest {
         }
     }
 
+    /** Fails when [node], which shows [text], breaks a line inside a word: each line but the last ends at a space. */
+    private fun assertWholeWords(text: String, node: SemanticsNodeInteraction) {
+        val layout = layoutOf(node)
+        val s = layout.layoutInput.text.text
+        for (line in 0 until layout.lineCount - 1) {
+            val end = layout.getLineEnd(line)
+            assertTrue("$text breaks inside a word at line ${line + 1}", s[end - 1].isWhitespace() || s[end].isWhitespace())
+        }
+    }
+
+    /** The topmost node showing [text], as the bar's copy of a line the screen also shows lower down. */
+    private fun topmost(text: String): SemanticsNodeInteraction {
+        val nodes = rule.onAllNodesWithText(text, useUnmergedTree = true)
+        val tops = nodes.fetchSemanticsNodes().map { it.boundsInRoot.top }
+        return nodes[tops.indexOf(tops.min())]
+    }
+
+    /**
+     * Make searchable's empty screen at twice the text size: the bar's [title], [subtitle] and [label] whole and uncut, and nothing
+     * overlapping. Returns whether the bar stacked its action under the title; it is then at the end edge, and Back ([back]) level with the
+     * title's top.
+     */
+    private fun searchableBar(title: String, subtitle: String, label: String, back: String): Boolean {
+        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        for (shown in listOf(title, subtitle, label)) {
+            assertWholeWords(shown, topmost(shown))
+            assertNotClipped(shown, topmost(shown))
+        }
+        rule.assertTargetsFit(rule.density, "Make searchable's bar")
+        val backBounds = rule.onNode(hasContentDescription(back) and hasClickAction()).bounds()
+        val choose = rule.onNode(hasText(label) and hasClickAction()).bounds()
+        val stacked = choose.top >= topmost(subtitle).bounds().bottom - 0.5f
+        if (stacked) {
+            assertEquals("Back is level with the title's top", topmost(title).bounds().top, backBounds.top, 0.5f)
+            val line = rule.onAllNodes(hasClickAction()).fetchSemanticsNodes().map { it.boundsInRoot }
+                .filter { it.top >= choose.top - 0.5f && it.bottom <= choose.bottom + 0.5f }
+            val end = rule.onRoot().bounds().width - with(rule.density) { 12.dp.toPx() }
+            assertEquals("the stacked action ends at the bar's end edge", end, line.maxOf { it.right }, 0.5f)
+        } else {
+            assertEquals("on one line, Back is as high as the action", choose.height, backBounds.height, 0.5f)
+        }
+        println("BAR ${Locale.getDefault().language} ${rule.onRoot().bounds().width / rule.density.density} dp: ${if (stacked) "stacked" else "one line"}")
+        return stacked
+    }
+
     @Test
     @Config(qualifiers = "it-w320dp-h2400dp")
-    fun `in Italian on a small phone Make searchable's top bar keeps its title, shows Choose images uncut, and its peers grow with it`() {
-        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
-        val title = "Rendi ricercabile un PDF"
-        val label = "Scegli le immagini"
-        // The title keeps its longest word, or its share of the bar when that word is wider still.
-        val longestWord = layoutOf(title).multiParagraph.intrinsics.minIntrinsicWidth
-        // The bar's row is inset 4 dp and 12 dp, and the title 4 dp more.
-        val share = (rule.onRoot().bounds().width - with(rule.density) { 16.dp.toPx() }) * 0.4f - with(rule.density) { 4.dp.toPx() }
-        val given = layoutOf(title).layoutInput.constraints.maxWidth
-        assertTrue("the title is given $given px, not its longest word $longestWord or its share $share", given >= minOf(longestWord, share) - 1f)
-        assertTrue("the action's label wraps", layoutOf(label).lineCount > 1)
-        assertNotClipped(label)
-        assertNotClipped(title)
-        val choose = rule.onNode(hasText(label) and hasClickAction()).bounds()
-        val back = rule.onNode(hasContentDescription("Indietro") and hasClickAction()).bounds()
-        assertEquals("Back takes the row's height to the touch", choose.height, back.height, 0.5f)
-        assertEquals("Back is 48 dp wide", with(rule.density) { 48.dp.toPx() }, back.width, 0.5f)
-        val icon = rule.onNode(hasContentDescription("Indietro"), useUnmergedTree = true).bounds()
-        assertEquals("the arrow is centred", back.center.y, icon.center.y, 0.5f)
-        // The round press highlight itself is not checked: Robolectric's captured image shows no ripple while the button is held.
+    fun `in Italian on a small phone Make searchable's bar stacks Choose images under a whole title`() {
+        val stacked = searchableBar("Rendi ricercabile un PDF", "Aggiunge il testo riconosciuto, così puoi cercarlo e copiarlo", "Scegli le immagini", "Indietro")
+        assertTrue("the action moves under the title", stacked)
+    }
+
+    @Test
+    @Config(qualifiers = "it-w384dp-h2400dp")
+    fun `in Italian on the 6T Make searchable's bar keeps every word whole`() {
+        searchableBar("Rendi ricercabile un PDF", "Aggiunge il testo riconosciuto, così puoi cercarlo e copiarlo", "Scegli le immagini", "Indietro")
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h2400dp")
+    fun `in English on the 6T Make searchable's bar keeps every word whole`() {
+        searchableBar("Make PDF searchable", "Adds the recognised text so you can search and copy it", "Choose images", "Back")
     }
 
     @Test
     fun `the top bar mirrors right to left`() {
         atDoubleText {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                ToolTopBar(title = "Merge", subtitle = null, showChange = true, onBack = {}, onShowTip = {})
+                ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {})
             }
         }
         val width = rule.onRoot().bounds().width
         val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
         val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
         val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
-        val title = text("Merge")
+        val title = text("Sign")
         assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
         assertTrue("the title is left of Back", title.right <= back.left + 0.5f)
         assertTrue("the actions are left of the title", change.right <= title.left + 0.5f && tip.right <= change.left + 0.5f)
         assertTrue("the (i) sits at the left edge", tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
+    }
+
+    @Test
+    fun `a stacked top bar mirrors right to left`() {
+        atDoubleText {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                ToolTopBar(title = "Compress", subtitle = "Optimize PDF size", showChange = true, onBack = {}, onShowTip = {})
+            }
+        }
+        val width = rule.onRoot().bounds().width
+        val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
+        val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
+        val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
+        assertTrue("the actions sit under the title", change.top >= text("Optimize PDF size").bottom - 0.5f)
+        assertTrue("Back sits at the right edge", back.right >= width - with(rule.density) { 4.dp.toPx() } - 0.5f)
+        assertTrue("the actions end at the left edge, the (i) last", tip.right <= change.left + 0.5f && tip.left <= with(rule.density) { 12.dp.toPx() } + 0.5f)
     }
 
     /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */

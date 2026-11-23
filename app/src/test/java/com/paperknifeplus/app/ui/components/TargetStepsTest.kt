@@ -28,6 +28,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.testing.drawnTop
+import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -79,6 +80,60 @@ class TargetStepsTest {
         }
         assertStep("Back", rule.onNode(hasContentDescription("Back") and hasClickAction()).node(), TargetStep.ACT)
         assertStep("a segment", rule.onNode(hasText("Page range") and hasClickAction()).node(), TargetStep.ACT)
+    }
+
+    /** The bar shown sits on one line, as before stacking existed: Back ([back]) and each of [actions] 48 dp high and centred alike. */
+    private fun assertOneLineBar(where: String, back: String, actions: List<String>) {
+        val backBounds = rule.onNode(hasContentDescription(back) and hasClickAction()).node().boundsInRoot
+        assertEquals("$where: Back is 48 dp", px(48.dp), backBounds.height, 0.5f)
+        for (action in actions) {
+            val bounds = rule.onNode((hasText(action) or hasContentDescription(action)) and hasClickAction()).node().boundsInRoot
+            assertEquals("$where: $action is 48 dp", px(48.dp), bounds.height, 0.5f)
+            assertEquals("$where: $action is on Back's line", backBounds.center.y, bounds.center.y, 0.5f)
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T Merge's bar is one line`() {
+        rule.setContent { MaterialTheme(typography = Typography) { ToolTopBar(title = "Merge", subtitle = "Combine PDFs", showChange = true, onBack = {}) } }
+        assertOneLineBar("Merge", "Back", listOf("Change"))
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T Compare's bar is one line`() {
+        rule.setContent {
+            MaterialTheme(typography = Typography) {
+                ToolTopBar(title = "Compare", subtitle = "Visual difference", showChange = true, onBack = {}, changeLabel = "Reset", onShowTip = {})
+            }
+        }
+        assertOneLineBar("Compare", "Back", listOf("Reset", "Show the tip"))
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T Make searchable's bar is one line`() {
+        rule.setContent { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        assertOneLineBar("Make searchable", "Back", listOf("Choose images"))
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T Settings' bar is one line`() {
+        rule.setContent {
+            MaterialTheme(typography = Typography) {
+                SettingsView(onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {})
+            }
+        }
+        assertOneLineBar("Settings", "Back to Home", emptyList())
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `on the 6T About's bar is one line`() {
+        rule.setContent { MaterialTheme(typography = Typography) { AboutView(onBack = {}, loadNotices = { emptyList() }) } }
+        assertOneLineBar("About", "Back", emptyList())
     }
 
     @Test
