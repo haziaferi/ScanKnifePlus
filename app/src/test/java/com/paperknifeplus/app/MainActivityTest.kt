@@ -23,8 +23,11 @@ import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import android.app.Activity
 import android.content.ClipData
@@ -210,6 +213,30 @@ class MainActivityTest {
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Home")
         rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+    }
+
+    /**
+     * A phone as tall as the OnePlus 6T: the viewfinder (which takes taps to focus) sits below the scanner's top bar, so a tap on the bar's
+     * gap, over Home's Settings button, met nothing of the scanner's and went through to Home.
+     */
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `an open scanner takes every touch and hides Home from accessibility`() {
+        launch()
+        val settings = rule.onNode(hasContentDescription("Settings")).fetchSemanticsNode().boundsInRoot.center
+        // The tap itself reaches Settings while Home is on top.
+        rule.onRoot().performTouchInput { click(settings) }
+        waitFor("Appearance")
+        rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+
+        rule.onNode(hasText("Scan") and hasClickAction()).performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Close scanner")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onRoot().performTouchInput { click(settings) }
+        rule.waitForIdle()
+        assertFalse("the tap reached Home's Settings", shows("Appearance"))
+        rule.onNode(hasContentDescription("Close scanner")).assertExists()
+        assertTrue("Home is out of the accessibility tree", rule.onAllNodes(hasContentDescription("Settings")).fetchSemanticsNodes().isEmpty())
     }
 
     @Test

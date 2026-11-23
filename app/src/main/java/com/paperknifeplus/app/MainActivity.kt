@@ -61,8 +61,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -236,7 +238,8 @@ class MainActivity : ComponentActivity() {
                 // Edge to edge: the system navigation bar draws over a strip of the bottom bar's surface colour, below the content.
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     Box(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        // Under an open tool, Home and History stay composed (their state is kept) but leave the accessibility tree.
+                        Column(modifier = Modifier.fillMaxSize().then(if (currentTool != null) Modifier.clearAndSetSemantics {} else Modifier)) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.weight(1f),
@@ -304,7 +307,8 @@ class MainActivity : ComponentActivity() {
                         }
 
                         AnimatedVisibility(visible = currentTool != null, enter = fadeIn(), exit = fadeOut()) {
-                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                            // An empty pointerInput takes every touch, so none reaches Home through the gaps between a tool's own controls.
+                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).pointerInput(Unit) {}) {
                                 when (val route = currentTool) {
                                     SETTINGS_ROUTE -> SettingsView(
                                         onThemeChange = { theme ->
