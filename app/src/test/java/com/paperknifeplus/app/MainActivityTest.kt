@@ -23,11 +23,17 @@ import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.test.core.app.ApplicationProvider
 import android.app.Activity
 import android.content.ClipData
@@ -59,6 +65,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import java.io.File
+import androidx.compose.runtime.snapshots.Snapshot
 
 @RunWith(RobolectricTestRunner::class)
 class MainActivityTest {
@@ -217,7 +224,9 @@ class MainActivityTest {
 
     /**
      * A phone as tall as the OnePlus 6T: the viewfinder (which takes taps to focus) sits below the scanner's top bar, so a tap on the bar's
-     * gap, over Home's Settings button, met nothing of the scanner's and went through to Home.
+     * gap, over Home's Settings button, met nothing of the scanner's and went through to Home. Robolectric reports the camera permission
+     * as granted, so this is the viewfinder, not the permission prompt; at the default 320x470 dp its 3:4 frame reaches up over the gap and
+     * hides the bug.
      */
     @Test
     @Config(qualifiers = "w384dp-h832dp")
@@ -237,6 +246,53 @@ class MainActivityTest {
         assertFalse("the tap reached Home's Settings", shows("Appearance"))
         rule.onNode(hasContentDescription("Close scanner")).assertExists()
         assertTrue("Home is out of the accessibility tree", rule.onAllNodes(hasContentDescription("Settings")).fetchSemanticsNodes().isEmpty())
+        assertFalse("the scanner shows its viewfinder, not the permission prompt", shows("Allow camera"))
+        // TalkBack hears the change of screen by the tool's name.
+        rule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Scan")).assertExists()
+    }
+
+    /** Closing a tool fades it out; a tap on Home in the meantime is Home's, not swallowed by the fading screen. */
+    @Test
+    fun `a tap on Home while a closed tool fades out reaches Home`() {
+        launch()
+        val scan = rule.onNode(hasText("Scan") and hasClickAction()).fetchSemanticsNode().boundsInRoot.center
+        rule.onNode(hasContentDescription("Settings")).performClick()
+        waitFor("Appearance")
+
+        // The clock stands still between frames, or the rule's waits for idle would let the fade finish before the tap.
+        rule.mainClock.autoAdvance = false
+        rule.runOnUiThread {
+            controller!!.get().onBackPressedDispatcher.onBackPressed()
+            Snapshot.sendApplyNotifications()
+        }
+        // A few frames in: the bottom bar is back under the tool, which is still fading.
+        rule.mainClock.advanceTimeBy(64)
+        assertTrue("the bottom bar is back", rule.onAllNodes(hasText("Scan") and hasClickAction()).fetchSemanticsNodes().isNotEmpty())
+        rule.onRoot().performTouchInput { click(scan) }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        assertTrue("the tap reached Home's Scan", rule.onAllNodes(hasContentDescription("Close scanner")).fetchSemanticsNodes().isNotEmpty())
+    }
+
+    /**
+     * Keys move focus too: under an open tool, Tab and the arrow keys never land on Home, whose nodes are hidden but still composed. The
+     * tool is opened from the keyboard, so focus starts on Home's Settings button.
+     */
+    @Test
+    @OptIn(ExperimentalTestApi::class)
+    fun `keys never move focus onto Home under an open tool`() {
+        launch()
+        rule.onNode(hasContentDescription("Settings")).requestFocus()
+        rule.onRoot().performKeyInput { pressKey(Key.Enter) }
+        waitFor("Appearance")
+        for (key in listOf(Key.Tab, Key.DirectionDown, Key.DirectionUp, Key.DirectionRight, Key.DirectionLeft)) {
+            repeat(12) { step ->
+                rule.onRoot().performKeyInput { pressKey(key) }
+                rule.waitForIdle()
+                // A focused node of Home would not show: Home is out of the semantics tree.
+                assertEquals("$key #${step + 1}: focus is on the open tool", 1, rule.onAllNodes(isFocused()).fetchSemanticsNodes().size)
+            }
+        }
     }
 
     @Test
