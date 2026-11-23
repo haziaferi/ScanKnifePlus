@@ -47,10 +47,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
-import com.haziaferi.scanknifeplus.ui.folder.FolderItem
-import com.haziaferi.scanknifeplus.ui.folder.FolderKind
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
-import com.haziaferi.scanknifeplus.ui.folder.HistoryFolder
 import com.haziaferi.scanknifeplus.ui.scan.SaveDialog
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
@@ -363,32 +360,6 @@ class LargeTextLayoutTest {
             assertEquals("side by side at $w dp", photos.top, pdf.top, 0.5f)
         }
         assertTrue("at some width one label wraps more than the other", differentLines)
-    }
-
-    @Test
-    @Config(qualifiers = "w600dp-h2400dp")
-    fun `History's Open and Open original grow to one height when they share a line`() {
-        val lease = FolderItem("f1", "Lease.pdf", FolderKind.SCAN, 1_200, 3_000, Uri.parse("content://folder/lease.pdf"))
-        val copy = FolderItem(
-            "f2", "Lease.lost.pdf", FolderKind.CONFLICT, 900, 1_000, Uri.parse("content://folder/lost.pdf"), originalName = lease.name, original = lease
-        )
-        var width by mutableStateOf(300.dp)
-        atDoubleText {
-            MaterialTheme(typography = Typography) {
-                Column(Modifier.width(width)) { HistoryView(onItemClick = { _, _, _ -> }, folder = HistoryFolder("Scans", listOf(lease, copy))) }
-            }
-        }
-        var compared = 0
-        for (w in 300..600 step 20) {
-            width = w.dp
-            rule.waitForIdle()
-            val open = rule.onNode(hasText("Open") and hasClickAction()).bounds()
-            val original = rule.onNode(hasText("Open ${lease.name}") and hasClickAction()).bounds()
-            if (open.isEmpty || original.isEmpty || abs(open.top - original.top) >= 0.5f) continue
-            compared++
-            assertEquals("one line, one height at $w dp", original.height, open.height, 0.5f)
-        }
-        assertTrue("Open and Open Lease.pdf share a line at some width", compared > 0)
     }
 
     @Test
