@@ -309,9 +309,11 @@ internal fun RowIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, e
 }
 
 /**
- * A bar's row: the [leading] and [trailing] controls are peers, measured at the height of the taller (R14 rule 1), each at the width it
- * gets, so a label that wraps raises them all; [middle] takes the width between them, at least its longest word up to [TITLE_SHARE] of the
- * row. The row is as tall as the tallest of the three, each centred in it, and mirrors right to left.
+ * A bar: [leading], then [middle], then [trailing]. On one line when the title and the trailing group each get at least their longest word:
+ * the leading and trailing controls are then peers at the height of the taller (R14 rule 1), each measured at the width it gets, the title
+ * takes the width between, and each is centred in the row. Otherwise the trailing group moves under the title, at the end edge and its own
+ * width, so no word is ever broken; the controls then keep their own steps, and the leading one stays level with the title's top. Mirrors
+ * right to left.
  */
 @Composable
 private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
@@ -319,29 +321,49 @@ private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: 
         val total = constraints.maxWidth
         val leadWidths = lead.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), total) }
         val leadWidth = leadWidths.sum()
-        // The title keeps its longest word, up to TITLE_SHARE of the row, before a trailing label may take the room.
-        val title = mid.maxOfOrNull { minOf(it.minIntrinsicWidth(Constraints.Infinity), (total * TITLE_SHARE).toInt()) } ?: 0
-        val trailRoom = (total - leadWidth - title).coerceAtLeast(0)
-        val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), trailRoom) }
-        val controls = (lead.zip(leadWidths) + trail.zip(trailWidths)).maxOfOrNull { (it, width) -> it.minIntrinsicHeight(width) } ?: 0
-        val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
-        val leadPlaced = lead.map { it.measure(peer(total)) }
-        val trailPlaced = trail.map { it.measure(peer(trailRoom)) }
-        val rest = (total - leadPlaced.sumOf { it.width } - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
-        val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
-        val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
-        layout(total, height) {
-            var x = 0
-            for (p in leadPlaced + midPlaced + trailPlaced) {
-                p.placeRelative(x, (height - p.height) / 2)
-                x += p.width
+        val titleWord = mid.maxOfOrNull { it.minIntrinsicWidth(Constraints.Infinity) } ?: 0
+        val trailWord = trail.sumOf { it.minIntrinsicWidth(Constraints.Infinity) }
+        if (trail.isEmpty() || leadWidth + titleWord + trailWord <= total) {
+            val trailRoom = (total - leadWidth - titleWord).coerceAtLeast(0)
+            val trailWidths = trail.map { minOf(it.maxIntrinsicWidth(Constraints.Infinity), trailRoom) }
+            val controls = (lead.zip(leadWidths) + trail.zip(trailWidths)).maxOfOrNull { (it, width) -> it.minIntrinsicHeight(width) } ?: 0
+            val peer = { maxWidth: Int -> Constraints(maxWidth = maxWidth.coerceAtLeast(0), minHeight = controls, maxHeight = controls) }
+            val leadPlaced = lead.map { it.measure(peer(total)) }
+            val trailPlaced = trail.map { it.measure(peer(trailRoom)) }
+            val rest = (total - leadPlaced.sumOf { it.width } - trailPlaced.sumOf { it.width }).coerceAtLeast(0)
+            val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
+            val height = maxOf(controls, midPlaced.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(total, height) {
+                var x = 0
+                for (p in leadPlaced + midPlaced + trailPlaced) {
+                    p.placeRelative(x, (height - p.height) / 2)
+                    x += p.width
+                }
+            }
+        } else {
+            val loose = Constraints(maxWidth = total)
+            val leadPlaced = lead.map { it.measure(loose) }
+            val rest = (total - leadPlaced.sumOf { it.width }).coerceAtLeast(0)
+            val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
+            val trailPlaced = trail.map { it.measure(loose) }
+            val firstLine = maxOf(leadPlaced.maxOfOrNull { it.height } ?: 0, midPlaced.maxOfOrNull { it.height } ?: 0)
+            val height = (firstLine + trailPlaced.sumOf { it.height }).coerceIn(constraints.minHeight, constraints.maxHeight)
+            layout(total, height) {
+                var x = 0
+                for (p in leadPlaced + midPlaced) {
+                    // A title shorter than the controls is centred on them; a taller one starts level with them.
+                    p.placeRelative(x, ((leadPlaced.maxOfOrNull { it.height } ?: 0) - p.height).coerceAtLeast(0) / 2)
+                    x += p.width
+                }
+                var y = firstLine
+                for (p in trailPlaced) {
+                    p.placeRelative(total - p.width, y)
+                    y += p.height
+                }
             }
         }
     }
 }
-
-/** The most of a bar's width the title keeps for its longest word, so a wrapping action label cannot squeeze it to nothing. */
-private const val TITLE_SHARE = 0.4f
 
 /**
  * The top bar of a tool screen in [state]: none while the tool works; on the result, how long it took ([processingTime]) under [title] and
