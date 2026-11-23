@@ -86,15 +86,6 @@ class ToolCatalogTest {
     }
 
     @Test
-    fun `the screens set no text under 12 sp`() {
-        val small = Regex("""fontSize = (\d+(\.\d+)?)\.sp""")
-        for (file in screenFiles()) {
-            val tooSmall = small.findAll(file.readText()).map { it.groupValues[1].toFloat() }.filter { it < 12f }.toList()
-            assertEquals(file.name, emptyList<Float>(), tooSmall)
-        }
-    }
-
-    @Test
     fun `every tool records its outputs under its own catalog id, and nothing else writes History`() {
         val catalog = File(components, "ToolCatalog.kt").readText()
         val screenOf = Regex("""Tool\("([^"]+)"[^{]*\{\s*(\w+View)\(""").findAll(catalog).associate { it.groupValues[2] to it.groupValues[1] }

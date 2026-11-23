@@ -83,8 +83,11 @@ class LargeTextLayoutTest {
     @get:Rule(order = 1)
     val rule = createComposeRule()
 
+    /** [content] at twice the text size, in the app's type scale. */
     private fun atDoubleText(content: @Composable () -> Unit) = rule.setContent {
-        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) { content() }
+        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+            MaterialTheme(typography = Typography) { content() }
+        }
     }
 
     private fun SemanticsNodeInteraction.bounds(): Rect = fetchSemanticsNode().boundsInRoot
@@ -129,6 +132,20 @@ class LargeTextLayoutTest {
         rule.onNodeWithText("Colour palette").performClick()
         assertEquals("the sheet measures at twice the text size", 2f, layoutOf("Graphite Scholastic").layoutInput.density.fontScale)
         assertNotClipped("Graphite Scholastic")
+    }
+
+    /**
+     * The longest screen title in Italian on a 320 dp phone stays one whole word with room to spare: at 22 sp it fitted by about 19 dp here,
+     * and the 6T's font draws wider than Robolectric's, so the title's 21 sp keeps at least 24 dp.
+     */
+    @Test
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Settings' title Impostazioni keeps one line with room to spare`() {
+        atDoubleText { SettingsView(onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {}) }
+        val layout = layoutOf("Impostazioni")
+        assertEquals("Impostazioni wraps", 1, layout.lineCount)
+        val room = with(rule.density) { (layout.layoutInput.constraints.maxWidth - layout.getLineRight(0)).toDp() }
+        assertTrue("Impostazioni has only $room spare", room >= 24.dp)
     }
 
     @Test
