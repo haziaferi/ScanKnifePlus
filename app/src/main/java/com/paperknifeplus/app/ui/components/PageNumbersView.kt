@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -300,7 +301,11 @@ fun PageNumbersView(
 
                         Spacer(Modifier.height(16.dp))
 
-                        // The colour button (T2) grows with the field beside it.
+                        // The colour button (T2) grows with the field beside it, from the field's outline down: Material keeps half a
+                        // small label's line above the outline for the label to sit on.
+                        val labelRoom = with(LocalDensity.current) {
+                            MaterialTheme.typography.bodySmall.lineHeight.takeIf { it.isSp }?.toDp() ?: 16.sp.toDp()
+                        } / 2
                         Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedTextField(
                                 value = format,
@@ -313,7 +318,7 @@ fun PageNumbersView(
                             )
 
                             Surface(
-                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
+                                modifier = Modifier.weight(1f).fillMaxHeight().padding(top = labelRoom).heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(12.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(0.3f),
                                 onClick = { showColorSheet = true }

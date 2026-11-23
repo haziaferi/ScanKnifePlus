@@ -246,7 +246,8 @@ fun RearrangeView(
                                             onClick = { showMoveToDialog = true },
                                             enabled = selectedPageIndex != null,
                                             shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                            // Weighted, so the row's height is taken at the width the label gets, wrapped or not.
+                                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                         ) {
                                             Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
                                         }
