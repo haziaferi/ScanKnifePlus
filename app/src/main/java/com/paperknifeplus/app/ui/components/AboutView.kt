@@ -62,7 +62,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -134,10 +133,15 @@ fun AboutMain(onNavigate: (String) -> Unit) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                 WordmarkStack(fontSize = 28.sp, markHeight = 80.dp)
                 Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.about_tagline), fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                Text(
+                    stringResource(R.string.about_tagline),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
                 Text(
                     stringResource(R.string.settings_version, appName, appVersionName(context)),
-                    fontSize = 13.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
@@ -169,7 +173,7 @@ fun AboutMain(onNavigate: (String) -> Unit) {
             }
         }
         item {
-            Text(stringResource(R.string.about_not_affiliated, appName), fontSize = 13.sp, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
+            Text(stringResource(R.string.about_not_affiliated, appName), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant, modifier = Modifier.padding(horizontal = 4.dp))
         }
 
         item { GroupHeading(stringResource(R.string.about_legal)) }
@@ -197,7 +201,7 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.link_confirm_title), fontWeight = FontWeight.ExtraBold) },
+        title = { Text(stringResource(R.string.link_confirm_title)) },
         text = { Text(url) },
         confirmButton = {
             DialogButtons {
@@ -215,7 +219,7 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
                 ) {
-                    Text(stringResource(R.string.history_open), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(stringResource(R.string.history_open), color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -227,8 +231,7 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
 private fun GroupHeading(title: String) {
     Text(
         title,
-        fontSize = 16.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.titleMedium,
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.padding(start = 4.dp, top = 8.dp).semantics { heading() }
     )
@@ -245,8 +248,8 @@ private fun AboutFact(icon: ImageVector, title: String, body: String) {
     ) {
         IconTile(icon)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
-            Text(body, fontSize = 13.sp, color = colors.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
     }
 }
@@ -263,9 +266,9 @@ private fun CreditRow(icon: ImageVector, name: String, license: String, descript
     ) {
         IconTile(icon)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
+            Text(name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
             LicenseTag(license)
-            Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(20.dp), tint = colors.onSurfaceVariant)
     }
@@ -285,8 +288,7 @@ private fun LicenseTag(license: String) {
     val palette = LocalScanPalette.current
     Text(
         "[$license]",
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelSmall,
         color = palette.toolFg,
         modifier = Modifier.background(palette.toolBg, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp)
     )
@@ -409,7 +411,7 @@ private fun SectionHeader(icon: ImageVector, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 4.dp, top = 8.dp)) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
         Spacer(Modifier.size(8.dp))
-        Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.semantics { heading() })
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.semantics { heading() })
     }
 }
 
@@ -422,9 +424,9 @@ private fun LibraryRow(icon: ImageVector, name: String, license: String, descrip
             IconTile(icon)
             Spacer(Modifier.size(12.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
+                Text(name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
                 if (license.isNotEmpty()) LicenseTag(license)
-                Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
     }
@@ -461,8 +463,7 @@ fun LicensePage() {
                     License along with this program. If not, see
                     https://www.gnu.org/licenses/.
                     """.trimIndent(),
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -482,8 +483,8 @@ private fun AboutMenuItem(icon: ImageVector, title: String, subtitle: String, on
         IconTile(icon)
         Spacer(Modifier.size(16.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
-            Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, modifier = Modifier.size(20.dp), tint = colors.onSurfaceVariant)
     }

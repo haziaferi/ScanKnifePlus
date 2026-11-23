@@ -50,10 +50,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -155,14 +153,11 @@ fun FolderSetupScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     title,
-                    fontSize = 26.sp,
-                    lineHeight = 34.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.3).sp,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = palette.tx,
                     modifier = Modifier.semantics { heading() }
                 )
-                Text(stringResource(R.string.folder_setup_body), fontSize = 15.sp, lineHeight = 22.sp, color = palette.mu)
+                Text(stringResource(R.string.folder_setup_body), style = MaterialTheme.typography.bodyLarge, color = palette.mu)
             }
             LayoutPreview(folderName(status))
             if (scansOnPhone > 0) {
@@ -173,8 +168,7 @@ fun FolderSetupScreen(
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = palette.tx, modifier = Modifier.size(20.dp))
                     Text(
                         pluralStringResource(R.plurals.folder_setup_copy, scansOnPhone, scansOnPhone),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = palette.tx
                     )
                 }
@@ -182,9 +176,7 @@ fun FolderSetupScreen(
             if (failed) {
                 Text(
                     stringResource(R.string.folder_setup_failed),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge,
                     color = palette.warnFg,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -201,7 +193,7 @@ fun FolderSetupScreen(
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = palette.acf, contentColor = palette.onAcf)
         ) {
-            Text(stringResource(R.string.folder_setup_choose), fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+            Text(stringResource(R.string.folder_setup_choose), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         }
         TextButton(onClick = onNotNow, modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn), shape = RoundedCornerShape(14.dp)) {
             Text(
@@ -212,8 +204,7 @@ fun FolderSetupScreen(
                         else -> R.string.folder_setup_keep
                     }
                 ),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall,
                 color = palette.mu,
                 textAlign = TextAlign.Center
             )
@@ -233,7 +224,7 @@ private fun LayoutPreview(name: String?) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(name ?: stringResource(R.string.folder_setup_preview_folder), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = palette.tx)
+        Text(name ?: stringResource(R.string.folder_setup_preview_folder), style = MaterialTheme.typography.titleSmall, color = palette.tx)
         PreviewRow(stringResource(R.string.folder_setup_preview_scan), palette.ac, palette.tx)
         PreviewRow(stringResource(R.string.folder_setup_preview_tool), palette.ok, palette.tx)
         PreviewRow(stringResource(R.string.folder_setup_preview_sources), palette.mu, palette.mu)
@@ -244,7 +235,7 @@ private fun LayoutPreview(name: String?) {
 private fun PreviewRow(text: String, dot: Color, color: Color) {
     Row(modifier = Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(Modifier.size(8.dp).background(dot, CircleShape))
-        Text(text, fontSize = 14.sp, color = color)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
     }
 }
 
