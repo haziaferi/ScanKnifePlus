@@ -61,8 +61,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -234,10 +244,27 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val toolOpen = currentTool != null
+                val toolFocus = remember { FocusRequester() }
+                val focusManager = LocalFocusManager.current
+                var homeHasFocus by remember { mutableStateOf(false) }
+                // A tool opened from the keyboard leaves focus on Home's button under it; take it off, or Enter would press it again.
+                LaunchedEffect(toolOpen) { if (toolOpen && homeHasFocus) focusManager.clearFocus(force = true) }
+
                 // Edge to edge: the system navigation bar draws over a strip of the bottom bar's surface colour, below the content.
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                     Box(modifier = Modifier.fillMaxSize().navigationBarsPadding()) {
-                        Column(modifier = Modifier.fillMaxSize()) {
+                        // Under an open tool, Home and History stay composed (their state is kept) but leave the accessibility tree, and
+                        // focus moved onto them by Tab or the arrow keys goes to the tool instead.
+                        Column(
+                            modifier = Modifier.fillMaxSize()
+                                .onFocusChanged { homeHasFocus = it.hasFocus }
+                                .then(
+                                    if (toolOpen) Modifier.clearAndSetSemantics {}.focusProperties { onEnter = { toolFocus.requestFocus() } }
+                                    else Modifier
+                                )
+                                .focusGroup()
+                        ) {
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.weight(1f),
@@ -305,7 +332,25 @@ class MainActivity : ComponentActivity() {
                         }
 
                         AnimatedVisibility(visible = currentTool != null, enter = fadeIn(), exit = fadeOut()) {
-                            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                            // TalkBack announces the tool by name as it opens.
+                            val paneName = when (val route = currentTool) {
+                                null -> null
+                                SETTINGS_ROUTE -> stringResource(R.string.home_settings)
+                                FOLDER_ROUTE -> stringResource(R.string.folder_setup_title)
+                                ABOUT_ROUTE -> stringResource(R.string.about_title)
+                                PREVIEW_ROUTE -> previewData?.second
+                                SCAN_ROUTE -> stringResource(R.string.nav_scan)
+                                else -> ToolCatalog.byId(route)?.let { stringResource(it.name) }
+                            }
+                            Box(
+                                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                                    // An empty pointerInput takes every touch, so none reaches Home through the gaps between a tool's own
+                                    // controls. Only while a tool is open: once closed it fades out, and taps meanwhile are Home's.
+                                    .then(if (toolOpen) Modifier.pointerInput(Unit) {} else Modifier)
+                                    .then(if (paneName != null) Modifier.semantics { paneTitle = paneName } else Modifier)
+                                    .focusRequester(toolFocus)
+                                    .focusGroup()
+                            ) {
                                 when (val route = currentTool) {
                                     SETTINGS_ROUTE -> SettingsView(
                                         onThemeChange = { theme ->
