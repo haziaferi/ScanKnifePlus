@@ -436,15 +436,15 @@ class LargeTextLayoutTest {
         atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
         val title = "Rendi ricercabile un PDF"
         val label = "Scegli le immagini"
-        assertTrue("the action's label wraps", layoutOf(label).lineCount > 1)
-        assertNotClipped(label)
-        assertNotClipped(title)
         // The title keeps its longest word, or its share of the bar when that word is wider still.
         val longestWord = layoutOf(title).multiParagraph.intrinsics.minIntrinsicWidth
         // The bar's row is inset 4 dp and 12 dp, and the title 4 dp more.
         val share = (rule.onRoot().bounds().width - with(rule.density) { 16.dp.toPx() }) * 0.4f - with(rule.density) { 4.dp.toPx() }
         val given = layoutOf(title).layoutInput.constraints.maxWidth
         assertTrue("the title is given $given px, not its longest word $longestWord or its share $share", given >= minOf(longestWord, share) - 1f)
+        assertTrue("the action's label wraps", layoutOf(label).lineCount > 1)
+        assertNotClipped(label)
+        assertNotClipped(title)
         val choose = rule.onNode(hasText(label) and hasClickAction()).bounds()
         val back = rule.onNode(hasContentDescription("Indietro") and hasClickAction()).bounds()
         assertEquals("Back takes the row's height to the touch", choose.height, back.height, 0.5f)
