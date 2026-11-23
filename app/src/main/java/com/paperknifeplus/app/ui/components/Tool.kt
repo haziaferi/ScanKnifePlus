@@ -268,7 +268,11 @@ fun ToolTopBar(
                 if (showChange || onShowTip != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (showChange) {
-                            TextButton(onClick = onChange, modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)) {
+                            // Weighted, so the (i) is measured first and keeps its 48 dp when the label must wrap.
+                            TextButton(
+                                onClick = onChange,
+                                modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                            ) {
                                 Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
                             }
                         }
@@ -286,8 +290,8 @@ fun ToolTopBar(
 
 /**
  * An icon button (T2) that grows with the peers in its row: the whole of its height takes the touch, so the row's hit areas leave no gap,
- * while the press highlight stays Material's round 48 dp one and the icon stays centred. Use it inside a row of fixed height, as the top
- * bar's or one with `IntrinsicSize.Min`.
+ * while the press highlight stays a round 48 dp one, T2's drawn size (Material's IconButton draws 40 dp), and the icon stays centred. Use it
+ * inside a row of fixed height, as the top bar's or one with `IntrinsicSize.Min`.
  */
 @Composable
 internal fun RowIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, icon: @Composable () -> Unit) {
@@ -312,8 +316,8 @@ internal fun RowIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, e
  * A bar: [leading], then [middle], then [trailing]. On one line when the title and the trailing group each get at least their longest word:
  * the leading and trailing controls are then peers at the height of the taller (R14 rule 1), each measured at the width it gets, the title
  * takes the width between, and each is centred in the row. Otherwise the trailing group moves under the title, at the end edge and its own
- * width, so no word is ever broken; the controls then keep their own steps, and the leading one stays level with the title's top. Mirrors
- * right to left.
+ * width, so a line breaks between words; a word breaks only when it alone is wider than its line. The leading control then keeps its own
+ * step, level with the title's top, and the trailing controls share one height among themselves. Mirrors right to left.
  */
 @Composable
 private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: @Composable () -> Unit, trailing: @Composable () -> Unit) {
@@ -345,7 +349,11 @@ private fun BarRow(modifier: Modifier, leading: @Composable () -> Unit, middle: 
             val leadPlaced = lead.map { it.measure(loose) }
             val rest = (total - leadPlaced.sumOf { it.width }).coerceAtLeast(0)
             val midPlaced = mid.map { it.measure(Constraints(minWidth = rest, maxWidth = rest)) }
-            val trailPlaced = trail.map { it.measure(loose) }
+            // One height for the trailing controls, so a grown label and the (i) beside it stay peers (R14 rule 1).
+            val trailPlaced = trail.map {
+                val shared = it.minIntrinsicHeight(minOf(it.maxIntrinsicWidth(Constraints.Infinity), total))
+                it.measure(Constraints(maxWidth = total, minHeight = shared, maxHeight = shared))
+            }
             val firstLine = maxOf(leadPlaced.maxOfOrNull { it.height } ?: 0, midPlaced.maxOfOrNull { it.height } ?: 0)
             val height = (firstLine + trailPlaced.sumOf { it.height }).coerceIn(constraints.minHeight, constraints.maxHeight)
             layout(total, height) {
