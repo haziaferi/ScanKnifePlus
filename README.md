@@ -31,6 +31,16 @@ There are no published releases yet. Every CI run of the [Build workflow](https:
 
 ---
 
+## How changes land
+
+Every change reaches `main` through a pull request. Pick the merge method per PR:
+
+- **Squash** by default for feature and fix PRs.
+- **Rebase-merge** when each commit was deliberately kept clean and self-contained.
+- **Merge commit** only for syncing branches, never for feature work.
+
+---
+
 ## Credits
 
 ScanKnife+ builds on two open-source projects. Thanks to their authors and contributors:
