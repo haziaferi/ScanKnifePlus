@@ -57,7 +57,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
@@ -354,7 +353,7 @@ fun CropView(
                                 }
                                 Text(
                                     stringResource(R.string.crop_same_frame) + " " + stringResource(R.string.page_hold_hint),
-                                    fontSize = 13.sp,
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
                                 )

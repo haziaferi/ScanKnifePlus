@@ -77,11 +77,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
 import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
@@ -256,12 +254,11 @@ fun ToolTopBar(
                 Column(Modifier.padding(start = 4.dp)) {
                     Text(
                         title,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.titleLarge,
                         color = colors.onBackground,
                         modifier = Modifier.semantics { heading() }
                     )
-                    if (subtitle != null) Text(subtitle, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                    if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                 }
             },
             trailing = {
@@ -273,7 +270,7 @@ fun ToolTopBar(
                                 onClick = onChange,
                                 modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                             ) {
-                                Text(changeLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onBackground)
+                                Text(changeLabel, style = MaterialTheme.typography.labelLarge, color = colors.onBackground)
                             }
                         }
                         if (onShowTip != null) {
@@ -445,9 +442,7 @@ fun ToolEmptyState(
                     }
                     Text(
                         title,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        lineHeight = 26.sp,
+                        style = MaterialTheme.typography.titleLarge,
                         color = colors.onSurface,
                         modifier = Modifier.weight(1f).semantics { heading() }
                     )
@@ -461,8 +456,7 @@ fun ToolEmptyState(
         if (!recent.isNullOrEmpty() && onOpenRecent != null) {
             Text(
                 stringResource(R.string.home_recent_folder),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
                 color = colors.onBackground,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).semantics { heading() }
             )
@@ -476,7 +470,7 @@ fun ToolEmptyState(
             }
             Text(
                 stringResource(R.string.tool_recent_note),
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 16.dp)
             )
@@ -493,11 +487,11 @@ private fun ToolStep(number: Int, title: String, body: String) {
             Modifier.defaultMinSize(minWidth = 28.dp, minHeight = 28.dp).background(colors.surfaceVariant, CircleShape).padding(horizontal = 6.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text("$number", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
+            Text("$number", style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
         }
         Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
-            Text(body, fontSize = 13.sp, color = colors.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
     }
 }
@@ -599,8 +593,8 @@ fun ToolFileCard(
         Row(Modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             PdfThumbnail(uri, password, Modifier.size(width = 48.dp, height = 64.dp))
             Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
-                Text(details, fontSize = 13.sp, color = LocalScanPalette.current.meta)
+                Text(name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                Text(details, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.meta)
                 if (keepsPassword) PasswordLine()
             }
             CardChange(onChange)
@@ -617,7 +611,7 @@ internal fun CardChange(onClick: () -> Unit) {
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(stringResource(R.string.tool_change), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+        Text(stringResource(R.string.tool_change), style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
     }
 }
 
@@ -630,7 +624,7 @@ fun PasswordLine(modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Icon(Icons.Outlined.Lock, contentDescription = null, tint = colors.onSurface, modifier = Modifier.padding(top = 2.dp).size(16.dp))
-        Text(stringResource(R.string.tool_keeps_password), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+        Text(stringResource(R.string.tool_keeps_password), style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
     }
 }
 
@@ -656,7 +650,7 @@ fun LoadingStateView(showWarning: Boolean, text: String) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(24.dp))
-            Text(text, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center)
+            Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center)
             SlowNote(showWarning, stringResource(R.string.tool_loading_slow))
         }
     }
@@ -707,10 +701,14 @@ fun ProcessingStateView(
             Spacer(Modifier.height(48.dp))
             CircularProgressIndicator(color = colors.primary, modifier = Modifier.size(40.dp), strokeWidth = 4.dp)
             Spacer(Modifier.height(24.dp))
-            Text(text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = colors.onBackground, textAlign = TextAlign.Center)
+            Text(text, style = MaterialTheme.typography.titleMedium, color = colors.onBackground, textAlign = TextAlign.Center)
             if (total > 0) {
                 Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.tool_page_progress, current, total), fontSize = 13.sp, color = colors.onSurfaceVariant)
+                Text(
+                    stringResource(R.string.tool_page_progress, current, total),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant
+                )
             }
             SlowNote(showWarning, stringResource(R.string.tool_processing_slow))
         }
@@ -725,7 +723,7 @@ private fun SlowNote(visible: Boolean, text: String) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.size(12.dp))
-                Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -736,8 +734,7 @@ private fun SlowNote(visible: Boolean, text: String) {
 fun ToolSectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier.semantics { heading() }
     )
@@ -748,8 +745,7 @@ fun ToolSectionLabel(text: String, modifier: Modifier = Modifier) {
 fun ToolStatusText(text: String) {
     Text(
         text,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
     )
@@ -773,8 +769,8 @@ fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick
             RadioButton(selected = selected, onClick = null)
             Spacer(Modifier.size(12.dp))
             Column {
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = colors.onSurface)
-                Text(description, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                Text(title, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                Text(description, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
     }
@@ -805,7 +801,7 @@ fun ToolPrimaryButton(
             Icon(icon, null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(8.dp))
         }
-        Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Text(text, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
     }
 }
 
@@ -830,7 +826,7 @@ fun ToolSecondaryButton(
             Icon(icon, null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(8.dp))
         }
-        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+        Text(text, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
     }
 }
 

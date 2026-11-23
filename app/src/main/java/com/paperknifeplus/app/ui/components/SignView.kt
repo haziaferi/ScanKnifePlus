@@ -44,9 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.createBitmap
 import coil.compose.rememberAsyncImagePainter
@@ -428,7 +426,7 @@ fun SignView(
                                 onClick = { isFocusMode = false; activeSignatureBitmap = null },
                                 modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                             ) {
-                                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                             }
                             Button(
                                 onClick = {
@@ -449,7 +447,7 @@ fun SignView(
                                 modifier = Modifier.weight(1.5f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
-                                Text(stringResource(R.string.action_apply), fontWeight = FontWeight.Black)
+                                Text(stringResource(R.string.action_apply))
                             }
                         } else {
                             val hasAppliedOnThisPage = placedSignatures.any { it.pageIndex == currentPage }
@@ -462,7 +460,7 @@ fun SignView(
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.sign_add_sign), fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.sign_add_sign))
                                 }
                             } else {
                                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -472,7 +470,7 @@ fun SignView(
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                     ) {
-                                        Text(stringResource(R.string.action_add_more), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_add_more), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
                                     }
                                     Button(
                                         onClick = {
@@ -482,7 +480,7 @@ fun SignView(
                                         modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
                                     ) {
-                                        Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.action_save), style = MaterialTheme.typography.labelLarge)
                                     }
                                 }
                             }
@@ -496,7 +494,7 @@ fun SignView(
     if (showSignOptions) {
         AlertDialog(
             onDismissRequest = { showSignOptions = false },
-            title = { Text(stringResource(R.string.sign_add_signature), fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.sign_add_signature)) },
             text = {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -678,7 +676,7 @@ fun SignaturePadDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.sign_draw_signature), fontWeight = FontWeight.Black) },
+        title = { Text(stringResource(R.string.sign_draw_signature)) },
         text = {
             Column {
                 Row(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
@@ -723,9 +721,9 @@ fun SignaturePadDialog(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = shouldSaveSignature, onCheckedChange = { shouldSaveSignature = it }, colors = CheckboxDefaults.colors(checkedColor = accentColor))
-                    Text(stringResource(R.string.sign_save_signature), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.sign_save_signature), style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { strokes.clear() }) { Text(stringResource(R.string.action_clear), color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = { strokes.clear() }) { Text(stringResource(R.string.action_clear), color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
             }
         },
@@ -736,7 +734,7 @@ fun SignaturePadDialog(
                 shape = RoundedCornerShape(12.dp),
                 enabled = strokes.isNotEmpty(),
                 modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
-            ) { Text(stringResource(R.string.sign_adopt), fontWeight = FontWeight.Black) }
+            ) { Text(stringResource(R.string.sign_adopt)) }
         }
     )
 }
@@ -753,7 +751,7 @@ fun SignOptionCard(title: String, icon: androidx.compose.ui.graphics.vector.Imag
         Column(Modifier.fillMaxWidth().heightIn(min = 100.dp).padding(12.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = color, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(8.dp))
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = color)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = color)
         }
     }
 }

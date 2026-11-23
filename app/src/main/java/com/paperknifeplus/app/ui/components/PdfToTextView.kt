@@ -21,12 +21,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.DocumentText
 import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.documentContent
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.CancellationException
@@ -163,7 +163,7 @@ fun PdfToTextView(
                             )
                             Text(
                                 stringResource(R.string.pdf2text_scan_pdf_text_layers_and),
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                             )
@@ -191,7 +191,7 @@ fun PdfToTextView(
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     ToolSectionLabel(stringResource(R.string.pdf2text_extracted_content))
-                                    Text(stringResource(R.string.pdf2text_characters_found, extractedText.length), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.pdf2text_characters_found, extractedText.length), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Row {
                                     IconButton(onClick = {
@@ -219,7 +219,7 @@ fun PdfToTextView(
                                     if (extractedText.isBlank()) {
                                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Filled.FindInPage, null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text(stringResource(R.string.pdf2text_no_text_detected_the_document), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                            Text(stringResource(R.string.pdf2text_no_text_detected_the_document), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                                         }
                                     } else {
                                         // One item per block of lines, so a long text is laid out only where it is on screen.
@@ -227,10 +227,9 @@ fun PdfToTextView(
                                             items(textChunks) { chunk ->
                                                 Text(
                                                     text = chunk.removeSuffix("\n"),
-                                                    fontSize = 13.sp,
-                                                    fontFamily = FontFamily.Monospace,
-                                                    lineHeight = 20.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                                    style = DocumentText,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    modifier = Modifier.documentContent()
                                                 )
                                             }
                                         }

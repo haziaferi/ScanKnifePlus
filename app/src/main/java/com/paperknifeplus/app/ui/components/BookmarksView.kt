@@ -20,9 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -203,13 +201,13 @@ fun BookmarksView(
                                     Button(onClick = { showAddDialog = true }, shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
                                         Icon(Icons.Filled.Add, null, modifier = Modifier.size(20.dp))
                                         Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.action_add), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(stringResource(R.string.action_add), style = MaterialTheme.typography.labelLarge)
                                     }
                                 }
 
                                 if (bookmarks.isEmpty()) {
                                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                        Text(stringResource(R.string.bookmarks_no_bookmarks_found), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                                        Text(stringResource(R.string.bookmarks_no_bookmarks_found), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                                     }
                                 } else {
                                     LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -224,8 +222,8 @@ fun BookmarksView(
                                                     Icon(Icons.Filled.Bookmark, null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(20.dp))
                                                     Spacer(Modifier.width(16.dp))
                                                     Column(Modifier.weight(1f)) {
-                                                        Text(bm.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                                        Text(bm.pageIndex?.let { stringResource(R.string.tool_page_n, it + 1) } ?: stringResource(R.string.bookmarks_no_page), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                        Text(bm.title, style = MaterialTheme.typography.titleSmall)
+                                                        Text(bm.pageIndex?.let { stringResource(R.string.tool_page_n, it + 1) } ?: stringResource(R.string.bookmarks_no_page), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                     }
                                                     IconButton(onClick = { bookmarks = bookmarks.withoutBranch(index) }) {
                                                         Icon(Icons.Filled.Delete, stringResource(R.string.action_delete_named, bm.title), tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -284,7 +282,7 @@ fun BookmarksView(
         var pageNum by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text(stringResource(R.string.bookmarks_add_bookmark), fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.bookmarks_add_bookmark)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text(stringResource(R.string.tool_field_title)) }, modifier = Modifier.fillMaxWidth())

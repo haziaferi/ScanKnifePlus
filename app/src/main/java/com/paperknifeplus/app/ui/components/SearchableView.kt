@@ -47,9 +47,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import coil.compose.rememberAsyncImagePainter
 import com.haziaferi.scanknifeplus.ocr.OcrEngine
@@ -288,8 +286,7 @@ internal fun SearchableView(
                                     ) {
                                         Text(
                                             stringResource(R.string.searchable_redo),
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.titleSmall,
                                             color = MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.weight(1f).padding(end = 12.dp)
                                         )
@@ -385,8 +382,7 @@ private fun PhotosCard(photos: List<Uri>, onChange: () -> Unit, modifier: Modifi
             }
             Text(
                 stringResource(R.string.img2pdf_images_selected, photos.size),
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
+                style = MaterialTheme.typography.titleSmall,
                 color = colors.onSurface,
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
             )
@@ -406,7 +402,7 @@ private fun <T> ChoiceChips(options: List<T>, selected: T, label: (T) -> Int, on
             FilterChip(
                 selected = option == selected,
                 onClick = { onPick(option) },
-                label = { Text(stringResource(label(option)), fontSize = 14.sp) },
+                label = { Text(stringResource(label(option)), style = MaterialTheme.typography.labelLarge) },
                 modifier = Modifier.heightIn(min = TargetStep.INLINE.drawn),
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = MaterialTheme.colorScheme.primary,

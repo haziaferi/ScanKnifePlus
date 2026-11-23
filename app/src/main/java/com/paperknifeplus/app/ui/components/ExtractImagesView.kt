@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import java.io.IOException
 import java.util.zip.ZipOutputStream
@@ -163,7 +162,7 @@ fun ExtractImagesView(
                             )
                             Text(
                                 stringResource(R.string.extract_images_strip_and_save_all_raw),
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
                             )

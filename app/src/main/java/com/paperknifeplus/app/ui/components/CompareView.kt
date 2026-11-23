@@ -22,10 +22,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
@@ -135,7 +133,7 @@ fun CompareView(
                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                             Icon(Icons.Filled.Compare, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(16.dp))
-                            Text(stringResource(R.string.compare_pick_two_files_to_begin), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                            Text(stringResource(R.string.compare_pick_two_files_to_begin), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                     
@@ -205,7 +203,7 @@ fun ComparisonViewer(uriA: Uri, uriB: Uri, nameA: String, nameB: String, passA: 
                 }
             } else {
                 Box(Modifier.fillMaxWidth().aspectRatio(0.707f).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                    Text(endLabel, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(endLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -265,7 +263,7 @@ private fun ComparePage(uri: Uri, index: Int, password: String?, imageLoader: Im
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
             color = pageBadge, shape = RoundedCornerShape(8.dp)
         ) {
-            Text("${index + 1}", color = pageBadgeText, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+            Text("${index + 1}", color = pageBadgeText, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
         }
     }
 }
@@ -285,9 +283,9 @@ fun CompareFileCard(label: String, name: String, isSelected: Boolean, modifier: 
         Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Icon(if (isSelected) Icons.Filled.CheckCircle else Icons.Filled.AddCircle, null, tint = content, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(12.dp))
-            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = content, textAlign = TextAlign.Center)
+            Text(label, style = MaterialTheme.typography.labelMedium, color = content, textAlign = TextAlign.Center)
             Spacer(Modifier.height(4.dp))
-            Text(if (isSelected) name else stringResource(R.string.compare_select_file), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = content, textAlign = TextAlign.Center)
+            Text(if (isSelected) name else stringResource(R.string.compare_select_file), style = MaterialTheme.typography.labelMedium, color = content, textAlign = TextAlign.Center)
         }
     }
 }

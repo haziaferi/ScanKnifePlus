@@ -28,9 +28,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -205,7 +203,7 @@ fun PdfToImageView(
                                                         border = if (isSel) BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimaryContainer) else null
                                                     ) {
                                                         Box(contentAlignment = Alignment.Center) {
-                                                            Text(f, fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                                            Text(f, style = MaterialTheme.typography.labelSmall, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                                                         }
                                                     }
                                                 }
@@ -234,7 +232,7 @@ fun PdfToImageView(
                                                                         "HD" -> R.string.pdf2img_quality_hd
                                                                         else -> R.string.pdf2img_quality_standard
                                                                     }
-                                                                ), fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                                                ), style = MaterialTheme.typography.labelSmall, color = if (isSel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                                                         }
                                                     }
                                                 }

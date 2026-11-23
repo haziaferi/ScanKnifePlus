@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 
 /**
@@ -69,7 +68,7 @@ fun ToolTipCard(text: String, onClose: () -> Unit, modifier: Modifier = Modifier
     ) {
         Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Outlined.Info, contentDescription = null, tint = colors.onSurface, modifier = Modifier.padding(top = 14.dp).size(20.dp))
-            Text(text, fontSize = 14.sp, lineHeight = 20.sp, color = colors.onSurface, modifier = Modifier.weight(1f).padding(top = 12.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, modifier = Modifier.weight(1f).padding(top = 12.dp))
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, stringResource(R.string.tip_close), tint = colors.onSurface, modifier = Modifier.size(22.dp))
             }

@@ -20,7 +20,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,10 +36,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.createBitmap
 import com.paperknifeplus.app.R
@@ -398,7 +395,7 @@ fun WatermarkView(
                     Column(Modifier.padding(12.dp)) {
                         if (isFocusMode) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.watermark_opacity), color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 8.dp))
+                                Text(stringResource(R.string.watermark_opacity), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
                                 Slider(value = activeOpacity, onValueChange = { activeOpacity = it }, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor))
                             }
                             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
@@ -406,7 +403,7 @@ fun WatermarkView(
                                     onClick = { isFocusMode = false; activeWatermarkBitmap = null },
                                     modifier = Modifier.weight(0.8f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                 ) {
-                                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                                 }
                                 Row(Modifier.weight(2.5f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
@@ -418,7 +415,7 @@ fun WatermarkView(
                                         modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    ) { Text(stringResource(R.string.action_apply_to_all), fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_apply_to_all), style = MaterialTheme.typography.labelLarge) }
                                     Button(
                                         onClick = {
                                             activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = currentPage, shownOn = currentPage) }
@@ -427,7 +424,7 @@ fun WatermarkView(
                                         },
                                         modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
-                                    ) { Text(stringResource(R.string.action_apply), fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_apply), style = MaterialTheme.typography.labelLarge) }
                                 }
                             }
                         } else {
@@ -441,7 +438,7 @@ fun WatermarkView(
                                 ) {
                                     Icon(Icons.Filled.Add, null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.watermark_add_watermark), fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.watermark_add_watermark))
                                 }
                             } else {
                                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -450,7 +447,7 @@ fun WatermarkView(
                                         modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                                    ) { Text(stringResource(R.string.action_add_more), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_add_more), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface) }
                                     Button(
                                         onClick = {
                                             lightboxPage = null
@@ -458,7 +455,7 @@ fun WatermarkView(
                                         },
                                         modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
                                         shape = RoundedCornerShape(16.dp)
-                                    ) { Text(stringResource(R.string.action_save), fontSize = 14.sp, fontWeight = FontWeight.Black) }
+                                    ) { Text(stringResource(R.string.action_save), style = MaterialTheme.typography.labelLarge) }
                                 }
                             }
                         }
@@ -471,27 +468,29 @@ fun WatermarkView(
     if (showWatermarkOptions) {
         AlertDialog(
             onDismissRequest = { showWatermarkOptions = false },
-            title = { Text(stringResource(R.string.watermark_select_watermark), fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.watermark_select_watermark)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ToolSectionLabel(stringResource(R.string.watermark_templates))
-                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // One template a row: a long stamp (CONFIDENTIAL, APPROVATO) in a third of the width would break mid-word or shrink under 12 sp.
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(R.string.watermark_draft, R.string.watermark_confidential, R.string.watermark_approved).map { stringResource(it) }.forEach { template ->
                             Surface(
                                 onClick = {
                                     startPlacing(createTextBitmap(template, DocumentInk.TemplateGray), opacity = 0.5f)
                                     showWatermarkOptions = false
                                 },
-                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn),
                                 shape = RoundedCornerShape(12.dp),
                                 color = accentColor.copy(alpha = 0.05f),
                                 border = BorderStroke(1.dp, accentColor.copy(alpha = 0.1f))
                             ) {
-                                // One line, shrinking to fit: a long stamp (CONFIDENTIAL, APPROVATO) would otherwise break mid-word in a third of the width.
-                                Text(
-                                    template, fontWeight = FontWeight.Black, color = accentColor, modifier = Modifier.padding(8.dp), textAlign = TextAlign.Center,
-                                    maxLines = 1, autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 12.sp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        template, style = MaterialTheme.typography.labelSmall, color = accentColor, modifier = Modifier.padding(8.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -513,7 +512,7 @@ fun WatermarkView(
         var selectedColor by remember { mutableStateOf(DocumentInk.Black) }
         AlertDialog(
             onDismissRequest = { showTextInput = false },
-            title = { Text(stringResource(R.string.watermark_text_watermark), fontWeight = FontWeight.Black) },
+            title = { Text(stringResource(R.string.watermark_text_watermark)) },
             text = {
                 Column {
                     LazyRow(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
