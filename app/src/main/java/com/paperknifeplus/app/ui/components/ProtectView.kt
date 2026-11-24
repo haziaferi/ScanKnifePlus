@@ -150,7 +150,7 @@ fun ProtectView(
                                 OutlinedTextField(
                                     value = protectPassword,
                                     onValueChange = { protectPassword = it },
-                                    label = { Text(stringResource(R.string.protect_new_password), style = MaterialTheme.typography.bodySmall) },
+                                    label = { Text(stringResource(R.string.protect_new_password)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = TextFieldDefaults.colors(

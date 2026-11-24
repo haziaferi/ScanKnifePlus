@@ -244,7 +244,8 @@ fun RearrangeView(
                                             onClick = { showMoveToDialog = true },
                                             enabled = selectedPageIndex != null,
                                             shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                            // Weighted, so the arrows are measured first and keep their 48 dp when the label must wrap.
+                                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                         ) {
                                             Text(stringResource(R.string.rearrange_move_to), style = MaterialTheme.typography.labelSmall)
                                         }

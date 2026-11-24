@@ -311,7 +311,7 @@ fun PageNumbersView(
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
-                                label = { Text(stringResource(R.string.page_numbers_format_n), style = MaterialTheme.typography.labelMedium) },
+                                label = { Text(stringResource(R.string.page_numbers_format_n)) },
                                 modifier = Modifier.weight(1.5f).fillMaxHeight(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,

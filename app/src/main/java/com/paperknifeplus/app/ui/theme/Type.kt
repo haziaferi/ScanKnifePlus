@@ -8,6 +8,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
@@ -20,13 +21,17 @@ val PlusJakartaSans = FontFamily(
     Font(R.font.plus_jakarta_sans_extra_bold, FontWeight.Black) // Fallback to ExtraBold for Black
 )
 
-/** A style of the scale: Plus Jakarta Sans at [size] sp on lines [lineHeight] sp apart. */
+/**
+ * A style of the scale: Plus Jakarta Sans at [size] sp on lines [lineHeight] sp apart. As in Material's own styles, a line keeps its whole
+ * height, the text centred in it, so one line of text takes its line height.
+ */
 private fun jakarta(weight: FontWeight, size: Int, lineHeight: Int, letterSpacing: Double = 0.5) = TextStyle(
     fontFamily = PlusJakartaSans,
     fontWeight = weight,
     fontSize = size.sp,
     lineHeight = lineHeight.sp,
-    letterSpacing = letterSpacing.sp
+    letterSpacing = letterSpacing.sp,
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
 )
 
 /**
