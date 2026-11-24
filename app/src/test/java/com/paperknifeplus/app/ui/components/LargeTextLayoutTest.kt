@@ -395,8 +395,9 @@ class LargeTextLayoutTest {
     }
 
     @Test
-    // The 6T's height, so the tool's grid and its bar share the screen as on the phone.
-    @Config(qualifiers = "w384dp-h832dp")
+    // A small phone, where Move to wraps at twice the text size (on the 6T it now fits one 48 dp line); tall, so the grid leaves the bar
+    // its room (L3's).
+    @Config(qualifiers = "w320dp-h2400dp")
     fun `Rearrange's arrows grow with Move to`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
@@ -427,8 +428,9 @@ class LargeTextLayoutTest {
         val field = fieldNode.bounds()
         val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
         assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
-        // The outline, where the field draws its border: right of the label's gap, past the 12 dp rounded corner.
-        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 18, 22, 26).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
+        // The outline, where the field draws its border: right of the label's gap (the 13 sp label's reaches past 22 dp from the end), past
+        // the 12 dp rounded corner.
+        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 16, 18, 20).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
         val dp = with(rule.density) { 1.dp.toPx() }
         assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, dp)
         assertEquals("the colour button ends with the field", field.bottom, colour.bottom, dp)
