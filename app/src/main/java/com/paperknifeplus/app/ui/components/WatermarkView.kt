@@ -401,9 +401,10 @@ fun WatermarkView(
                                 Slider(value = activeOpacity, onValueChange = { activeOpacity = it }, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor))
                             }
                             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                                // 0.9 to the Applys' 2.5: Italian's Annulla and Applica both stay whole on a 384 dp phone (0.8 broke Annulla).
                                 TextButton(
                                     onClick = { isFocusMode = false; activeWatermarkBitmap = null },
-                                    modifier = Modifier.weight(0.8f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                    modifier = Modifier.weight(0.9f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                 ) {
                                     Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                                 }

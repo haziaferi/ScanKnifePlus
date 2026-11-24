@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.testing.assertTextOnTheScale
@@ -28,7 +29,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * The type scale (rule 1) in the dialogs and sheets the target walks never open, at the default text size: Rearrange's Move to, Sign's and
- * Watermark's options, Page numbers' position and colour sheets. A locked file's prompt is walked already (Unlock, configuring).
+ * Watermark's options, Page numbers' position and colour sheets. A locked file's prompt is walked already (Unlock, configuring). Also
+ * Watermark's focus bar, whose buttons share one row, in Italian.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -49,7 +51,7 @@ class DialogTextScaleTest {
     private fun open(id: String) {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "scale-$id.pdf")
         rule.setContent { PaperKnifePlusTheme { ToolCatalog.byId(id)!!.screen(ToolLaunch(uri, null, onBack = {}, onOpenPreview = { _, _, _ -> })) } }
-        rule.waitUntil("$id shows its pages", 60_000) { rule.onAllNodes(hasClickAction() and hasContentDescription("Page 1")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil("$id shows its pages", 60_000) { rule.onAllNodes(hasClickAction() and hasContentDescription(firstPage())).fetchSemanticsNodes().isNotEmpty() }
     }
 
     private fun tap(matcher: SemanticsMatcher) {
@@ -57,7 +59,10 @@ class DialogTextScaleTest {
         rule.waitForIdle()
     }
 
-    private fun tapFirstPage() = tap(hasClickAction() and hasContentDescription("Page 1"))
+    /** The first page's thumbnail, as the test's language reads it out. */
+    private fun firstPage() = context.getString(R.string.tool_page_n, 1)
+
+    private fun tapFirstPage() = tap(hasClickAction() and hasContentDescription(firstPage()))
 
     @Test
     fun `Rearrange's Move to dialog`() {
@@ -111,5 +116,29 @@ class DialogTextScaleTest {
         // 14 pt prints as a 7 sp number on the preview; its own line is about 1.3 times that.
         val most = with(rule.density) { (7 * 1.5).sp.toPx() }
         assertTrue("the number's line is ${layout.size.height} px, past $most", layout.size.height <= most)
+    }
+
+    /** Watermark's focus bar on the 6T's width in Italian: Annulla, Applica a tutte and Applica break only between words. */
+    @Test
+    @Config(qualifiers = "it-w384dp-h2400dp")
+    fun `in Italian on the 6T Watermark's focus bar keeps every word whole`() {
+        open("watermark")
+        tapFirstPage()
+        tap(hasText(context.getString(R.string.watermark_add_watermark)) and hasClickAction())
+        tap(hasText(context.getString(R.string.watermark_draft)) and hasClickAction())
+        for (id in listOf(R.string.action_cancel, R.string.action_apply_to_all, R.string.action_apply)) {
+            val label = context.getString(id)
+            val nodes = rule.onAllNodes(hasText(label), useUnmergedTree = true).fetchSemanticsNodes()
+            assertTrue("the focus bar shows $label", nodes.isNotEmpty())
+            for (node in nodes) {
+                val layouts = mutableListOf<TextLayoutResult>()
+                node.config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+                val layout = layouts.single()
+                for (line in 0 until layout.lineCount - 1) {
+                    val end = layout.getLineEnd(line)
+                    assertTrue("$label breaks inside a word at line ${line + 1}", label[end - 1].isWhitespace() || label[end].isWhitespace())
+                }
+            }
+        }
     }
 }
