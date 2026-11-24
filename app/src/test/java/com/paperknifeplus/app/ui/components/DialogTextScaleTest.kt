@@ -2,9 +2,13 @@ package com.paperknifeplus.app.ui.components
 
 import android.content.Context
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
@@ -232,6 +236,44 @@ abstract class DialogWalk(private val fontScale: Float) {
         tap(hasText(text(R.string.watermark_add_watermark)) and hasClickAction())
         tap(hasText(text(R.string.watermark_text_watermark)) and hasClickAction())
         check("Watermark's text dialog", R.string.watermark_text_watermark, listOf(R.string.action_continue), R.string.action_continue)
+    }
+
+    /**
+     * [DialogTitle] alone, in the dialogs' title style, at the narrowest a dialog's text gets (its 280 dp less 24 dp a side). Here the text
+     * size is the test's own: a dialog's window takes the system's, which Robolectric scales below twice at 24 sp, so the notes' longest
+     * Italian words fit there even unshrunk. A word too long even at the body text's size stops at that size.
+     */
+    @Test
+    fun `a dialog title shrinks only to keep its longest word whole, never under the body text`() {
+        val titles = listOf("Tenere le pagine scansionate?", "Impossibile raggiungere la cartella", "Aggiungi un segnalibro")
+        // Too wide at the title's size and, at twice the text size, at the body text's too; then twice as long.
+        val long = "Precipitevolissimevolmente"
+        val endless = long + long.lowercase()
+        show {
+            CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.headlineSmall) {
+                Column(Modifier.width(232.dp)) { (titles + long + endless).forEach { DialogTitle(it) } }
+            }
+        }
+        rule.waitForIdle()
+        val floor = Typography.bodyMedium.fontSize
+        fun layout(title: String): TextLayoutResult {
+            val node = rule.onNode(hasText(title), useUnmergedTree = true).fetchSemanticsNode()
+            return mutableListOf<TextLayoutResult>().also { node.config[SemanticsActions.GetTextLayoutResult].action!!.invoke(it) }.single()
+        }
+        for (title in titles) {
+            val layout = layout(title)
+            assertWordsWhole(layout)
+            assertTrue("\"$title\" is drawn at ${layout.layoutInput.style.fontSize}", layout.layoutInput.style.fontSize.value >= floor.value)
+            if (fontScale == 1f) assertEquals("\"$title\" keeps the title's size", Typography.headlineSmall.fontSize, layout.layoutInput.style.fontSize)
+        }
+        val shrunk = layout(long).layoutInput.style.fontSize
+        if (fontScale == 1f) {
+            assertWordsWhole(layout(long))
+            assertTrue("$long shrinks to fit, above the body text: $shrunk", shrunk.value > floor.value && shrunk < Typography.headlineSmall.fontSize)
+        } else {
+            assertEquals("$long stops at the body text's size", floor, shrunk)
+        }
+        assertEquals("the endless word stops at the body text's size", floor, layout(endless).layoutInput.style.fontSize)
     }
 
     /** Watermark's focus bar: Annulla, Applica a tutte and Applica (and the English) break only between words, in one row or stacked. */
