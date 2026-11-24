@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -107,7 +108,7 @@ fun UnifiedPdfPreview(
             }
         }
     } else if (mode == PreviewMode.REORDER) {
-        PageTileGrid(pageCount, key = { pageOrder?.get(it) ?: it }, top = 12.dp, header = header) { index, place ->
+        PageTileGrid(pageCount, key = { pageOrder?.get(it) ?: it }, top = 12.dp, header = header, hint = null) { index, place ->
             val isSelected = selectedPages?.contains(index) == true
             val pageIdx = pageOrder?.get(index) ?: index
 
@@ -139,7 +140,9 @@ fun UnifiedPdfPreview(
             }
         }
     } else {
-        PageTileGrid(pageCount, key = { it }, top = 8.dp, header = header) { index, place ->
+        // Touch and hold opens the page full screen wherever the screen keeps the full-screen view (R3).
+        val hint = rememberPageHoldHint().takeUnless { disableLightbox }
+        PageTileGrid(pageCount, key = { it }, top = 8.dp, header = header, hint = hint) { index, place ->
             val isSelected = selectedPages?.contains(index) == true
             val rotation = pageRotations?.get(index) ?: 0
             PdfPageItem(
@@ -150,6 +153,7 @@ fun UnifiedPdfPreview(
                     else if (onToggleSelection != null) onToggleSelection(index)
                     else if (!disableLightbox) lightboxPage = index
                 },
+                onLongClick = hint?.let { { it.used(); lightboxPage = index } },
                 scale = 0.6f,
                 modifier = place.then(if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier)
             ) {
@@ -199,7 +203,7 @@ private val TILE_GAP = 16.dp
  * The page tiles, two a row, as one lazy grid under the screen's [header] (full width, padded by the screen): the file card and choices
  * scroll with the pages, so at large text the grid is never squeezed out of reach and long files stay lazy (rule 10). [count] tiles keyed by
  * [key]; each [tile] gets its place in the grid as a modifier, which keeps the tiles [TILE_SIDE] from the sides however the header is
- * padded. [top] is the room above the first row.
+ * padded. [top] is the room above the first row. With [hint] the first-time touch and hold line follows the tiles.
  */
 @Composable
 private fun PageTileGrid(
@@ -207,6 +211,7 @@ private fun PageTileGrid(
     key: (Int) -> Any,
     top: Dp,
     header: @Composable ColumnScope.() -> Unit,
+    hint: PageHoldHint?,
     tile: @Composable (index: Int, place: Modifier) -> Unit
 ) {
     LazyVerticalGrid(
@@ -220,9 +225,19 @@ private fun PageTileGrid(
             val start = index % 2 == 0
             tile(index, Modifier.padding(start = if (start) TILE_SIDE else 0.dp, end = if (start) 0.dp else TILE_SIDE, top = if (index < 2) top else TILE_GAP))
         }
+        if (hint != null && hint.shown) {
+            item(key = "hint", span = { GridItemSpan(maxLineSpan) }, contentType = "hint") {
+                PageGridNote(null, hint, Modifier.padding(start = TILE_SIDE, end = TILE_SIDE, top = 12.dp))
+            }
+        }
     }
 }
 
+/**
+ * One page tile: page [index] of [uri] with its number, [onClick], and [onLongClick] (touch and hold, which TalkBack offers as "Read page N")
+ * when given.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PdfPageItem(
     uri: Uri,
@@ -236,13 +251,14 @@ fun PdfPageItem(
     rotation: Int = 0,
     isGrayscale: Boolean = false,
     showIndexNumbers: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit = {}
 ) {
     val request = remember(uri, index, password, scale, rotation) { PdfPageRequest(uri, index, password, scale, rotation) }
     Box(
         modifier = modifier.aspectRatio(if (rotation % 180 != 0) 1.414f else 0.707f).clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable { onClick() },
+            .combinedClickable(onLongClickLabel = stringResource(R.string.page_read, index + 1), onLongClick = onLongClick, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         val painter = rememberAsyncImagePainter(model = request, imageLoader = imageLoader)

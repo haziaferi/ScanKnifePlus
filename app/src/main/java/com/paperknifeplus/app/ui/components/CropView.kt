@@ -347,16 +347,11 @@ fun CropView(
                                         scope.launch { viewerInView.bringIntoView() }
                                     },
                                     onRead = { readPage = it },
-                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    note = stringResource(R.string.crop_same_frame)
                                 ) { index ->
                                     PdfPageMiniature(source, password, index, boxes[index].displayAspect) { CropMarks(frame) }
                                 }
-                                Text(
-                                    stringResource(R.string.crop_same_frame) + " " + stringResource(R.string.page_hold_hint),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
-                                )
                                 ToolSectionLabel(
                                     stringResource(R.string.pages_label),
                                     Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp)

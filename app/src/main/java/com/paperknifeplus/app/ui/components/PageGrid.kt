@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -41,6 +42,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onVisibilityChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CollectionInfo
@@ -72,12 +74,48 @@ private const val FIRST_PAGES = 10
 private val MINIATURE_SIDE = 64.dp
 
 /**
+ * Whether the page grids still show the first-time hint "Touch and hold a page to read it." (rule 10): until the user first touches and holds
+ * a page miniature, or uses its TalkBack action, on any screen; kept in the app's preferences. Read and change it on the main thread.
+ */
+class PageHoldHint(private val context: Context) {
+    var shown by mutableStateOf(!PreferencesManager.isPageHoldUsed(context))
+        private set
+
+    /** The user has touched and held a page: the hint goes, here and on every later grid. */
+    fun used() {
+        if (!shown) return
+        shown = false
+        PreferencesManager.setPageHoldUsed(context)
+    }
+}
+
+/** The app's [PageHoldHint]. */
+@Composable
+fun rememberPageHoldHint(): PageHoldHint {
+    val context = LocalContext.current.applicationContext
+    return remember(context) { PageHoldHint(context) }
+}
+
+/**
+ * The line under a page grid: the screen's [note], if any, then the hint while [hint] shows it, as one line of tip text in the type scale.
+ * Shows nothing when both are absent.
+ */
+@Composable
+internal fun PageGridNote(note: String?, hint: PageHoldHint, modifier: Modifier = Modifier) {
+    val hold = stringResource(R.string.page_hold_hint)
+    val text = listOfNotNull(note, hold.takeIf { hint.shown }).joinToString(" ")
+    if (text.isNotEmpty()) {
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+    }
+}
+
+/**
  * The shared page grid (U1): [pageCount] miniatures, five per row, rows wrapping, nothing scrolling sideways. A file of more than
  * [GRID_ALL_UP_TO] pages shows two rows and "Show all N pages", which opens the rest in place.
  *
  * Each tile is the [miniature] of its page (0-based index) with its number under it, and the accent ring and a check when [isSelected]. A
  * tap does what the screen needs ([onTap], read out as [tapLabel]); touch and hold, or the TalkBack action "Read page N", opens the readable
- * page card ([onRead]).
+ * page card ([onRead]). Under the tiles one line holds the screen's [note] and the first-time [PageHoldHint].
  */
 @Composable
 fun PageGrid(
@@ -87,8 +125,10 @@ fun PageGrid(
     onTap: (Int) -> Unit,
     onRead: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    note: String? = null,
     miniature: @Composable (Int) -> Unit
 ) {
+    val hint = rememberPageHoldHint()
     var expanded by rememberSaveable(pageCount) { mutableStateOf(false) }
     val shown = if (pageCount > GRID_ALL_UP_TO && !expanded) FIRST_PAGES else pageCount
     val rows = (shown + COLUMNS - 1) / COLUMNS
@@ -104,7 +144,10 @@ fun PageGrid(
                                 selected = isSelected(index),
                                 tapLabel = tapLabel(index),
                                 onTap = { onTap(index) },
-                                onRead = { onRead(index) },
+                                onRead = {
+                                    hint.used()
+                                    onRead(index)
+                                },
                                 modifier = Modifier.weight(1f).semantics { collectionItemInfo = CollectionItemInfo(row, 1, column, 1) }
                             ) { miniature(index) }
                         } else {
@@ -122,6 +165,7 @@ fun PageGrid(
                 icon = Icons.Filled.KeyboardArrowDown
             )
         }
+        PageGridNote(note, hint, Modifier.padding(horizontal = 4.dp))
     }
 }
 

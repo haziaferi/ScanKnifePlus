@@ -3,8 +3,10 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -12,13 +14,18 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -28,11 +35,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The page grids' arrows (R3, rule 10): every arrow that would do nothing at the first or last page is disabled (inert, and read out as such).
+ * The page grids' arrows and first-time hint (R3, rule 10): every arrow that would do nothing at the first or last page is disabled (inert, and
+ * read out as such), and the grids that open a page on touch and hold say so once, until the first touch and hold.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-// Tall, so the whole screen is laid out.
+// Tall, so the whole screen, the line under the grid too, is laid out.
 @Config(qualifiers = "w384dp-h2400dp")
 class PageGridBehaviourTest {
     @get:Rule(order = 0)
@@ -100,5 +108,45 @@ class PageGridBehaviourTest {
         rule.onNodeWithContentDescription("Next page").performClick()
         waitFor("3 / 3")
         assertArrows("Previous page", "Next page", canGoBack = true, canGoOn = false)
+    }
+
+    @Test
+    fun `Delete's grid shows the hold hint until a page is touched and held, then never again`() {
+        val uri = pdf(3, "hint-delete.pdf")
+        var visit by mutableIntStateOf(0)
+        rule.setContent {
+            key(visit) { DeleteView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        }
+        waitFor(STATUS)
+        rule.onNodeWithText(HOLD).assertExists()
+        assertFalse(PreferencesManager.isPageHoldUsed(context))
+        val read = tile(2).fetchSemanticsNode().config[SemanticsActions.OnLongClick]
+        assertEquals("TalkBack names the touch and hold", "Read page 2", read.label)
+
+        tile(2).performTouchInput { longClick() }
+        waitFor("2 / 3")
+        rule.onNodeWithContentDescription("Close").performClick()
+        rule.onNodeWithText(HOLD).assertDoesNotExist()
+        // The touch and hold read the page; it marked nothing for deletion.
+        rule.onNodeWithText(STATUS).assertExists()
+        assertTrue(PreferencesManager.isPageHoldUsed(context))
+
+        visit++
+        rule.waitForIdle()
+        waitFor(STATUS)
+        rule.onNodeWithText(HOLD).assertDoesNotExist()
+    }
+
+    @Test
+    fun `Rotate, whose tiles open no page, shows no hold hint`() {
+        rule.setContent { RotateView(initialUri = pdf(3, "hint-rotate.pdf"), onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        waitFor("Rotate all 90°")
+        rule.onNodeWithText(HOLD).assertDoesNotExist()
+        assertFalse("its tiles take no touch and hold", SemanticsActions.OnLongClick in tile(1).fetchSemanticsNode().config)
+    }
+
+    private companion object {
+        const val HOLD = "Touch and hold a page to read it."
+        const val STATUS = "0 / 3 marked for deletion"
     }
 }
