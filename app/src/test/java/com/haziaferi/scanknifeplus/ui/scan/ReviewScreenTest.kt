@@ -144,6 +144,13 @@ class ReviewScreenTest {
     }
 
     @Test
+    fun `a page between the first and last moves both ways`() {
+        show(ReviewUi(CaptureMode.MULTI, pages(3), selectedId = "p2"))
+        rule.onNodeWithContentDescription("Move page earlier").assertIsEnabled()
+        rule.onNodeWithContentDescription("Move page later").assertIsEnabled()
+    }
+
+    @Test
     fun `book shows the spread with its labels below it and a split line slider that re-splits on release`() {
         val p = pages(2)
         show(ReviewUi(CaptureMode.BOOK, p, selectedId = "p1", spread = ReviewSpread(p[0], p[1], 1, 0.5f)))

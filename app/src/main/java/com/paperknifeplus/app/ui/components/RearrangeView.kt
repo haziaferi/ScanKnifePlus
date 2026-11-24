@@ -40,6 +40,9 @@ fun RearrangeView(
     val scope = rememberCoroutineScope()
     val outputs = rememberToolOutputs("rearrange")
     val accentColor = MaterialTheme.colorScheme.primary
+    // A move arrow that would do nothing (no page picked, or the first or last) is drawn faded, as well as inert.
+    val faded = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val arrowTint = { enabled: Boolean -> if (enabled) accentColor else faded }
 
     var currentState by remember { mutableStateOf(ToolState.SELECTING) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -239,7 +242,7 @@ fun RearrangeView(
                                             },
                                             enabled = selectedPageIndex != null && selectedPageIndex!! > 0
                                         ) {
-                                            Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedPageIndex != null && selectedPageIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = arrowTint(selectedPageIndex != null && selectedPageIndex!! > 0))
                                         }
 
                                         Button(
@@ -266,7 +269,7 @@ fun RearrangeView(
                                             },
                                             enabled = selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1
                                         ) {
-                                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = if (selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, stringResource(R.string.action_move_forward), tint = arrowTint(selectedPageIndex != null && selectedPageIndex!! < pageOrder.size - 1))
                                         }
                                     }
                                 }
