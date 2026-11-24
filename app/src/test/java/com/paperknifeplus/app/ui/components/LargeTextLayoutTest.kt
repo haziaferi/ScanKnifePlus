@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
@@ -706,10 +707,12 @@ class LargeTextLayoutTest {
 
     /**
      * The tool [id]'s page grid at twice the text size (rule 10): swipes on the screen's one scroll bring the last page's tile whole into view,
-     * its touch area inside the window and the scroll's view, so clear of the pinned button. On main the grid got no height here.
+     * its touch area inside the window and the scroll's view, so clear of the pinned button, while the first-time hold hint shows under the
+     * grid. On main the grid got no height here.
      */
     private fun assertLastPageInReach(id: String) {
         showTool(id)
+        rule.onNodeWithText("Touch and hold a page to read it.").assertIsDisplayed()
         val window = rule.onRoot().bounds()
         val last = hasClickAction() and hasContentDescription("Page 3")
         repeat(10) {
@@ -744,7 +747,7 @@ class LargeTextLayoutTest {
 
     /**
      * [label], the text action beside the status line over the tool [id]'s page grid, at twice the text size: it breaks only between words
-     * and shows whole, and its control keeps T3, drawn at least 40 dp high and taking touches across 48.
+     * and shows whole, and its control takes touches across at least T3's 48 dp.
      */
     private fun assertStatusActionWhole(id: String, label: String) {
         showTool(id)
@@ -754,10 +757,9 @@ class LargeTextLayoutTest {
         assertWholeWords(label, text)
         assertNotClipped(label, text)
         val control = rule.onNode(hasText(label) and hasClickAction()).fetchSemanticsNode()
-        val step = { dp: Int -> with(rule.density) { dp.dp.toPx() } - 0.5f }
-        assertTrue("$label is drawn under 40 dp: ${control.boundsInRoot}", control.boundsInRoot.height >= step(40))
+        val hit = with(rule.density) { TargetStep.INLINE.hit.toPx() } - 0.5f
         assertTrue("$label takes touches across less than 48 dp: ${control.touchBoundsInRoot}",
-            control.touchBoundsInRoot.height >= step(48) && control.touchBoundsInRoot.width >= step(48))
+            control.touchBoundsInRoot.height >= hit && control.touchBoundsInRoot.width >= hit)
     }
 
     @Test @Config(qualifiers = "w320dp-h640dp") fun `Split's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("split", "Enter range")

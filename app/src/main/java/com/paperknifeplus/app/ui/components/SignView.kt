@@ -325,6 +325,7 @@ fun SignView(
                             // The file card scrolls with the pages, so no text size squeezes the grid out (rule 10).
                             UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                fileName = fileName,
                                 pageCount = pageCount,
                                 mode = PreviewMode.GRID,
                                 password = unlockPassword.ifEmpty { null },

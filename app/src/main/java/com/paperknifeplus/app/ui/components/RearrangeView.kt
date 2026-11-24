@@ -191,6 +191,7 @@ fun RearrangeView(
                             Box(modifier = Modifier.weight(1f)) {
                                 UnifiedPdfPreview(
                                     uri = selectedUri!!,
+                                    fileName = fileName,
                                     pageCount = pageOrder.size,
                                     mode = PreviewMode.REORDER,
                                     password = null,

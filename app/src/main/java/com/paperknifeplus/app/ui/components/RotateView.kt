@@ -154,6 +154,7 @@ fun RotateView(
                             // The file card and the choices scroll with the pages, so no text size squeezes the grid out (rule 10).
                             UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                fileName = fileName,
                                 pageCount = pageCount,
                                 mode = PreviewMode.ROTATE,
                                 password = null,

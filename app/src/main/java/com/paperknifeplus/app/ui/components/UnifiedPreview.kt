@@ -44,7 +44,8 @@ enum class PreviewMode {
 
 /**
  * The pages of [uri] for a tool screen: as a grid of tiles in [mode] GRID, ROTATE and REORDER, under the screen's [header] (its file card
- * and choices), which scrolls with the tiles; or as the first page large ([PreviewMode.COVER]).
+ * and choices), which scrolls with the tiles; or as the first page large ([PreviewMode.COVER]). Touch and hold on any tile opens its page
+ * full screen, titled "Page N of [fileName]" (R3); [disableLightbox] stops only a tap from doing so.
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -66,9 +67,11 @@ fun UnifiedPdfPreview(
     pageRotations: Map<Int, Int>? = null,
     onRotatePage: ((Int) -> Unit)? = null,
     itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null,
+    fileName: String? = null,
     header: @Composable ColumnScope.() -> Unit = {}
 ) {
     var lightboxPage by remember { mutableStateOf<Int?>(null) }
+    val hint = rememberPageHoldHint()
     val imageLoader = PdfImageLoader.get(LocalContext.current)
 
     if (mode == PreviewMode.COVER) {
@@ -108,7 +111,7 @@ fun UnifiedPdfPreview(
             }
         }
     } else if (mode == PreviewMode.REORDER) {
-        PageTileGrid(pageCount, key = { pageOrder?.get(it) ?: it }, top = 12.dp, header = header, hint = null) { index, place ->
+        PageTileGrid(pageCount, key = { pageOrder?.get(it) ?: it }, top = 12.dp, header = header, hint = hint) { index, place ->
             val isSelected = selectedPages?.contains(index) == true
             val pageIdx = pageOrder?.get(index) ?: index
 
@@ -121,6 +124,8 @@ fun UnifiedPdfPreview(
                 imageLoader = imageLoader,
                 accentColor = accentColor,
                 onClick = { onToggleSelection?.invoke(index) },
+                // The page itself, wherever the order has moved it.
+                onLongClick = { hint.used(); lightboxPage = pageIdx },
                 scale = 0.6f,
                 modifier = place.then(if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier)
             ) {
@@ -140,8 +145,6 @@ fun UnifiedPdfPreview(
             }
         }
     } else {
-        // Touch and hold opens the page full screen wherever the screen keeps the full-screen view (R3).
-        val hint = rememberPageHoldHint().takeUnless { disableLightbox }
         PageTileGrid(pageCount, key = { it }, top = 8.dp, header = header, hint = hint) { index, place ->
             val isSelected = selectedPages?.contains(index) == true
             val rotation = pageRotations?.get(index) ?: 0
@@ -153,7 +156,7 @@ fun UnifiedPdfPreview(
                     else if (onToggleSelection != null) onToggleSelection(index)
                     else if (!disableLightbox) lightboxPage = index
                 },
-                onLongClick = hint?.let { { it.used(); lightboxPage = index } },
+                onLongClick = { hint.used(); lightboxPage = index },
                 scale = 0.6f,
                 modifier = place.then(if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier)
             ) {
@@ -188,9 +191,13 @@ fun UnifiedPdfPreview(
     if (lightboxPage != null) {
         PageLightbox(
             uri = uri, initialPage = lightboxPage!!, totalCount = pageCount, password = password,
-            onDismiss = { lightboxPage = null }, selectedPages = selectedPages, onToggleSelection = onToggleSelection,
+            onDismiss = { lightboxPage = null },
+            // Picking from the full-screen view only where a tap picks pages by their place in the file.
+            selectedPages = selectedPages.takeIf { mode == PreviewMode.GRID },
+            onToggleSelection = onToggleSelection.takeIf { mode == PreviewMode.GRID },
             isGrayscale = isGrayscale,
-            itemOverlay = itemOverlay
+            itemOverlay = itemOverlay,
+            fileName = fileName
         )
     }
 }
@@ -203,7 +210,8 @@ private val TILE_GAP = 16.dp
  * The page tiles, two a row, as one lazy grid under the screen's [header] (full width, padded by the screen): the file card and choices
  * scroll with the pages, so at large text the grid is never squeezed out of reach and long files stay lazy (rule 10). [count] tiles keyed by
  * [key]; each [tile] gets its place in the grid as a modifier, which keeps the tiles [TILE_SIDE] from the sides however the header is
- * padded. [top] is the room above the first row. With [hint] the first-time touch and hold line follows the tiles.
+ * padded. [top] is the room above the first row. While [hint] shows, its line sits under the grid's view, outside the scroll, so it is
+ * seen without scrolling.
  */
 @Composable
 private fun PageTileGrid(
@@ -211,31 +219,31 @@ private fun PageTileGrid(
     key: (Int) -> Any,
     top: Dp,
     header: @Composable ColumnScope.() -> Unit,
-    hint: PageHoldHint?,
+    hint: PageHoldHint,
     tile: @Composable (index: Int, place: Modifier) -> Unit
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(TILE_GAP),
-        contentPadding = PaddingValues(bottom = TILE_GAP)
-    ) {
-        item(key = "header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") { Column(content = header) }
-        items(count, key = key) { index ->
-            val start = index % 2 == 0
-            tile(index, Modifier.padding(start = if (start) TILE_SIDE else 0.dp, end = if (start) 0.dp else TILE_SIDE, top = if (index < 2) top else TILE_GAP))
-        }
-        if (hint != null && hint.shown) {
-            item(key = "hint", span = { GridItemSpan(maxLineSpan) }, contentType = "hint") {
-                PageGridNote(null, hint, Modifier.padding(start = TILE_SIDE, end = TILE_SIDE, top = 12.dp))
+    Column(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(TILE_GAP),
+            // The hint's own line keeps the last row off the grid's edge, so the rows keep all the room a short screen leaves them.
+            contentPadding = PaddingValues(bottom = if (hint.shown) 0.dp else TILE_GAP)
+        ) {
+            item(key = "header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") { Column(content = header) }
+            items(count, key = key) { index ->
+                val start = index % 2 == 0
+                val place = Modifier.padding(start = if (start) TILE_SIDE else 0.dp, end = if (start) 0.dp else TILE_SIDE, top = if (index < 2) top else TILE_GAP)
+                tile(index, place)
             }
         }
+        PageGridNote(null, hint, Modifier.padding(start = TILE_SIDE, end = TILE_SIDE, top = 8.dp, bottom = 8.dp))
     }
 }
 
 /**
- * One page tile: page [index] of [uri] with its number, [onClick], and [onLongClick] (touch and hold, which TalkBack offers as "Read page N")
- * when given.
+ * One page tile: page [index] of [uri] with its number, [onClick], and [onLongClick] when given (touch and hold, which TalkBack offers as
+ * "Read page N").
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

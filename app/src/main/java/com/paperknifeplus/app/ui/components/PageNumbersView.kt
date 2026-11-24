@@ -188,6 +188,7 @@ fun PageNumbersView(
                                     // stays under it.
                                     UnifiedPdfPreview(
                                         uri = selectedUri!!,
+                                        fileName = fileName,
                                         pageCount = pageCount,
                                         mode = PreviewMode.GRID,
                                         password = unlockPassword.ifEmpty { null },

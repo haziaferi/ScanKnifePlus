@@ -219,6 +219,9 @@ class TargetStepsTest {
         assertTrue("Select all scrolled", selectAll.node().boundsInRoot.top < before - 0.5f)
         assertEquals("the tiles stay below Select all", gap, firstTile.node().boundsInRoot.top - selectAll.node().boundsInRoot.bottom, 0.5f)
         assertTrue("the tiles start below Select all", gap >= 0f)
+        val selectTouch = selectAll.node().touchBoundsInRoot
+        val tileTouch = firstTile.node().touchBoundsInRoot
+        assertTrue("Select all's touch area ($selectTouch) overlaps the first tile's ($tileTouch)", !selectTouch.overlaps(tileTouch))
         selectAll.performTouchInput { click(Offset(centerX, height - 1f)) }
         rule.waitForIdle()
         assertTrue("Select all took the tap", rule.onAllNodes(hasText("12 / 12 pages selected")).fetchSemanticsNodes().isNotEmpty())

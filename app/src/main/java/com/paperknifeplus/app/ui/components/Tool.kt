@@ -760,12 +760,12 @@ fun ToolStatusText(text: String) {
 fun ToolStatusRow(status: String, modifier: Modifier = Modifier, action: @Composable () -> Unit) {
     Layout(contents = listOf({ ToolStatusText(status) }, action), modifier = modifier) { (text, act), constraints ->
         val total = constraints.maxWidth
-        val actionWidth = act.maxOf { it.maxIntrinsicWidth(Constraints.Infinity) }
-        val word = text.maxOf { it.minIntrinsicWidth(Constraints.Infinity) }
+        val actionWidth = act.maxOfOrNull { it.maxIntrinsicWidth(Constraints.Infinity) } ?: 0
+        val word = text.maxOfOrNull { it.minIntrinsicWidth(Constraints.Infinity) } ?: 0
         if (word + actionWidth <= total) {
             val actionPlaced = act.map { it.measure(Constraints(maxWidth = actionWidth)) }
             val textPlaced = text.map { it.measure(Constraints(maxWidth = total - actionWidth)) }
-            val height = (actionPlaced + textPlaced).maxOf { it.height }
+            val height = (actionPlaced + textPlaced).maxOfOrNull { it.height } ?: 0
             layout(total, height) {
                 textPlaced.forEach { it.placeRelative(0, (height - it.height) / 2) }
                 actionPlaced.forEach { it.placeRelative(total - it.width, (height - it.height) / 2) }
@@ -773,8 +773,8 @@ fun ToolStatusRow(status: String, modifier: Modifier = Modifier, action: @Compos
         } else {
             val textPlaced = text.map { it.measure(Constraints(maxWidth = total)) }
             val actionPlaced = act.map { it.measure(Constraints(maxWidth = total)) }
-            val first = textPlaced.maxOf { it.height }
-            layout(total, first + actionPlaced.maxOf { it.height }) {
+            val first = textPlaced.maxOfOrNull { it.height } ?: 0
+            layout(total, first + (actionPlaced.maxOfOrNull { it.height } ?: 0)) {
                 textPlaced.forEach { it.placeRelative(0, 0) }
                 actionPlaced.forEach { it.placeRelative(total - it.width, first) }
             }

@@ -154,6 +154,7 @@ fun GrayscaleView(
                             // The file card and the preview switch scroll with the pages, so no text size squeezes the grid out (rule 10).
                             UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                fileName = fileName,
                                 pageCount = pageCount,
                                 mode = PreviewMode.GRID,
                                 isGrayscale = isLivePreview,
