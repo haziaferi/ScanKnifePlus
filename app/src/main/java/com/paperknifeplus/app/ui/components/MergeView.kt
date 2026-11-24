@@ -27,10 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
@@ -268,7 +266,7 @@ fun MergeView(
                                         Row(Modifier.fillMaxWidth().heightIn(min = 80.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Filled.Add, null, tint = accentColor)
                                             Spacer(Modifier.width(8.dp))
-                                            Text(stringResource(R.string.action_add_more), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                            Text(stringResource(R.string.action_add_more), style = MaterialTheme.typography.labelLarge, color = accentColor)
                                         }
                                     }
                                 }
@@ -390,13 +388,13 @@ fun MergeFileListItem(
                     color = pageBadge,
                     shape = CircleShape
                 ) {
-                    Text("${index + 1}", color = pageBadgeText, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
+                    Text("${index + 1}", color = pageBadgeText, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp))
                 }
             }
 
             Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                Text(file.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(file.size, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(file.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(file.size, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (file.isLocked && !file.isUnlocked) {
                     ToolStatusText(stringResource(R.string.merge_locked))
                 }

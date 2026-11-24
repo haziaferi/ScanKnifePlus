@@ -17,9 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -176,7 +174,7 @@ fun RotateView(
                                     }) {
                                         Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                         Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.rotate_rotate_all_90), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                        Text(stringResource(R.string.rotate_rotate_all_90), style = MaterialTheme.typography.labelLarge, color = accentColor)
                                     }
                                 }
 
@@ -194,8 +192,7 @@ fun RotateView(
                                         Spacer(Modifier.width(8.dp))
                                         Text(
                                             stringResource(R.string.rotate_tap_page),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.labelSmall,
                                             color = accentColor
                                         )
                                     }

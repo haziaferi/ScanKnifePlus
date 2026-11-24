@@ -30,9 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -229,8 +227,7 @@ fun PageLightbox(
                             Text(
                                 counter,
                                 color = LocalScanPalette.current.camera.onCam,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Black,
+                                style = MaterialTheme.typography.labelLarge,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             )
                         }
@@ -267,7 +264,7 @@ fun PageLightbox(
                             Icon(Icons.Filled.Check, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (isSelected) stringResource(R.string.state_selected) else stringResource(R.string.action_select), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                        Text(if (isSelected) stringResource(R.string.state_selected) else stringResource(R.string.action_select), style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,7 +50,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -73,10 +73,10 @@ internal fun CropScreen(source: File, start: Quad?, onApply: (Quad) -> Unit, onC
     Column(Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.statusBars)) {
         Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                stringResource(R.string.scan_crop_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx,
+                stringResource(R.string.scan_crop_title), style = MaterialTheme.typography.titleMedium, color = c.tx,
                 modifier = Modifier.semantics { heading() }
             )
-            Text(stringResource(R.string.scan_crop_hint), style = scanText(13, FontWeight.Medium), color = c.mu)
+            Text(stringResource(R.string.scan_crop_hint), style = MaterialTheme.typography.bodySmall, color = c.mu)
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(24.dp)) {
             val density = LocalDensity.current
@@ -164,7 +164,7 @@ internal fun FlowButton(label: String, filled: Boolean, enabled: Boolean, modifi
             .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, style = scanText(15, FontWeight.Bold), color = if (filled) c.onAcf else c.tx)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = if (filled) c.onAcf else c.tx)
     }
 }
 

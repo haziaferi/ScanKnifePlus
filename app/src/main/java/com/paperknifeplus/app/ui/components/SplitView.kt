@@ -17,9 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
@@ -214,7 +212,7 @@ fun SplitView(
                                     TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                         Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                         Spacer(Modifier.width(8.dp))
-                                        Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
+                                        Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), style = MaterialTheme.typography.labelSmall, color = accentColor)
                                     }
                                 }
 
@@ -234,7 +232,7 @@ fun SplitView(
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
                                             contentPadding = PaddingValues(0.dp)
                                         ) {
-                                            Text(stringResource(R.string.action_select_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                            Text(stringResource(R.string.action_select_all), style = MaterialTheme.typography.labelSmall)
                                         }
                                         Button(
                                             onClick = {
@@ -246,7 +244,7 @@ fun SplitView(
                                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
                                             contentPadding = PaddingValues(0.dp)
                                         ) {
-                                            Text(stringResource(R.string.action_clear_all), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                            Text(stringResource(R.string.action_clear_all), style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
@@ -274,7 +272,7 @@ fun SplitView(
                                                 )
                                             )
                                             Spacer(Modifier.height(8.dp))
-                                            Text(stringResource(R.string.split_tip_use_commas_for_lists), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Text(stringResource(R.string.split_tip_use_commas_for_lists), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }

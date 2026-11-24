@@ -18,9 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -152,7 +150,7 @@ fun ProtectView(
                                 OutlinedTextField(
                                     value = protectPassword,
                                     onValueChange = { protectPassword = it },
-                                    label = { Text(stringResource(R.string.protect_new_password), fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                    label = { Text(stringResource(R.string.protect_new_password), style = MaterialTheme.typography.bodySmall) },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = TextFieldDefaults.colors(
@@ -170,7 +168,7 @@ fun ProtectView(
                                         Spacer(Modifier.width(10.dp))
                                         Text(
                                             stringResource(R.string.protect_no_recovery, stringResource(R.string.app_name)),
-                                            fontSize = 14.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold
+                                            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onErrorContainer
                                         )
                                     }
                                 }

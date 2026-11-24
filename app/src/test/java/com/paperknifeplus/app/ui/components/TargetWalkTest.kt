@@ -43,6 +43,7 @@ import com.paperknifeplus.app.MainBottomBar
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.testing.assertTargetsFit
+import com.paperknifeplus.app.testing.assertTextOnTheScale
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
@@ -62,7 +63,7 @@ import org.robolectric.annotation.GraphicsMode
  * control marked by DenseTargets, and none overlapping another ([assertTargetsFit]). Four walks: [TargetWalkTest] at the default text size
  * and [TargetWalkLargeTextTest] at twice it, both on the 6T's 384 dp, then [TargetWalkSmallPhoneDefaultTextTest] and
  * [TargetWalkSmallPhoneTest] at those sizes on 320 dp. The camera preview is out of reach; the scanner's controls are walked over an empty
- * preview.
+ * preview. At the default text size every text is also held to the type scale ([assertTextOnTheScale]).
  */
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
 @Config(qualifiers = "w384dp-h2400dp")
@@ -85,6 +86,8 @@ abstract class TargetWalk(private val fontScale: Float) {
     private fun walk(where: String) {
         rule.waitForIdle()
         rule.assertTargetsFit(rule.density, "$where at ${fontScale}x")
+        // Sizes are in sp, so the text size does not change them: the default size's walks check the type scale (rule 1).
+        if (fontScale == 1f) rule.assertTextOnTheScale(where)
     }
 
     private fun shown(text: String) = rule.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()

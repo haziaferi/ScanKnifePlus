@@ -47,7 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -159,13 +158,11 @@ private fun ScanCard(onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         stringResource(R.string.home_scan_title),
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = (-0.3).sp,
+                        style = MaterialTheme.typography.headlineSmall,
                         color = colors.onSurface,
                         modifier = Modifier.semantics { heading() }
                     )
-                    Text(stringResource(R.string.home_scan_subtitle), fontSize = 14.sp, color = colors.onSurfaceVariant)
+                    Text(stringResource(R.string.home_scan_subtitle), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
             }
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,7 +183,7 @@ private fun CardButton(label: String, onClick: () -> Unit, modifier: Modifier = 
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+        Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
     }
 }
 
@@ -242,8 +239,7 @@ private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
     ) {
         Text(
             title,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
             color = colors.onBackground,
             modifier = Modifier.weight(1f).semantics { heading() }
         )
@@ -257,8 +253,7 @@ private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
         ) {
             Text(
                 stringResource(R.string.home_see_all),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
                 color = colors.onBackground,
                 textDecoration = TextDecoration.Underline
             )
@@ -270,7 +265,7 @@ private fun RecentHeader(title: String, onSeeAll: () -> Unit) {
 private fun RecentEmpty() {
     Text(
         stringResource(R.string.home_recent_empty),
-        fontSize = 14.sp,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
     )

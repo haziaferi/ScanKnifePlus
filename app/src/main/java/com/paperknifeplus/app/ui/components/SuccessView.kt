@@ -37,9 +37,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -81,9 +79,7 @@ fun SuccessView(
             }
             Text(
                 message,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                lineHeight = 26.sp,
+                style = MaterialTheme.typography.titleLarge,
                 color = colors.onBackground,
                 modifier = Modifier.weight(1f).semantics { heading() }
             )
@@ -101,8 +97,8 @@ fun SuccessView(
                         }
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (result != null) Text(result.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                        if (subMessage.isNotBlank()) Text(subMessage, fontSize = 13.sp, color = palette.meta)
+                        if (result != null) Text(result.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                        if (subMessage.isNotBlank()) Text(subMessage, style = MaterialTheme.typography.bodySmall, color = palette.meta)
                         if (keepsPassword) PasswordLine()
                     }
                 }
@@ -130,7 +126,7 @@ fun SuccessView(
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ToolSecondaryButton(stringResource(R.string.tool_process_more), onClick = onProcessMore, modifier = Modifier.fillMaxWidth())
             TextButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = TargetStep.ACT.drawn)) {
-                Text(stringResource(R.string.tool_back_to_tools), fontWeight = FontWeight.SemiBold, color = colors.onBackground, fontSize = 15.sp)
+                Text(stringResource(R.string.tool_back_to_tools), color = colors.onBackground, style = MaterialTheme.typography.titleSmall)
             }
         }
     }
@@ -150,8 +146,8 @@ private fun ReportRows(rows: List<Pair<String, Int>>, modifier: Modifier = Modif
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(label, fontSize = 14.sp, color = colors.onSurface, modifier = Modifier.weight(1f))
-                    Text("$count", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = colors.onSurface)
+                    Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.onSurface, modifier = Modifier.weight(1f))
+                    Text("$count", style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
                 }
             }
         }

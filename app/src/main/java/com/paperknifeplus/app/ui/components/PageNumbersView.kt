@@ -28,7 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.PageNumberText
 import com.paperknifeplus.app.ui.theme.TargetStep
+import com.paperknifeplus.app.ui.theme.documentContent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -184,9 +186,9 @@ fun PageNumbersView(
                                                 Text(
                                                     text = text,
                                                     color = numberColor,
+                                                    style = PageNumberText,
                                                     fontSize = (fontSize / 2).sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(6.dp)
+                                                    modifier = Modifier.padding(6.dp).documentContent()
                                                 )
                                             }
                                         }
@@ -295,7 +297,7 @@ fun PageNumbersView(
                         Spacer(Modifier.height(24.dp))
 
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.page_numbers_live_preview), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.page_numbers_live_preview), style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                             Switch(checked = showPreviewOverlay, onCheckedChange = { showPreviewOverlay = it }, colors = SwitchDefaults.colors(checkedTrackColor = accentColor))
                         }
 
@@ -310,7 +312,7 @@ fun PageNumbersView(
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
-                                label = { Text(stringResource(R.string.page_numbers_format_n), fontSize = 12.sp) },
+                                label = { Text(stringResource(R.string.page_numbers_format_n), style = MaterialTheme.typography.bodySmall) },
                                 modifier = Modifier.weight(1.5f).fillMaxHeight(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
@@ -326,14 +328,14 @@ fun PageNumbersView(
                                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                                     Box(Modifier.size(20.dp).clip(CircleShape).background(numberColor).border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.page_numbers_color), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                    Text(stringResource(R.string.page_numbers_color), style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
 
                         Spacer(Modifier.height(24.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(stringResource(R.string.page_numbers_font_size_pt, fontSize.toInt()), fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.page_numbers_font_size_pt, fontSize.toInt()), style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                             Slider(
                                 value = fontSize,
                                 onValueChange = { fontSize = it },
@@ -356,7 +358,7 @@ fun PageNumbersView(
                                 Spacer(Modifier.width(16.dp))
                                 Column {
                                     ToolSectionLabel(stringResource(R.string.page_numbers_position))
-                                    Text(positionLabel(position), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(positionLabel(position), style = MaterialTheme.typography.labelLarge)
                                 }
                                 Spacer(Modifier.weight(1f))
                                 Icon(Icons.Filled.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -369,7 +371,7 @@ fun PageNumbersView(
             if (showPositionSheet) {
                 ModalBottomSheet(onDismissRequest = { showPositionSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
-                        Text(stringResource(R.string.page_numbers_select_position), modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
+                        Text(stringResource(R.string.page_numbers_select_position), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.labelSmall, color = accentColor)
                         listOf("Top Left", "Top Center", "Top Right", "Bottom Left", "Bottom Center", "Bottom Right").forEach { pos ->
                             ListItem(
                                 headlineContent = { Text(positionLabel(pos), fontWeight = if (position == pos) FontWeight.Bold else FontWeight.Normal) },
@@ -384,7 +386,7 @@ fun PageNumbersView(
             if (showColorSheet) {
                 ModalBottomSheet(onDismissRequest = { showColorSheet = false }) {
                     Column(Modifier.fillMaxWidth().padding(bottom = 32.dp).navigationBarsPadding().selectableGroup()) {
-                        Text(stringResource(R.string.page_numbers_select_color), modifier = Modifier.padding(16.dp), fontSize = 12.sp, fontWeight = FontWeight.Black, color = accentColor)
+                        Text(stringResource(R.string.page_numbers_select_color), modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.labelSmall, color = accentColor)
                         DocumentInk.pageNumbers.forEach { ink ->
                             val col = ink.color
                             ListItem(

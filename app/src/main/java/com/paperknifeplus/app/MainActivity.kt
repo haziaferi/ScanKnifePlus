@@ -75,7 +75,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -445,7 +444,7 @@ private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick:
         verticalArrangement = Arrangement.Center
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-        Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, color = color)
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, color = color)
     }
 }
 
@@ -465,7 +464,7 @@ private fun ScanButton(onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Outlined.PhotoCamera, contentDescription = null, modifier = Modifier.size(22.dp))
-            Text(stringResource(R.string.nav_scan), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.nav_scan), style = MaterialTheme.typography.titleMedium)
         }
     }
 }

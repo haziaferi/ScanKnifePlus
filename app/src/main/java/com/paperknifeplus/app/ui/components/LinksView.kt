@@ -42,9 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -273,7 +271,7 @@ fun LinksView(
                                     if (keepInside) {
                                         Text(
                                             stringResource(R.string.links_external_note),
-                                            fontSize = 13.sp,
+                                            style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp)
                                         )
@@ -350,9 +348,9 @@ internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: M
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(22.dp))
-                    Text(stringResource(R.string.links_none), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                    Text(stringResource(R.string.links_none), style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
                 }
-                Text(stringResource(R.string.links_none_body), fontSize = 14.sp, color = colors.onSurfaceVariant)
+                Text(stringResource(R.string.links_none_body), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             } else {
                 val links = if (options.keepInside) R.plurals.links_count_external else R.plurals.links_count_links
                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -360,7 +358,7 @@ internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: M
                     CountTile(removal.scripts, pluralStringResource(R.plurals.links_count_scripts, removal.scripts), Modifier.weight(1f))
                 }
                 if (options.pages != null) {
-                    Text(stringResource(R.string.links_whole_file), fontSize = 14.sp, color = colors.onSurfaceVariant)
+                    Text(stringResource(R.string.links_whole_file), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
                 Text(
                     if (removal.isEmpty) {
@@ -368,7 +366,7 @@ internal fun LinkCountsCard(found: FoundLinks, options: LinkOptions, modifier: M
                     } else {
                         stringResource(R.string.links_nothing_changes) + " " + stringResource(R.string.links_what_stays)
                     },
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurfaceVariant
                 )
             }
@@ -392,7 +390,7 @@ private fun CountTile(count: Int, label: String, modifier: Modifier) {
             .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Text("$count", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 36.sp, color = colors.onSurface)
-        Text(label, fontSize = 13.sp, color = colors.onSurfaceVariant)
+        Text("$count", style = MaterialTheme.typography.headlineLarge, color = colors.onSurface)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
     }
 }

@@ -22,7 +22,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
 import kotlinx.coroutines.CancellationException
@@ -245,9 +244,10 @@ fun RearrangeView(
                                             onClick = { showMoveToDialog = true },
                                             enabled = selectedPageIndex != null,
                                             shape = RoundedCornerShape(12.dp),
-                                            modifier = Modifier.fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                            // Weighted, so the arrows are measured first and keep their 48 dp when the label must wrap.
+                                            modifier = Modifier.weight(1f, fill = false).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
                                         ) {
-                                            Text(stringResource(R.string.rearrange_move_to), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                            Text(stringResource(R.string.rearrange_move_to), style = MaterialTheme.typography.labelSmall)
                                         }
 
                                         RowIconButton(
@@ -302,10 +302,10 @@ fun RearrangeView(
             if (showMoveToDialog) {
                 AlertDialog(
                     onDismissRequest = { showMoveToDialog = false },
-                    title = { Text(stringResource(R.string.rearrange_move_page_to_position), fontWeight = FontWeight.Black) },
+                    title = { Text(stringResource(R.string.rearrange_move_page_to_position)) },
                     text = {
                         Column {
-                            Text(stringResource(R.string.rearrange_current_position, selectedPageIndex!! + 1), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.rearrange_current_position, selectedPageIndex!! + 1), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.height(12.dp))
                             OutlinedTextField(
                                 value = moveToInput,

@@ -20,9 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
@@ -286,10 +284,8 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
     ) {
         Text(
             text = title,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Black,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 1.2.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
         content()
@@ -299,7 +295,7 @@ fun MetadataGroup(title: String, content: @Composable () -> Unit) {
 @Composable
 fun MetadataEditField(label: String, value: String, accentColor: Color, onValueChange: (String) -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor.copy(0.7f), letterSpacing = 0.5.sp)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = accentColor.copy(0.7f))
         TextField(
             value = value,
             onValueChange = onValueChange,
@@ -310,7 +306,7 @@ fun MetadataEditField(label: String, value: String, accentColor: Color, onValueC
                 focusedIndicatorColor = accentColor,
                 cursorColor = accentColor
             ),
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+            textStyle = MaterialTheme.typography.bodyMedium,
             singleLine = true
         )
     }

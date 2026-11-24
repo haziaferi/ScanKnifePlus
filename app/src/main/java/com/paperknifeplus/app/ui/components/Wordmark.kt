@@ -25,7 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalIsDarkTheme
-import com.paperknifeplus.app.ui.theme.PlusJakartaSans
+import com.paperknifeplus.app.ui.theme.WordmarkText
 
 // The brand red of the "+": the colour that recalls PaperKnife+, deep enough on the light themes to clear 4.5:1 at its small size.
 private val PlusOnLight = Color(0xFFC41E3A)
@@ -56,9 +56,8 @@ fun Wordmark(fontSize: TextUnit, modifier: Modifier = Modifier) {
     }
     Text(
         text,
-        fontFamily = PlusJakartaSans,
+        style = WordmarkText,
         fontSize = fontSize,
-        letterSpacing = (-0.015).em,
         color = MaterialTheme.colorScheme.onBackground,
         maxLines = 1,
         modifier = modifier

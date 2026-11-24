@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -36,7 +37,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -135,7 +135,7 @@ internal fun SaveDialog(
         title = { Text(stringResource(R.string.scan_save_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.scan_page_size), style = scanText(14, FontWeight.Bold))
+                Text(stringResource(R.string.scan_page_size), style = MaterialTheme.typography.labelLarge)
                 ChipRow(PdfPageSize.entries, size, ::sizeLabel) { size = it }
                 OutlinedTextField(
                     value = password,
@@ -150,14 +150,14 @@ internal fun SaveDialog(
                 )
                 SwitchRow(R.string.scan_ocr_searchable, R.string.scan_ocr_searchable_hint, makeSearchable) { makeSearchable = it }
                 if (makeSearchable) {
-                    Text(stringResource(R.string.scan_ocr_language), style = scanText(14, FontWeight.Bold))
+                    Text(stringResource(R.string.scan_ocr_language), style = MaterialTheme.typography.labelLarge)
                     ChipRow(OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
-                    Text(stringResource(R.string.scan_ocr_reading), style = scanText(14, FontWeight.Bold))
+                    Text(stringResource(R.string.scan_ocr_reading), style = MaterialTheme.typography.labelLarge)
                     ChipRow(OcrReading.entries, reading, ::readingLabel) { reading = it }
                     SwitchRow(R.string.scan_ocr_txt, null, alsoTxt) { alsoTxt = it }
                 }
                 val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
-                Text(where, style = scanText(13, FontWeight.Medium), color = LocalScanPalette.current.mu)
+                Text(where, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.mu)
             }
         },
         confirmButton = {
@@ -200,7 +200,7 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = c.acf, unselectedColor = c.bd))
-        Text(stringResource(label), style = scanText(15, FontWeight.Medium), color = c.tx, modifier = Modifier.padding(start = 12.dp))
+        Text(stringResource(label), style = MaterialTheme.typography.bodyLarge, color = c.tx, modifier = Modifier.padding(start = 12.dp))
     }
 }
 
@@ -225,8 +225,8 @@ private fun SwitchRow(@StringRes title: Int, @StringRes subtitle: Int?, checked:
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(Modifier.weight(1f)) {
-            Text(stringResource(title), style = scanText(15, FontWeight.SemiBold), color = c.tx)
-            subtitle?.let { Text(stringResource(it), style = scanText(13, FontWeight.Medium), color = c.mu) }
+            Text(stringResource(title), style = MaterialTheme.typography.titleSmall, color = c.tx)
+            subtitle?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = c.mu) }
         }
         Switch(checked = checked, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = c.acf, uncheckedBorderColor = c.bd))
     }
@@ -246,6 +246,6 @@ private fun OptionChip(@StringRes label: Int, selected: Boolean, onClick: () -> 
             .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(stringResource(label), style = scanText(14, FontWeight.Bold), color = if (selected) c.ac else c.tx)
+        Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = if (selected) c.ac else c.tx)
     }
 }

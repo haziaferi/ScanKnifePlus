@@ -39,6 +39,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -83,8 +85,11 @@ class LargeTextLayoutTest {
     @get:Rule(order = 1)
     val rule = createComposeRule()
 
+    /** [content] at twice the text size, in the app's type scale. */
     private fun atDoubleText(content: @Composable () -> Unit) = rule.setContent {
-        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) { content() }
+        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
+            MaterialTheme(typography = Typography) { content() }
+        }
     }
 
     private fun SemanticsNodeInteraction.bounds(): Rect = fetchSemanticsNode().boundsInRoot
@@ -129,6 +134,20 @@ class LargeTextLayoutTest {
         rule.onNodeWithText("Colour palette").performClick()
         assertEquals("the sheet measures at twice the text size", 2f, layoutOf("Graphite Scholastic").layoutInput.density.fontScale)
         assertNotClipped("Graphite Scholastic")
+    }
+
+    /**
+     * The longest screen title in Italian on a 320 dp phone stays one whole word with room to spare: at 22 sp it fitted by about 19 dp here,
+     * and the 6T's font draws wider than Robolectric's, so the title's 21 sp keeps at least 24 dp.
+     */
+    @Test
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Settings' title Impostazioni keeps one line with room to spare`() {
+        atDoubleText { SettingsView(onThemeChange = {}, palette = AppPalette.STILL_WATER, onPaletteChange = {}, onOpenAbout = {}, onBack = {}) }
+        val layout = layoutOf("Impostazioni")
+        assertEquals("Impostazioni wraps", 1, layout.lineCount)
+        val room = with(rule.density) { (layout.layoutInput.constraints.maxWidth - layout.getLineRight(0)).toDp() }
+        assertTrue("Impostazioni has only $room spare", room >= 24.dp)
     }
 
     @Test
@@ -301,7 +320,7 @@ class LargeTextLayoutTest {
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links-it.pdf")
         // In the app's font, whose "Intervallo di pagine" is wider than its stacked row.
-        atDoubleText { MaterialTheme(typography = Typography) { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rimuovi i link e salva il PDF")).fetchSemanticsNodes().isNotEmpty() }
         for (label in listOf("Tutte le pagine", "Intervallo di pagine", "Tutti i link", "Link esterni")) assertFullyVisible(label)
         assertTrue("the long label wraps onto a second line", layoutOf("Intervallo di pagine").lineCount > 1)
@@ -316,7 +335,7 @@ class LargeTextLayoutTest {
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(2), "large-crop-it.pdf")
         // In the app's font, whose "Intervallo di pagine" is wider than its stacked row.
-        atDoubleText { MaterialTheme(typography = Typography) { CropView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { CropView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil(60_000) { rule.onAllNodes(hasText("Sposta un angolo per ritagliare")).fetchSemanticsNodes().isNotEmpty() }
         for (label in listOf("Tutte le pagine", "Intervallo di pagine")) assertFullyVisible(label)
         assertTrue("the long label wraps onto a second line", layoutOf("Intervallo di pagine").lineCount > 1)
@@ -325,11 +344,9 @@ class LargeTextLayoutTest {
 
     @Test
     fun `the segmented control stacks into full-width rows of one height while their labels fit them`() {
-        // In the app's font, as the segments measure their labels in the font they are drawn in, and as wide as on a 320 dp phone.
+        // As wide as on a 320 dp phone; the segments measure their labels in the font they are drawn in.
         atDoubleText {
-            MaterialTheme(typography = Typography) {
-                Column(Modifier.width(288.dp)) { SegmentedChoice(listOf("All pages", "Page range"), 1, onSelect = {}) }
-            }
+            Column(Modifier.width(288.dp)) { SegmentedChoice(listOf("All pages", "Page range"), 1, onSelect = {}) }
         }
         for (label in listOf("All pages", "Page range")) assertNotClipped(label)
         val all = rule.onNode(hasText("All pages")).bounds()
@@ -348,9 +365,7 @@ class LargeTextLayoutTest {
         // Phone widths in steps, so the two labels wrap onto different numbers of lines at some of them, as on the 6T.
         var width by mutableStateOf(300.dp)
         atDoubleText {
-            MaterialTheme(typography = Typography) {
-                Column(Modifier.width(width)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
-            }
+            Column(Modifier.width(width)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
         }
         var differentLines = false
         for (w in 300..440 step 10) {
@@ -368,7 +383,7 @@ class LargeTextLayoutTest {
     @Test
     fun `the top bar's Back grows with the text action beside it`() {
         // A short title, so the bar stays on one line at twice the text size.
-        atDoubleText { MaterialTheme(typography = Typography) { ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {}) } }
+        atDoubleText { ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, onShowTip = {}) }
         val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
         val change = rule.onNode(hasText("Change") and hasClickAction()).bounds()
         val tip = rule.onNode(hasContentDescription("Show the tip") and hasClickAction()).bounds()
@@ -377,14 +392,37 @@ class LargeTextLayoutTest {
         assertEquals("the (i) is as high as Change", change.height, tip.height, 0.5f)
     }
 
+    /** Watermark's options at twice the text size on a short small phone: the dialog scrolls, so its last choice comes whole into view. */
     @Test
-    // The 6T's height, so the tool's grid and its bar share the screen as on the phone.
-    @Config(qualifiers = "w384dp-h832dp")
+    @Config(qualifiers = "w320dp-h640dp")
+    fun `Watermark's options keep Upload image in reach on a short phone`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-watermark.pdf")
+        atDoubleText { WatermarkView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        val page = hasClickAction() and hasContentDescription("Page 1")
+        rule.waitUntil("the pages show", 60_000) { rule.onAllNodes(page).fetchSemanticsNodes().isNotEmpty() }
+        // On this screen at twice the text size the page grid gets no height (R3, L3's), so the page and its Add watermark are opened by
+        // their click actions rather than by touch.
+        rule.onAllNodes(page)[0].performSemanticsAction(SemanticsActions.OnClick)
+        val add = hasText("Add watermark") and hasClickAction()
+        rule.waitUntil("the page opens", 30_000) { rule.onAllNodes(add).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(add).performSemanticsAction(SemanticsActions.OnClick)
+        val card = rule.onNode(hasText("Upload image") and hasClickAction())
+        card.performScrollTo()
+        val node = card.fetchSemanticsNode()
+        assertEquals("Upload image shows whole", node.size.height.toFloat(), node.boundsInRoot.height, 0.5f)
+    }
+
+    @Test
+    // A small phone, where Move to wraps at twice the text size (on the 6T it now fits one 48 dp line); tall, so the grid leaves the bar
+    // its room (L3's).
+    @Config(qualifiers = "w320dp-h2400dp")
     fun `Rearrange's arrows grow with Move to`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange.pdf")
-        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Move to…")).fetchSemanticsNodes().isNotEmpty() }
         val moveTo = rule.onNode(hasText("Move to…") and hasClickAction()).bounds()
         assertTrue("Move to has grown past 48 dp", moveTo.height > with(rule.density) { 48.dp.toPx() } + 0.5f)
@@ -400,7 +438,7 @@ class LargeTextLayoutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-numbers.pdf")
-        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("the options button shows", 60_000) {
             rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
         }
@@ -410,8 +448,10 @@ class LargeTextLayoutTest {
         val field = fieldNode.bounds()
         val colour = rule.onNode(hasText("Color") and hasClickAction()).bounds()
         assertTrue("the field has grown past 56 dp", field.height > with(rule.density) { 56.dp.toPx() } + 0.5f)
-        // The outline, where the field draws its border: right of the label's gap, past the 12 dp rounded corner.
-        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 18, 22, 26).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
+        assertNotClipped("Format ({n})", rule.onNode(hasText("Format ({n})") and hasSetTextAction().not(), useUnmergedTree = true))
+        // The outline, where the field draws its border: right of the label's gap (the 13 sp label's reaches past 22 dp from the end), past
+        // the 12 dp rounded corner.
+        val outlineTop = field.top + fieldNode.drawnTop(listOf(14, 16, 18, 20).map { (field.width - with(rule.density) { it.dp.toPx() }).toInt() })
         val dp = with(rule.density) { 1.dp.toPx() }
         assertEquals("the colour button starts at the field's outline", outlineTop, colour.top, dp)
         assertEquals("the colour button ends with the field", field.bottom, colour.bottom, dp)
@@ -425,7 +465,7 @@ class LargeTextLayoutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange-it.pdf")
-        atDoubleText { MaterialTheme(typography = Typography) { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { RearrangeView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("Move to shows", 60_000) { rule.onAllNodes(hasText("Sposta in…")).fetchSemanticsNodes().isNotEmpty() }
         assertNotClipped("Sposta in…", rule.onNode(hasText("Sposta in…"), useUnmergedTree = true))
         val moveTo = rule.onNode(hasText("Sposta in…") and hasClickAction()).bounds()
@@ -457,7 +497,7 @@ class LargeTextLayoutTest {
      * title's top.
      */
     private fun searchableBar(title: String, subtitle: String, label: String, back: String): Boolean {
-        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { SearchableView(onBack = {}, onOpenPreview = { _, _, _ -> }) }
         for (shown in listOf(title, subtitle, label)) {
             assertWholeWords(shown, topmost(shown))
             assertNotClipped(shown, topmost(shown))
@@ -538,9 +578,7 @@ class LargeTextLayoutTest {
     @Config(qualifiers = "w384dp-h2400dp")
     fun `a wrapping action label leaves the (i) beside it 48 dp`() {
         atDoubleText {
-            MaterialTheme(typography = Typography) {
-                ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, changeLabel = "Choose two images", onShowTip = {})
-            }
+            ToolTopBar(title = "Sign", subtitle = null, showChange = true, onBack = {}, changeLabel = "Choose two images", onShowTip = {})
         }
         val back = rule.onNode(hasContentDescription("Back") and hasClickAction()).bounds()
         val change = rule.onNode(hasText("Choose two images") and hasClickAction()).bounds()
@@ -572,7 +610,7 @@ class LargeTextLayoutTest {
     @Test
     @Config(qualifiers = "w320dp-h2400dp")
     fun `the Save PDF dialog's chips sit 8 dp apart across and down`() {
-        atDoubleText { MaterialTheme(typography = Typography) { SaveDialog(onSave = {}, onDismiss = {}) } }
+        atDoubleText { SaveDialog(onSave = {}, onDismiss = {}) }
         assertChipGaps(listOf("A4", "Letter", "Legal", "Fit"))
     }
 
@@ -582,7 +620,7 @@ class LargeTextLayoutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "large-searchable.pdf")
-        atDoubleText { MaterialTheme(typography = Typography) { SearchableView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { SearchableView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("the reading chips show", 60_000) { rule.onAllNodes(hasText("Receipts")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Receipts"))
         assertChipGaps(listOf("Automatic", "Tables", "Receipts"))
@@ -595,7 +633,7 @@ class LargeTextLayoutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(12), "large-numbers-tap.pdf")
-        atDoubleText { MaterialTheme(typography = Typography) { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) } }
+        atDoubleText { PageNumbersView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("the options button shows", 60_000) {
             rule.onAllNodes(hasContentDescription("Numbering options")).fetchSemanticsNodes().isNotEmpty()
         }

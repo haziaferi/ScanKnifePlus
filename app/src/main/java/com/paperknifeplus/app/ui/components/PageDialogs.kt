@@ -34,7 +34,7 @@ fun JumpToPageDialog(initialInput: String, pageCount: Int, onJump: (Int) -> Unit
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.page_dialog_go_to_page), fontWeight = FontWeight.Black) },
+        title = { Text(stringResource(R.string.page_dialog_go_to_page)) },
         text = {
             OutlinedTextField(
                 value = input,

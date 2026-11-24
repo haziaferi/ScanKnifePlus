@@ -33,9 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
@@ -157,14 +155,14 @@ fun ImageToPdfView(
                                     FilterChip(
                                         selected = pageSize == "Fit",
                                         onClick = { pageSize = "Fit" },
-                                        label = { Text(stringResource(R.string.img2pdf_original), fontSize = 12.sp) },
+                                        label = { Text(stringResource(R.string.img2pdf_original), style = MaterialTheme.typography.labelMedium) },
                                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     FilterChip(
                                         selected = pageSize == "A4",
                                         onClick = { pageSize = "A4" },
-                                        label = { Text(stringResource(R.string.img2pdf_a4_paper), fontSize = 12.sp) },
+                                        label = { Text(stringResource(R.string.img2pdf_a4_paper), style = MaterialTheme.typography.labelMedium) },
                                         colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
                                     )
                                 }
@@ -211,7 +209,7 @@ fun ImageToPdfView(
                                             color = pageBadge,
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("${index + 1}", color = pageBadgeText, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
+                                            Text("${index + 1}", color = pageBadgeText, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp))
                                         }
 
                                         // T4: inside the tile, the remove button answers only where it is drawn.
@@ -258,7 +256,7 @@ fun ImageToPdfView(
                                             Icon(Icons.AutoMirrored.Filled.ArrowBackIos, stringResource(R.string.action_move_back), tint = if (selectedIndex!! > 0) accentColor else MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
 
-                                        Text(stringResource(R.string.img2pdf_position, selectedIndex!! + 1), fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                        Text(stringResource(R.string.img2pdf_position, selectedIndex!! + 1), style = MaterialTheme.typography.labelSmall)
 
                                         IconButton(
                                             onClick = {

@@ -58,7 +58,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
 
@@ -185,9 +184,8 @@ private fun PageTile(
         }
         Text(
             "${index + 1}",
-            fontSize = 12.sp,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Bold,
-            lineHeight = 16.sp,
             color = colors.onBackground
         )
     }

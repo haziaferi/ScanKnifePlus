@@ -23,11 +23,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 
 /** What is wrong with a page range the tools read with [PageRanges.parseList], in words; null for a valid one. */
@@ -55,7 +52,6 @@ fun PageRangeField(value: String, onValueChange: (String) -> Unit, error: String
             label = { Text(stringResource(R.string.pages_label)) },
             singleLine = true,
             isError = error != null,
-            textStyle = TextStyle(fontSize = 16.sp),
             shape = RoundedCornerShape(14.dp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             colors = OutlinedTextFieldDefaults.colors(
@@ -74,10 +70,10 @@ fun PageRangeField(value: String, onValueChange: (String) -> Unit, error: String
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = colors.error, modifier = Modifier.padding(top = 2.dp).size(16.dp))
-                Text(error, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.error)
+                Text(error, style = MaterialTheme.typography.labelMedium, color = colors.error)
             }
         } else {
-            Text(stringResource(R.string.range_example), fontSize = 13.sp, color = colors.onSurfaceVariant)
+            Text(stringResource(R.string.range_example), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         }
     }
 }

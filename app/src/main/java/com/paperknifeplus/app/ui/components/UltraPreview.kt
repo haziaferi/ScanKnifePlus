@@ -38,9 +38,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
@@ -448,8 +446,8 @@ fun UltraPreview(
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("$currentPage", fontWeight = FontWeight.Black, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
-                            Text(stringResource(R.string.reader_of_pages, activePageCount), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
+                            Text("$currentPage", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Text(stringResource(R.string.reader_of_pages, activePageCount), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp))
                             Spacer(Modifier.width(16.dp))
                             Box(Modifier.height(16.dp).width(1.dp).background(MaterialTheme.colorScheme.outline))
                             Spacer(Modifier.width(16.dp))
@@ -475,8 +473,8 @@ fun UltraPreview(
                     }
 
                     Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                        Text(fileName, fontWeight = FontWeight.Black, fontSize = 14.sp, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
-                        Text(stringResource(R.string.reader_pdf_viewer), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(fileName, style = MaterialTheme.typography.labelLarge, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
+                        Text(stringResource(R.string.reader_pdf_viewer), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
 
                     IconButton(onClick = {

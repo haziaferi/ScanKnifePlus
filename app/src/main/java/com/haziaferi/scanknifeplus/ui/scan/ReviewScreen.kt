@@ -45,6 +45,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -78,7 +79,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -203,10 +203,10 @@ private fun Header(ui: ReviewUi, onBack: () -> Unit) {
         Spacer(Modifier.width(4.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.scan_review_title), style = scanText(18, FontWeight.ExtraBold), color = c.tx,
+                stringResource(R.string.scan_review_title), style = MaterialTheme.typography.titleMedium, color = c.tx,
                 modifier = Modifier.semantics { heading() }
             )
-            Text(subtitle, style = scanText(13, FontWeight.Medium), color = c.mu)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.mu)
         }
     }
 }
@@ -223,7 +223,7 @@ private fun PageBox(content: @Composable BoxScope.() -> Unit) {
 @Composable
 private fun EmptyText(@StringRes text: Int) {
     Text(
-        stringResource(text), style = scanText(14, FontWeight.Medium), color = LocalScanPalette.current.mu, textAlign = TextAlign.Center,
+        stringResource(text), style = MaterialTheme.typography.bodyMedium, color = LocalScanPalette.current.mu, textAlign = TextAlign.Center,
         modifier = Modifier.padding(horizontal = 24.dp)
     )
 }
@@ -237,7 +237,9 @@ private fun MoveRow(ui: ReviewUi, onMove: (Int) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            stringResource(R.string.scan_page_of, i + 1, ui.pages.size), style = scanText(14, FontWeight.Bold), color = LocalScanPalette.current.tx,
+            stringResource(R.string.scan_page_of, i + 1, ui.pages.size),
+            style = MaterialTheme.typography.labelLarge,
+            color = LocalScanPalette.current.tx,
             modifier = Modifier.weight(1f)
         )
         val earlier = stringResource(R.string.scan_move_earlier)
@@ -269,7 +271,7 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp), horizontalArrangement = Arrangement.SpaceAround) {
         for ((n, page) in listOf(spread.leftNumber to spread.left, spread.leftNumber + 1 to spread.right)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.scan_page_label, n), style = scanText(13, FontWeight.Bold), color = c.mu)
+                Text(stringResource(R.string.scan_page_label, n), style = MaterialTheme.typography.labelMedium, color = c.mu)
                 if (page.checkCrop) CheckCropMark()
             }
         }
@@ -277,8 +279,8 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
     Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val label = splitLabel(split)
         Row(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.scan_split_line), style = scanText(14, FontWeight.Bold), color = c.tx, modifier = Modifier.weight(1f))
-            Text(label, style = scanText(14, FontWeight.Medium), color = c.mu)
+            Text(stringResource(R.string.scan_split_line), style = MaterialTheme.typography.labelLarge, color = c.tx, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = c.mu)
         }
         Slider(
             value = split,
@@ -292,7 +294,7 @@ private fun SpreadView(spread: ReviewSpread, busy: Boolean, onSplit: (Float) -> 
             ),
             modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).semantics { stateDescription = label }
         )
-        Text(stringResource(R.string.scan_split_hint), style = scanText(13, FontWeight.Medium), color = c.mu)
+        Text(stringResource(R.string.scan_split_hint), style = MaterialTheme.typography.bodySmall, color = c.mu)
     }
 }
 
@@ -347,7 +349,7 @@ private fun RowScope.ActionButton(
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
-        Text(stringResource(label), style = scanText(12, FontWeight.SemiBold), color = color, textAlign = TextAlign.Center)
+        Text(stringResource(label), style = MaterialTheme.typography.labelSmall, color = color, textAlign = TextAlign.Center)
     }
 }
 
@@ -356,7 +358,7 @@ private fun RowScope.ActionButton(
 private fun CheckCropMark(modifier: Modifier = Modifier) {
     val c = LocalScanPalette.current
     Text(
-        stringResource(R.string.scan_check_crop), style = scanText(13, FontWeight.Bold), color = c.warnFg,
+        stringResource(R.string.scan_check_crop), style = MaterialTheme.typography.labelMedium, color = c.warnFg,
         modifier = modifier.clip(RoundedCornerShape(8.dp)).background(c.warnBg).padding(horizontal = 10.dp, vertical = 4.dp)
     )
 }
@@ -368,7 +370,7 @@ private fun ReadingBar(progress: ReadingProgress, onSaveWithoutText: () -> Unit)
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.scan_ocr_progress, progress.page, progress.total), style = scanText(14, FontWeight.SemiBold), color = c.tx,
+                stringResource(R.string.scan_ocr_progress, progress.page, progress.total), style = MaterialTheme.typography.labelLarge, color = c.tx,
                 modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite }
             )
             Box(
@@ -376,7 +378,7 @@ private fun ReadingBar(progress: ReadingProgress, onSaveWithoutText: () -> Unit)
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(stringResource(R.string.scan_ocr_without_text), style = scanText(14, FontWeight.ExtraBold), color = c.ac)
+                Text(stringResource(R.string.scan_ocr_without_text), style = MaterialTheme.typography.labelLarge, color = c.ac)
             }
         }
         LinearProgressIndicator(
@@ -400,7 +402,7 @@ private fun UndoBar(number: Int, onUndo: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            stringResource(R.string.scan_page_n_deleted, number), style = scanText(14, FontWeight.SemiBold), color = c.selFg,
+            stringResource(R.string.scan_page_n_deleted, number), style = MaterialTheme.typography.labelLarge, color = c.selFg,
             modifier = Modifier.weight(1f)
         )
         Box(
@@ -409,7 +411,7 @@ private fun UndoBar(number: Int, onUndo: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                stringResource(R.string.scan_undo), style = scanText(15, FontWeight.ExtraBold).copy(textDecoration = TextDecoration.Underline),
+                stringResource(R.string.scan_undo), style = MaterialTheme.typography.titleSmall.copy(textDecoration = TextDecoration.Underline),
                 color = c.selFg
             )
         }
@@ -430,13 +432,13 @@ private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit, onRetry: (() 
             .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(stringResource(text), style = scanText(14, FontWeight.SemiBold), color = c.warnFg, modifier = Modifier.weight(1f))
+        Text(stringResource(text), style = MaterialTheme.typography.labelLarge, color = c.warnFg, modifier = Modifier.weight(1f))
         Box(
             Modifier.inlineTarget().widthIn(min = 64.dp).clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button, onClick = onDismiss)
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(stringResource(R.string.scan_dismiss), style = scanText(15, FontWeight.ExtraBold), color = c.warnFg)
+            Text(stringResource(R.string.scan_dismiss), style = MaterialTheme.typography.titleSmall, color = c.warnFg)
         }
         onRetry?.let {
             Spacer(Modifier.width(TargetStep.INLINE_GAP))
@@ -445,7 +447,7 @@ private fun NoticeBar(@StringRes text: Int, onDismiss: () -> Unit, onRetry: (() 
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(stringResource(R.string.scan_retry), style = scanText(15, FontWeight.ExtraBold), color = c.warnFg)
+                Text(stringResource(R.string.scan_retry), style = MaterialTheme.typography.titleSmall, color = c.warnFg)
             }
         }
     }
@@ -507,7 +509,7 @@ private fun Thumbnail(page: ReviewPage, number: Int, selected: Boolean, onClick:
             modifier = Modifier.fillMaxSize().padding(3.dp)
         )
         Text(
-            "$number", style = scanText(13, FontWeight.ExtraBold), color = c.tx,
+            "$number", style = MaterialTheme.typography.labelMedium, color = c.tx,
             modifier = Modifier.padding(bottom = 4.dp).clip(RoundedCornerShape(6.dp)).background(c.sf).padding(horizontal = 6.dp)
         )
     }

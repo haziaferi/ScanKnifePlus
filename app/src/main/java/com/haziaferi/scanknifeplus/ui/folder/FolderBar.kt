@@ -20,6 +20,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +36,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.components.DialogButton
 import com.paperknifeplus.app.ui.components.DialogButtons
@@ -73,8 +73,8 @@ fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Mo
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(icon, contentDescription = null, tint = if (status is FolderStatus.Ready) palette.barOk else palette.tx, modifier = Modifier.size(20.dp))
-            Text(text, fontSize = 14.sp, color = palette.tx, modifier = Modifier.weight(1f))
-            if (action != null) Text(stringResource(action), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = palette.barMu)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.tx, modifier = Modifier.weight(1f))
+            if (action != null) Text(stringResource(action), style = MaterialTheme.typography.labelMedium, color = palette.barMu)
         }
         if (status is FolderStatus.Copying) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }

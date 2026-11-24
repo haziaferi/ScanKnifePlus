@@ -16,7 +16,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import java.io.ByteArrayOutputStream
@@ -163,7 +162,7 @@ fun PdfToZipView(
                             ToolSectionLabel(stringResource(R.string.pdf2zip_archive_info), Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp))
                             Text(
                                 stringResource(R.string.pdf2zip_bundle_note),
-                                fontSize = 13.sp,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp)
                             )

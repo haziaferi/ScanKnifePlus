@@ -63,10 +63,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.haziaferi.scanknifeplus.ui.folder.folderName
@@ -192,7 +190,7 @@ fun SettingsView(
             item(key = "version") {
                 Text(
                     stringResource(R.string.settings_version, appName, appVersionName(context)),
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp)
@@ -228,7 +226,7 @@ fun SettingsView(
                     author = it
                     PreferencesManager.setDefaultAuthor(context, it)
                 },
-                placeholder = { Text(stringResource(R.string.settings_author_hint), fontSize = 15.sp) },
+                placeholder = { Text(stringResource(R.string.settings_author_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp)
@@ -247,10 +245,10 @@ fun SettingsView(
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = colors.error, contentColor = colors.onError)
             ) {
-                Text(stringResource(R.string.settings_clear_history_confirm), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_clear_history_confirm), style = MaterialTheme.typography.titleMedium)
             }
             TextButton(onClick = close, modifier = Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn)) {
-                Text(stringResource(R.string.action_cancel), fontSize = 15.sp, color = colors.onSurface)
+                Text(stringResource(R.string.action_cancel), style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
             }
         }
         null -> Unit
@@ -289,8 +287,7 @@ private fun SettingsGroup(title: String, content: @Composable () -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         Text(
             text = title,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp).semantics { heading() }
         )
@@ -324,8 +321,8 @@ private fun SettingsRow(
         Box(Modifier.size(36.dp).background(colors.surfaceVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint)
         }
-        Text(title, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = tint, modifier = Modifier.weight(1f))
-        if (value != null) Text(value, fontSize = 14.sp, color = colors.onSurfaceVariant, textAlign = TextAlign.End, modifier = Modifier.weight(1f, fill = false))
+        Text(title, style = MaterialTheme.typography.titleSmall, color = tint, modifier = Modifier.weight(1f))
+        if (value != null) Text(value, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.End, modifier = Modifier.weight(1f, fill = false))
         if (chevron) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
     }
 }
@@ -346,8 +343,7 @@ private fun SettingsSheetFrame(title: String, onDismiss: () -> Unit, content: @C
         ) {
             Text(
                 title,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { heading() }
             )
@@ -359,7 +355,7 @@ private fun SettingsSheetFrame(title: String, onDismiss: () -> Unit, content: @C
 
 @Composable
 private fun SheetBody(text: String) {
-    Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** One choice of several as rows (T2) with a radio button; the chosen one is tonal and marked selected, not by colour alone. */
@@ -382,7 +378,7 @@ private fun <T> ChoiceList(options: List<T>, selected: (T) -> Boolean, label: @C
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 RadioButton(selected = on, onClick = null)
-                Text(label(option), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (on) colors.onPrimaryContainer else colors.onSurface)
+                Text(label(option), style = MaterialTheme.typography.titleSmall, color = if (on) colors.onPrimaryContainer else colors.onSurface)
             }
         }
     }

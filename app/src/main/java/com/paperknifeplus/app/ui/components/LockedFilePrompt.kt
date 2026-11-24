@@ -17,13 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.paperknifeplus.app.R
@@ -156,16 +155,16 @@ fun LockedFilePrompt(
 
                 Text(
                     stringResource(R.string.password_required),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Text(
                     fileName,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 4.dp)
                 )
 
@@ -205,7 +204,7 @@ fun LockedFilePrompt(
                     Text(
                         stringResource(R.string.password_wrong),
                         color = MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp,
+                        style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, top = 4.dp)
                     )
                 }
@@ -222,7 +221,7 @@ fun LockedFilePrompt(
                     if (isLoading) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
                     } else {
-                        Text(stringResource(R.string.action_unlock), fontWeight = FontWeight.Black)
+                        Text(stringResource(R.string.action_unlock))
                     }
                 }
 
@@ -230,7 +229,7 @@ fun LockedFilePrompt(
                     onClick = onDismiss,
                     modifier = Modifier.padding(top = 8.dp).heightIn(min = TargetStep.ACT.drawn)
                 ) {
-                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,7 +42,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -259,7 +259,7 @@ private fun BookLabels(quad: Quad, count: Int, widthDp: Float, heightDp: Float) 
         for (n in listOf(count + 1, count + 2)) {
             Text(
                 stringResource(R.string.scan_page_label, n),
-                style = scanText(13, FontWeight.Bold),
+                style = MaterialTheme.typography.labelMedium,
                 color = k.onCam,
                 modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(k.cam.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 4.dp)
             )

@@ -71,10 +71,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.haziaferi.scanknifeplus.scan.export.ScanExport
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderKind
@@ -142,8 +140,7 @@ fun HistoryView(
         Column(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 4.dp)) {
             Text(
                 stringResource(R.string.history_title),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.semantics { heading() }
             )
@@ -154,7 +151,7 @@ fun HistoryView(
             }
             Text(
                 subtitle,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -179,7 +176,7 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
         value = query,
         onValueChange = onChange,
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
-        placeholder = { Text(stringResource(R.string.history_search), fontSize = 15.sp) },
+        placeholder = { Text(stringResource(R.string.history_search)) },
         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
         trailingIcon = if (query.isEmpty()) null else {
             {
@@ -251,7 +248,11 @@ private fun ConflictActions(item: FolderItem, onOpen: (() -> Unit)?, onOpenOrigi
         modifier = Modifier.padding(start = 64.dp, end = 16.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(stringResource(R.string.history_conflict_note, original), fontSize = 13.sp, lineHeight = 18.sp, color = LocalScanPalette.current.mu)
+        Text(
+            stringResource(R.string.history_conflict_note, original),
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalScanPalette.current.mu
+        )
         if (onOpen != null || onOpenOriginal != null) {
             // Buttons on one line grow to one height (R14 rule 1).
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -271,7 +272,7 @@ private fun RowButton(label: String, onClick: () -> Unit, modifier: Modifier = M
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -293,13 +294,12 @@ private fun UnreadableCard(name: String, onChooseFolder: () -> Unit) {
             Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = palette.warnFg, modifier = Modifier.size(22.dp))
             Text(
                 stringResource(R.string.history_unreadable_title),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.titleMedium,
                 color = palette.warnFg,
                 modifier = Modifier.semantics { heading() }
             )
         }
-        Text(stringResource(R.string.history_unreadable_body, name), fontSize = 14.sp, lineHeight = 20.sp, color = palette.warnFg)
+        Text(stringResource(R.string.history_unreadable_body, name), style = MaterialTheme.typography.bodyMedium, color = palette.warnFg)
         Button(
             onClick = onChooseFolder,
             modifier = Modifier.heightIn(min = TargetStep.COMMIT.drawn),
@@ -307,14 +307,14 @@ private fun UnreadableCard(name: String, onChooseFolder: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = palette.warnFg, contentColor = palette.warnBg),
             contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            Text(stringResource(R.string.history_choose_again), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.history_choose_again), style = MaterialTheme.typography.titleSmall)
         }
     }
 }
 
 @Composable
 private fun EmptyMessage(text: String) {
-    Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp))
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp))
 }
 
 /** Opens the share sheet for [uri]; sharing doubles as "Save to Files", the most reliable way to export on Android. */
@@ -374,8 +374,7 @@ private fun FilterChips(options: List<HistoryFilter>, selected: HistoryFilter, o
             ) {
                 Text(
                     stringResource(option.label),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.labelLarge,
                     color = if (on) colors.onPrimaryContainer else colors.onBackground,
                     maxLines = 1
                 )
@@ -451,13 +450,12 @@ private fun OutputRow(
             Icon(icon, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(20.dp))
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
-            if (meta.isNotBlank()) Text(meta, fontSize = 12.sp, color = LocalScanPalette.current.meta)
+            Text(name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+            if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.meta)
         }
         Text(
             tag,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.labelSmall,
             color = tagColors.second,
             maxLines = 1,
             modifier = Modifier.background(tagColors.first, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 4.dp)

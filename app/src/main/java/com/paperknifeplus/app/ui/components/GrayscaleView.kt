@@ -18,7 +18,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -186,7 +185,7 @@ fun GrayscaleView(
                                 ) {
                                     Column(Modifier.weight(1f)) {
                                         ToolSectionLabel(stringResource(R.string.grayscale_preview))
-                                        Text(stringResource(R.string.grayscale_instant_black_and_white_preview), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(stringResource(R.string.grayscale_instant_black_and_white_preview), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Switch(
                                         checked = isLivePreview,
