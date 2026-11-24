@@ -77,6 +77,12 @@ val DocumentContent = SemanticsPropertyKey<Unit>("DocumentContent")
 /** Marks this text as [DocumentContent]. */
 fun Modifier.documentContent(): Modifier = semantics { this[DocumentContent] = Unit }
 
+/**
+ * A page number drawn on a page's preview as it will print ([DocumentContent]): its size comes from the document, and its line is the
+ * font's own, with no line height around it, so the number sits as near the page's edge as it will print.
+ */
+val PageNumberText = TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+
 /** The text taken out of a PDF, shown as it is ([DocumentContent]), so in monospace. */
 val DocumentText = TextStyle(
     fontFamily = FontFamily.Monospace,

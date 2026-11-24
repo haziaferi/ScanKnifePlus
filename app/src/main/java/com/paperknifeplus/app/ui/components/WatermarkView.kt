@@ -16,8 +16,10 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -470,7 +472,8 @@ fun WatermarkView(
             onDismissRequest = { showWatermarkOptions = false },
             title = { Text(stringResource(R.string.watermark_select_watermark)) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Scrolls, so every choice stays in reach on a short screen at large text.
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     ToolSectionLabel(stringResource(R.string.watermark_templates))
                     // One template a row: a long stamp (CONFIDENTIAL, APPROVATO) in a third of the width would break mid-word or shrink under 12 sp.
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

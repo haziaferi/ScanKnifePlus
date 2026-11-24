@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.PageNumberText
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.documentContent
 import kotlinx.coroutines.CancellationException
@@ -185,8 +186,8 @@ fun PageNumbersView(
                                                 Text(
                                                     text = text,
                                                     color = numberColor,
+                                                    style = PageNumberText,
                                                     fontSize = (fontSize / 2).sp,
-                                                    fontWeight = FontWeight.Black,
                                                     modifier = Modifier.padding(6.dp).documentContent()
                                                 )
                                             }
@@ -311,7 +312,7 @@ fun PageNumbersView(
                             OutlinedTextField(
                                 value = format,
                                 onValueChange = { format = it },
-                                label = { Text(stringResource(R.string.page_numbers_format_n)) },
+                                label = { Text(stringResource(R.string.page_numbers_format_n), style = MaterialTheme.typography.bodySmall) },
                                 modifier = Modifier.weight(1.5f).fillMaxHeight(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
