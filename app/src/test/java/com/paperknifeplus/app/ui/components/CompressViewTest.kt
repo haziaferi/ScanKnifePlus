@@ -67,7 +67,7 @@ class CompressViewTest {
         assertTrue(source.closed.await(30, TimeUnit.SECONDS))
         rule.waitUntil(10_000) { cacheFiles() == before }
         rule.onNodeWithText("Choose PDF").assertExists()
-        rule.onNodeWithText("Compress and save PDF").assertDoesNotExist()
+        rule.onNodeWithText("Compress PDF").assertDoesNotExist()
         assertEquals(before, cacheFiles())
     }
 
@@ -91,7 +91,7 @@ class CompressViewTest {
     fun `the right password handed over by the reader opens the options without asking`() {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-right-compress.pdf")
         rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress PDF")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(hasText("2 pages", substring = true)).assertExists()
         rule.onNodeWithText("Password required").assertDoesNotExist()
     }
@@ -100,7 +100,7 @@ class CompressViewTest {
     fun `a handed password unlocks the file as the prompt does, through a decrypted copy`() {
         val source = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "handed-copied-compress.pdf")
         rule.setContent { CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress PDF")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(1, cacheFiles().count { it.startsWith("decrypted_") })
     }
 
@@ -113,8 +113,8 @@ class CompressViewTest {
                 CompressView(initialUri = source, initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress and save PDF")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Compress and save PDF").performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Compress PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Compress PDF").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Compression complete")).fetchSemanticsNodes().isNotEmpty() }
 
         PDDocument.load(output).use { doc ->

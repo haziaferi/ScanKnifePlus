@@ -47,7 +47,9 @@ import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.DocumentFilters
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.components.DialogButton
+import com.paperknifeplus.app.ui.components.DialogButtonKind
 import com.paperknifeplus.app.ui.components.DialogButtons
+import com.paperknifeplus.app.ui.components.DialogTitle
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.inlineTarget
@@ -95,7 +97,7 @@ internal fun FilterDialog(current: String?, onPick: (String) -> Unit, onDismiss:
     val selected = current ?: DocumentFilters.default.name
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.scan_filter)) },
+        title = { DialogTitle(stringResource(R.string.scan_filter)) },
         text = {
             Column(Modifier.selectableGroup().verticalScroll(rememberScrollState())) {
                 for (filter in DocumentFilters.all) {
@@ -132,7 +134,7 @@ internal fun SaveDialog(
     val usable = remember(password) { ScanExport.isUsablePassword(password) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.scan_save_title)) },
+        title = { DialogTitle(stringResource(R.string.scan_save_title)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.scan_page_size), style = MaterialTheme.typography.labelLarge)
@@ -163,7 +165,8 @@ internal fun SaveDialog(
         confirmButton = {
             DialogButtons {
                 DialogButton(R.string.scan_cancel, onClick = onDismiss)
-                DialogButton(if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder, enabled = usable) {
+                val save = if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder
+                DialogButton(save, enabled = usable, kind = DialogButtonKind.COMMIT) {
                     onSave(SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null))
                 }
             }
@@ -171,26 +174,29 @@ internal fun SaveDialog(
     )
 }
 
-/** Leaving without Done (decision 6): keep the [count] scanned pages in the app, discard them, or stay. */
+/**
+ * Leaving without Done (decision 6, words of rule 5): Save scan keeps the [count] scanned pages in the app ([onKeep]), Discard drops them,
+ * Keep scanning stays ([onStay]).
+ */
 @Composable
 internal fun LeaveDialog(count: Int, onKeep: () -> Unit, onDiscard: () -> Unit, onStay: () -> Unit) {
     AlertDialog(
         onDismissRequest = onStay,
-        title = { Text(stringResource(R.string.scan_leave_title)) },
+        title = { DialogTitle(stringResource(R.string.scan_leave_title)) },
         text = { Text(pluralStringResource(R.plurals.scan_leave_body, count, count)) },
         confirmButton = {
             DialogButtons {
-                DialogButton(R.string.scan_cancel, onClick = onStay)
+                DialogButton(R.string.scan_leave_stay, onClick = onStay)
                 DialogButton(stringResource(R.string.scan_discard), color = LocalScanPalette.current.danger, onClick = onDiscard)
-                DialogButton(R.string.scan_keep, onClick = onKeep)
+                DialogButton(R.string.scan_leave_save, kind = DialogButtonKind.COMMIT, onClick = onKeep)
             }
         }
     )
 }
 
 @Composable
-private fun DialogButton(@StringRes label: Int, enabled: Boolean = true, onClick: () -> Unit) =
-    DialogButton(stringResource(label), enabled = enabled, onClick = onClick)
+private fun DialogButton(@StringRes label: Int, enabled: Boolean = true, kind: DialogButtonKind = DialogButtonKind.TEXT, onClick: () -> Unit) =
+    DialogButton(stringResource(label), enabled = enabled, kind = kind, onClick = onClick)
 
 @Composable
 private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {

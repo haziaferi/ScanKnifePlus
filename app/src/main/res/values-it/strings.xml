@@ -101,14 +101,15 @@
     <string name="scan_save_where">Subito dopo scegli la cartella e il nome del file.</string>
     <string name="scan_save_choose">Scegli dove salvare</string>
     <string name="scan_save_failed">Non è stato possibile salvare il PDF. Riprova.</string>
-    <string name="scan_leave_title">Tenere le pagine scansionate?</string>
+    <string name="scan_leave_title">Salvare la scansione?</string>
     <plurals name="scan_leave_body">
-        <item quantity="one">%d pagina non è ancora salvata come PDF. Tienila nell\'app per dopo, oppure eliminala.</item>
-        <item quantity="many">%d pagine non sono ancora salvate come PDF. Tienile nell\'app per dopo, oppure eliminale.</item>
-        <item quantity="other">%d pagine non sono ancora salvate come PDF. Tienile nell\'app per dopo, oppure eliminale.</item>
+        <item quantity="one">%d pagina non è ancora un PDF. Salva la scansione per finirla dopo, oppure eliminala.</item>
+        <item quantity="many">%d pagine non sono ancora un PDF. Salva la scansione per finirla dopo, oppure eliminala.</item>
+        <item quantity="other">%d pagine non sono ancora un PDF. Salva la scansione per finirla dopo, oppure eliminala.</item>
     </plurals>
-    <string name="scan_keep">Tieni</string>
+    <string name="scan_leave_stay">Continua a scansionare</string>
     <string name="scan_discard">Elimina</string>
+    <string name="scan_leave_save">Salva la scansione</string>
 
     <!-- Document scanner: text recognition when saving -->
     <string name="scan_ocr_searchable">Rendi ricercabile</string>
@@ -467,6 +468,7 @@
     </plurals>
     <string name="tool_image_n">Immagine %1$s</string>
     <string name="tool_page_n">Pagina %1$s</string>
+    <string name="tool_saves_new_pdf">Salva un nuovo PDF. L\'originale resta com\'è.</string>
     <string name="tool_unknown_size">Dimensione sconosciuta</string>
     <string name="tool_document_cover">Copertina del documento</string>
     <string name="tool_pick_images">Scegli le immagini</string>
@@ -497,7 +499,7 @@
     <string name="compare_synchronized_view">Vista sincronizzata</string>
     <string name="compare_visual_difference_tool">Strumento per le differenze visive</string>
     <string name="compress_analyzing_file_structure">Analisi della struttura del file…</string>
-    <string name="compress_compress_and_save_pdf">Comprimi e salva il PDF</string>
+    <string name="compress_compress_pdf">Comprimi il PDF</string>
     <string name="compress_compression_complete">Compressione completata</string>
     <string name="compress_maintains_high_visual_fidelity">Mantiene un\'alta fedeltà visiva</string>
     <string name="compress_optimization_level">Livello di ottimizzazione</string>
@@ -514,7 +516,7 @@
     <string name="crop_edge_top">Bordo superiore</string>
     <string name="crop_edge_right">Bordo destro</string>
     <string name="crop_edge_bottom">Bordo inferiore</string>
-    <string name="crop_and_save">Ritaglia e salva il PDF</string>
+    <string name="crop_crop_pdf">Ritaglia il PDF</string>
     <string name="crop_move_corner">Sposta un angolo per ritagliare</string>
     <string name="crop_type_pages">Scrivi le pagine da ritagliare</string>
     <string name="crop_cropping">Ritaglio delle pagine…</string>
@@ -577,7 +579,7 @@
     <string name="grayscale_colors_removed_1_page_could">Colori rimossi; 1 pagina è stata convertita solo come immagine</string>
     <string name="grayscale_colors_removed_from_all_elements">Colori rimossi da tutti gli elementi</string>
     <string name="grayscale_colors_removed_pages_could_only">Colori rimossi; %1$d pagine sono state convertite solo come immagini</string>
-    <string name="grayscale_convert_and_save_pdf">Converti e salva il PDF</string>
+    <string name="grayscale_convert_to_grayscale">Converti in scala di grigi</string>
     <string name="grayscale_convert_pdf_to_b_w">Converti il PDF in bianco e nero</string>
     <string name="grayscale_converted_to_b_w">Convertito in bianco e nero</string>
     <string name="grayscale_grayscale_any_pdf_document">Converti in scala di grigi qualsiasi PDF</string>
@@ -625,7 +627,7 @@
     <string name="links_all">Tutti i link</string>
     <string name="links_external">Link esterni</string>
     <string name="links_external_note">I link alle pagine di questo file restano, come quelli di un indice.</string>
-    <string name="links_remove_and_save">Rimuovi i link e salva il PDF</string>
+    <string name="links_remove_links">Rimuovi i link</string>
     <string name="links_nothing_to_remove">Niente da rimuovere</string>
     <string name="links_type_pages">Scrivi le pagine da cui rimuovere i link</string>
     <string name="links_removing">Rimozione dei link…</string>
@@ -719,7 +721,7 @@
     <string name="protect_new_password">Nuova password</string>
     <string name="protect_protect_any_pdf_document">Proteggi qualsiasi documento PDF</string>
     <string name="protect_protect_complete">Protezione completata</string>
-    <string name="protect_save">Proteggi e salva il PDF</string>
+    <string name="protect_protect_pdf">Proteggi il PDF</string>
     <string name="protect_set_protection">Imposta la protezione</string>
     <string name="reader_cannot_open_link">Impossibile aprire il link</string>
     <string name="reader_failed_to_load_document">Impossibile caricare il documento</string>
@@ -743,7 +745,7 @@
     <string name="repair_ready_to_repair">Pronto per la riparazione</string>
     <string name="repair_rebuilding_xref_tables">Ricostruzione delle tabelle XRef…</string>
     <string name="repair_recover_corrupt_documents">Recupera documenti danneggiati</string>
-    <string name="repair_repair_and_save_pdf">Ripara e salva il PDF</string>
+    <string name="repair_repair_pdf">Ripara il PDF</string>
     <string name="repair_repair_broken_pdf_structure">Ripara la struttura danneggiata di un PDF</string>
     <string name="repair_repair_complete">Riparazione completata</string>
     <string name="repair_restored">Ripristinato</string>
@@ -774,7 +776,11 @@
     <string name="sign_upload">Carica</string>
     <string name="sign_use_this_signature">Usa questa firma</string>
     <string name="split_example_1_5_8_11">Esempio: 1-5, 8, 11-13</string>
-    <string name="split_extract_pages">Estrai %1$s pagine</string>
+    <plurals name="split_extract_pages">
+        <item quantity="one">Estrai %d pagina</item>
+        <item quantity="many">Estrai %d pagine</item>
+        <item quantity="other">Estrai %d pagine</item>
+    </plurals>
     <string name="split_extract_pages_from_pdf">Estrai pagine dal PDF</string>
     <string name="split_extracting_specified_pages">Estrazione delle pagine indicate…</string>
     <string name="split_pages_extracted">%1$s pagine estratte</string>

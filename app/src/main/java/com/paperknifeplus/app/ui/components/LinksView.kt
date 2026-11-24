@@ -220,7 +220,8 @@ fun LinksView(
                             val error = if (useRange && rangeEdited) rangeError(range) else null
                             val blocker = linksBlocker(useRange, range, rangeEdited, counts.removal(options))
                             ToolConfigLayout(
-                                action = stringResource(blocker ?: R.string.links_remove_and_save),
+                                action = stringResource(blocker ?: R.string.links_remove_links),
+                                savesNewPdf = true,
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-no-links", "pdf")) },
                                 actionEnabled = blocker == null
                             ) {

@@ -221,7 +221,7 @@ class LargeTextLayoutTest {
         // Three links, all to pages of the file, and no script: External links removes nothing.
         val input = TestPdfs.write(context.cacheDir, TestPdfs.linked(3), "large-inside.pdf")
         atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("External links").performClick()
         rule.waitForIdle()
         assertNotClipped("Nothing to remove")
@@ -235,7 +235,7 @@ class LargeTextLayoutTest {
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links.pdf")
         atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links and save PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Remove links")).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Page range").performClick()
         // The disabled button for an untouched range, then for a range with an error, which shows under the field.
         assertNotClipped("Type the pages to remove links from")
@@ -258,7 +258,7 @@ class LargeTextLayoutTest {
             "Found on these pages", "external link", "script that runs on its own",
             "Scripts and actions that run on their own go from the whole file.",
             "Nothing changes until you save. Form fields, comments and bookmarks stay.", "For example 1-3, 5, 8-", "Links to remove",
-            "Links to pages of this file stay, such as a table of contents.", "Remove links and save PDF"
+            "Links to pages of this file stay, such as a table of contents.", "Remove links", "Saves a new PDF. The original stays as it is."
         )
         for (text in shown) assertNotClipped(text)
         // These labels fit their rows: each is one line, the whole of it shown.

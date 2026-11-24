@@ -579,7 +579,7 @@ class CropViewTest {
     }
 
     private companion object {
-        const val CROP = "Crop and save PDF"
+        const val CROP = "Crop PDF"
         const val MOVE = "Move a corner to crop"
 
         /** Shown once a file is open, whatever the button says. */

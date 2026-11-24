@@ -128,7 +128,8 @@ fun RepairView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
-                            action = stringResource(R.string.repair_repair_and_save_pdf),
+                            action = stringResource(R.string.repair_repair_pdf),
+                            savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-repaired", "pdf")) }
                         ) {
                             ToolFileCard(

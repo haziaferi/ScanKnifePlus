@@ -300,7 +300,8 @@ fun CropView(
                             val error = if (useRange && rangeEdited) rangeError(range) else null
                             val blocker = cropBlocker(frame, useRange, range, rangeEdited)
                             ToolConfigLayout(
-                                action = stringResource(blocker ?: R.string.crop_and_save),
+                                action = stringResource(blocker ?: R.string.crop_crop_pdf),
+                                savesNewPdf = true,
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-cropped", "pdf")) },
                                 actionEnabled = blocker == null
                             ) {

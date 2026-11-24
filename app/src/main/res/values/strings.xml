@@ -100,13 +100,14 @@
     <string name="scan_save_where">You choose the folder and the file name next.</string>
     <string name="scan_save_choose">Choose where to save</string>
     <string name="scan_save_failed">The PDF couldn\'t be saved. Try again.</string>
-    <string name="scan_leave_title">Keep the scanned pages?</string>
+    <string name="scan_leave_title">Save the scan?</string>
     <plurals name="scan_leave_body">
-        <item quantity="one">%d page isn\'t saved as a PDF yet. Keep it in the app for later, or discard it.</item>
-        <item quantity="other">%d pages aren\'t saved as a PDF yet. Keep them in the app for later, or discard them.</item>
+        <item quantity="one">%d page isn\'t a PDF yet. Save the scan to finish it later, or discard it.</item>
+        <item quantity="other">%d pages aren\'t a PDF yet. Save the scan to finish it later, or discard it.</item>
     </plurals>
-    <string name="scan_keep">Keep</string>
+    <string name="scan_leave_stay">Keep scanning</string>
     <string name="scan_discard">Discard</string>
+    <string name="scan_leave_save">Save scan</string>
 
     <!-- Document scanner: text recognition when saving -->
     <string name="scan_ocr_searchable">Make searchable</string>
@@ -455,6 +456,7 @@
     </plurals>
     <string name="tool_image_n">Image %1$s</string>
     <string name="tool_page_n">Page %1$s</string>
+    <string name="tool_saves_new_pdf">Saves a new PDF. The original stays as it is.</string>
     <string name="tool_unknown_size">Unknown size</string>
     <string name="tool_document_cover">Document cover</string>
     <string name="tool_pick_images">Choose images</string>
@@ -485,7 +487,7 @@
     <string name="compare_synchronized_view">Synchronized view</string>
     <string name="compare_visual_difference_tool">Visual difference tool</string>
     <string name="compress_analyzing_file_structure">Analyzing file structure…</string>
-    <string name="compress_compress_and_save_pdf">Compress and save PDF</string>
+    <string name="compress_compress_pdf">Compress PDF</string>
     <string name="compress_compression_complete">Compression complete</string>
     <string name="compress_maintains_high_visual_fidelity">Maintains high visual fidelity</string>
     <string name="compress_optimization_level">Optimization level</string>
@@ -502,7 +504,7 @@
     <string name="crop_edge_top">Top edge</string>
     <string name="crop_edge_right">Right edge</string>
     <string name="crop_edge_bottom">Bottom edge</string>
-    <string name="crop_and_save">Crop and save PDF</string>
+    <string name="crop_crop_pdf">Crop PDF</string>
     <string name="crop_move_corner">Move a corner to crop</string>
     <string name="crop_type_pages">Type the pages to crop</string>
     <string name="crop_cropping">Cropping pages…</string>
@@ -558,7 +560,7 @@
     <string name="grayscale_colors_removed_1_page_could">Colors removed; 1 page could only be converted as an image</string>
     <string name="grayscale_colors_removed_from_all_elements">Colors removed from all elements</string>
     <string name="grayscale_colors_removed_pages_could_only">Colors removed; %1$d pages could only be converted as images</string>
-    <string name="grayscale_convert_and_save_pdf">Convert and save PDF</string>
+    <string name="grayscale_convert_to_grayscale">Convert to grayscale</string>
     <string name="grayscale_convert_pdf_to_b_w">Convert PDF to B&amp;W</string>
     <string name="grayscale_converted_to_b_w">Converted to B&amp;W</string>
     <string name="grayscale_grayscale_any_pdf_document">Grayscale any PDF document</string>
@@ -603,7 +605,7 @@
     <string name="links_all">All links</string>
     <string name="links_external">External links</string>
     <string name="links_external_note">Links to pages of this file stay, such as a table of contents.</string>
-    <string name="links_remove_and_save">Remove links and save PDF</string>
+    <string name="links_remove_links">Remove links</string>
     <string name="links_nothing_to_remove">Nothing to remove</string>
     <string name="links_type_pages">Type the pages to remove links from</string>
     <string name="links_removing">Removing links…</string>
@@ -697,7 +699,7 @@
     <string name="protect_new_password">New password</string>
     <string name="protect_protect_any_pdf_document">Protect any PDF document</string>
     <string name="protect_protect_complete">Protect complete</string>
-    <string name="protect_save">Protect and save PDF</string>
+    <string name="protect_protect_pdf">Protect PDF</string>
     <string name="protect_set_protection">Set protection</string>
     <string name="reader_cannot_open_link">Cannot open link</string>
     <string name="reader_failed_to_load_document">Failed to load document</string>
@@ -721,7 +723,7 @@
     <string name="repair_ready_to_repair">Ready to repair</string>
     <string name="repair_rebuilding_xref_tables">Rebuilding XRef tables…</string>
     <string name="repair_recover_corrupt_documents">Recover corrupt documents</string>
-    <string name="repair_repair_and_save_pdf">Repair and save PDF</string>
+    <string name="repair_repair_pdf">Repair PDF</string>
     <string name="repair_repair_broken_pdf_structure">Repair broken PDF structure</string>
     <string name="repair_repair_complete">Repair complete</string>
     <string name="repair_restored">Restored</string>
@@ -752,7 +754,10 @@
     <string name="sign_upload">Upload</string>
     <string name="sign_use_this_signature">Use this signature</string>
     <string name="split_example_1_5_8_11">Example: 1-5, 8, 11-13</string>
-    <string name="split_extract_pages">Extract %1$s pages</string>
+    <plurals name="split_extract_pages">
+        <item quantity="one">Extract %d page</item>
+        <item quantity="other">Extract %d pages</item>
+    </plurals>
     <string name="split_extract_pages_from_pdf">Extract pages from PDF</string>
     <string name="split_extracting_specified_pages">Extracting specified pages…</string>
     <string name="split_pages_extracted">%1$s pages extracted</string>

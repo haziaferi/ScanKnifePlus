@@ -147,7 +147,8 @@ fun GrayscaleView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
-                            action = stringResource(R.string.grayscale_convert_and_save_pdf),
+                            action = stringResource(R.string.grayscale_convert_to_grayscale),
+                            savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")) },
                             scroll = false
                         ) {

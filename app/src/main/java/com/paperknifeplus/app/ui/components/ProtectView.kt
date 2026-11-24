@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -18,6 +19,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
 import kotlinx.coroutines.CancellationException
@@ -131,7 +135,8 @@ fun ProtectView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
-                            action = stringResource(R.string.protect_save),
+                            action = stringResource(R.string.protect_protect_pdf),
+                            savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-protected", "pdf")) },
                             actionEnabled = protectPassword.isNotBlank()
                         ) {
@@ -147,10 +152,23 @@ fun ProtectView(
                                 ToolSectionLabel(stringResource(R.string.protect_set_protection))
                                 Spacer(Modifier.height(8.dp))
 
+                                // Masked, with a show toggle (T3), as the unlock prompt's; no confirm field (decision 5 of 2026-11-24).
+                                var visible by remember { mutableStateOf(false) }
                                 OutlinedTextField(
                                     value = protectPassword,
                                     onValueChange = { protectPassword = it },
                                     label = { Text(stringResource(R.string.protect_new_password), style = MaterialTheme.typography.bodySmall) },
+                                    singleLine = true,
+                                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+                                    trailingIcon = {
+                                        IconButton(onClick = { visible = !visible }) {
+                                            Icon(
+                                                if (visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                                contentDescription = stringResource(if (visible) R.string.password_hide_password else R.string.password_show_password)
+                                            )
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(16.dp),
                                     colors = TextFieldDefaults.colors(

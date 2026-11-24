@@ -125,8 +125,8 @@ class ToolOutputsTest {
                 RepairView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
-        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair and save PDF")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Repair and save PDF").performClick()
+        rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Repair PDF").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair complete")).fetchSemanticsNodes().isNotEmpty() }
         rule.waitForIdle()
 
