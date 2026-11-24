@@ -33,12 +33,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.createBitmap
@@ -47,6 +49,7 @@ import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -401,35 +404,32 @@ fun WatermarkView(
                                 Text(stringResource(R.string.watermark_opacity), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(end = 8.dp))
                                 Slider(value = activeOpacity, onValueChange = { activeOpacity = it }, modifier = Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor))
                             }
-                            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
-                                // 0.9 to the Applys' 2.5: Italian's Annulla and Applica both stay whole on a 384 dp phone (0.8 broke Annulla).
+                            FocusBarButtons {
                                 TextButton(
                                     onClick = { isFocusMode = false; activeWatermarkBitmap = null },
-                                    modifier = Modifier.weight(0.9f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn)
+                                    modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
                                 ) {
                                     Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
                                 }
-                                Row(Modifier.weight(2.5f).fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = -1, shownOn = currentPage) }
-                                            isFocusMode = false
-                                            activeWatermarkBitmap = null
-                                        },
-                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
-                                        shape = RoundedCornerShape(16.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-                                    ) { Text(stringResource(R.string.action_apply_to_all), style = MaterialTheme.typography.labelLarge) }
-                                    Button(
-                                        onClick = {
-                                            activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = currentPage, shownOn = currentPage) }
-                                            isFocusMode = false
-                                            activeWatermarkBitmap = null
-                                        },
-                                        modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) { Text(stringResource(R.string.action_apply), style = MaterialTheme.typography.labelLarge) }
-                                }
+                                Button(
+                                    onClick = {
+                                        activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = -1, shownOn = currentPage) }
+                                        isFocusMode = false
+                                        activeWatermarkBitmap = null
+                                    },
+                                    modifier = Modifier.heightIn(min = TargetStep.ACT.drawn),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+                                ) { Text(stringResource(R.string.action_apply_to_all), style = MaterialTheme.typography.labelLarge) }
+                                Button(
+                                    onClick = {
+                                        activeWatermarkBitmap?.let { placedWatermarks = placedWatermarks + placeActive(it, pageIndex = currentPage, shownOn = currentPage) }
+                                        isFocusMode = false
+                                        activeWatermarkBitmap = null
+                                    },
+                                    modifier = Modifier.heightIn(min = TargetStep.ACT.drawn),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) { Text(stringResource(R.string.action_apply), style = MaterialTheme.typography.labelLarge) }
                             }
                         } else {
                             val hasAppliedOnThisPage = placedWatermarks.any { it.pageIndex == currentPage || it.pageIndex == -1 }
@@ -472,7 +472,7 @@ fun WatermarkView(
     if (showWatermarkOptions) {
         AlertDialog(
             onDismissRequest = { showWatermarkOptions = false },
-            title = { Text(stringResource(R.string.watermark_select_watermark)) },
+            title = { DialogTitle(stringResource(R.string.watermark_select_watermark)) },
             text = {
                 // Scrolls, so every choice stays in reach on a short screen at large text.
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -517,7 +517,7 @@ fun WatermarkView(
         var selectedColor by remember { mutableStateOf(DocumentInk.Black) }
         AlertDialog(
             onDismissRequest = { showTextInput = false },
-            title = { Text(stringResource(R.string.watermark_text_watermark)) },
+            title = { DialogTitle(stringResource(R.string.watermark_text_watermark)) },
             text = {
                 Column {
                     LazyRow(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
@@ -533,16 +533,53 @@ fun WatermarkView(
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    if (text.isNotBlank()) {
-                        startPlacing(createTextBitmap(text, selectedColor), opacity = 1f)
-                        showTextInput = false
+                DialogButtons {
+                    DialogButton(stringResource(R.string.action_continue), kind = DialogButtonKind.COMMIT) {
+                        if (text.isNotBlank()) {
+                            startPlacing(createTextBitmap(text, selectedColor), opacity = 1f)
+                            showTextInput = false
+                        }
                     }
-                }, colors = ButtonDefaults.buttonColors(containerColor = accentColor), modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
-                    Text(stringResource(R.string.action_continue))
                 }
             }
         )
+    }
+}
+
+/**
+ * The focus bar's Cancel, Apply to all and Apply, given in that order. They share one row and one height, Cancel taking 0.9 of the width to
+ * the Applys' 2.5 (so Italian's Annulla and Applica stay whole on a 384 dp phone), while every label's longest word fits its button. Else
+ * they stack full width with the commit, Apply, on top, so no label breaks mid-word (Annulla on 320 dp).
+ */
+@Composable
+private fun FocusBarButtons(content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
+        val gap = 8.dp.roundToPx()
+        val width = constraints.maxWidth
+        val cancel = (width * 0.9f / 3.4f).roundToInt()
+        val apply = (width - cancel - gap) / 2
+        val widths = listOf(cancel, apply, width - cancel - gap - apply)
+        // A label's min intrinsic width is its longest word's, with its button's padding.
+        val fits = measurables.size == widths.size &&
+            measurables.indices.all { measurables[it].minIntrinsicWidth(Constraints.Infinity) <= widths[it] }
+        if (fits) {
+            val height = measurables.indices.maxOf { measurables[it].minIntrinsicHeight(widths[it]) }
+            val placeables = measurables.mapIndexed { i, it -> it.measure(Constraints.fixed(widths[i], height)) }
+            layout(width, height) {
+                placeables[0].place(0, 0)
+                placeables[1].place(cancel, 0)
+                placeables[2].place(cancel + apply + gap, 0)
+            }
+        } else {
+            val placeables = measurables.map { it.measure(Constraints(minWidth = width, maxWidth = width)) }.asReversed()
+            layout(width, placeables.sumOf { it.height } + gap * (placeables.size - 1)) {
+                var y = 0
+                for (placeable in placeables) {
+                    placeable.place(0, y)
+                    y += placeable.height + gap
+                }
+            }
+        }
     }
 }
 

@@ -47,7 +47,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -201,25 +200,18 @@ internal fun WebLinkPrompt(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.link_confirm_title)) },
+        title = { DialogTitle(stringResource(R.string.link_confirm_title)) },
         text = { Text(url) },
         confirmButton = {
             DialogButtons {
-                TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
-                    Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface)
-                }
-                TextButton(
-                    onClick = {
-                        onDismiss()
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
-                        } catch (e: ActivityNotFoundException) {
-                            Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
-                ) {
-                    Text(stringResource(R.string.history_open), color = MaterialTheme.colorScheme.onSurface)
+                DialogButton(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, onClick = onDismiss)
+                DialogButton(stringResource(R.string.history_open), kind = DialogButtonKind.COMMIT) {
+                    onDismiss()
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
+                    } catch (e: ActivityNotFoundException) {
+                        Toast.makeText(context, toolText(context, R.string.reader_cannot_open_link), Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }

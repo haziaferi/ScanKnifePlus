@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
@@ -308,7 +307,7 @@ fun RearrangeView(
             if (showMoveToDialog) {
                 AlertDialog(
                     onDismissRequest = { showMoveToDialog = false },
-                    title = { Text(stringResource(R.string.rearrange_move_page_to_position)) },
+                    title = { DialogTitle(stringResource(R.string.rearrange_move_page_to_position)) },
                     text = {
                         Column {
                             Text(stringResource(R.string.rearrange_current_position, selectedPageIndex!! + 1), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -328,7 +327,7 @@ fun RearrangeView(
                                 showMoveToDialog = false
                                 moveToInput = ""
                             }
-                            DialogButton(stringResource(R.string.action_move), color = accentColor, weight = FontWeight.Black) {
+                            DialogButton(stringResource(R.string.action_move), kind = DialogButtonKind.COMMIT) {
                                 val target = moveToInput.toIntOrNull()?.let { it - 1 }
                                 if (target != null && target in 0 until pageOrder.size && selectedPageIndex != null) {
                                     val newList = pageOrder.toMutableList()

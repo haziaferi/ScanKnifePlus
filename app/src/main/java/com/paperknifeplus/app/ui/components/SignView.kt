@@ -495,7 +495,7 @@ fun SignView(
     if (showSignOptions) {
         AlertDialog(
             onDismissRequest = { showSignOptions = false },
-            title = { Text(stringResource(R.string.sign_add_signature)) },
+            title = { DialogTitle(stringResource(R.string.sign_add_signature)) },
             text = {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -677,7 +677,7 @@ fun SignaturePadDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.sign_draw_signature)) },
+        title = { DialogTitle(stringResource(R.string.sign_draw_signature)) },
         text = {
             Column {
                 Row(Modifier.fillMaxWidth().padding(bottom = 12.dp).selectableGroup()) {
@@ -729,13 +729,11 @@ fun SignaturePadDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = { if (strokes.isNotEmpty()) onSave(renderSignatureBitmap(strokes.map { it.toPath() to it.color }), shouldSaveSignature) },
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor),
-                shape = RoundedCornerShape(12.dp),
-                enabled = strokes.isNotEmpty(),
-                modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
-            ) { Text(stringResource(R.string.sign_adopt)) }
+            DialogButtons {
+                DialogButton(stringResource(R.string.sign_adopt), enabled = strokes.isNotEmpty(), kind = DialogButtonKind.COMMIT) {
+                    if (strokes.isNotEmpty()) onSave(renderSignatureBitmap(strokes.map { it.toPath() to it.color }), shouldSaveSignature)
+                }
+            }
         }
     )
 }
