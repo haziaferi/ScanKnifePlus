@@ -232,7 +232,12 @@ class PageGridBehaviourTest {
     @Test
     fun `Page numbers' tiles do nothing on tap and read the page on touch and hold`() {
         showTool("page-numbers", "hold-numbers.pdf")
-        assertHoldReadsPage(2)
+        // The tile's number preview stays on the tile: the full-screen view adds no second, tile-sized "Page 2".
+        tile(2).performTouchInput { longClick() }
+        waitFor("Page 2 of Document.pdf")
+        rule.onAllNodes(hasText("Page 2"), useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithContentDescription("Close").performClick()
+        rule.onAllNodes(hasText("Page 2 of Document.pdf")).assertCountEquals(0)
         tile(1).performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasText("Page 1 of Document.pdf")).assertCountEquals(0)

@@ -195,7 +195,9 @@ fun PageNumbersView(
                                         accentColor = accentColor,
                                         showIndexNumbers = false,
                                         disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
-                                        itemOverlay = numberOverlay
+                                        itemOverlay = numberOverlay,
+                                        // The number's size and corner are the tile's; full screen they would be too small and off the page.
+                                        lightboxOverlay = null
                                     ) {
                                         ToolFileCard(
                                             uri = selectedUri!!,

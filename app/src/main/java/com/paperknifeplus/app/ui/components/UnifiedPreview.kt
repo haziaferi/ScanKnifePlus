@@ -67,6 +67,8 @@ fun UnifiedPdfPreview(
     pageRotations: Map<Int, Int>? = null,
     onRotatePage: ((Int) -> Unit)? = null,
     itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null,
+    // The full-screen view's overlay; null for one sized and placed for the tile only.
+    lightboxOverlay: @Composable (BoxScope.(Int) -> Unit)? = itemOverlay,
     fileName: String? = null,
     header: @Composable ColumnScope.() -> Unit = {}
 ) {
@@ -196,7 +198,7 @@ fun UnifiedPdfPreview(
             selectedPages = selectedPages.takeIf { mode == PreviewMode.GRID },
             onToggleSelection = onToggleSelection.takeIf { mode == PreviewMode.GRID },
             isGrayscale = isGrayscale,
-            itemOverlay = itemOverlay,
+            itemOverlay = lightboxOverlay,
             fileName = fileName
         )
     }
