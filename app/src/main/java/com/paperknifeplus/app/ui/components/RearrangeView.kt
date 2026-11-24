@@ -184,34 +184,36 @@ fun RearrangeView(
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
                             scroll = false
                         ) {
-                            ToolFileCard(
-                                uri = selectedUri!!,
-                                password = null,
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                keepsPassword = unlockPassword.isNotEmpty()
-                            )
-                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                                ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
-                                Spacer(Modifier.height(12.dp))
-
-                                Box(modifier = Modifier.weight(1f)) {
-                                    UnifiedPdfPreview(
+                            // The file card scrolls with the pages, so no text size squeezes the grid or the move bar under it (rule 10).
+                            Box(modifier = Modifier.weight(1f)) {
+                                UnifiedPdfPreview(
+                                    uri = selectedUri!!,
+                                    pageCount = pageOrder.size,
+                                    mode = PreviewMode.REORDER,
+                                    password = null,
+                                    accentColor = accentColor,
+                                    pageOrder = pageOrder,
+                                    selectedPages = selectedPageIndex?.let { setOf(it) } ?: emptySet(),
+                                    onToggleSelection = { index ->
+                                        selectedPageIndex = if (selectedPageIndex == index) null else index
+                                    }
+                                ) {
+                                    ToolFileCard(
                                         uri = selectedUri!!,
-                                        pageCount = pageOrder.size,
-                                        mode = PreviewMode.REORDER,
                                         password = null,
-                                        accentColor = accentColor,
-                                        pageOrder = pageOrder,
-                                        selectedPages = selectedPageIndex?.let { setOf(it) } ?: emptySet(),
-                                        onToggleSelection = { index ->
-                                            selectedPageIndex = if (selectedPageIndex == index) null else index
-                                        }
+                                        name = fileName,
+                                        details = pluralStringResource(R.plurals.tool_file_details, pageOrder.size, fileSize, pageOrder.size),
+                                        onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING; selectedPageIndex = null },
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                        keepsPassword = unlockPassword.isNotEmpty()
                                     )
+                                    Column(Modifier.padding(horizontal = 20.dp)) {
+                                        ToolStatusText(stringResource(R.string.rearrange_pages_tap_to_select, pageOrder.size))
+                                        Spacer(Modifier.height(12.dp))
+                                    }
                                 }
-
+                            }
+                            Column(Modifier.padding(horizontal = 20.dp)) {
                                 Surface(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),

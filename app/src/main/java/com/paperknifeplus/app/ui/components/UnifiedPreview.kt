@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
@@ -40,6 +41,10 @@ enum class PreviewMode {
     ROTATE  // Tap to rotate (Rotate)
 }
 
+/**
+ * The pages of [uri] for a tool screen: as a grid of tiles in [mode] GRID, ROTATE and REORDER, under the screen's [header] (its file card
+ * and choices), which scrolls with the tiles; or as the first page large ([PreviewMode.COVER]).
+ */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun UnifiedPdfPreview(
@@ -59,7 +64,8 @@ fun UnifiedPdfPreview(
     onOrderChange: ((List<Int>) -> Unit)? = null,
     pageRotations: Map<Int, Int>? = null,
     onRotatePage: ((Int) -> Unit)? = null,
-    itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null
+    itemOverlay: @Composable (BoxScope.(Int) -> Unit)? = null,
+    header: @Composable ColumnScope.() -> Unit = {}
 ) {
     var lightboxPage by remember { mutableStateOf<Int?>(null) }
     val imageLoader = PdfImageLoader.get(LocalContext.current)
@@ -101,92 +107,76 @@ fun UnifiedPdfPreview(
             }
         }
     } else if (mode == PreviewMode.REORDER) {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 120.dp)
-        ) {
-            items(pageCount, key = { pageOrder?.get(it) ?: it }) { index ->
-                val isSelected = selectedPages?.contains(index) == true
-                val pageIdx = pageOrder?.get(index) ?: index
-                
-                PdfPageItem(
-                    uri = uri,
-                    index = pageIdx,
-                    password = password,
-                    isGrayscale = isGrayscale,
-                    showIndexNumbers = showIndexNumbers,
-                    imageLoader = imageLoader,
-                    accentColor = accentColor,
-                    onClick = { onToggleSelection?.invoke(index) },
-                    scale = 0.6f,
-                    modifier = if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier
-                ) {
-                    if (isSelected) {
-                        Box(modifier = Modifier.fillMaxSize().background(accentColor.copy(alpha = 0.15f)))
-                        if (showSelectionIcon) {
-                            Surface(
-                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
-                                color = accentColor,
-                                shape = CircleShape
-                            ) {
-                                Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
-                            }
+        PageTileGrid(pageCount, key = { pageOrder?.get(it) ?: it }, top = 12.dp, header = header) { index, place ->
+            val isSelected = selectedPages?.contains(index) == true
+            val pageIdx = pageOrder?.get(index) ?: index
+
+            PdfPageItem(
+                uri = uri,
+                index = pageIdx,
+                password = password,
+                isGrayscale = isGrayscale,
+                showIndexNumbers = showIndexNumbers,
+                imageLoader = imageLoader,
+                accentColor = accentColor,
+                onClick = { onToggleSelection?.invoke(index) },
+                scale = 0.6f,
+                modifier = place.then(if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier)
+            ) {
+                if (isSelected) {
+                    Box(modifier = Modifier.fillMaxSize().background(accentColor.copy(alpha = 0.15f)))
+                    if (showSelectionIcon) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(24.dp),
+                            color = accentColor,
+                            shape = CircleShape
+                        ) {
+                            Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.padding(4.dp))
                         }
                     }
-                    itemOverlay?.invoke(this, index)
                 }
+                itemOverlay?.invoke(this, index)
             }
         }
     } else {
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
-        ) {
-            items(pageCount, key = { it }) { index ->
-                val isSelected = selectedPages?.contains(index) == true
-                val rotation = pageRotations?.get(index) ?: 0
-                PdfPageItem(
-                    uri = uri, index = index, password = password, isGrayscale = isGrayscale, 
-                    showIndexNumbers = showIndexNumbers, imageLoader = imageLoader, accentColor = accentColor, rotation = rotation,
-                    onClick = { 
-                        if (mode == PreviewMode.ROTATE && onRotatePage != null) onRotatePage(index)
-                        else if (onToggleSelection != null) onToggleSelection(index)
-                        else if (!disableLightbox) lightboxPage = index 
-                    },
-                    scale = 0.6f,
-                    modifier = if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier
-                ) {
-                    if (mode == PreviewMode.ROTATE) {
+        PageTileGrid(pageCount, key = { it }, top = 8.dp, header = header) { index, place ->
+            val isSelected = selectedPages?.contains(index) == true
+            val rotation = pageRotations?.get(index) ?: 0
+            PdfPageItem(
+                uri = uri, index = index, password = password, isGrayscale = isGrayscale,
+                showIndexNumbers = showIndexNumbers, imageLoader = imageLoader, accentColor = accentColor, rotation = rotation,
+                onClick = {
+                    if (mode == PreviewMode.ROTATE && onRotatePage != null) onRotatePage(index)
+                    else if (onToggleSelection != null) onToggleSelection(index)
+                    else if (!disableLightbox) lightboxPage = index
+                },
+                scale = 0.6f,
+                modifier = place.then(if (isSelected) Modifier.border(BorderStroke(3.dp, accentColor), RoundedCornerShape(12.dp)) else Modifier)
+            ) {
+                if (mode == PreviewMode.ROTATE) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
+                        color = pageBadge, shape = CircleShape
+                    ) { Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = pageBadgeText, modifier = Modifier.padding(6.dp)) }
+                } else if (onToggleSelection != null) {
+                    Box(modifier = Modifier.fillMaxSize().background(if (isSelected) accentColor.copy(alpha = 0.15f) else Color.Transparent))
+                    if (showSelectionIcon) {
                         Surface(
-                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(28.dp),
-                            color = pageBadge, shape = CircleShape
-                        ) { Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = pageBadgeText, modifier = Modifier.padding(6.dp)) }
-                    } else if (onToggleSelection != null) {
-                        Box(modifier = Modifier.fillMaxSize().background(if (isSelected) accentColor.copy(alpha = 0.15f) else Color.Transparent))
-                        if (showSelectionIcon) {
+                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(TargetStep.DENSE.drawn),
+                            color = if (isSelected) accentColor else pageBadge, shape = CircleShape
+                        ) { Icon(Icons.Filled.Check, null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText, modifier = Modifier.padding(4.dp)) }
+                    }
+                    if (!disableLightbox && showZoomIcon) {
+                        DenseTargets { dense ->
                             Surface(
-                                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(TargetStep.DENSE.drawn),
-                                color = if (isSelected) accentColor else pageBadge, shape = CircleShape
-                            ) { Icon(Icons.Filled.Check, null, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else pageBadgeText, modifier = Modifier.padding(4.dp)) }
-                        }
-                        if (!disableLightbox && showZoomIcon) {
-                            DenseTargets { dense ->
-                                Surface(
-                                    onClick = { lightboxPage = index },
-                                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense),
-                                    color = pageBadge, shape = CircleShape
-                                ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
-                            }
+                                onClick = { lightboxPage = index },
+                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(TargetStep.DENSE.drawn).then(dense),
+                                color = pageBadge, shape = CircleShape
+                            ) { Icon(Icons.Filled.Fullscreen, null, tint = pageBadgeText, modifier = Modifier.padding(4.dp)) }
                         }
                     }
-                    itemOverlay?.invoke(this, index)
                 }
+                itemOverlay?.invoke(this, index)
             }
         }
     }
@@ -198,6 +188,38 @@ fun UnifiedPdfPreview(
             isGrayscale = isGrayscale,
             itemOverlay = itemOverlay
         )
+    }
+}
+
+/** Margin of the page tiles at the grid's sides, and the gap between rows and columns. */
+private val TILE_SIDE = 20.dp
+private val TILE_GAP = 16.dp
+
+/**
+ * The page tiles, two a row, as one lazy grid under the screen's [header] (full width, padded by the screen): the file card and choices
+ * scroll with the pages, so at large text the grid is never squeezed out of reach and long files stay lazy (rule 10). [count] tiles keyed by
+ * [key]; each [tile] gets its place in the grid as a modifier, which keeps the tiles [TILE_SIDE] from the sides however the header is
+ * padded. [top] is the room above the first row.
+ */
+@Composable
+private fun PageTileGrid(
+    count: Int,
+    key: (Int) -> Any,
+    top: Dp,
+    header: @Composable ColumnScope.() -> Unit,
+    tile: @Composable (index: Int, place: Modifier) -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(TILE_GAP),
+        contentPadding = PaddingValues(bottom = TILE_GAP)
+    ) {
+        item(key = "header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") { Column(content = header) }
+        items(count, key = key) { index ->
+            val start = index % 2 == 0
+            tile(index, Modifier.padding(start = if (start) TILE_SIDE else 0.dp, end = if (start) 0.dp else TILE_SIDE, top = if (index < 2) top else TILE_GAP))
+        }
     }
 }
 

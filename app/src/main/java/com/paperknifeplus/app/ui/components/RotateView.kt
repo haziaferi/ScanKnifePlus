@@ -151,67 +151,66 @@ fun RotateView(
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) },
                             scroll = false
                         ) {
-                            ToolFileCard(
+                            // The file card and the choices scroll with the pages, so no text size squeezes the grid out (rule 10).
+                            UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                pageCount = pageCount,
+                                mode = PreviewMode.ROTATE,
                                 password = null,
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; pageRotations = emptyMap(); currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
-                                keepsPassword = unlockPassword.isNotEmpty()
-                            )
-                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    ToolStatusText(stringResource(R.string.rotate_pages_modified, pageRotations.values.count { it != 0 }, pageCount))
-
-                                    TextButton(onClick = {
-                                        pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
-                                    }) {
-                                        Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.rotate_rotate_all_90), style = MaterialTheme.typography.labelLarge, color = accentColor)
-                                    }
+                                accentColor = accentColor,
+                                pageRotations = pageRotations,
+                                disableLightbox = true, // By product request: tapping a page rotates it instead.
+                                onRotatePage = { index ->
+                                    val current = pageRotations[index] ?: 0
+                                    pageRotations = pageRotations + (index to (current + 90) % 360)
                                 }
-
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                    color = accentColor.copy(alpha = 0.05f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
+                            ) {
+                                ToolFileCard(
+                                    uri = selectedUri!!,
+                                    password = null,
+                                    name = fileName,
+                                    details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
+                                    onChange = { dropDecryptedCopy(); selectedUri = null; pageRotations = emptyMap(); currentState = ToolState.SELECTING },
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                    // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                    keepsPassword = unlockPassword.isNotEmpty()
+                                )
+                                Column(Modifier.padding(horizontal = 20.dp)) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Filled.Info, null, tint = accentColor, modifier = Modifier.size(14.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(
-                                            stringResource(R.string.rotate_tap_page),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = accentColor
-                                        )
-                                    }
-                                }
+                                        ToolStatusText(stringResource(R.string.rotate_pages_modified, pageRotations.values.count { it != 0 }, pageCount))
 
-                                Box(modifier = Modifier.weight(1f)) {
-                                    UnifiedPdfPreview(
-                                        uri = selectedUri!!,
-                                        pageCount = pageCount,
-                                        mode = PreviewMode.ROTATE,
-                                        password = null,
-                                        accentColor = accentColor,
-                                        pageRotations = pageRotations,
-                                        disableLightbox = true, // By product request: tapping a page rotates it instead.
-                                        onRotatePage = { index ->
-                                            val current = pageRotations[index] ?: 0
-                                            pageRotations = pageRotations + (index to (current + 90) % 360)
+                                        TextButton(onClick = {
+                                            pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
+                                        }) {
+                                            Icon(Icons.AutoMirrored.Filled.RotateRight, null, modifier = Modifier.size(16.dp), tint = accentColor)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(stringResource(R.string.rotate_rotate_all_90), style = MaterialTheme.typography.labelLarge, color = accentColor)
                                         }
-                                    )
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                        color = accentColor.copy(alpha = 0.05f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(Icons.Filled.Info, null, tint = accentColor, modifier = Modifier.size(14.dp))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(
+                                                stringResource(R.string.rotate_tap_page),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = accentColor
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

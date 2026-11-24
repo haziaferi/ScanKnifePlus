@@ -322,25 +322,25 @@ fun SignView(
                             actionEnabled = hasSigned,
                             scroll = false
                         ) {
-                            ToolFileCard(
+                            // The file card scrolls with the pages, so no text size squeezes the grid out (rule 10).
+                            UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                pageCount = pageCount,
+                                mode = PreviewMode.GRID,
                                 password = unlockPassword.ifEmpty { null },
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
-                            )
-                            Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                                UnifiedPdfPreview(
+                                accentColor = accentColor,
+                                showSelectionIcon = false,
+                                showZoomIcon = false,
+                                itemOverlay = { SignatureOverlay(it, onMeasured = null) },
+                                onToggleSelection = { index -> lightboxPage = index }
+                            ) {
+                                ToolFileCard(
                                     uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.GRID,
                                     password = unlockPassword.ifEmpty { null },
-                                    accentColor = accentColor,
-                                    showSelectionIcon = false,
-                                    showZoomIcon = false,
-                                    itemOverlay = { SignatureOverlay(it, onMeasured = null) },
-                                    onToggleSelection = { index -> lightboxPage = index }
+                                    name = fileName,
+                                    details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
+                                    onChange = { selectedUri = null; currentState = ToolState.SELECTING; placedSignatures = emptyList() },
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
                                 )
                             }
                         }
