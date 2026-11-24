@@ -742,6 +742,43 @@ class LargeTextLayoutTest {
     @Test @Config(qualifiers = "w320dp-h640dp") fun `Rearrange's last page is in reach on a small phone`() = assertLastPageInReach("rearrange")
     @Test @Config(qualifiers = "w384dp-h832dp") fun `Rearrange's last page is in reach on the 6T`() = assertLastPageInReach("rearrange")
 
+    /**
+     * [label], the text action beside the status line over the tool [id]'s page grid, at twice the text size: it breaks only between words
+     * and shows whole, and its control keeps T3, drawn at least 40 dp high and taking touches across 48.
+     */
+    private fun assertStatusActionWhole(id: String, label: String) {
+        showTool(id)
+        // On a small phone the file card above it fills the first screen.
+        rule.onNode(hasText(label) and hasClickAction()).performScrollTo()
+        val text = rule.onNodeWithText(label, useUnmergedTree = true)
+        assertWholeWords(label, text)
+        assertNotClipped(label, text)
+        val control = rule.onNode(hasText(label) and hasClickAction()).fetchSemanticsNode()
+        val step = { dp: Int -> with(rule.density) { dp.dp.toPx() } - 0.5f }
+        assertTrue("$label is drawn under 40 dp: ${control.boundsInRoot}", control.boundsInRoot.height >= step(40))
+        assertTrue("$label takes touches across less than 48 dp: ${control.touchBoundsInRoot}",
+            control.touchBoundsInRoot.height >= step(48) && control.touchBoundsInRoot.width >= step(48))
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Split's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("split", "Enter range")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Split's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("split", "Enter range")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Split's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("split", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Split's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("split", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Delete's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("delete", "Enter range")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Delete's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("delete", "Enter range")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Delete's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("delete", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Delete's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("delete", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Rotate all keeps whole words on a small phone`() = assertStatusActionWhole("rotate", "Rotate all 90°")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Rotate all keeps whole words on the 6T`() = assertStatusActionWhole("rotate", "Rotate all 90°")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Rotate all keeps whole words on a small phone`() = assertStatusActionWhole("rotate", "Ruota tutte di 90°")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Rotate all keeps whole words on the 6T`() = assertStatusActionWhole("rotate", "Ruota tutte di 90°")
+
     private companion object {
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
         const val TIP = "Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact."

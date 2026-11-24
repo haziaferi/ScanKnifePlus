@@ -176,13 +176,10 @@ fun RotateView(
                                     keepsPassword = unlockPassword.isNotEmpty()
                                 )
                                 Column(Modifier.padding(horizontal = 20.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    ToolStatusRow(
+                                        stringResource(R.string.rotate_pages_modified, pageRotations.values.count { it != 0 }, pageCount),
+                                        Modifier.fillMaxWidth().padding(vertical = 12.dp)
                                     ) {
-                                        ToolStatusText(stringResource(R.string.rotate_pages_modified, pageRotations.values.count { it != 0 }, pageCount))
-
                                         TextButton(onClick = {
                                             pageRotations = (0 until pageCount).associateWith { idx -> ((pageRotations[idx] ?: 0) + 90) % 360 }
                                         }) {

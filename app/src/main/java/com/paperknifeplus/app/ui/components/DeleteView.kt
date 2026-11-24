@@ -207,13 +207,10 @@ fun DeleteView(
                                     keepsPassword = unlockPassword.isNotEmpty()
                                 )
                                 Column(Modifier.padding(horizontal = 20.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    ToolStatusRow(
+                                        stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount),
+                                        Modifier.fillMaxWidth().padding(vertical = 12.dp)
                                     ) {
-                                        ToolStatusText(stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount))
-
                                         TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                             Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                             Spacer(Modifier.width(8.dp))

@@ -751,6 +751,37 @@ fun ToolStatusText(text: String) {
     )
 }
 
+/**
+ * The [status] line of a page grid with its text [action] (T3) at the end edge. Side by side while the action's label fits one line beside the
+ * status's longest word, the status then wrapping between words; otherwise, measured at the current text size, the action moves under the
+ * status, so neither breaks inside a word (rule 10).
+ */
+@Composable
+fun ToolStatusRow(status: String, modifier: Modifier = Modifier, action: @Composable () -> Unit) {
+    Layout(contents = listOf({ ToolStatusText(status) }, action), modifier = modifier) { (text, act), constraints ->
+        val total = constraints.maxWidth
+        val actionWidth = act.maxOf { it.maxIntrinsicWidth(Constraints.Infinity) }
+        val word = text.maxOf { it.minIntrinsicWidth(Constraints.Infinity) }
+        if (word + actionWidth <= total) {
+            val actionPlaced = act.map { it.measure(Constraints(maxWidth = actionWidth)) }
+            val textPlaced = text.map { it.measure(Constraints(maxWidth = total - actionWidth)) }
+            val height = (actionPlaced + textPlaced).maxOf { it.height }
+            layout(total, height) {
+                textPlaced.forEach { it.placeRelative(0, (height - it.height) / 2) }
+                actionPlaced.forEach { it.placeRelative(total - it.width, (height - it.height) / 2) }
+            }
+        } else {
+            val textPlaced = text.map { it.measure(Constraints(maxWidth = total)) }
+            val actionPlaced = act.map { it.measure(Constraints(maxWidth = total)) }
+            val first = textPlaced.maxOf { it.height }
+            layout(total, first + actionPlaced.maxOf { it.height }) {
+                textPlaced.forEach { it.placeRelative(0, 0) }
+                actionPlaced.forEach { it.placeRelative(total - it.width, first) }
+            }
+        }
+    }
+}
+
 /** One choice of a single-choice option (T2): a card with a radio button, [title] and [description]; selected is tonal. */
 @Composable
 fun ToolOptionRow(selected: Boolean, title: String, description: String, onClick: () -> Unit) {

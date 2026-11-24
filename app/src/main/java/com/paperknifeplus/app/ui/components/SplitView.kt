@@ -216,13 +216,10 @@ fun SplitView(
                                     keepsPassword = unlockPassword.isNotEmpty()
                                 )
                                 Column(Modifier.padding(horizontal = 20.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    ToolStatusRow(
+                                        pluralStringResource(R.plurals.split_pages_selected, pageCount, selectedPages.size, pageCount),
+                                        Modifier.fillMaxWidth().padding(vertical = 12.dp)
                                     ) {
-                                        ToolStatusText(pluralStringResource(R.plurals.split_pages_selected, pageCount, selectedPages.size, pageCount))
-
                                         TextButton(onClick = { showRangeInput = !showRangeInput }) {
                                             Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
                                             Spacer(Modifier.width(8.dp))
