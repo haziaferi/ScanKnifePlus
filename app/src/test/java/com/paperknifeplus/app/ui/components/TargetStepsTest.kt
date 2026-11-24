@@ -200,24 +200,28 @@ class TargetStepsTest {
     }
 
     @Test
-    // The 6T's screen, so the grid scrolls under the Select all row as on the phone.
+    // The 6T's screen and a long file, so the screen scrolls.
     @Config(qualifiers = "w384dp-h832dp")
-    fun `Split's Select all takes a tap over the tiles scrolled under it`() {
+    fun `Split's Select all takes a tap at its edge over the first row of tiles, scrolled or not`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(12), "steps-split.pdf")
         rule.setContent { SplitView(initialUri = uri, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         rule.waitUntil("Select all shows", 60_000) { rule.onAllNodes(hasText("Select all")).fetchSemanticsNodes().isNotEmpty() }
-        val grid = rule.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("Page 1")))
-        // Half a tile up, so the top row is cut by the grid's edge, under the row of buttons.
-        grid.performTouchInput { swipeUp(startY = centerY + 60f, endY = centerY - 60f) }
-        rule.waitForIdle()
+        // The file card and the choices scroll with the tiles (rule 10): a swipe moves Select all and the first row together.
+        val screen = rule.onNode(hasScrollAction() and hasAnyDescendant(hasContentDescription("Page 1")))
         val selectAll = rule.onNode(hasText("Select all") and hasClickAction())
-        val cut = rule.onAllNodes(hasClickAction() and hasContentDescription("Page", substring = true)).fetchSemanticsNodes()
-            .filter { !it.boundsInRoot.isEmpty && it.boundsInRoot.height < it.size.height - 0.5f }
-        assertTrue("a tile is cut at the grid's top", cut.isNotEmpty())
-        // The grid clips its tiles at its top, below the buttons, so a touch on a button never reaches a tile.
-        assertTrue("the grid starts below Select all", grid.node().boundsInRoot.top >= selectAll.node().boundsInRoot.bottom - 0.5f)
+        val firstTile = rule.onNode(hasClickAction() and hasContentDescription("Page 1"))
+        val gap = firstTile.node().boundsInRoot.top - selectAll.node().boundsInRoot.bottom
+        val before = selectAll.node().boundsInRoot.top
+        screen.performTouchInput { swipeUp(startY = centerY + 60f, endY = centerY - 60f) }
+        rule.waitForIdle()
+        assertTrue("Select all scrolled", selectAll.node().boundsInRoot.top < before - 0.5f)
+        assertEquals("the tiles stay below Select all", gap, firstTile.node().boundsInRoot.top - selectAll.node().boundsInRoot.bottom, 0.5f)
+        assertTrue("the tiles start below Select all", gap >= 0f)
+        val selectTouch = selectAll.node().touchBoundsInRoot
+        val tileTouch = firstTile.node().touchBoundsInRoot
+        assertTrue("Select all's touch area ($selectTouch) overlaps the first tile's ($tileTouch)", !selectTouch.overlaps(tileTouch))
         selectAll.performTouchInput { click(Offset(centerX, height - 1f)) }
         rule.waitForIdle()
         assertTrue("Select all took the tap", rule.onAllNodes(hasText("12 / 12 pages selected")).fetchSemanticsNodes().isNotEmpty())

@@ -151,47 +151,44 @@ fun GrayscaleView(
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-grayscale", "pdf")) },
                             scroll = false
                         ) {
-                            ToolFileCard(
+                            // The file card and the preview switch scroll with the pages, so no text size squeezes the grid out (rule 10).
+                            UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                fileName = fileName,
+                                pageCount = pageCount,
+                                mode = PreviewMode.GRID,
+                                isGrayscale = isLivePreview,
                                 password = null,
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)
-                            )
-
-                            Box(modifier = Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                                UnifiedPdfPreview(
-                                    uri = selectedUri!!,
-                                    pageCount = pageCount,
-                                    mode = PreviewMode.GRID,
-                                    isGrayscale = isLivePreview,
-                                    password = null,
-                                    accentColor = accentColor
-                                )
-                            }
-
-                            Spacer(Modifier.height(16.dp))
-
-                            Surface(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                shape = RoundedCornerShape(24.dp),
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
+                                accentColor = accentColor
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ToolFileCard(
+                                    uri = selectedUri!!,
+                                    password = null,
+                                    name = fileName,
+                                    details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
+                                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                )
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    shape = RoundedCornerShape(24.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp)
                                 ) {
-                                    Column(Modifier.weight(1f)) {
-                                        ToolSectionLabel(stringResource(R.string.grayscale_preview))
-                                        Text(stringResource(R.string.grayscale_instant_black_and_white_preview), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            ToolSectionLabel(stringResource(R.string.grayscale_preview))
+                                            Text(stringResource(R.string.grayscale_instant_black_and_white_preview), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Switch(
+                                            checked = isLivePreview,
+                                            onCheckedChange = { isLivePreview = it },
+                                            colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
+                                        )
                                     }
-                                    Switch(
-                                        checked = isLivePreview,
-                                        onCheckedChange = { isLivePreview = it },
-                                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
-                                    )
                                 }
                             }
                         }

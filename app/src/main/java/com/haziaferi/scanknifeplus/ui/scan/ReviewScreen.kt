@@ -549,11 +549,12 @@ private fun OutlinedIconButton(icon: ImageVector, description: String, enabled: 
     Box(
         Modifier
             .size(TargetStep.ACT.hit)
+            // Before the border, so a disabled button's ring fades with its icon.
+            .alpha(if (enabled) 1f else 0.4f)
             .clip(CircleShape)
             .border(1.dp, c.bd, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = description }
-            .alpha(if (enabled) 1f else 0.4f),
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, null, tint = c.tx)

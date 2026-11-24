@@ -159,17 +159,7 @@ fun PageNumbersView(
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-numbered", "pdf")) },
                             scroll = false
                         ) {
-                            ToolFileCard(
-                                uri = selectedUri!!,
-                                password = unlockPassword.ifEmpty { null },
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
-                            )
-                            Column(Modifier.weight(1f).padding(horizontal = 20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Spacer(Modifier.height(12.dp))
-
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(modifier = Modifier.weight(1f)) {
                                     val numberOverlay: @Composable (BoxScope.(Int) -> Unit) = { index ->
                                         if (showPreviewOverlay) {
@@ -194,16 +184,31 @@ fun PageNumbersView(
                                         }
                                     }
 
+                                    // The file card scrolls with the pages, so no text size squeezes the grid out (rule 10); the options button
+                                    // stays under it.
                                     UnifiedPdfPreview(
                                         uri = selectedUri!!,
+                                        fileName = fileName,
                                         pageCount = pageCount,
                                         mode = PreviewMode.GRID,
                                         password = unlockPassword.ifEmpty { null },
                                         accentColor = accentColor,
                                         showIndexNumbers = false,
                                         disableLightbox = true, // By product request: tapping a page here does not open the lightbox.
-                                        itemOverlay = numberOverlay
-                                    )
+                                        itemOverlay = numberOverlay,
+                                        // The number's size and corner are the tile's; full screen they would be too small and off the page.
+                                        lightboxOverlay = null
+                                    ) {
+                                        ToolFileCard(
+                                            uri = selectedUri!!,
+                                            password = unlockPassword.ifEmpty { null },
+                                            name = fileName,
+                                            details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
+                                            onChange = { selectedUri = null; currentState = ToolState.SELECTING },
+                                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                    }
                                 }
 
                                 Spacer(Modifier.height(8.dp))

@@ -26,11 +26,13 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -41,10 +43,12 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -63,6 +67,7 @@ import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -400,10 +405,12 @@ class LargeTextLayoutTest {
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-watermark.pdf")
         atDoubleText { WatermarkView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
+        rule.waitUntil("the file shows", 60_000) { rule.onAllNodes(hasText("Document", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        // The file card fills the first screen here; the pages follow it in the one scroll.
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(1)
         val page = hasClickAction() and hasContentDescription("Page 1")
         rule.waitUntil("the pages show", 60_000) { rule.onAllNodes(page).fetchSemanticsNodes().isNotEmpty() }
-        // On this screen at twice the text size the page grid gets no height (R3, L3's), so the page and its Add watermark are opened by
-        // their click actions rather than by touch.
+        // The page and its Add watermark are opened by their click actions: this test is about the dialog, not reaching them.
         rule.onAllNodes(page)[0].performSemanticsAction(SemanticsActions.OnClick)
         val add = hasText("Add watermark") and hasClickAction()
         rule.waitUntil("the page opens", 30_000) { rule.onAllNodes(add).fetchSemanticsNodes().isNotEmpty() }
@@ -415,9 +422,9 @@ class LargeTextLayoutTest {
     }
 
     @Test
-    // A small phone, where Move to wraps at twice the text size (on the 6T it now fits one 48 dp line); tall, so the grid leaves the bar
-    // its room (L3's).
-    @Config(qualifiers = "w320dp-h2400dp")
+    // A small phone, where Move to wraps at twice the text size (on the 6T it now fits one 48 dp line), as tall as the 6T: the file card
+    // scrolls with the grid, so the bar keeps its room.
+    @Config(qualifiers = "w320dp-h832dp")
     fun `Rearrange's arrows grow with Move to`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
@@ -458,10 +465,16 @@ class LargeTextLayoutTest {
     }
 
     @Test
-    // An Italian phone, small: Move to's label is longest there. Tall, so the screen's column has room for the bar (on 832 dp it squeezes
-    // the bar with the grid, which is L3's).
-    @Config(qualifiers = "it-w320dp-h2400dp")
-    fun `in Italian on a small phone Rearrange's Move to shows uncut beside its arrows`() {
+    // An Italian phone, small: Move to's label is longest there. As tall as the 6T, where the bar was squeezed with the grid before the
+    // file card scrolled with it.
+    @Config(qualifiers = "it-w320dp-h832dp")
+    fun `in Italian on a small phone Rearrange's Move to shows uncut beside its arrows`() = rearrangeMoveToUncut()
+
+    @Test
+    @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian on the 6T Rearrange's Move to shows uncut beside its arrows`() = rearrangeMoveToUncut()
+
+    private fun rearrangeMoveToUncut() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-rearrange-it.pdf")
@@ -677,6 +690,96 @@ class LargeTextLayoutTest {
         // The tile holds the page and its number at twice the size: 10 + 64 + 6 + 32 (16 sp line, doubled) + 4 dp.
         assertTrue("the number fits under the page", first.height >= with(rule.density) { 116.dp.toPx() } - 0.5f)
     }
+
+    /** Whether [inner] lies within [outer], to half a pixel. */
+    private fun within(inner: Rect, outer: Rect) =
+        inner.left >= outer.left - 0.5f && inner.top >= outer.top - 0.5f && inner.right <= outer.right + 0.5f && inner.bottom <= outer.bottom + 0.5f
+
+    /** The tool [id] with a 3-page file at twice the text size, once its file card shows (a file:// URI is named Document.pdf). */
+    private fun showTool(id: String) {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PDFBoxResourceLoader.init(context)
+        val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "large-grid-$id.pdf")
+        atDoubleText { ToolCatalog.byId(id)!!.screen(ToolLaunch(input, null, onBack = {}, onOpenPreview = { _, _, _ -> })) }
+        rule.waitUntil("$id shows its file", 60_000) { rule.onAllNodes(hasText("Document", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitForIdle()
+    }
+
+    /**
+     * The tool [id]'s page grid at twice the text size (rule 10): swipes on the screen's one scroll bring the last page's tile whole into view,
+     * its touch area inside the window and the scroll's view, so clear of the pinned button, while the first-time hold hint shows under the
+     * grid. On main the grid got no height here.
+     */
+    private fun assertLastPageInReach(id: String) {
+        showTool(id)
+        rule.onNodeWithText("Touch and hold a page to read it.").assertIsDisplayed()
+        val window = rule.onRoot().bounds()
+        val last = hasClickAction() and hasContentDescription("Page 3")
+        repeat(10) {
+            val scroll = rule.onNode(hasScrollAction())
+            val view = scroll.bounds()
+            val tile = rule.onAllNodes(last).fetchSemanticsNodes().firstOrNull()
+            if (tile != null && tile.boundsInRoot.height >= tile.size.height - 0.5f && within(tile.touchBoundsInRoot, view) &&
+                within(tile.touchBoundsInRoot, window)
+            ) return
+            scroll.performTouchInput { swipeUp() }
+            rule.waitForIdle()
+        }
+        fail("$id's last page stays out of reach")
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Split's last page is in reach on a small phone`() = assertLastPageInReach("split")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Split's last page is in reach on the 6T`() = assertLastPageInReach("split")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Delete's last page is in reach on a small phone`() = assertLastPageInReach("delete")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Delete's last page is in reach on the 6T`() = assertLastPageInReach("delete")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Rotate's last page is in reach on a small phone`() = assertLastPageInReach("rotate")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Rotate's last page is in reach on the 6T`() = assertLastPageInReach("rotate")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Watermark's last page is in reach on a small phone`() = assertLastPageInReach("watermark")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Watermark's last page is in reach on the 6T`() = assertLastPageInReach("watermark")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Sign's last page is in reach on a small phone`() = assertLastPageInReach("sign")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Sign's last page is in reach on the 6T`() = assertLastPageInReach("sign")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Grayscale's last page is in reach on a small phone`() = assertLastPageInReach("grayscale")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Grayscale's last page is in reach on the 6T`() = assertLastPageInReach("grayscale")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Page numbers' last page is in reach on a small phone`() = assertLastPageInReach("page-numbers")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Page numbers' last page is in reach on the 6T`() = assertLastPageInReach("page-numbers")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Rearrange's last page is in reach on a small phone`() = assertLastPageInReach("rearrange")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Rearrange's last page is in reach on the 6T`() = assertLastPageInReach("rearrange")
+
+    /**
+     * [label], the text action beside the status line over the tool [id]'s page grid, at twice the text size: it breaks only between words
+     * and shows whole, and its control takes touches across at least T3's 48 dp.
+     */
+    private fun assertStatusActionWhole(id: String, label: String) {
+        showTool(id)
+        // On a small phone the file card above it fills the first screen.
+        rule.onNode(hasText(label) and hasClickAction()).performScrollTo()
+        val text = rule.onNodeWithText(label, useUnmergedTree = true)
+        assertWholeWords(label, text)
+        assertNotClipped(label, text)
+        val control = rule.onNode(hasText(label) and hasClickAction()).fetchSemanticsNode()
+        val hit = with(rule.density) { TargetStep.INLINE.hit.toPx() } - 0.5f
+        assertTrue("$label takes touches across less than 48 dp: ${control.touchBoundsInRoot}",
+            control.touchBoundsInRoot.height >= hit && control.touchBoundsInRoot.width >= hit)
+    }
+
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Split's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("split", "Enter range")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Split's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("split", "Enter range")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Split's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("split", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Split's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("split", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Delete's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("delete", "Enter range")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Delete's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("delete", "Enter range")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Delete's Enter range keeps whole words on a small phone`() = assertStatusActionWhole("delete", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Delete's Enter range keeps whole words on the 6T`() = assertStatusActionWhole("delete", "Inserisci un intervallo")
+    @Test @Config(qualifiers = "w320dp-h640dp") fun `Rotate all keeps whole words on a small phone`() = assertStatusActionWhole("rotate", "Rotate all 90°")
+    @Test @Config(qualifiers = "w384dp-h832dp") fun `Rotate all keeps whole words on the 6T`() = assertStatusActionWhole("rotate", "Rotate all 90°")
+    @Test @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian Rotate all keeps whole words on a small phone`() = assertStatusActionWhole("rotate", "Ruota tutte di 90°")
+    @Test @Config(qualifiers = "it-w384dp-h832dp")
+    fun `in Italian Rotate all keeps whole words on the 6T`() = assertStatusActionWhole("rotate", "Ruota tutte di 90°")
 
     private companion object {
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."

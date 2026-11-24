@@ -418,10 +418,14 @@ class CropViewTest {
         rule.onNodeWithText("Page 3 of 4").assertExists()
         assertTrue(rule.onNodeWithContentDescription("Show page 3").fetchSemanticsNode().config[SemanticsProperties.Selected])
 
+        // The first time, the line under the grid ends with the hold hint; after a touch and hold it keeps only Crop's own note, one line.
+        rule.onNodeWithText("$SAME_FRAME $HOLD_HINT").assertExists()
         rule.onNodeWithContentDescription("Show page 2").performTouchInput { longClick() }
         waitFor("Page 2 of $name")
         rule.onNodeWithContentDescription("Close").performClick()
         rule.onNodeWithText("Page 2 of $name").assertDoesNotExist()
+        rule.onNodeWithText(SAME_FRAME).assertExists()
+        rule.onNodeWithText(HOLD_HINT, substring = true).assertDoesNotExist()
 
         val action = rule.onNodeWithContentDescription("Show page 4").fetchSemanticsNode().config[SemanticsActions.CustomActions].single()
         assertEquals("Read page 4", action.label)
@@ -583,6 +587,8 @@ class CropViewTest {
         const val CHECK = "Check the page range"
         const val TYPE = "Type the pages to crop"
         const val TIP = "Cropping hides the edges; it doesn’t delete them. To remove content for good, use Redact."
+        const val SAME_FRAME = "Pages of another size get the same frame, scaled."
+        const val HOLD_HINT = "Touch and hold a page to read it."
         const val PASSWORD_LINE = "Password-protected. The saved copy keeps this password."
     }
 }

@@ -101,6 +101,18 @@ object PreferencesManager {
         val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
         return prefs.getBoolean("tip_closed_$toolId", false)
     }
+
+    /** Keeps that the user has touched and held a page miniature, so the page grids stop showing the hint (rule 10). */
+    fun setPageHoldUsed(context: Context) {
+        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
+        prefs.edit { putBoolean("page_hold_used", true) }
+    }
+
+    /** Whether the user has touched and held a page miniature, or used its TalkBack action, on any screen. */
+    fun isPageHoldUsed(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("pk_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("page_hold_used", false)
+    }
 }
 
 object LayoutMath {

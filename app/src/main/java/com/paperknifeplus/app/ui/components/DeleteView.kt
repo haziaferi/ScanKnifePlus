@@ -182,107 +182,104 @@ fun DeleteView(
                             actionEnabled = pagesToDeleteSet.isNotEmpty() && pagesToDeleteSet.size < pageCount,
                             scroll = false
                         ) {
-                            ToolFileCard(
+                            // The file card and the choices scroll with the pages, so no text size squeezes the grid out (rule 10).
+                            UnifiedPdfPreview(
                                 uri = selectedUri!!,
+                                fileName = fileName,
+                                pageCount = pageCount,
+                                mode = PreviewMode.GRID,
                                 password = null,
-                                name = fileName,
-                                details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
-                                onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                                // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
-                                keepsPassword = unlockPassword.isNotEmpty()
-                            )
-                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    ToolStatusText(stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount))
-
-                                    TextButton(onClick = { showRangeInput = !showRangeInput }) {
-                                        Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), style = MaterialTheme.typography.labelSmall, color = accentColor)
-                                    }
+                                accentColor = accentColor,
+                                selectedPages = pagesToDeleteSet,
+                                onToggleSelection = { index ->
+                                    val newSet = if (pagesToDeleteSet.contains(index)) pagesToDeleteSet - index else pagesToDeleteSet + index
+                                    pagesToDeleteSet = newSet
+                                    rangeText = PageRanges.format(newSet)
                                 }
-
-                                // Hidden while the range field is open, to save space.
-                                AnimatedVisibility(visible = !showRangeInput) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).height(IntrinsicSize.Min),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ToolFileCard(
+                                    uri = selectedUri!!,
+                                    password = null,
+                                    name = fileName,
+                                    details = pluralStringResource(R.plurals.tool_file_details, pageCount, fileSize, pageCount),
+                                    onChange = { dropDecryptedCopy(); selectedUri = null; currentState = ToolState.SELECTING },
+                                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                                    // Only a file that needs an open password is unlocked with one, and the saved copy keeps it.
+                                    keepsPassword = unlockPassword.isNotEmpty()
+                                )
+                                Column(Modifier.padding(horizontal = 20.dp)) {
+                                    ToolStatusRow(
+                                        stringResource(R.string.delete_marked_for_deletion, pagesToDeleteSet.size, pageCount),
+                                        Modifier.fillMaxWidth().padding(vertical = 12.dp)
                                     ) {
-                                        Button(
-                                            onClick = {
-                                                val all = (0 until pageCount).toSet()
-                                                pagesToDeleteSet = all
-                                                rangeText = PageRanges.format(all)
-                                            },
-                                            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Text(stringResource(R.string.action_select_all), style = MaterialTheme.typography.labelSmall)
-                                        }
-                                        Button(
-                                            onClick = {
-                                                pagesToDeleteSet = emptySet()
-                                                rangeText = ""
-                                            },
-                                            modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Text(stringResource(R.string.action_clear_all), style = MaterialTheme.typography.labelSmall)
+                                        TextButton(onClick = { showRangeInput = !showRangeInput }) {
+                                            Icon(if (showRangeInput) Icons.Filled.KeyboardArrowUp else Icons.Filled.Create, null, modifier = Modifier.size(16.dp), tint = accentColor)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text(if (showRangeInput) stringResource(R.string.action_hide_range) else stringResource(R.string.action_enter_range), style = MaterialTheme.typography.labelSmall, color = accentColor)
                                         }
                                     }
-                                }
 
-                                if (showRangeInput) {
-                                    Surface(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                        shape = RoundedCornerShape(16.dp)
-                                    ) {
-                                        Column(Modifier.padding(16.dp)) {
-                                            OutlinedTextField(
-                                                value = rangeText,
-                                                onValueChange = {
-                                                    rangeText = it
-                                                    pagesToDeleteSet = PageRanges.parse(it, pageCount)
+                                    // Hidden while the range field is open, to save space.
+                                    AnimatedVisibility(visible = !showRangeInput) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).height(IntrinsicSize.Min),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    val all = (0 until pageCount).toSet()
+                                                    pagesToDeleteSet = all
+                                                    rangeText = PageRanges.format(all)
                                                 },
-                                                label = { Text(stringResource(R.string.delete_example_2_4_6_9)) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(12.dp),
-                                                singleLine = true,
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedBorderColor = accentColor,
-                                                    cursorColor = accentColor
-                                                )
-                                            )
-                                            Spacer(Modifier.height(8.dp))
-                                            Text(stringResource(R.string.delete_tip_pages_selected_in_grid), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Text(stringResource(R.string.action_select_all), style = MaterialTheme.typography.labelSmall)
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    pagesToDeleteSet = emptySet()
+                                                    rangeText = ""
+                                                },
+                                                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = TargetStep.ACT.drawn),
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Text(stringResource(R.string.action_clear_all), style = MaterialTheme.typography.labelSmall)
+                                            }
                                         }
                                     }
-                                }
 
-                                Box(modifier = Modifier.weight(1f)) {
-                                    UnifiedPdfPreview(
-                                        uri = selectedUri!!,
-                                        pageCount = pageCount,
-                                        mode = PreviewMode.GRID,
-                                        password = null,
-                                        accentColor = accentColor,
-                                        selectedPages = pagesToDeleteSet,
-                                        onToggleSelection = { index ->
-                                            val newSet = if (pagesToDeleteSet.contains(index)) pagesToDeleteSet - index else pagesToDeleteSet + index
-                                            pagesToDeleteSet = newSet
-                                            rangeText = PageRanges.format(newSet)
+                                    if (showRangeInput) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Column(Modifier.padding(16.dp)) {
+                                                OutlinedTextField(
+                                                    value = rangeText,
+                                                    onValueChange = {
+                                                        rangeText = it
+                                                        pagesToDeleteSet = PageRanges.parse(it, pageCount)
+                                                    },
+                                                    label = { Text(stringResource(R.string.delete_example_2_4_6_9)) },
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    singleLine = true,
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedBorderColor = accentColor,
+                                                        cursorColor = accentColor
+                                                    )
+                                                )
+                                                Spacer(Modifier.height(8.dp))
+                                                Text(stringResource(R.string.delete_tip_pages_selected_in_grid), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
                                         }
-                                    )
+                                    }
                                 }
                             }
                         }
