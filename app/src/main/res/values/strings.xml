@@ -463,7 +463,7 @@
     <string name="tool_saves_new_pdf">Saves a new PDF. The original stays as it is.</string>
     <string name="tool_unknown_size">Unknown size</string>
     <!-- The result card's line under the file name: the size (as Android formats it), then the folder's name. -->
-    <string name="tool_result_size_folder">%1$s · %2$s</string>
+    <string name="tool_result_size_folder" translatable="false">%1$s · %2$s</string>
     <string name="tool_document_cover">Document cover</string>
     <string name="tool_pick_images">Choose images</string>
     <string name="tool_pick_pdf">Choose PDF</string>

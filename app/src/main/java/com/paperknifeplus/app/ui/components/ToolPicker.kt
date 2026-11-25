@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -52,7 +53,9 @@ import com.paperknifeplus.app.ui.theme.TargetStep
 @Composable
 fun ToolPickerContent(onToolClick: (String) -> Unit, fileName: String? = null, onRemoveFile: (() -> Unit)? = null) {
     var query by rememberSaveable { mutableStateOf("") }
-    Column {
+    // As tall as the sheet allows: a sheet is as tall as its content, so a list that narrowed as the user typed would pull the sheet, and
+    // the field being typed in, down the screen.
+    Column(Modifier.fillMaxHeight()) {
         Text(
             stringResource(R.string.tools_title),
             style = MaterialTheme.typography.titleLarge,
@@ -62,7 +65,7 @@ fun ToolPickerContent(onToolClick: (String) -> Unit, fileName: String? = null, o
         ToolSearchField(query, onChange = { query = it }, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp))
         ToolsView(
             onToolClick = onToolClick,
-            modifier = Modifier.navigationBarsPadding(),
+            modifier = Modifier.weight(1f).navigationBarsPadding(),
             query = query,
             contentPadding = PaddingValues(bottom = 24.dp),
             header = {

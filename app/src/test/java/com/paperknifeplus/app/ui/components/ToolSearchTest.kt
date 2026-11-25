@@ -1,6 +1,8 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.SoftwareKeyboardController
@@ -162,6 +164,24 @@ class ToolSearchTest {
         assertEquals(before, field.fetchSemanticsNode().boundsInRoot)
         assertTrue("the list scrolled", rule.onAllNodes(hasText("Edit") and isHeading()).fetchSemanticsNodes().none { it.boundsInRoot == edit })
         assertTrue("the last tool shows", shows(context.getString(ToolCatalog.tools.last().name)))
+    }
+
+    /** A sheet is as tall as its content: the field must not slide down the screen as the matches narrow (6T, 2026-11-25: 117 to 647 dp). */
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `in the sheet the field stays in place as the matches narrow`() {
+        rule.setContent {
+            ModalBottomSheet(onDismissRequest = {}, sheetState = rememberToolSheetState()) { ToolPickerContent(onToolClick = {}) }
+        }
+        rule.waitForIdle()
+        val before = field.fetchSemanticsNode().boundsInRoot
+        for (typed in listOf("pass", "zzz")) {
+            field.performTextInput(typed)
+            rule.waitForIdle()
+            assertEquals("after \"$typed\"", before.top, field.fetchSemanticsNode().boundsInRoot.top, 0.5f)
+        }
+        assertTrue(shows("No tool matches “passzzz”."))
     }
 
     @Test

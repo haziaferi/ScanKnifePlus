@@ -474,7 +474,6 @@
     <string name="tool_page_n">Pagina %1$s</string>
     <string name="tool_saves_new_pdf">Salva un nuovo PDF. L\'originale resta com\'è.</string>
     <string name="tool_unknown_size">Dimensione sconosciuta</string>
-    <string name="tool_result_size_folder">%1$s · %2$s</string>
     <string name="tool_document_cover">Copertina del documento</string>
     <string name="tool_pick_images">Scegli le immagini</string>
     <string name="tool_pick_pdf">Scegli il PDF</string>

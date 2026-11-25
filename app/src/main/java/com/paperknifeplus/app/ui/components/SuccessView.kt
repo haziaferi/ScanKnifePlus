@@ -152,8 +152,9 @@ private const val DOWNLOADS = "com.android.providers.downloads.documents"
 
 /**
  * The name of the folder that holds the document at [uri], where its provider names documents by path: the phone's storage
- * ("primary:Download/a.pdf", which also covers the app's folder there) and a Downloads path ("raw:/storage/emulated/0/Download/a.pdf").
- * Null for any other id ("msf:123", a cloud provider's), and for a file at the top of a storage, so no id or full path ever shows.
+ * ("primary:Download/a.pdf", which also covers the app's folder there; "home:a.pdf" is in Documents) and a Downloads path
+ * ("raw:/storage/emulated/0/Download/a.pdf"). Null for any other id ("msf:123", a cloud provider's), and for a file at the top of a
+ * storage, so no id or full path ever shows.
  */
 internal fun resultFolder(uri: Uri): String? {
     if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
@@ -162,13 +163,18 @@ internal fun resultFolder(uri: Uri): String? {
     } catch (e: IllegalArgumentException) {
         return null // not a document URI
     }
-    val path = when (uri.authority) {
-        EXTERNAL_STORAGE -> id.substringAfter(':', "")
-        DOWNLOADS -> id.takeIf { it.startsWith("raw:") }?.removePrefix("raw:")
+    val parent = when (uri.authority) {
+        // "home:" is the Documents folder's own root, so a file at its top is in Documents.
+        EXTERNAL_STORAGE -> id.substringAfter(':', "").substringBeforeLast('/', "").ifEmpty { if (id.startsWith("home:")) "Documents" else "" }
+        // A raw path's parent is a folder only below a storage's top ("/storage/emulated/0", "/storage/1A2B-3C4D", "/sdcard").
+        DOWNLOADS -> id.takeIf { it.startsWith("raw:") }?.removePrefix("raw:")?.substringBeforeLast('/', "")?.takeUnless { STORAGE_TOP.matches(it) }
         else -> null
     } ?: return null
-    return path.substringBeforeLast('/', "").substringAfterLast('/').ifBlank { null }
+    return parent.substringAfterLast('/').ifBlank { null }
 }
+
+/** The top of a storage, as a raw Downloads path names it. */
+private val STORAGE_TOP = Regex("""/storage/emulated/\d+|/storage/[^/]+|/sdcard|/mnt/[^/]+""")
 
 /** [resultFolder] and the size its provider reports for [uri]; a size of 0 counts as unknown, as some providers report it for any file. */
 @WorkerThread

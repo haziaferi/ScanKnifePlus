@@ -63,6 +63,15 @@ class ResultPlaceTest {
         assertEquals("inside the app's folder tree", "Scans", resultFolder(DocumentsContract.buildDocumentUriUsingTree(
             DocumentsContract.buildTreeDocumentUri(STORAGE, "primary:Documents/Scans"), "primary:Documents/Scans/report.pdf")))
         assertEquals("a Downloads path", "Download", resultFolder(doc(DOWNLOADS, "raw:/storage/emulated/0/Download/report.pdf")))
+        assertEquals("the top of the Documents root", "Documents", resultFolder(doc(STORAGE, "home:report.pdf")))
+        assertEquals("below it", "Scans", resultFolder(doc(STORAGE, "home:Scans/report.pdf")))
+    }
+
+    @Test
+    fun `a raw path at the top of a storage names no folder`() {
+        for (top in listOf("/storage/emulated/0", "/storage/1A2B-3C4D", "/sdcard")) {
+            assertNull(top, resultFolder(doc(DOWNLOADS, "raw:$top/report.pdf")))
+        }
     }
 
     @Test
@@ -123,6 +132,8 @@ class ResultPlaceTest {
         runCatching { rule.waitUntil(1_000) { lines().any { "·" in it || size in it } } }
         rule.onNode(hasText("report.pdf"), useUnmergedTree = true).assertExists()
         assertFalse(lines().any { "·" in it || size in it })
+        val shown = lines()
+        assertEquals("nothing between the name and the sub-message: $shown", shown.indexOf("report.pdf") + 1, shown.indexOf("Optimized"))
     }
 
     private companion object {
