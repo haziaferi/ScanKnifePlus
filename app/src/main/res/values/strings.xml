@@ -108,6 +108,8 @@
     <string name="scan_leave_stay">Keep scanning</string>
     <string name="scan_discard">Discard</string>
     <string name="scan_leave_save">Save scan</string>
+    <string name="scan_retake_stay">Keep editing</string>
+    <string name="scan_retake">Retake</string>
 
     <!-- Document scanner: text recognition when saving -->
     <string name="scan_ocr_searchable">Make searchable</string>

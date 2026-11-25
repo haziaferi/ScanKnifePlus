@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
@@ -311,6 +312,28 @@ class DialogTextScaleTest : DialogWalk(fontScale = 1f) {
         assertEquals(listOf(1, 0, 0), listOf(kept, stayed, discarded))
         rule.dialogButton("Keep scanning").performClick()
         assertEquals(listOf(1, 1, 0), listOf(kept, stayed, discarded))
+    }
+
+    /** Back from an edited Single page (owner, 2026-11-25): Keep editing stays, Retake discards for the camera, Save scan keeps. */
+    @Test
+    fun `the retake prompt offers Keep editing, Retake and Save scan`() {
+        var kept = 0
+        var stayed = 0
+        var discarded = 0
+        show { LeaveDialog(1, onKeep = { kept++ }, onDiscard = { discarded++ }, onStay = { stayed++ }, retake = true) }
+        rule.onNode(hasText("Save the scan?")).assertExists()
+        rule.onAllNodes(hasText("Keep scanning")).assertCountEquals(0)
+        rule.onAllNodes(hasText("Discard")).assertCountEquals(0)
+        val bounds = listOf("Keep editing", "Retake", "Save scan").map { rule.dialogButton(it).fetchSemanticsNode().boundsInRoot }
+        if (bounds.map { it.top }.distinct().size == 1) {
+            assertEquals("start to end in a row", bounds.map { it.left }.sorted(), bounds.map { it.left })
+        } else {
+            assertEquals("stacked, Save scan on top", bounds.map { it.top }.sortedDescending(), bounds.map { it.top })
+        }
+        rule.dialogButton("Retake").performClick()
+        assertEquals(listOf(0, 0, 1), listOf(kept, stayed, discarded))
+        rule.dialogButton("Keep editing").performClick()
+        assertEquals(listOf(0, 1, 1), listOf(kept, stayed, discarded))
     }
 
     @Test

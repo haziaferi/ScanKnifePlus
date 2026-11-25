@@ -176,18 +176,20 @@ internal fun SaveDialog(
 
 /**
  * Leaving without Done (decision 6, words of rule 5): Save scan keeps the [count] scanned pages in the app ([onKeep]), Discard drops them,
- * Keep scanning stays ([onStay]).
+ * Keep scanning stays ([onStay]). Back from an edited Single page ([retake], owner's call of 2026-11-25), staying keeps the edit screen and
+ * discarding goes back to the camera, so those two read Keep editing and Retake.
  */
 @Composable
-internal fun LeaveDialog(count: Int, onKeep: () -> Unit, onDiscard: () -> Unit, onStay: () -> Unit) {
+internal fun LeaveDialog(count: Int, onKeep: () -> Unit, onDiscard: () -> Unit, onStay: () -> Unit, retake: Boolean = false) {
     AlertDialog(
         onDismissRequest = onStay,
         title = { DialogTitle(stringResource(R.string.scan_leave_title)) },
         text = { Text(pluralStringResource(R.plurals.scan_leave_body, count, count)) },
         confirmButton = {
             DialogButtons {
-                DialogButton(R.string.scan_leave_stay, onClick = onStay)
-                DialogButton(stringResource(R.string.scan_discard), color = LocalScanPalette.current.danger, onClick = onDiscard)
+                DialogButton(if (retake) R.string.scan_retake_stay else R.string.scan_leave_stay, onClick = onStay)
+                val discard = stringResource(if (retake) R.string.scan_retake else R.string.scan_discard)
+                DialogButton(discard, color = LocalScanPalette.current.danger, onClick = onDiscard)
                 DialogButton(R.string.scan_leave_save, kind = DialogButtonKind.COMMIT, onClick = onKeep)
             }
         }
