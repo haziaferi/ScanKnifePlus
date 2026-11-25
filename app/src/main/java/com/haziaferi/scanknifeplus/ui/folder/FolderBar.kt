@@ -38,7 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.components.DialogButton
+import com.paperknifeplus.app.ui.components.DialogButtonKind
 import com.paperknifeplus.app.ui.components.DialogButtons
+import com.paperknifeplus.app.ui.components.DialogTitle
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 
@@ -95,13 +97,13 @@ private fun boldName(text: String, name: String): AnnotatedString = buildAnnotat
 fun FolderBlockedDialog(name: String?, onChooseAgain: () -> Unit, onPicker: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.scan_folder_blocked_title)) },
+        title = { DialogTitle(stringResource(R.string.scan_folder_blocked_title)) },
         text = { Text(stringResource(R.string.scan_folder_blocked_body, name ?: stringResource(R.string.folder_your_folder))) },
         confirmButton = {
             DialogButtons {
                 DialogButton(stringResource(R.string.scan_folder_blocked_later), onClick = onDismiss)
                 DialogButton(stringResource(R.string.scan_folder_blocked_picker), onClick = onPicker)
-                DialogButton(stringResource(R.string.scan_folder_blocked_choose), onClick = onChooseAgain)
+                DialogButton(stringResource(R.string.scan_folder_blocked_choose), kind = DialogButtonKind.COMMIT, onClick = onChooseAgain)
             }
         }
     )

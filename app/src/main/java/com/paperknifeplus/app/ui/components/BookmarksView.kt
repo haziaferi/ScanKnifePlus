@@ -282,7 +282,7 @@ fun BookmarksView(
         var pageNum by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text(stringResource(R.string.bookmarks_add_bookmark)) },
+            title = { DialogTitle(stringResource(R.string.bookmarks_add_bookmark)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text(stringResource(R.string.tool_field_title)) }, modifier = Modifier.fillMaxWidth())
@@ -290,13 +290,15 @@ fun BookmarksView(
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    val p = pageNum.toIntOrNull()?.let { it - 1 }
-                    if (title.isNotBlank() && p != null && p in 0 until pageCount) {
-                        bookmarks = bookmarks + Bookmark(title, p)
-                        showAddDialog = false
+                DialogButtons {
+                    DialogButton(stringResource(R.string.action_add), kind = DialogButtonKind.COMMIT) {
+                        val p = pageNum.toIntOrNull()?.let { it - 1 }
+                        if (title.isNotBlank() && p != null && p in 0 until pageCount) {
+                            bookmarks = bookmarks + Bookmark(title, p)
+                            showAddDialog = false
+                        }
                     }
-                }, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) { Text(stringResource(R.string.action_add)) }
+                }
             }
         )
     }

@@ -15,7 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -34,7 +33,7 @@ fun JumpToPageDialog(initialInput: String, pageCount: Int, onJump: (Int) -> Unit
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.page_dialog_go_to_page)) },
+        title = { DialogTitle(stringResource(R.string.page_dialog_go_to_page)) },
         text = {
             OutlinedTextField(
                 value = input,
@@ -48,7 +47,7 @@ fun JumpToPageDialog(initialInput: String, pageCount: Int, onJump: (Int) -> Unit
         confirmButton = {
             DialogButtons {
                 DialogButton(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.onSurface, onClick = onDismiss)
-                DialogButton(stringResource(R.string.action_go), color = MaterialTheme.colorScheme.primary, weight = FontWeight.Black, onClick = go)
+                DialogButton(stringResource(R.string.action_go), kind = DialogButtonKind.COMMIT, onClick = go)
             }
         },
         shape = RoundedCornerShape(28.dp),

@@ -589,7 +589,7 @@ class LinksViewTest {
     }
 
     private companion object {
-        const val REMOVE = "Remove links and save PDF"
+        const val REMOVE = "Remove links"
         const val NOTHING = "Nothing to remove"
         const val TYPE = "Type the pages to remove links from"
         const val CHECK = "Check the page range"

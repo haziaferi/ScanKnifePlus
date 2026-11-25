@@ -32,7 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Crop pages on the phone, through the screen: a real finger drag on the frame's top-left corner, then Crop and save PDF, on a file whose
+ * Crop pages on the phone, through the screen: a real finger drag on the frame's top-left corner, then Crop PDF, on a file whose
  * first page is turned by /Rotate and whose crop boxes sit away from the media box's origin, in other proportions than the media box, so the
  * page's shape on screen tells which box the viewer draws. PDFBox then reads each page's new crop box, which must be where the frame was
  * drawn. The screen is read through the accessibility tree, as TalkBack reads it.
@@ -209,7 +209,7 @@ class CropDeviceTest {
     }
 
     private companion object {
-        const val CROP = "Crop and save PDF"
+        const val CROP = "Crop PDF"
         const val MOVE = "Move a corner to crop"
 
         /** The source pages' crop box: 400 x 500 points, shaped unlike the 500 x 700 media box, its lower-left corner at (50, 120) on it. */

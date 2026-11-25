@@ -169,7 +169,8 @@ fun CompressView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
-                            action = stringResource(R.string.compress_compress_and_save_pdf),
+                            action = stringResource(R.string.compress_compress_pdf),
+                            savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-compressed", "pdf")) }
                         ) {
                             ToolFileCard(

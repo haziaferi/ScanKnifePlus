@@ -182,7 +182,8 @@ fun SplitView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
-                            action = stringResource(R.string.split_extract_pages, selectedPages.size),
+                            action = pluralStringResource(R.plurals.split_extract_pages, selectedPages.size, selectedPages.size),
+                            savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-split", "pdf")) },
                             actionEnabled = selectedPages.isNotEmpty(),
                             scroll = false

@@ -428,7 +428,7 @@ internal fun MainBottomBar(currentScreen: String, onNavigate: (String) -> Unit, 
     }
 }
 
-/** A tab (T2) at least 64 dp wide; selection shows as accent colour, a bolder label and the tab's selected state. */
+/** A tab (T2) at least 64 dp wide; selection shows as accent colour, a Bold label (Medium unselected) and the tab's selected state. */
 @Composable
 private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     val palette = LocalScanPalette.current
@@ -444,7 +444,7 @@ private fun NavTab(icon: ImageVector, label: String, selected: Boolean, onClick:
         verticalArrangement = Arrangement.Center
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(24.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold, color = color)
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = color)
     }
 }
 

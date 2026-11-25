@@ -71,6 +71,12 @@ val Typography = Typography(
 /** Hints and banners over the live camera: body text a step heavier, so it holds up over the picture. */
 val CameraText = jakarta(FontWeight.Bold, 14, 20)
 
+/** This style at [size] sp, its line height in proportion: a dialog's title shrunk so its longest word fits (DialogTitle). */
+fun TextStyle.resizedTo(size: Float): TextStyle {
+    val lineHeight = if (lineHeight.isSp && fontSize.isSp) (lineHeight.value * size / fontSize.value).sp else lineHeight
+    return copy(fontSize = size.sp, lineHeight = lineHeight)
+}
+
 /** Marks text that shows a document's own content, such as its extracted text or a page number as it will print: the scale does not hold it. */
 val DocumentContent = SemanticsPropertyKey<Unit>("DocumentContent")
 

@@ -114,7 +114,7 @@ class ToolScaffoldTest {
         }
         rule.onNodeWithText("recent.pdf").performScrollTo().performClick()
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Optimization level")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNodeWithText("Compress and save PDF").assertIsDisplayed()
+        rule.onNodeWithText("Compress PDF").assertIsDisplayed()
     }
 
     @Composable

@@ -511,7 +511,8 @@ fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 /**
  * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
  * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
- * to save ([secondary], T2) shows it beside the action, the two one height.
+ * to save ([secondary], T2) shows it beside the action, the two one height. A tool that saves one new PDF says so in a line over the action
+ * ([savesNewPdf], R6).
  */
 @Composable
 fun ToolConfigLayout(
@@ -522,12 +523,21 @@ fun ToolConfigLayout(
     actionIcon: ImageVector? = null,
     scroll: Boolean = true,
     secondary: ToolAction? = null,
+    savesNewPdf: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // Above the keyboard, so a text field never hides the action (the window draws edge to edge).
     Column(modifier.fillMaxSize().imePadding()) {
         Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), content = content)
         ToolActionBar {
+            if (savesNewPdf) {
+                Text(
+                    stringResource(R.string.tool_saves_new_pdf),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
             if (secondary == null) {
                 ToolPrimaryButton(action, onClick = onAction, modifier = Modifier.fillMaxWidth(), enabled = actionEnabled, icon = actionIcon)
             } else {

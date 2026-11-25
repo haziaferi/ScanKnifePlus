@@ -276,7 +276,8 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
                 retakePrompt = false
                 model.backToScanner()
             },
-            onStay = { retakePrompt = false }
+            onStay = { retakePrompt = false },
+            retake = true
         )
     }
 }

@@ -1,28 +1,41 @@
 package com.paperknifeplus.app.ui.components
 
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 
-/** A dialog's text button (T2), [label] in [color] (the button's own when unspecified) and [weight]. */
+/** How a dialog button draws (R5): as text, or as the dialog's one commit, filled with the accent or, when it deletes, the danger colour. */
+enum class DialogButtonKind { TEXT, COMMIT, DANGER_COMMIT }
+
+/** A dialog's button (T2): [label] as [kind] says, a text button's label in [color] (the button's own when unspecified). */
 @Composable
 fun DialogButton(
     label: String,
     enabled: Boolean = true,
     color: Color = Color.Unspecified,
-    weight: FontWeight? = null,
+    kind: DialogButtonKind = DialogButtonKind.TEXT,
     onClick: () -> Unit
 ) {
-    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)) {
-        Text(label, color = color, fontWeight = weight)
+    val modifier = Modifier.heightIn(min = TargetStep.ACT.drawn)
+    when (kind) {
+        DialogButtonKind.TEXT -> TextButton(onClick = onClick, enabled = enabled, modifier = modifier) { Text(label, color = color) }
+        DialogButtonKind.COMMIT -> Button(onClick = onClick, enabled = enabled, modifier = modifier) { Text(label) }
+        DialogButtonKind.DANGER_COMMIT -> {
+            // The background on danger: 5.85:1 at the least, on Rose's OLED theme.
+            val palette = LocalScanPalette.current
+            val colors = ButtonDefaults.buttonColors(containerColor = palette.danger, contentColor = palette.bg)
+            Button(onClick = onClick, enabled = enabled, modifier = modifier, colors = colors) { Text(label) }
+        }
     }
 }
 
