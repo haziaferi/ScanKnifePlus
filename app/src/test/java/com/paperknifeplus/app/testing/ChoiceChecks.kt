@@ -22,7 +22,8 @@ fun SemanticsNodeInteractionsProvider.segment(label: String): SemanticsNodeInter
 
 /**
  * The segments of one choice, in the order of [labels]: each one radio button, all of them children of one selectable group, exactly one
- * of them selected. Fails when a label shows no segment, so the check never passes on nothing.
+ * of them selected, each touching the one before as parts of one control. Fails when a label shows no segment, so the check never passes on
+ * nothing.
  */
 fun SemanticsNodeInteractionsProvider.assertOneChoice(labels: List<String>): List<SemanticsNode> {
     val segments = labels.map { segment(it).fetchSemanticsNode() }
@@ -30,6 +31,10 @@ fun SemanticsNodeInteractionsProvider.assertOneChoice(labels: List<String>): Lis
     assertEquals("the segments $labels share one parent", 1, parents.size)
     assertTrue("the segments $labels are one selectable group", parents.single()?.config?.contains(SemanticsProperties.SelectableGroup) == true)
     assertEquals("exactly one of $labels is selected", 1, segments.count { it.config.getOrElse(SemanticsProperties.Selected) { false } })
+    // Parts of one control, not chips apart: each segment starts where the one before ends, beside it or below it.
+    for ((a, b) in segments.map { it.boundsInRoot }.zipWithNext()) {
+        assertTrue("the segments $labels touch: $a then $b", abs(b.left - a.right) < 0.5f || abs(b.top - a.bottom) < 0.5f)
+    }
     return segments
 }
 
