@@ -192,12 +192,12 @@ fun PdfToImageView(
                                         onChange = { selectedUri = null; unlockPassword = ""; currentState = ToolState.SELECTING },
                                         modifier = Modifier.padding(top = 12.dp)
                                     )
-                                    // Each choice under its label, as Crop's Pages, 20 dp from the screen's edges: the gap between the groups is
-                                    // wider than label to control.
-                                    Column(Modifier.padding(horizontal = 4.dp)) {
-                                        ToolSectionLabel(stringResource(R.string.pdf2img_format), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                                    // Each choice under its label, as Crop's Pages: the label 20 dp from the screen's edge, the choice 16 dp, in
+                                    // line with the file card and the pages; the gap between the groups is wider than label to control.
+                                    Column {
+                                        ToolSectionLabel(stringResource(R.string.pdf2img_format), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
                                         SegmentedChoice(IMAGE_FORMATS, IMAGE_FORMATS.indexOf(format), onSelect = { format = IMAGE_FORMATS[it] })
-                                        ToolSectionLabel(stringResource(R.string.pdf2img_quality), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                                        ToolSectionLabel(stringResource(R.string.pdf2img_quality), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
                                         SegmentedChoice(
                                             qualityLabels,
                                             QUALITIES.indexOfFirst { it.first == quality },

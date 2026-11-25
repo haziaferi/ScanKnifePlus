@@ -130,9 +130,8 @@ internal fun SaveDialog(
         onDismissRequest = onDismiss,
         title = { DialogTitle(stringResource(R.string.scan_save_title)) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.scan_page_size), style = MaterialTheme.typography.labelLarge)
-                OptionChoice(PdfPageSize.entries, size, ::sizeLabel) { size = it }
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OptionChoice(R.string.scan_page_size, PdfPageSize.entries, size, ::sizeLabel) { size = it }
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -146,10 +145,8 @@ internal fun SaveDialog(
                 )
                 SwitchRow(R.string.scan_ocr_searchable, R.string.scan_ocr_searchable_hint, makeSearchable) { makeSearchable = it }
                 if (makeSearchable) {
-                    Text(stringResource(R.string.scan_ocr_language), style = MaterialTheme.typography.labelLarge)
-                    OptionChoice(OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
-                    Text(stringResource(R.string.scan_ocr_reading), style = MaterialTheme.typography.labelLarge)
-                    OptionChoice(OcrReading.entries, reading, ::readingLabel) { reading = it }
+                    OptionChoice(R.string.scan_ocr_language, OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
+                    OptionChoice(R.string.scan_ocr_reading, OcrReading.entries, reading, ::readingLabel) { reading = it }
                     SwitchRow(R.string.scan_ocr_txt, null, alsoTxt) { alsoTxt = it }
                 }
                 val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
@@ -207,12 +204,17 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
 }
 
 /**
- * One choice of [options] as the app's segmented control (R2), [selected] marked, each labelled by [label]. The dialog's colours are the
- * palette's own scheme, so the control needs none of its own.
+ * One choice of [options] under its [heading], as the app's segmented control (R2), [selected] marked, each labelled by [label]. The
+ * heading sits nearer its control (8 dp) than the dialog's groups sit to each other (16 dp). The dialog's colours are the palette's own
+ * scheme, so the control needs none of its own.
  */
 @Composable
-private fun <T> OptionChoice(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) =
-    SegmentedChoice(options.map { stringResource(label(it)) }, options.indexOf(selected), onSelect = { onPick(options[it]) })
+private fun <T> OptionChoice(@StringRes heading: Int, options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(heading), style = MaterialTheme.typography.labelLarge)
+        SegmentedChoice(options.map { stringResource(label(it)) }, options.indexOf(selected), onSelect = { onPick(options[it]) })
+    }
+}
 
 /** A switch with its [title] and, if given, a [subtitle], the whole row toggling it. */
 @Composable

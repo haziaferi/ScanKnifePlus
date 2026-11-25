@@ -148,7 +148,7 @@ fun ImageToPdfView(
                             onAction = { saveLauncher.launch(outputFileName("images", "pdf")) },
                             scroll = false
                         ) {
-                            Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+                            Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                             val sizeLabels = listOf(stringResource(R.string.img2pdf_original), stringResource(R.string.img2pdf_a4_paper))
                             // The page size scrolls with the images: pinned above them, it left the grid about 30 dp at twice the text size on a
                             // 320 x 640 dp phone (rule 10).
@@ -160,12 +160,13 @@ fun ImageToPdfView(
                                 contentPadding = PaddingValues(bottom = 16.dp)
                             ) {
                                 item(key = "options", span = { GridItemSpan(maxLineSpan) }) {
-                                    // The page size under its label, as Crop's Pages, then the images' heading.
+                                    // The page size under its label, as Crop's Pages (the label 20 dp from the screen's edge, the choice and the
+                                    // images 16 dp), then the images' heading.
                                     Column {
-                                        ToolSectionLabel(stringResource(R.string.scan_page_size), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                                        ToolSectionLabel(stringResource(R.string.scan_page_size), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
                                         SegmentedChoice(sizeLabels, PAGE_SIZES.indexOf(pageSize), onSelect = { pageSize = PAGE_SIZES[it] })
-                                        ToolSectionLabel(stringResource(R.string.img2pdf_reorder_assets), Modifier.padding(top = 20.dp))
-                                        ToolStatusText(stringResource(R.string.img2pdf_images_selected, selectedUris.size))
+                                        ToolSectionLabel(stringResource(R.string.img2pdf_reorder_assets), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp))
+                                        Box(Modifier.padding(horizontal = 4.dp)) { ToolStatusText(stringResource(R.string.img2pdf_images_selected, selectedUris.size)) }
                                     }
                                 }
                                 itemsIndexed(selectedUris) { index, uri ->

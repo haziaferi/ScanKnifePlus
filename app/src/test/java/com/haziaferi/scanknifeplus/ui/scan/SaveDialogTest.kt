@@ -1,5 +1,6 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertIsNotSelected
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
 import com.haziaferi.scanknifeplus.ocr.OcrLanguage
 import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
@@ -52,6 +54,19 @@ class SaveDialogTest {
     }
 
     private fun save() = rule.onNodeWithText("Choose where to save").performClick()
+
+    /** V2: a choice's heading sits nearer its own control than the group above it, so it reads as that control's. */
+    @Test
+    fun `each choice's heading sits nearer its control than the group above`() {
+        show()
+        // Unclipped (position and size, not boundsInRoot): the dialog scrolls, and a node outside its viewport reports a cut-off box.
+        fun bounds(text: String) = rule.onNodeWithText(text).fetchSemanticsNode().let { Rect(it.positionInRoot, it.size.toSize()) }
+        for ((above, heading, first) in listOf(Triple("Make searchable", "Language", "English"), Triple("English", "Reading", "Automatic"))) {
+            val toControl = bounds(first).top - bounds(heading).bottom
+            val fromAbove = bounds(heading).top - bounds(above).bottom
+            assertTrue("$heading: $toControl px to its control, $fromAbove px from $above", toControl < fromAbove)
+        }
+    }
 
     @Test
     fun `Make searchable on shows the language, the reading and the txt switch, defaulting to Automatic`() {

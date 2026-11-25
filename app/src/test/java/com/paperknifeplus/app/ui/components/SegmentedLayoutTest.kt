@@ -150,7 +150,7 @@ abstract class SegmentedLayout(private val expected: Map<SegmentedPlace, Boolean
     }
 }
 
-// The tools give a choice the screen's width less 40 dp: 344 dp on the 6T (384 dp), 280 dp on a 320 dp phone.
+// The tools give a choice the screen's width less 32 dp, as Crop's Pages: 352 dp on the 6T (384 dp), 288 dp on a 320 dp phone.
 
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w384dp-h2400dp")
@@ -170,7 +170,7 @@ class SegmentedLayoutLargerTextTest : SegmentedLayout(
     )
 )
 
-// Quality (360 dp of 344 in the 6T's font) draws one row here.
+// Quality (360 dp of 352 in the 6T's font) draws one row here, as it did on the 6T itself.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w384dp-h2400dp", fontScale = 2f)
 class SegmentedLayoutLargeTextTest : SegmentedLayout(
@@ -185,7 +185,7 @@ class SegmentedLayoutLargeTextTest : SegmentedLayout(
 class SegmentedLayoutSmallPhoneDefaultTextTest : SegmentedLayout(
     mapOf(
         SegmentedPlace.FORMAT to ROW, SegmentedPlace.QUALITY to ROW, SegmentedPlace.IMAGES_PAGE_SIZE to ROW, SegmentedPlace.TOOL_LANGUAGE to ROW,
-        SegmentedPlace.TOOL_READING to STACKED
+        SegmentedPlace.TOOL_READING to ROW
     )
 )
 
@@ -198,11 +198,12 @@ class SegmentedLayoutSmallPhoneLargerTextTest : SegmentedLayout(
     )
 )
 
+// Format (298 dp of 288 in the 6T's font, so stacked on a phone) draws one row in Robolectric's narrower font.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w320dp-h2400dp", fontScale = 2f)
 class SegmentedLayoutSmallPhoneTest : SegmentedLayout(
     mapOf(
-        SegmentedPlace.FORMAT to STACKED, SegmentedPlace.QUALITY to STACKED, SegmentedPlace.IMAGES_PAGE_SIZE to STACKED,
+        SegmentedPlace.QUALITY to STACKED, SegmentedPlace.IMAGES_PAGE_SIZE to STACKED,
         SegmentedPlace.TOOL_LANGUAGE to ROW, SegmentedPlace.TOOL_READING to STACKED
     )
 )
@@ -225,7 +226,7 @@ class SegmentedLayoutItalianLargerTextTest : SegmentedLayout(
     )
 )
 
-// Quality (360 dp of 344 in the 6T's font) draws one row here.
+// Quality (360 dp of 352 in the 6T's font) draws one row here, as it did on the 6T itself.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "it-w384dp-h2400dp", fontScale = 2f)
 class SegmentedLayoutItalianLargeTextTest : SegmentedLayout(
@@ -253,12 +254,12 @@ class SegmentedLayoutItalianSmallPhoneLargerTextTest : SegmentedLayout(
     )
 )
 
-// Language (286 dp of 280 in the 6T's font) draws one row here.
+// Format (298 dp of 288 in the 6T's font, so stacked on a phone) draws one row in Robolectric's narrower font. Language needs 286 dp of 288.
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "it-w320dp-h2400dp", fontScale = 2f)
 class SegmentedLayoutItalianSmallPhoneTest : SegmentedLayout(
     mapOf(
-        SegmentedPlace.FORMAT to STACKED, SegmentedPlace.QUALITY to STACKED, SegmentedPlace.IMAGES_PAGE_SIZE to STACKED,
+        SegmentedPlace.QUALITY to STACKED, SegmentedPlace.IMAGES_PAGE_SIZE to STACKED, SegmentedPlace.TOOL_LANGUAGE to ROW,
         SegmentedPlace.TOOL_READING to STACKED
     )
 )

@@ -269,15 +269,16 @@ internal fun SearchableView(
                             } else {
                                 PhotosCard(photos, onChange = { reset() }, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                             }
-                            // Each choice under its label, as Crop's Pages: the gap between the groups is wider than label to control.
-                            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) {
-                                ToolSectionLabel(stringResource(R.string.scan_ocr_language), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                            // Each choice under its label, as Crop's Pages: the label 20 dp from the screen's edge, the choice 16 dp, in line
+                            // with the file card; the gap between the groups is wider than label to control.
+                            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                                ToolSectionLabel(stringResource(R.string.scan_ocr_language), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
                                 SegmentedChoice(
                                     OcrLanguage.entries.map { stringResource(languageLabel(it)) },
                                     OcrLanguage.entries.indexOf(language),
                                     onSelect = { language = OcrLanguage.entries[it] }
                                 )
-                                ToolSectionLabel(stringResource(R.string.scan_ocr_reading), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                                ToolSectionLabel(stringResource(R.string.scan_ocr_reading), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
                                 SegmentedChoice(
                                     OcrReading.entries.map { stringResource(readingLabel(it)) },
                                     OcrReading.entries.indexOf(reading),
@@ -285,7 +286,7 @@ internal fun SearchableView(
                                 )
                                 if (source != null) {
                                     Row(
-                                        Modifier.padding(top = 12.dp).fillMaxWidth().heightIn(min = TargetStep.ACT.drawn)
+                                        Modifier.padding(start = 4.dp, end = 4.dp, top = 12.dp).fillMaxWidth().heightIn(min = TargetStep.ACT.drawn)
                                             .toggleable(value = redo, role = Role.Switch) { redo = it },
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
