@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
@@ -156,7 +157,8 @@ class PasswordLineTest {
         show { SplitView(initialUri = locked(), initialPassword = TestPdfs.USER_PASSWORD, onBack = {}, onOpenPreview = { _, _, _ -> }) }
         waitFor("0 / 3 pages selected")
         rule.onNodeWithText(PASSWORD_LINE).assertExists()
-        rule.onNodeWithText("Select all").performClick()
+        // On the default small window the pinned bar's save line leaves Select all partly under the bar.
+        rule.onNodeWithText("Select all").performScrollTo().performClick()
         rule.onNodeWithText("Extract 3 pages").performClick()
         waitFor("Split complete")
 

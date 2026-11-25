@@ -10,7 +10,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.sp
+import com.paperknifeplus.app.ui.theme.resizedTo
 
 /**
  * A dialog's title (decision 6 of 2026-11-24), for the title slot of every AlertDialog, in the slot's style. When its longest word is wider
@@ -38,8 +38,7 @@ private fun fitLongestWord(measurer: TextMeasurer, text: String, style: TextStyl
     var size = style.fontSize.value
     while (size > floor.value && widest(fitted) > width) {
         size = maxOf(floor.value, size - STEP_SP)
-        val lineHeight = if (style.lineHeight.isSp) (style.lineHeight.value * size / style.fontSize.value).sp else style.lineHeight
-        fitted = style.copy(fontSize = size.sp, lineHeight = lineHeight)
+        fitted = style.resizedTo(size)
     }
     return fitted
 }

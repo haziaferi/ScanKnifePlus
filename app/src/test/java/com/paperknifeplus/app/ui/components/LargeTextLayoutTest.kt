@@ -326,7 +326,7 @@ class LargeTextLayoutTest {
         val input = TestPdfs.write(context.cacheDir, TestPdfs.linksAndScript(), "large-links-it.pdf")
         // In the app's font, whose "Intervallo di pagine" is wider than its stacked row.
         atDoubleText { LinksView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rimuovi i link e salva il PDF")).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Rimuovi i link")).fetchSemanticsNodes().isNotEmpty() }
         for (label in listOf("Tutte le pagine", "Intervallo di pagine", "Tutti i link", "Link esterni")) assertFullyVisible(label)
         assertTrue("the long label wraps onto a second line", layoutOf("Intervallo di pagine").lineCount > 1)
         assertNothingSideways()

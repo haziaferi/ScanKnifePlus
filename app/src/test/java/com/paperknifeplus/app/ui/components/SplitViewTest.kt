@@ -34,6 +34,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
 
@@ -90,10 +91,12 @@ class SplitViewTest {
     /** Selects every page, extracts them, and waits for the result. */
     private fun extractAll(pages: Int) {
         rule.onNodeWithText("Select all").performClick()
-        rule.onNodeWithText("Extract $pages pages").performClick()
+        rule.onNodeWithText(if (pages == 1) "Extract 1 page" else "Extract $pages pages").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Split complete")).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    // Tall enough that the first page's tile shows over the pinned bar, which now has its save line, and so is drawn.
+    @Config(qualifiers = "h800dp")
     @Test
     fun `opened with an encrypted file and its password, Split previews its decrypted copy, as after the prompt`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.userPassword(pages = 2), "locked-split.pdf")
