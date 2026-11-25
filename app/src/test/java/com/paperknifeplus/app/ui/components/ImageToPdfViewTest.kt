@@ -3,8 +3,11 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -13,7 +16,12 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.assertOneChoice
+import com.paperknifeplus.app.testing.segment
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
@@ -24,8 +32,9 @@ import org.robolectric.Shadows
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowToast
 import java.io.ByteArrayOutputStream
+import java.io.File
 
-/** Image to PDF on its screen: running out of memory while converting. */
+/** Image to PDF on its screen: the page size choice, and running out of memory while converting. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ImageToPdfViewTest {
@@ -62,6 +71,31 @@ class ImageToPdfViewTest {
         // Reading the screen runs the main thread's queue, where the failure handler shows its message and goes back to the images.
         rule.waitUntil(30_000) { shown(CREATE) && ShadowToast.getTextOfLatestToast() == TestPdfs.OUT_OF_MEMORY }
         assertFalse("the created file is removed", created.exists())
+    }
+
+    @Test
+    fun `the page size is one choice, starting at Original, and A4 paper makes A4 pages`() {
+        val output = File(context.cacheDir, "a4-images.pdf").apply { delete() }
+        val bitmap = Bitmap.createBitmap(60, 30, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+        val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        val image = TestPdfs.write(context.cacheDir, png, "a4-photo.png")
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(Uri.fromFile(output), picked = listOf(image))) {
+                ImageToPdfView(onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.onNode(hasText("Choose images") and hasClickAction()).performClick()
+        rule.waitUntil(10_000) { shown(CREATE) }
+
+        rule.assertOneChoice(listOf("Original", "A4 paper"))
+        rule.segment("Original").assertIsSelected()
+        rule.segment("A4 paper").performClick().assertIsSelected()
+        rule.segment("Original").assertIsNotSelected()
+        rule.onNodeWithText(CREATE).performClick()
+        rule.waitUntil(30_000) { shown("PDF created") }
+        val page = PDDocument.load(output).use { it.getPage(0).mediaBox }
+        assertEquals(PDRectangle.A4.width, page.width, 0.01f)
+        assertEquals(PDRectangle.A4.height, page.height, 0.01f)
     }
 
     private companion object {

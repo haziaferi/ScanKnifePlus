@@ -59,6 +59,8 @@ class ScanPaletteTest {
         }
         add(Rule("onAcf", "acf", 7.0, { it.onAcf }, { it.acf }))
         add(Rule("ac", "acSoft", 4.5, { it.ac }, { it.acSoft }))
+        // The segmented control's frame (outline) runs along its selected segment's tonal fill (primaryContainer).
+        add(Rule("bd", "acSoft", 3.0, { it.bd }, { it.acSoft }))
         add(Rule("selFg", "selBg", 4.5, { it.selFg }, { it.selBg }))
         add(Rule("warnFg", "warnBg", 4.5, { it.warnFg }, { it.warnBg }))
         add(Rule("scanFg", "scanBg", 4.5, { it.scanFg }, { it.scanBg }))

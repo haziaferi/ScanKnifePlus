@@ -1,12 +1,8 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -15,7 +11,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -33,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -50,9 +44,9 @@ import com.paperknifeplus.app.ui.components.DialogButton
 import com.paperknifeplus.app.ui.components.DialogButtonKind
 import com.paperknifeplus.app.ui.components.DialogButtons
 import com.paperknifeplus.app.ui.components.DialogTitle
+import com.paperknifeplus.app.ui.components.SegmentedChoice
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
-import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.util.Locale
 
 /** The label of each of the scanner's filters, by their stable names (DocumentFilters.all, in picker order). */
@@ -138,7 +132,7 @@ internal fun SaveDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.scan_page_size), style = MaterialTheme.typography.labelLarge)
-                ChipRow(PdfPageSize.entries, size, ::sizeLabel) { size = it }
+                OptionChoice(PdfPageSize.entries, size, ::sizeLabel) { size = it }
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -153,9 +147,9 @@ internal fun SaveDialog(
                 SwitchRow(R.string.scan_ocr_searchable, R.string.scan_ocr_searchable_hint, makeSearchable) { makeSearchable = it }
                 if (makeSearchable) {
                     Text(stringResource(R.string.scan_ocr_language), style = MaterialTheme.typography.labelLarge)
-                    ChipRow(OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
+                    OptionChoice(OcrLanguage.entries, ocrLanguage, ::languageLabel) { ocrLanguage = it }
                     Text(stringResource(R.string.scan_ocr_reading), style = MaterialTheme.typography.labelLarge)
-                    ChipRow(OcrReading.entries, reading, ::readingLabel) { reading = it }
+                    OptionChoice(OcrReading.entries, reading, ::readingLabel) { reading = it }
                     SwitchRow(R.string.scan_ocr_txt, null, alsoTxt) { alsoTxt = it }
                 }
                 val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
@@ -213,15 +207,12 @@ private fun ChoiceRow(@StringRes label: Int, selected: Boolean, onClick: () -> U
 }
 
 /**
- * One choice of [options] as a row of chips (T3), [selected] marked; drawn chips sit [TargetStep.INLINE_GAP] apart, across and down, since
- * each chip's 48 dp hit area already holds the vertical gap.
+ * One choice of [options] as the app's segmented control (R2), [selected] marked, each labelled by [label]. The dialog's colours are the
+ * palette's own scheme, so the control needs none of its own.
  */
 @Composable
-private fun <T> ChipRow(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
-    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
-        for (option in options) OptionChip(label(option), option == selected) { onPick(option) }
-    }
-}
+private fun <T> OptionChoice(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) =
+    SegmentedChoice(options.map { stringResource(label(it)) }, options.indexOf(selected), onSelect = { onPick(options[it]) })
 
 /** A switch with its [title] and, if given, a [subtitle], the whole row toggling it. */
 @Composable
@@ -237,23 +228,5 @@ private fun SwitchRow(@StringRes title: Int, @StringRes subtitle: Int?, checked:
             subtitle?.let { Text(stringResource(it), style = MaterialTheme.typography.bodySmall, color = c.mu) }
         }
         Switch(checked = checked, onCheckedChange = null, colors = SwitchDefaults.colors(checkedTrackColor = c.acf, uncheckedBorderColor = c.bd))
-    }
-}
-
-/** A choice chip (T3). */
-@Composable
-private fun OptionChip(@StringRes label: Int, selected: Boolean, onClick: () -> Unit) {
-    val c = LocalScanPalette.current
-    val shape = RoundedCornerShape(20.dp)
-    Box(
-        Modifier
-            .inlineTarget()
-            .clip(shape)
-            .then(if (selected) Modifier.background(c.acSoft).border(1.5.dp, c.ac, shape) else Modifier.border(1.dp, c.bd, shape))
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = if (selected) c.ac else c.tx)
     }
 }

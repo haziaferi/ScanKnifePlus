@@ -1,7 +1,9 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,10 +63,13 @@ import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
 import com.paperknifeplus.app.testing.assertTargetsFit
 import com.paperknifeplus.app.testing.drawnTop
+import com.paperknifeplus.app.testing.radioButton
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.Typography
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import java.io.ByteArrayOutputStream
+import java.io.File
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -608,39 +613,66 @@ class LargeTextLayoutTest {
         assertEquals("the (i) is as high as the label", change.height, tip.height, 0.5f)
     }
 
-    /** The chips [labels], all on screen: those on one line [TargetStep.INLINE_GAP] apart across, the lines that apart down. */
-    private fun assertChipGaps(labels: List<String>) {
-        val gap = with(rule.density) { TargetStep.INLINE_GAP.toPx() }
-        val chips = labels.map { rule.onNode(hasText(it) and hasClickAction()).bounds() }.sortedWith(compareBy({ it.top }, { it.left }))
-        var lines = 1
-        for ((a, b) in chips.zipWithNext()) {
-            if (abs(a.top - b.top) < 0.5f) {
-                assertEquals("drawn chips on a line are 8 dp apart", gap, b.left - a.right, 0.5f)
-            } else {
-                lines++
-                assertEquals("lines of drawn chips are 8 dp apart", gap, b.top - a.bottom, 0.5f)
-            }
+    /** The segments [labels] stack as rows of one width, one below the other, each label whole and uncut. */
+    private fun assertStackedWhole(labels: List<String>) {
+        val rows = labels.map { rule.onNode(radioButton(it)).bounds() }
+        assertTrue("the segments $labels stack", rows.zipWithNext().all { (a, b) -> b.top >= a.bottom - 0.5f })
+        assertTrue("the rows are one width", rows.all { abs(it.width - rows.first().width) < 0.5f })
+        for (label in labels) {
+            assertFullyVisible(label)
+            assertWholeWords(label, rule.onNodeWithText(label, useUnmergedTree = true))
         }
-        assertTrue("the chips wrap onto more than one line", lines > 1)
     }
 
     @Test
-    @Config(qualifiers = "w320dp-h2400dp")
-    fun `the Save PDF dialog's chips sit 8 dp apart across and down`() {
+    // Robolectric's dialog window has no margins of its own, so a 280 dp window gives the dialog about the 232 dp it has on a 320 dp phone.
+    @Config(qualifiers = "it-w280dp-h2400dp")
+    fun `in Italian on a small phone the Save dialog's choices stack with their labels whole`() {
         atDoubleText { SaveDialog(onSave = {}, onDismiss = {}) }
-        assertChipGaps(listOf("A4", "Letter", "Legal", "Fit"))
+        assertStackedWhole(listOf("A4", "Letter", "Legal", "Adatta"))
+        assertStackedWhole(listOf("Inglese", "Italiano"))
+        assertStackedWhole(listOf("Automatica", "Tabelle", "Scontrini"))
     }
 
     @Test
-    @Config(qualifiers = "w320dp-h2400dp")
-    fun `Make searchable's chips sit 8 dp apart across and down`() {
+    @Config(qualifiers = "it-w320dp-h2400dp")
+    fun `in Italian on a small phone Make searchable's Reading stacks with its labels whole`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         PDFBoxResourceLoader.init(context)
         val input = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "large-searchable.pdf")
         atDoubleText { SearchableView(initialUri = input, onBack = {}, onOpenPreview = { _, _, _ -> }) }
-        rule.waitUntil("the reading chips show", 60_000) { rule.onAllNodes(hasText("Receipts")).fetchSemanticsNodes().isNotEmpty() }
-        rule.onNode(hasScrollAction()).performScrollToNode(hasText("Receipts"))
-        assertChipGaps(listOf("Automatic", "Tables", "Receipts"))
+        rule.waitUntil("the reading choice shows", 60_000) { rule.onAllNodes(hasText("Scontrini")).fetchSemanticsNodes().isNotEmpty() }
+        // Language (286 dp in the 6T's font, of 280) draws one row in Robolectric's narrower font, so only Reading is held here.
+        assertStackedWhole(listOf("Automatica", "Tabelle", "Scontrini"))
+        assertNothingSideways()
+    }
+
+    /** PDF to images on a small phone at twice the text size: its format and quality stack, and the page grid scrolls with them (rule 10). */
+    @Test
+    @Config(qualifiers = "w320dp-h640dp")
+    fun `PDF to images' last page is in reach on a small phone`() {
+        showTool("pdf2img")
+        assertLastTileInReach("pdf2img")
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h640dp")
+    fun `Images to PDF's last image is in reach under the page size on a small phone`() {
+        // Pinned above the grid, the page size left it about 30 dp here.
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val bitmap = Bitmap.createBitmap(60, 80, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }
+        val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        val images = (1..3).map { TestPdfs.write(context.cacheDir, png, "large-photo-$it.png") }
+        val output = Uri.fromFile(File(context.cacheDir, "large-images.pdf"))
+        atDoubleText {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides TestPdfs.savingTo(output, picked = images)) {
+                ImageToPdfView(onBack = {}, onOpenPreview = { _, _, _ -> })
+            }
+        }
+        rule.onNode(hasText("Choose images") and hasClickAction()).performClick()
+        rule.waitUntil("the page size shows", 60_000) { rule.onAllNodes(radioButton("A4 paper")).fetchSemanticsNodes().isNotEmpty() }
+        assertTrue("the page size stacks here", rule.onNode(radioButton("A4 paper")).bounds().top >= rule.onNode(radioButton("Original")).bounds().bottom - 0.5f)
+        assertLastTileInReach("img2pdf", "Image 3")
     }
 
     @Test
@@ -750,8 +782,13 @@ class LargeTextLayoutTest {
     private fun assertLastPageInReach(id: String) {
         showTool(id)
         rule.onNodeWithText("Touch and hold a page to read it.").assertIsDisplayed()
+        assertLastTileInReach(id)
+    }
+
+    /** Swipes on the tool [id]'s one scroll bring its last tile, read out as [lastTile], whole into view, inside the window and the scroll's view. */
+    private fun assertLastTileInReach(id: String, lastTile: String = "Page 3") {
         val window = rule.onRoot().bounds()
-        val last = hasClickAction() and hasContentDescription("Page 3")
+        val last = hasClickAction() and hasContentDescription(lastTile)
         repeat(10) {
             val scroll = rule.onNode(hasScrollAction())
             val view = scroll.bounds()

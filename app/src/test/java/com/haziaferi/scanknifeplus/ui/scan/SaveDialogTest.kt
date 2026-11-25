@@ -1,27 +1,38 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
 import com.haziaferi.scanknifeplus.ocr.OcrLanguage
 import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.assertOneChoice
+import com.paperknifeplus.app.testing.sameColour
+import com.paperknifeplus.app.testing.segment
+import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import com.paperknifeplus.app.ui.theme.ThemeMode
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.GraphicsMode
 
-/** The Save dialog's Make searchable options: shown only while the switch is on, starting from what the caller remembered. */
+/** The Save dialog: its choices, their colours, and the Make searchable options, shown only while the switch is on, from what the caller remembered. */
 @RunWith(RobolectricTestRunner::class)
 class SaveDialogTest {
     @get:Rule(order = 0)
@@ -77,6 +88,45 @@ class SaveDialogTest {
         save()
         assertEquals(TextOptions(OcrLanguage.ITALIAN, OcrReading.TABLES, txt = true), saved!!.text)
     }
+
+    @Test
+    fun `page size, language and reading are each one choice, and the picked ones are saved`() {
+        show()
+        rule.assertOneChoice(listOf("A4", "Letter", "Legal", "Fit"))
+        rule.assertOneChoice(listOf("English", "Italian"))
+        rule.assertOneChoice(listOf("Automatic", "Tables", "Receipts"))
+        rule.segment("A4").assertIsSelected()
+        rule.segment("Letter").performScrollTo().performClick().assertIsSelected()
+        rule.segment("A4").assertIsNotSelected()
+        rule.segment("Italian").performScrollTo().performClick().assertIsSelected()
+        rule.segment("Receipts").performScrollTo().performClick().assertIsSelected()
+        save()
+        assertEquals(SaveOptions(PdfPageSize.LETTER, "", TextOptions(OcrLanguage.ITALIAN, OcrReading.RECEIPTS, txt = false)), saved)
+    }
+
+    /**
+     * The dialog in [palette]'s [theme]: its segments draw from the scheme the palette maps to (ScanPaletteTest holds those colours to their
+     * contrast), the selected one on the tonal fill acSoft and the others on the dialog's surface sf.
+     */
+    private fun assertSegmentFills(palette: AppPalette, theme: ThemeMode) {
+        rule.setContent { PaperKnifePlusTheme(palette, theme) { SaveDialog(onSave = {}, onDismiss = {}) } }
+        val tokens = palette.tokens(oled = theme == ThemeMode.OLED)
+        // 4 dp in from the start, half way down: inside the frame's border, short of the check and the label.
+        fun fill(label: String): Color {
+            val pixels = rule.segment(label).captureToImage().toPixelMap()
+            return pixels[with(rule.density) { 4.dp.roundToPx() }, pixels.height / 2]
+        }
+        assertTrue("the selected segment's fill is acSoft, not ${fill("A4")}", sameColour(tokens.acSoft, fill("A4")))
+        assertTrue("an unselected segment shows the dialog's surface, not ${fill("Letter")}", sameColour(tokens.sf, fill("Letter")))
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE) // Drawn, so the fill can be read.
+    fun `in the Light theme the segments draw in the palette's colours`() = assertSegmentFills(AppPalette.ROSE, ThemeMode.LIGHT)
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `in the OLED theme the segments draw in the palette's colours`() = assertSegmentFills(AppPalette.STILL_WATER, ThemeMode.OLED)
 
     @Test
     fun `the language follows the phone, Italian for any Italian locale and English otherwise`() {

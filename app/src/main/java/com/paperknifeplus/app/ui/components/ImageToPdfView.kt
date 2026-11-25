@@ -44,6 +44,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** The page sizes offered, as the conversion takes them: each image's own size (the default), or A4. */
+private val PAGE_SIZES = listOf("Fit", "A4")
+
 @Composable
 fun ImageToPdfView(
     onBack: () -> Unit,
@@ -56,7 +59,7 @@ fun ImageToPdfView(
 
     var currentState by remember { mutableStateOf(ToolState.CONFIGURING) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var pageSize by remember { mutableStateOf("Fit") }
+    var pageSize by remember { mutableStateOf(PAGE_SIZES.first()) }
     
     var progressCount by remember { mutableIntStateOf(0) }
     var processingTime by remember { mutableStateOf("") }
@@ -146,28 +149,9 @@ fun ImageToPdfView(
                             scroll = false
                         ) {
                             Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column {
-                                    ToolSectionLabel(stringResource(R.string.img2pdf_reorder_assets))
-                                    ToolStatusText(stringResource(R.string.img2pdf_images_selected, selectedUris.size))
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    FilterChip(
-                                        selected = pageSize == "Fit",
-                                        onClick = { pageSize = "Fit" },
-                                        label = { Text(stringResource(R.string.img2pdf_original), style = MaterialTheme.typography.labelMedium) },
-                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
-                                    )
-                                    Spacer(Modifier.width(4.dp))
-                                    FilterChip(
-                                        selected = pageSize == "A4",
-                                        onClick = { pageSize = "A4" },
-                                        label = { Text(stringResource(R.string.img2pdf_a4_paper), style = MaterialTheme.typography.labelMedium) },
-                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accentColor, selectedLabelColor = MaterialTheme.colorScheme.onPrimary)
-                                    )
-                                }
-                            }
-
+                            val sizeLabels = listOf(stringResource(R.string.img2pdf_original), stringResource(R.string.img2pdf_a4_paper))
+                            // The page size scrolls with the images: pinned above them, it left the grid about 30 dp at twice the text size on a
+                            // 320 x 640 dp phone (rule 10).
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
                                 modifier = Modifier.weight(1f),
@@ -175,6 +159,15 @@ fun ImageToPdfView(
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                                 contentPadding = PaddingValues(bottom = 16.dp)
                             ) {
+                                item(key = "options", span = { GridItemSpan(maxLineSpan) }) {
+                                    // The page size under its label, as Crop's Pages, then the images' heading.
+                                    Column {
+                                        ToolSectionLabel(stringResource(R.string.scan_page_size), Modifier.padding(top = 20.dp, bottom = 8.dp))
+                                        SegmentedChoice(sizeLabels, PAGE_SIZES.indexOf(pageSize), onSelect = { pageSize = PAGE_SIZES[it] })
+                                        ToolSectionLabel(stringResource(R.string.img2pdf_reorder_assets), Modifier.padding(top = 20.dp))
+                                        ToolStatusText(stringResource(R.string.img2pdf_images_selected, selectedUris.size))
+                                    }
+                                }
                                 itemsIndexed(selectedUris) { index, uri ->
                                     val isSelected = selectedIndex == index
                                     Box(

@@ -54,7 +54,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -339,7 +338,7 @@ abstract class TargetWalk(private val fontScale: Float) {
     @Test fun `Metadata empty`() = empty("metadata")
     @Test fun `Metadata configuring`() = configuring("metadata")
     @Test fun `PDF to images empty`() = empty("pdf2img")
-    @Test open fun `PDF to images configuring`() = configuring("pdf2img")
+    @Test fun `PDF to images configuring`() = configuring("pdf2img")
     @Test fun `PDF to ZIP empty`() = empty("pdf2zip")
     @Test fun `PDF to ZIP configuring`() = configuring("pdf2zip")
     @Test fun `Extract images empty`() = empty("extract-images")
@@ -382,21 +381,9 @@ class TargetWalkLargeTextTest : TargetWalk(fontScale = 2f)
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(fontScale = 2f, qualifiers = "w320dp-h2400dp")
-class TargetWalkSmallPhoneTest : TargetWalk(fontScale = 2f) {
-    @Ignore(PDF_TO_IMAGES_ON_SMALL_PHONES)
-    @Test
-    override fun `PDF to images configuring`() = super.`PDF to images configuring`()
-}
+class TargetWalkSmallPhoneTest : TargetWalk(fontScale = 2f)
 
 /** The default text size on a 320 dp phone. */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w320dp-h2400dp")
-class TargetWalkSmallPhoneDefaultTextTest : TargetWalk(fontScale = 1f) {
-    @Ignore(PDF_TO_IMAGES_ON_SMALL_PHONES)
-    @Test
-    override fun `PDF to images configuring`() = super.`PDF to images configuring`()
-}
-
-/** Fails at 1.0x and 2.0x on 320 dp alike, and passes on 384 dp at both. */
-private const val PDF_TO_IMAGES_ON_SMALL_PHONES =
-    "L6 layout/segmented: on 320 dp, at any text size, PDF to images' format and quality segments squeeze under 48 dp wide, so their hit areas overlap"
+class TargetWalkSmallPhoneDefaultTextTest : TargetWalk(fontScale = 1f)
