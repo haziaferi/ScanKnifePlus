@@ -43,7 +43,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -93,6 +92,7 @@ import com.paperknifeplus.app.ui.components.SettingsView
 import com.paperknifeplus.app.ui.components.ToolCatalog
 import com.paperknifeplus.app.ui.components.ToolLaunch
 import com.paperknifeplus.app.ui.components.ToolPickerContent
+import com.paperknifeplus.app.ui.components.rememberToolSheetState
 import com.paperknifeplus.app.ui.components.UltraPreview
 import com.paperknifeplus.app.ui.components.getUriDetails
 import com.paperknifeplus.app.ui.components.sweepDecryptedCopies
@@ -108,7 +108,10 @@ import kotlinx.coroutines.withContext
 const val HOME_ROUTE = "home"
 const val HISTORY_ROUTE = "history"
 
-/** The scan flow's route, opened by the bottom bar's Scan button: the one full-screen route that is neither the shell's nor a [ToolCatalog] id. */
+/**
+ * The scan flow's route, opened by the bottom bar's Scan and Home's scan card: the one full-screen route that is neither the shell's nor a
+ * [ToolCatalog] id.
+ */
 const val SCAN_ROUTE = "scan"
 
 /** Full-screen routes of the shell itself; apart from these and [SCAN_ROUTE], every route is a [ToolCatalog] id. */
@@ -184,7 +187,7 @@ class MainActivity : ComponentActivity() {
             val themeMode = ThemeMode.fromStored(themePreference)
 
             PaperKnifePlusTheme(palette = palette, themeMode = themeMode) {
-                val sheetState = rememberModalBottomSheetState()
+                val sheetState = rememberToolSheetState()
                 var showToolPicker by remember { mutableStateOf(false) }
                 // Whether the picked tool opens with the last-viewed file; the sheet's chip clears it for that opening only.
                 var pickerKeepsFile by remember { mutableStateOf(true) }
@@ -209,6 +212,8 @@ class MainActivity : ComponentActivity() {
                     currentTool = PREVIEW_ROUTE
                 }
                 val closeTool = { currentTool = null }
+                // The bottom bar's Scan and Home's scan card start the same scan.
+                val startScan = { currentTool = SCAN_ROUTE }
                 val openFolder: (String?) -> Unit = { from ->
                     folderReturn = from
                     currentTool = FOLDER_ROUTE
@@ -277,6 +282,7 @@ class MainActivity : ComponentActivity() {
                                             showToolPicker = true
                                         },
                                         onSettings = { currentTool = SETTINGS_ROUTE },
+                                        onScan = startScan,
                                         onImportPhotos = {
                                             importUris = it
                                             currentTool = SCAN_ROUTE
@@ -302,7 +308,7 @@ class MainActivity : ComponentActivity() {
                                 MainBottomBar(
                                     currentScreen = mainScreens[pagerState.currentPage],
                                     onNavigate = showTab,
-                                    onScan = { currentTool = SCAN_ROUTE }
+                                    onScan = startScan
                                 )
                             }
                         }

@@ -171,7 +171,7 @@ fun UltraPreview(
     var showToolPicker by remember { mutableStateOf(false) }
     // A link tapped in the PDF waits here until the user confirms it (decision 27d), as every other web link in the app does.
     var pendingLink by remember { mutableStateOf<String?>(null) }
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberToolSheetState()
 
     var headerHeight by remember { mutableStateOf(0.dp) }
     var targetScale by remember { mutableFloatStateOf(1f) }

@@ -11,7 +11,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -370,7 +372,9 @@ class LargeTextLayoutTest {
         // Phone widths in steps, so the two labels wrap onto different numbers of lines at some of them, as on the 6T.
         var width by mutableStateOf(300.dp)
         atDoubleText {
-            Column(Modifier.width(width)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
+            Column(Modifier.width(width)) {
+                HomeView(onAllTools = {}, onSettings = {}, onScan = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> })
+            }
         }
         var differentLines = false
         for (w in 300..440 step 10) {
@@ -690,6 +694,39 @@ class LargeTextLayoutTest {
         // The tile holds the page and its number at twice the size: 10 + 64 + 6 + 32 (16 sp line, doubled) + 4 dp.
         assertTrue("the number fits under the page", first.height >= with(rule.density) { 116.dp.toPx() } - 0.5f)
     }
+
+    /**
+     * The tool sheet as the shell and the reader open it, on a 320 x 640 dp phone, with the last-viewed file's chip and a search typed: the
+     * field, its clear button and the first match show whole in the window, each taking touches across at least 48 dp. Half open, as the
+     * sheets were before, the first match ended 119 dp below the window.
+     */
+    @OptIn(ExperimentalMaterial3Api::class)
+    private fun assertSheetSearchInReach(query: String, firstMatch: String, clear: String) {
+        atDoubleText {
+            ModalBottomSheet(onDismissRequest = {}, sheetState = rememberToolSheetState()) {
+                ToolPickerContent(onToolClick = {}, fileName = "report.pdf", onRemoveFile = {})
+            }
+        }
+        rule.onNode(hasSetTextAction()).performTextInput(query)
+        rule.waitForIdle()
+        val least = with(rule.density) { TargetStep.ACT.hit.toPx() } - 0.5f
+        val window = with(rule.density) { 640.dp.toPx() }
+        for ((what, matcher) in listOf("the field" to hasSetTextAction(), "clear" to hasContentDescription(clear), firstMatch to hasText(firstMatch))) {
+            val node = rule.onNode(matcher and hasClickAction()).fetchSemanticsNode()
+            assertTrue("$what ends at ${node.boundsInRoot.bottom} px, past the window's $window", node.boundsInRoot.bottom <= window + 0.5f)
+            assertEquals("$what shows whole", node.size.height.toFloat(), node.boundsInRoot.height, 0.5f)
+            assertTrue("$what takes touches across ${node.touchBoundsInRoot}", node.touchBoundsInRoot.height >= least && node.touchBoundsInRoot.width >= least)
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w320dp-h640dp")
+    fun `on a small phone the tool sheet's search and its first match are in reach`() = assertSheetSearchInReach("pages", "Split", "Clear search")
+
+    @Test
+    @Config(qualifiers = "it-w320dp-h640dp")
+    fun `in Italian on a small phone the tool sheet's search and its first match are in reach`() =
+        assertSheetSearchInReach("pagine", "Dividi", "Cancella la ricerca")
 
     /** Whether [inner] lies within [outer], to half a pixel. */
     private fun within(inner: Rect, outer: Rect) =

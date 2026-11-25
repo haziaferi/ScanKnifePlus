@@ -1,6 +1,11 @@
 package com.paperknifeplus.app.ui.components
 
+import android.content.ContentResolver
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import android.text.format.Formatter
+import androidx.annotation.WorkerThread
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +34,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** A file a tool saved, as its result screen shows it: [uri], the [name] the picker gave it, its [mime] type, and the [password] it opens with. */
 data class ToolResult(val uri: Uri, val name: String, val mime: String = PDF_MIME, val password: String? = null)
@@ -50,9 +59,9 @@ internal const val ZIP_MIME = "application/zip"
 
 /**
  * The tools' shared result screen (3b), under [ToolScreenBar]: a check and [message], then a card with the saved [result] (its first page,
- * name, [subMessage] and the [PasswordLine] when it [keepsPassword]) whose rank-1 action is Open ([onOpen], the reader) with Share beside
- * it, or Share alone when the result does not open in the reader; then the [report] of what was removed, when there is one (R8); below,
- * Process more files and Back to tools ([onDone]). It scrolls, so nothing clips at large text sizes.
+ * name, size and folder (rule 14), [subMessage] and the [PasswordLine] when it [keepsPassword]) whose rank-1 action is Open ([onOpen], the
+ * reader) with Share beside it, or Share alone when the result does not open in the reader; then the [report] of what was removed, when there
+ * is one (R8); below, Process more files and Back to tools ([onDone]). It scrolls, so nothing clips at large text sizes.
  */
 @Composable
 fun SuccessView(
@@ -97,7 +106,10 @@ fun SuccessView(
                         }
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (result != null) Text(result.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                        if (result != null) {
+                            Text(result.name, style = MaterialTheme.typography.titleSmall, color = colors.onSurface)
+                            ResultPlaceLine(result.uri)
+                        }
                         if (subMessage.isNotBlank()) Text(subMessage, style = MaterialTheme.typography.bodySmall, color = palette.meta)
                         if (keepsPassword) PasswordLine()
                     }
@@ -130,6 +142,59 @@ fun SuccessView(
             }
         }
     }
+}
+
+/** What Android reports of a saved file: its [size] in bytes and the name of the [folder] it is in, each null when it is not reported. */
+internal data class ResultPlace(val size: Long?, val folder: String?)
+
+private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
+private const val DOWNLOADS = "com.android.providers.downloads.documents"
+
+/**
+ * The name of the folder that holds the document at [uri], where its provider names documents by path: the phone's storage
+ * ("primary:Download/a.pdf", which also covers the app's folder there) and a Downloads path ("raw:/storage/emulated/0/Download/a.pdf").
+ * Null for any other id ("msf:123", a cloud provider's), and for a file at the top of a storage, so no id or full path ever shows.
+ */
+internal fun resultFolder(uri: Uri): String? {
+    if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
+    val id = try {
+        DocumentsContract.getDocumentId(uri)
+    } catch (e: IllegalArgumentException) {
+        return null // not a document URI
+    }
+    val path = when (uri.authority) {
+        EXTERNAL_STORAGE -> id.substringAfter(':', "")
+        DOWNLOADS -> id.takeIf { it.startsWith("raw:") }?.removePrefix("raw:")
+        else -> null
+    } ?: return null
+    return path.substringBeforeLast('/', "").substringAfterLast('/').ifBlank { null }
+}
+
+/** [resultFolder] and the size its provider reports for [uri]; a size of 0 counts as unknown, as some providers report it for any file. */
+@WorkerThread
+internal fun resultPlace(resolver: ContentResolver, uri: Uri): ResultPlace {
+    val size = try {
+        resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
+        }
+    } catch (e: Exception) {
+        null // the provider refused or failed: the card shows the folder alone, or nothing
+    }
+    return ResultPlace(size?.takeIf { it > 0 }, resultFolder(uri))
+}
+
+/**
+ * The line under the result's name (rule 14): "1.2 MB · Download" (the size in the locale's format), the size or the folder alone when only
+ * one is known, nothing for neither. Read off the main thread, it shows once known and takes no room until then.
+ */
+@Composable
+private fun ResultPlaceLine(uri: Uri) {
+    val context = LocalContext.current
+    val place by produceState<ResultPlace?>(null, uri) { value = withContext(Dispatchers.IO) { resultPlace(context.contentResolver, uri) } }
+    val size = place?.size?.let { Formatter.formatShortFileSize(context, it) }
+    val folder = place?.folder
+    val line = if (size != null && folder != null) stringResource(R.string.tool_result_size_folder, size, folder) else size ?: folder
+    if (line != null) Text(line, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.meta)
 }
 
 /** The report rows (R8): a card headed What was removed, one row per label and count of [rows], each row read as one. */
