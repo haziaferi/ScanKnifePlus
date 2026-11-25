@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Settings
@@ -55,6 +56,7 @@ import com.haziaferi.scanknifeplus.ui.folder.FolderBar
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.inlineTarget
 import kotlinx.coroutines.Dispatchers
@@ -69,14 +71,15 @@ private const val IMAGE_TYPES = "image/*"
 
 /**
  * Home: header (wordmark, All tools, Settings), the folder bar (2b, [folder], opening Folder setup with [onFolder]), the scan card and the
- * Recent list (1a, 3c, 3d): the newest files of the folder ([recentFolder]) when one is listed, else this session's outputs. Scanning itself
- * starts from the bottom bar's Scan button, so the card carries Import photos (the system picker, then the scan flow with the picked images)
- * and Open PDF (the system picker, then the reader); the accent stays on Scan, the active tab and the Scan tag.
+ * Recent list (1a, 3c, 3d): the newest files of the folder ([recentFolder]) when one is listed, else this session's outputs. The card's upper
+ * part starts a scan ([onScan], as the bottom bar's Scan does; rule 3), and below it Import photos (the system picker, then the scan flow
+ * with the picked images) and Open PDF (the system picker, then the reader); the accent stays on Scan, the active tab and the Scan tag.
  */
 @Composable
 fun HomeView(
     onAllTools: () -> Unit,
     onSettings: () -> Unit,
+    onScan: () -> Unit,
     onImportPhotos: (List<Uri>) -> Unit,
     onSeeAll: () -> Unit,
     onOpenPreview: (Uri, String, Int) -> Unit,
@@ -102,7 +105,7 @@ fun HomeView(
         HomeHeader(onAllTools = onAllTools, onSettings = onSettings)
         Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
             FolderBar(folder, onClick = onFolder)
-            ScanCard(onImportPhotos = { pickPhotos.launch(IMAGE_TYPES) }, onOpenPdf = { pickPdf.launch("application/pdf") })
+            ScanCard(onScan = onScan, onImportPhotos = { pickPhotos.launch(IMAGE_TYPES) }, onOpenPdf = { pickPdf.launch("application/pdf") })
             if (recentFolder != null) {
                 FolderRecentList(recentFolder.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
             } else {
@@ -134,28 +137,38 @@ private fun HeaderButton(icon: ImageVector, label: String, onClick: () -> Unit) 
     }
 }
 
-/** "Scan a document" with its subtitle and the Import photos and Open PDF buttons (T2); the Scan action itself is in the bottom bar (3c). */
+/**
+ * The scan card: its upper part (the scan tile, "Scan a document" and its subtitle) is one T1 target that starts a scan ([onScan]), read
+ * as one button; below it, outside that target, the Import photos and Open PDF buttons (T2).
+ */
 @Composable
-private fun ScanCard(onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
+private fun ScanCard(onScan: () -> Unit, onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
     val colors = MaterialTheme.colorScheme
+    val palette = LocalScanPalette.current
     Surface(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp),
         shape = RoundedCornerShape(24.dp),
         color = colors.surface,
         border = BorderStroke(1.dp, colors.outline)
     ) {
-        Column(
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column {
+            // Edge to edge in the card, which clips the press to its corners; clickable merges the texts into one node for TalkBack.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClick = onScan)
+                    .heightIn(min = TargetStep.COMMIT.drawn)
+                    .padding(start = 20.dp, end = 16.dp, top = 24.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 Box(
-                    modifier = Modifier.size(52.dp).background(colors.surfaceVariant, RoundedCornerShape(16.dp)),
+                    modifier = Modifier.size(52.dp).background(palette.scanBg, RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Outlined.DocumentScanner, contentDescription = null, tint = colors.onSurface, modifier = Modifier.size(28.dp))
+                    Icon(Icons.Outlined.DocumentScanner, contentDescription = null, tint = palette.scanFg, modifier = Modifier.size(28.dp))
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         stringResource(R.string.home_scan_title),
                         style = MaterialTheme.typography.headlineSmall,
@@ -164,8 +177,12 @@ private fun ScanCard(onImportPhotos: () -> Unit, onOpenPdf: () -> Unit) {
                     )
                     Text(stringResource(R.string.home_scan_subtitle), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
                 }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(24.dp))
             }
-            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.height(IntrinsicSize.Min).padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 CardButton(stringResource(R.string.home_import_photos), onImportPhotos, Modifier.weight(1f).fillMaxHeight())
                 CardButton(stringResource(R.string.home_open_pdf), onOpenPdf, Modifier.weight(1f).fillMaxHeight())
             }

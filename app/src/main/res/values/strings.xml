@@ -165,6 +165,8 @@
     <string name="tools_title">All tools</string>
     <string name="tools_file_label">Opens with</string>
     <string name="tools_remove_file">Remove %1$s</string>
+    <string name="tools_search">Search tools</string>
+    <string name="tools_search_empty">No tool matches “%1$s”.</string>
     <string name="tool_category_edit">Edit</string>
     <string name="tool_category_optimize">Optimize</string>
     <string name="tool_category_secure">Secure</string>
@@ -460,6 +462,8 @@
     <string name="tool_page_n">Page %1$s</string>
     <string name="tool_saves_new_pdf">Saves a new PDF. The original stays as it is.</string>
     <string name="tool_unknown_size">Unknown size</string>
+    <!-- The result card's line under the file name: the size (as Android formats it), then the folder's name. -->
+    <string name="tool_result_size_folder" translatable="false">%1$s · %2$s</string>
     <string name="tool_document_cover">Document cover</string>
     <string name="tool_pick_images">Choose images</string>
     <string name="tool_pick_pdf">Choose PDF</string>

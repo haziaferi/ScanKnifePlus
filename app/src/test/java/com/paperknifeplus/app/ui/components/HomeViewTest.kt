@@ -13,7 +13,14 @@ import androidx.compose.material.icons.filled.FolderZip
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -60,6 +67,7 @@ class HomeViewTest {
     private fun home(
         onAllTools: () -> Unit = {},
         onSettings: () -> Unit = {},
+        onScan: () -> Unit = {},
         onSeeAll: () -> Unit = {},
         folder: FolderStatus = FolderStatus.NotChosen,
         onFolder: () -> Unit = {},
@@ -67,9 +75,38 @@ class HomeViewTest {
         onOpen: (Uri) -> Unit = {}
     ) = rule.setContent {
         HomeView(
-            onAllTools = onAllTools, onSettings = onSettings, onImportPhotos = {}, onSeeAll = onSeeAll, onOpenPreview = { uri, _, _ -> onOpen(uri) },
-            folder = folder, onFolder = onFolder, recentFolder = recentFolder
+            onAllTools = onAllTools, onSettings = onSettings, onScan = onScan, onImportPhotos = {}, onSeeAll = onSeeAll,
+            onOpenPreview = { uri, _, _ -> onOpen(uri) }, folder = folder, onFolder = onFolder, recentFolder = recentFolder
         )
+    }
+
+    /** The scan card's upper target: the one node holding the card's title. */
+    private val scanTarget = hasText("Scan a document") and hasClickAction()
+
+    @Test
+    fun `tapping the scan card's title area starts a scan`() {
+        var scans = 0
+        home(onScan = { scans++ })
+        rule.onNodeWithText("Scan a document").performClick()
+        assertEquals(1, scans)
+        rule.onNodeWithText("Pages, receipts or a book spread").performClick()
+        assertEquals(2, scans)
+    }
+
+    @Test
+    fun `TalkBack reads the scan card's upper part as one button with its title and subtitle`() {
+        home()
+        val node = rule.onNode(scanTarget).fetchSemanticsNode()
+        assertEquals(listOf("Scan a document", "Pages, receipts or a book spread"), node.config[SemanticsProperties.Text].map { it.text })
+        assertEquals(Role.Button, node.config[SemanticsProperties.Role])
+        assertTrue(SemanticsActions.OnClick in node.config)
+        assertEquals("one node holds the title", 1, rule.onAllNodes(hasText("Scan a document")).fetchSemanticsNodes().size)
+        rule.onNode(hasText("Scan a document") and isHeading(), useUnmergedTree = true).assertExists()
+        // Import photos and Open PDF stay their own buttons, outside the scan target.
+        for (button in listOf("Import photos", "Open PDF")) {
+            rule.onNode(hasText(button) and hasClickAction()).assertExists()
+            rule.onNode(scanTarget and hasAnyDescendant(hasText(button))).assertDoesNotExist()
+        }
     }
 
     @Test
@@ -86,9 +123,8 @@ class HomeViewTest {
     }
 
     @Test
-    fun `the scan card has Import photos, which asks the system picker for several images, but no Scan button of its own`() {
+    fun `the scan card has Import photos, which asks the system picker for several images`() {
         home()
-        rule.onNodeWithText("Scan a document").assertHasNoClickAction()
         rule.onNodeWithText("Scan").assertDoesNotExist()
         rule.onNodeWithText("Import photos").performClick()
         val request = shadowOf(rule.activity).nextStartedActivityForResult.intent

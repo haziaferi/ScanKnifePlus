@@ -168,6 +168,8 @@
     <string name="tools_title">Tutti gli strumenti</string>
     <string name="tools_file_label">Si apre con</string>
     <string name="tools_remove_file">Rimuovi %1$s</string>
+    <string name="tools_search">Cerca uno strumento</string>
+    <string name="tools_search_empty">Nessuno strumento corrisponde a “%1$s”.</string>
     <string name="tool_category_edit">Modifica</string>
     <string name="tool_category_optimize">Ottimizzazione</string>
     <string name="tool_category_secure">Sicurezza</string>

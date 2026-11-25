@@ -26,19 +26,67 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.TargetStep
+import java.text.Normalizer
+import java.util.Locale
 
-/** Every [ToolCatalog] tool, grouped by [ToolCategory]; tapping one reports its id. [header] scrolls with the list. */
+/** Accents and other combining marks, once a text is decomposed. */
+private val COMBINING_MARKS = Regex("""\p{Mn}+""")
+
+/** What separates words: anything but a letter or a digit (spaces, apostrophes, hyphens). */
+private val NON_WORD = Regex("""[^\p{L}\p{Nd}]+""")
+
+/** The words of [text] as search compares them: lower case, accents removed (NFD, combining marks dropped). */
+internal fun searchWords(text: String): List<String> =
+    COMBINING_MARKS.replace(Normalizer.normalize(text, Normalizer.Form.NFD), "").lowercase(Locale.ROOT)
+        .split(NON_WORD).filter { it.isNotEmpty() }
+
+/**
+ * Whether a tool called [name], described by [description], matches [query] (decision 4): every word typed starts some word of the two,
+ * ignoring case and accents. A typed word of [FORGIVING_LENGTH] letters or more need not match its last letter, so a singular finds the
+ * plural ("pagina" finds "pagine", "immagine" finds "immagini"); shorter ones match in full, so "file" does not find "Filigrana". A blank
+ * query matches every tool.
+ */
+internal fun toolMatches(query: String, name: String, description: String): Boolean {
+    val words = searchWords("$name $description")
+    return searchWords(query).all { typed ->
+        val start = if (typed.length >= FORGIVING_LENGTH) typed.dropLast(1) else typed
+        words.any { it.startsWith(start) }
+    }
+}
+
+/** From this many letters a typed word may differ in its last one (user's choice, 2026-11-25). */
+private const val FORGIVING_LENGTH = 5
+
+/**
+ * Every [ToolCatalog] tool that matches [query] ([toolMatches], in the app's language), grouped under its [ToolCategory]'s heading; a
+ * category with no match is left out, and when nothing matches one line says so. Tapping a tool reports its id. [header] scrolls with the
+ * list.
+ */
 @Composable
 fun ToolsView(
     onToolClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    query: String = "",
     contentPadding: PaddingValues = PaddingValues(bottom = 16.dp),
     header: LazyListScope.() -> Unit = {}
 ) {
-    val groups = ToolCatalog.tools.groupBy { it.category }
+    val shown = ToolCatalog.tools.filter { toolMatches(query, stringResource(it.name), stringResource(it.description)) }
+    val groups = shown.groupBy { it.category }
+    val nothing = stringResource(R.string.tools_search_empty, query.trim())
     LazyColumn(modifier = modifier.fillMaxWidth(), contentPadding = contentPadding) {
         header()
+        if (shown.isEmpty()) {
+            item(key = "empty") {
+                Text(
+                    nothing,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
+                )
+            }
+        }
         ToolCategory.entries.forEach { category ->
             val tools = groups[category].orEmpty()
             if (tools.isEmpty()) return@forEach

@@ -15,7 +15,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -220,6 +223,36 @@ class MainActivityTest {
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Home")
         rule.onNode(hasText("History") and isSelectable()).assertIsSelected()
+    }
+
+    /** Home's scan card (rule 3) opens the scanner on the same route as the bar's Scan: the camera, not Review, and no picker first. */
+    @Test
+    fun `Home's scan card opens the scanner as the bar's Scan does`() {
+        launch()
+        rule.onNode(hasText("Scan a document") and hasClickAction()).performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasContentDescription("Close scanner")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, "Scan")).assertExists()
+        val activity = controller!!.get()
+        assertNull("no picker opens", shadowOf(activity).nextStartedActivityForResult)
+        assertEquals(ScanPhase.SCANNER, ViewModelProvider(activity)[ScanFlowHolder::class.java].model!!.phase)
+
+        rule.runOnUiThread { activity.onBackPressedDispatcher.onBackPressed() }
+        waitFor("Scan a document")
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp")
+    fun `the All tools sheet opens with its search field unfocused and narrows the list`() {
+        launch()
+        rule.onNode(hasContentDescription("All tools")).performClick()
+        rule.waitUntil(10_000) { rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(hasSetTextAction()).assertIsNotFocused()
+        rule.onNode(hasSetTextAction()).performTextInput("compress")
+        rule.waitForIdle()
+        assertTrue(shows("Compress"))
+        assertFalse(shows("Merge"))
+        rule.onNode(hasText("Compress") and hasClickAction()).performClick()
+        waitFor("Optimize PDF size")
     }
 
     /**

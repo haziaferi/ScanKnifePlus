@@ -16,9 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
@@ -46,9 +48,11 @@ import com.paperknifeplus.app.testing.assertTargetsFit
 import com.paperknifeplus.app.testing.assertTextOnTheScale
 import com.paperknifeplus.app.ui.theme.AppPalette
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
+import com.paperknifeplus.app.ui.theme.TargetStep
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.io.ByteArrayOutputStream
 import java.io.File
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Rule
@@ -102,15 +106,29 @@ abstract class TargetWalk(private val fontScale: Float) {
         folderItem("f3", "Lease.lost-20261014-191200.pdf", FolderKind.CONFLICT, original = lease)
     )
 
+    /** Home's scan card: its upper part is one T1 target, and Import photos and Open PDF are T2 targets outside it (the walk checks overlap). */
+    private fun assertScanCardSteps() {
+        val card = rule.onNode(hasText("Scan a document") and hasClickAction()).fetchSemanticsNode().touchBoundsInRoot
+        val least = with(rule.density) { TargetStep.COMMIT.hit.toPx() } - 0.5f
+        assertTrue("the scan card's target is ${card.width} x ${card.height} px", card.width >= least && card.height >= least)
+        for (label in listOf("Import photos", "Open PDF")) {
+            val button = rule.onNode(hasText(label) and hasClickAction()).fetchSemanticsNode().touchBoundsInRoot
+            assertTrue("$label is below the scan card's target", button.top >= card.bottom - 0.5f)
+        }
+    }
+
     @Test
     fun `Home without a folder`() {
         show {
             Column {
-                Box(Modifier.weight(1f)) { HomeView(onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> }) }
+                Box(Modifier.weight(1f)) {
+                    HomeView(onAllTools = {}, onSettings = {}, onScan = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> })
+                }
                 MainBottomBar(HOME_ROUTE, onNavigate = {}, onScan = {})
             }
         }
         walk("Home")
+        assertScanCardSteps()
     }
 
     @Test
@@ -119,7 +137,7 @@ abstract class TargetWalk(private val fontScale: Float) {
             Column {
                 Box(Modifier.weight(1f)) {
                     HomeView(
-                        onAllTools = {}, onSettings = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> },
+                        onAllTools = {}, onSettings = {}, onScan = {}, onImportPhotos = {}, onSeeAll = {}, onOpenPreview = { _, _, _ -> },
                         folder = FolderStatus.Ready("Documents/Scans"), recentFolder = folderItems
                     )
                 }
@@ -127,6 +145,7 @@ abstract class TargetWalk(private val fontScale: Float) {
             }
         }
         walk("Home with recent files")
+        assertScanCardSteps()
     }
 
     @Test
@@ -164,6 +183,18 @@ abstract class TargetWalk(private val fontScale: Float) {
             }
         }
         walk("the All tools sheet")
+        searchAndWalk("the All tools sheet")
+    }
+
+    /** Types into the sheet's search field, so its clear button (T3) shows beside the matches, and walks the sheet again. */
+    private fun searchAndWalk(where: String) {
+        rule.onNode(hasSetTextAction()).performTextInput("page")
+        rule.waitForIdle()
+        rule.onNode(hasContentDescription("Clear search") and hasClickAction()).assertExists()
+        rule.onNode(hasText("Page numbers") and hasClickAction()).assertExists()
+        walk("$where, searching")
+        val field = rule.onNode(hasSetTextAction()).fetchSemanticsNode().touchBoundsInRoot
+        assertTrue("the search field is at least T2 high", field.height >= with(rule.density) { TargetStep.ACT.hit.toPx() } - 0.5f)
     }
 
     @Test
@@ -174,6 +205,7 @@ abstract class TargetWalk(private val fontScale: Float) {
         walk("the reader")
         rule.onNode(hasContentDescription("Tools for this file")).performClick()
         walk("the reader's tool sheet")
+        searchAndWalk("the reader's tool sheet")
     }
 
     @Test
