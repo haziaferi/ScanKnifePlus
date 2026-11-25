@@ -688,7 +688,6 @@
     <string name="password_show_password">Mostra la password</string>
     <string name="pdf2img_convert_document_to_images">Converti il documento in immagini</string>
     <string name="pdf2img_convert_pages_to">Converti %1$s pagine in %2$s</string>
-    <string name="pdf2img_export_configuration">Opzioni di esportazione</string>
     <string name="pdf2img_format">Formato</string>
     <string name="pdf2img_images">%1$s immagini</string>
     <string name="pdf2img_images_exported">Immagini esportate</string>

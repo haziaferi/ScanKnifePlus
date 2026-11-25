@@ -8,15 +8,21 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
+import com.haziaferi.scanknifeplus.ocr.OcrLanguage
+import com.haziaferi.scanknifeplus.ocr.OcrReading
 import com.haziaferi.scanknifeplus.scan.export.FakeOcrEngine
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.assertOneChoice
+import com.paperknifeplus.app.testing.segment
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
@@ -31,7 +37,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowToast
 
-/** Make PDF searchable end to end on its screen, with the fake engine and page images; running out of memory while saving. */
+/** Make PDF searchable end to end on its screen, with the fake engine and page images: its choices, cancelling, running out of memory while saving. */
 @RunWith(RobolectricTestRunner::class)
 class SearchableViewTest {
     @get:Rule(order = 0)
@@ -87,6 +93,24 @@ class SearchableViewTest {
         assertTrue(text, "page 1" in text && "page 2" in text)
         assertEquals("searchable", SessionManager.history.first().toolId)
         assertEquals(1, engine.closes)
+    }
+
+    @Test
+    fun `language and reading are each one choice, and the picked ones are what the pages are read with`() {
+        show()
+        rule.assertOneChoice(listOf("English", "Italian"))
+        rule.assertOneChoice(listOf("Automatic", "Tables", "Receipts"))
+        rule.segment("English").assertIsSelected()
+        rule.segment("Automatic").assertIsSelected()
+        rule.segment("Italian").performClick().assertIsSelected()
+        rule.segment("English").assertIsNotSelected()
+        rule.segment("Tables").performClick().assertIsSelected()
+        rule.segment("Automatic").assertIsNotSelected()
+
+        rule.onNodeWithText("Make searchable").performClick()
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("PDF made searchable")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(2, engine.reads.size)
+        assertTrue(engine.reads.toString(), engine.reads.all { it.language == OcrLanguage.ITALIAN && it.reading == OcrReading.TABLES })
     }
 
     @Test

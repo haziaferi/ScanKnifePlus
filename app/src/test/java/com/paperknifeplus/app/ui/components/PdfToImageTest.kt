@@ -12,14 +12,18 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -30,6 +34,8 @@ import com.paperknifeplus.app.data.image.PdfPageKeyer
 import com.paperknifeplus.app.data.image.PdfPageRequest
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
+import com.paperknifeplus.app.testing.assertOneChoice
+import com.paperknifeplus.app.testing.segment
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -74,7 +80,24 @@ class PdfToImageTest {
     }
 
     @Test
-    fun `the default format is one of the chips`() {
+    fun `format and quality are each one choice, and the format picked names the images on the button`() {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three-formats.pdf")
+        rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
+        rule.assertOneChoice(IMAGE_FORMATS)
+        rule.assertOneChoice(listOf("Standard", "HD", "Ultra+"))
+        rule.segment("JPG").assertIsSelected()
+        rule.segment("Standard").assertIsSelected()
+
+        rule.segment("WebP").performClick().assertIsSelected()
+        rule.segment("JPG").assertIsNotSelected()
+        rule.onNode(hasText("Convert 3 pages to WebP")).assertExists()
+        rule.segment("HD").performClick().assertIsSelected()
+        rule.segment("Standard").assertIsNotSelected()
+    }
+
+    @Test
+    fun `the default format is the first segment`() {
         assertEquals("JPG", IMAGE_FORMATS.first())
         assertTrue(IMAGE_FORMATS.containsAll(listOf("JPG", "PNG", "WebP")))
     }
@@ -101,9 +124,10 @@ class PdfToImageTest {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "three-tiles.pdf")
         rule.setContent { PdfToImageView(initialUri = uri, onBack = {}) }
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 3 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
+        // The test window is small: the file card and the choices above the pages fill it, so the first page is scrolled to.
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(1)
         val tile = rule.onNode(isToggleable() and hasContentDescription("Page 1"))
         tile.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)).assertIsOn()
-        // The test window is small: the file card and the pinned action leave the first row of tiles only partly on screen.
         tile.performSemanticsAction(SemanticsActions.OnClick)
         tile.assertIsOff()
         rule.onNode(hasText("Convert 2 pages to JPG")).assertExists()
@@ -118,9 +142,10 @@ class PdfToImageTest {
         rule.onNodeWithText("Unlock").performClick()
         rule.waitUntil(10_000) { rule.onAllNodes(hasText("Convert 4 pages to JPG")).fetchSemanticsNodes().isNotEmpty() }
 
-        rule.waitUntil(30_000) {
-            pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE) && pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, 0.6f)
-        }
+        rule.waitUntil(30_000) { pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, THUMBNAIL_SCALE) }
+        // The test window is small: the file card and the choices above the pages fill it, so the first page is scrolled to.
+        rule.onNode(hasScrollToIndexAction()).performScrollToIndex(1)
+        rule.waitUntil(30_000) { pageCached(source.uri, 0, TestPdfs.USER_PASSWORD, 0.6f) }
         // Once to find that it needs a password, once to check the password; as many as before the check told its outcomes apart.
         assertEquals(2, source.opens)
     }

@@ -9,23 +9,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FindInPage
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -274,14 +269,25 @@ internal fun SearchableView(
                             } else {
                                 PhotosCard(photos, onChange = { reset() }, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                             }
-                            Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                ToolSectionLabel(stringResource(R.string.scan_ocr_language))
-                                ChoiceChips(OcrLanguage.entries, language, ::languageLabel) { language = it }
-                                ToolSectionLabel(stringResource(R.string.scan_ocr_reading))
-                                ChoiceChips(OcrReading.entries, reading, ::readingLabel) { reading = it }
+                            // Each choice under its label, as Crop's Pages: the label 20 dp from the screen's edge, the choice 16 dp, in line
+                            // with the file card; the gap between the groups is wider than label to control.
+                            Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                                ToolSectionLabel(stringResource(R.string.scan_ocr_language), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
+                                SegmentedChoice(
+                                    OcrLanguage.entries.map { stringResource(languageLabel(it)) },
+                                    OcrLanguage.entries.indexOf(language),
+                                    onSelect = { language = OcrLanguage.entries[it] }
+                                )
+                                ToolSectionLabel(stringResource(R.string.scan_ocr_reading), Modifier.padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp))
+                                SegmentedChoice(
+                                    OcrReading.entries.map { stringResource(readingLabel(it)) },
+                                    OcrReading.entries.indexOf(reading),
+                                    onSelect = { reading = OcrReading.entries[it] }
+                                )
                                 if (source != null) {
                                     Row(
-                                        Modifier.fillMaxWidth().heightIn(min = TargetStep.ACT.drawn).toggleable(value = redo, role = Role.Switch) { redo = it },
+                                        Modifier.padding(start = 4.dp, end = 4.dp, top = 12.dp).fillMaxWidth().heightIn(min = TargetStep.ACT.drawn)
+                                            .toggleable(value = redo, role = Role.Switch) { redo = it },
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
@@ -387,28 +393,6 @@ private fun PhotosCard(photos: List<Uri>, onChange: () -> Unit, modifier: Modifi
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
             )
             CardChange(onChange)
-        }
-    }
-}
-
-/**
- * One choice of [options] as a row of chips (T3), [selected] marked; drawn chips sit [TargetStep.INLINE_GAP] apart, across and down, since
- * each chip's 48 dp hit area already holds the vertical gap.
- */
-@Composable
-private fun <T> ChoiceChips(options: List<T>, selected: T, label: (T) -> Int, onPick: (T) -> Unit) {
-    FlowRow(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(TargetStep.INLINE_GAP)) {
-        for (option in options) {
-            FilterChip(
-                selected = option == selected,
-                onClick = { onPick(option) },
-                label = { Text(stringResource(label(option)), style = MaterialTheme.typography.labelLarge) },
-                modifier = Modifier.heightIn(min = TargetStep.INLINE.drawn),
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
         }
     }
 }
