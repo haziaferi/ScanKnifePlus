@@ -64,11 +64,15 @@ class ToolSearchTest {
     }
 
     @Test
-    fun `a word is a prefix, not a stem`() {
+    fun `a word of five letters or more may differ in its last letter`() {
         assertTrue(toolMatches("pagin", "Elimina pagine", "Rimuovi pagine"))
-        assertTrue(toolMatches("pagin", "Numeri di pagina", "Numera le pagine"))
-        assertFalse(toolMatches("pagina", "Elimina pagine", "Rimuovi pagine"))
+        assertTrue("singular finds plural", toolMatches("pagina", "Elimina pagine", "Rimuovi pagine"))
         assertTrue(toolMatches("Pagina", "Numeri di pagina", "Numera le pagine"))
+        assertTrue(toolMatches("immagine", "Estrai immagini", "Salva le immagini contenute"))
+        assertTrue("and plural finds singular", toolMatches("pages", "Page numbers", "Add page numbers"))
+        assertFalse("only the last letter", toolMatches("paguna", "Elimina pagine", "Rimuovi pagine"))
+        assertFalse("not below five letters", toolMatches("file", "Filigrana", "Aggiungi una sovrimpressione"))
+        assertTrue(toolMatches("file", "Ripara", "Correggi un file danneggiato"))
     }
 
     @Test
@@ -206,7 +210,8 @@ class ToolSearchTest {
         field.performTextInput("pagina")
         rule.waitForIdle()
         assertTrue(shows("Numeri di pagina"))
-        assertFalse("a prefix, not a stem", shows("Elimina pagine"))
+        assertTrue("the singular finds the plural", shows("Elimina pagine"))
+        assertFalse(shows("Ruota"))
         clear()
         field.performTextInput("proprieta")
         rule.waitForIdle()

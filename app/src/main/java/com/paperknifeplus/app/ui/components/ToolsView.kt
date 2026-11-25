@@ -44,12 +44,20 @@ internal fun searchWords(text: String): List<String> =
 
 /**
  * Whether a tool called [name], described by [description], matches [query] (decision 4): every word typed starts some word of the two,
- * ignoring case and accents. A blank query matches every tool.
+ * ignoring case and accents. A typed word of [FORGIVING_LENGTH] letters or more need not match its last letter, so a singular finds the
+ * plural ("pagina" finds "pagine", "immagine" finds "immagini"); shorter ones match in full, so "file" does not find "Filigrana". A blank
+ * query matches every tool.
  */
 internal fun toolMatches(query: String, name: String, description: String): Boolean {
     val words = searchWords("$name $description")
-    return searchWords(query).all { typed -> words.any { it.startsWith(typed) } }
+    return searchWords(query).all { typed ->
+        val start = if (typed.length >= FORGIVING_LENGTH) typed.dropLast(1) else typed
+        words.any { it.startsWith(start) }
+    }
 }
+
+/** From this many letters a typed word may differ in its last one (user's choice, 2026-11-25). */
+private const val FORGIVING_LENGTH = 5
 
 /**
  * Every [ToolCatalog] tool that matches [query] ([toolMatches], in the app's language), grouped under its [ToolCategory]'s heading; a
