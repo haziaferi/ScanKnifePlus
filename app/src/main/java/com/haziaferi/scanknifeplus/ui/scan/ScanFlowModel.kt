@@ -117,7 +117,11 @@ internal class ScanFlowModel(
 
         override fun onHoldingSteadyChanged(steady: Boolean) = onMain { holdingSteady = steady }
 
-        override fun onHoldProgressChanged(progress: Float) = onMain { holdProgress = progress }
+        override fun onHoldProgressChanged(progress: Float) = onMain {
+            holdProgress = progress
+            // A full hold comes just before the auto-capture, ahead of the cue ending, so the ring can close before it clears.
+            if (progress == 1f) ringCloses++
+        }
 
         override fun onLowLightChanged(lowLight: Boolean) = onMain { this@ScanFlowModel.lowLight = lowLight }
 
@@ -140,6 +144,10 @@ internal class ScanFlowModel(
 
     /** How far auto-capture's hold has run, from 0 to 1, for the shutter's ring; 0 while the page is not held steady. */
     var holdProgress by mutableFloatStateOf(0f)
+        private set
+
+    /** How many holds have run full, each just as its auto-capture fires; the shutter's ring closes on each. */
+    var ringCloses by mutableIntStateOf(0)
         private set
 
     /** Whether the scene is too dark for reliable detection (scanner-core's LowLightDetector, through the pipeline). */

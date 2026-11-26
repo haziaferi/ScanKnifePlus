@@ -1,19 +1,23 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
 import android.content.Context
+import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -35,7 +39,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
@@ -45,6 +53,7 @@ import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.PaperKnifePlusTheme
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -216,7 +225,10 @@ class ScannerScreenTest {
     }
 
     /** The scanner over a stand-in preview laid out as CameraViewfinder lays out its box: 3:4, centred in the whole screen. */
+    private var view: View? = null
+
     private fun showOverPreview(ui: ScannerUi, fontScale: Float) = rule.setContent {
+        view = LocalView.current
         Scaled(fontScale) {
             PaperKnifePlusTheme {
                 ScannerScreen(ui, actions) {
@@ -230,10 +242,19 @@ class ScannerScreenTest {
      * The capture modes' band at [fontScale]: under the top row's controls and above the holding-steady cue, every segment at least T2 and
      * on screen, no hit area overlapping another. Prints how far the band reaches into the 3:4 preview and holds it to [most] dp, if given.
      */
-    private fun assertBand(fontScale: Float, most: Float?) {
+    private fun assertBand(fontScale: Float, most: Float?, statusBar: Dp = 0.dp) {
         showOverPreview(ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, torchAvailable = true, shutterEnabled = true), fontScale)
-        val context = ApplicationProvider.getApplicationContext<Context>()
         val dp = rule.density.density
+        if (statusBar > 0.dp) {
+            rule.runOnUiThread {
+                val insets = WindowInsetsCompat.Builder()
+                    .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(0, (statusBar.value * dp).roundToInt(), 0, 0))
+                    .build()
+                ViewCompat.dispatchApplyWindowInsets(view!!, insets)
+            }
+            rule.waitForIdle()
+        }
+        val context = ApplicationProvider.getApplicationContext<Context>()
         val tolerance = 0.5f
         val band = rule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.SelectableGroup)).fetchSemanticsNode().boundsInRoot
         val segments = listOf(R.string.scan_mode_single, R.string.scan_mode_multi, R.string.scan_mode_book)
@@ -246,6 +267,8 @@ class ScannerScreenTest {
         val cue = rule.onNodeWithText(context.getString(R.string.scan_hold_steady)).fetchSemanticsNode().boundsInRoot
         val preview = rule.onNodeWithTag(PREVIEW).fetchSemanticsNode().boundsInRoot
         val width = rule.onRoot().fetchSemanticsNode().boundsInRoot.width
+        // With the 6T's status bar the stand-in preview must sit where the 6T draws it (136-648 dp), or the overlap means nothing.
+        if (statusBar > 0.dp) assertEquals("the preview's top on the 6T", SIX_T_PREVIEW_TOP, preview.top / dp, 1f)
 
         assertTrue("the band $band starts under the top row ${top.map { it.bottom }}", top.all { band.top >= it.bottom - tolerance })
         assertTrue("the band $band ends above the cue $cue", band.bottom <= cue.top + tolerance)
@@ -267,25 +290,26 @@ class ScannerScreenTest {
     }
 
     // The ledger's estimates on the 6T (about 3 dp at 1.0x, 62 dp at 2.0x) with 10 dp of slack; on 320 x 640 dp the figure is only reported.
+    // The 6T's scanner is 384 x 784 dp (832 less the 48 dp navigation bar) under a 29 dp status bar: its preview measures 136-648 dp.
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Config(qualifiers = "w384dp-h832dp")
-    fun `on the 6T the modes sit in a band under the top row`() = assertBand(1f, 13f)
+    @Config(qualifiers = "w384dp-h784dp")
+    fun `on the 6T the modes sit in a band under the top row`() = assertBand(1f, 13f, SIX_T_STATUS_BAR)
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Config(qualifiers = "w384dp-h832dp", fontScale = 2f)
-    fun `on the 6T at twice the text size the modes sit in a band under the top row`() = assertBand(2f, 72f)
+    @Config(qualifiers = "w384dp-h784dp", fontScale = 2f)
+    fun `on the 6T at twice the text size the modes sit in a band under the top row`() = assertBand(2f, 72f, SIX_T_STATUS_BAR)
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Config(qualifiers = "it-w384dp-h832dp")
-    fun `in Italian on the 6T the modes sit in a band under the top row`() = assertBand(1f, 13f)
+    @Config(qualifiers = "it-w384dp-h784dp")
+    fun `in Italian on the 6T the modes sit in a band under the top row`() = assertBand(1f, 13f, SIX_T_STATUS_BAR)
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
-    @Config(qualifiers = "it-w384dp-h832dp", fontScale = 2f)
-    fun `in Italian on the 6T at twice the text size the modes sit in a band under the top row`() = assertBand(2f, 72f)
+    @Config(qualifiers = "it-w384dp-h784dp", fontScale = 2f)
+    fun `in Italian on the 6T at twice the text size the modes sit in a band under the top row`() = assertBand(2f, 72f, SIX_T_STATUS_BAR)
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -307,43 +331,124 @@ class ScannerScreenTest {
     @Config(qualifiers = "it-w320dp-h640dp", fontScale = 2f)
     fun `in Italian on a small phone at twice the text size the modes sit in a band under the top row`() = assertBand(2f, null)
 
+    private lateinit var camera: CameraColors
+
+    /** The Single page scanner showing [ui]'s current value, so a test can change what it shows. */
+    private fun showLive(ui: () -> ScannerUi) = rule.setContent {
+        PaperKnifePlusTheme {
+            camera = LocalScanPalette.current.camera
+            ScannerScreen(ui(), actions) {}
+        }
+    }
+
+    /** Changes state on the main thread and applies it, so the paused test clock's next frame shows it. */
+    private fun onUi(change: () -> Unit) = rule.runOnUiThread {
+        change()
+        Snapshot.sendApplyNotifications()
+    }
+
+    /** The shutter's pixels in the middle of its border at [degrees] (clockwise from the right, so the top is -90). */
+    private fun border(vararg degrees: Double): List<Color> {
+        val pixels = rule.onNodeWithContentDescription("Take photo and review it").captureToImage().toPixelMap()
+        val centre = pixels.width / 2f
+        val radius = centre - with(rule.density) { 2.dp.toPx() }
+        return degrees.map { Math.toRadians(it) }.map { pixels[(centre + radius * cos(it)).toInt(), (centre + radius * sin(it)).toInt()] }
+    }
+
+    private fun Color.near(other: Color) = abs(red - other.red) + abs(green - other.green) + abs(blue - other.blue) < 0.06f
+
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Drawn, so the ring can be read.
     fun `while the page is held steady a ring fills the shutter's border clockwise from the top, and only then`() {
-        var ui by mutableStateOf(ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, holdProgress = 0.5f, shutterEnabled = true))
-        lateinit var k: CameraColors
-        rule.setContent {
-            PaperKnifePlusTheme {
-                k = LocalScanPalette.current.camera
-                ScannerScreen(ui, actions) {}
-            }
-        }
-        // The middle of the border just past the top, at the right and at the left: half a hold, clockwise from the top, covers the first two.
-        fun border(): List<Color> {
-            val pixels = rule.onNodeWithContentDescription("Take photo and review it").captureToImage().toPixelMap()
-            val centre = pixels.width / 2f
-            val radius = centre - with(rule.density) { 2.dp.toPx() }
-            return listOf(-60.0, 0.0, 180.0).map { Math.toRadians(it) }
-                .map { pixels[(centre + radius * cos(it)).toInt(), (centre + radius * sin(it)).toInt()] }
-        }
-        fun Color.near(other: Color) = abs(red - other.red) + abs(green - other.green) + abs(blue - other.blue) < 0.06f
-
+        var ui by mutableStateOf(ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, holdProgress = { 0.5f }, shutterEnabled = true))
+        showLive { ui }
         rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
-        val (topEdge, right, left) = border()
-        assertTrue("top $topEdge is the ring", topEdge.near(k.outline))
-        assertTrue("right $right is the ring", right.near(k.outline))
-        assertTrue("left $left is the bare border", left.near(k.shutter))
+        // Just past the top, at the right and at the left: half a hold, clockwise from the top, covers the first two.
+        val (topEdge, right, left) = border(-60.0, 0.0, 180.0)
+        assertTrue("top $topEdge is the ring", topEdge.near(camera.outline))
+        assertTrue("right $right is the ring", right.near(camera.outline))
+        assertTrue("left $left is the bare border", left.near(camera.shutter))
         rule.onNodeWithTag(SHUTTER_RING_TAG).performClick()
         assertEquals("the shutter still takes the photo", listOf("shutter"), calls)
 
-        for (without in listOf(ui.copy(autoCapture = false), ui.copy(holdingSteady = false), ui.copy(liveDetection = false))) {
+        val held = ui
+        // Without the cue, and on a dimmed shutter that would not fire, there is no ring.
+        for (without in listOf(held.copy(autoCapture = false), held.copy(holdingSteady = false), held.copy(liveDetection = false), held.copy(shutterEnabled = false))) {
             ui = without
             rule.waitForIdle()
             rule.onNodeWithContentDescription("Take photo and review it").assertExists()
             rule.onNodeWithTag(SHUTTER_RING_TAG).assertDoesNotExist()
-            assertTrue("$without: no ring on the right", border()[1].near(k.shutter))
+            assertFalse("$without: no ring on the right", border(0.0).single().near(camera.outline))
+            ui = held
+            rule.waitForIdle()
+            rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
         }
     }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE) // Drawn, so the ring can be read.
+    fun `an auto-capture runs the ring to full before it clears`() {
+        val progress = mutableFloatStateOf(6 / 7f)
+        var ui by mutableStateOf(
+            ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, holdProgress = { progress.floatValue }, shutterEnabled = true)
+        )
+        showLive { ui }
+        // 10 degrees before the top: only a ring past 97% covers it.
+        fun closed() = border(-100.0).single().near(camera.outline)
+        rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
+        assertFalse("six sevenths of a hold leave the end open", closed())
+
+        rule.mainClock.autoAdvance = false
+        // ScanFlowModel's order as auto-capture fires: the full hold, then the cue ends and the shutter dims for the shot.
+        onUi {
+            progress.floatValue = 1f
+            ui = ui.copy(ringCloses = 1)
+        }
+        rule.mainClock.advanceTimeByFrame()
+        onUi {
+            progress.floatValue = 0f
+            ui = ui.copy(holdingSteady = false, shutterEnabled = false)
+        }
+        rule.mainClock.advanceTimeBy(120)
+        rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
+        assertTrue("the ring is full as the capture fires", closed())
+        rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithTag(SHUTTER_RING_TAG).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a hold that breaks empties the ring at once`() {
+        var ui by mutableStateOf(ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, holdProgress = { 0.8f }, shutterEnabled = true))
+        showLive { ui }
+        rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
+        rule.mainClock.autoAdvance = false
+        onUi { ui = ui.copy(holdingSteady = false) }
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithTag(SHUTTER_RING_TAG).assertDoesNotExist()
+    }
+
+    /** At twice the text size on a small phone, a store failure's Retry and Dismiss end above the footer, even under both cues. */
+    private fun assertBannerButtonsAboveFooter() {
+        val ui = ScannerUi(liveDetection = true, autoCapture = true, holdingSteady = true, lowLight = true, storeFailed = true, shutterEnabled = true)
+        showOverPreview(ui, 2f)
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val footer = rule.onNodeWithTag(SCANNER_FOOTER_TAG).fetchSemanticsNode().boundsInRoot
+        for (label in listOf(R.string.scan_retry, R.string.scan_dismiss)) {
+            val button = rule.onNode(hasText(context.getString(label)) and hasClickAction()).fetchSemanticsNode().touchBoundsInRoot
+            println("${context.getString(label)} ends at ${button.bottom / rule.density.density} dp, the footer starts at ${footer.top / rule.density.density} dp")
+            assertTrue("${context.getString(label)} $button ends above the footer $footer", button.bottom <= footer.top + 0.5f)
+        }
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Config(qualifiers = "w320dp-h640dp", fontScale = 2f)
+    fun `on a small phone at twice the text size a failed page's buttons stay above the footer`() = assertBannerButtonsAboveFooter()
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Config(qualifiers = "it-w320dp-h640dp", fontScale = 2f)
+    fun `in Italian on a small phone at twice the text size a failed page's buttons stay above the footer`() = assertBannerButtonsAboveFooter()
 
     @Test
     fun `at twice the text size the footer and the modes stay on screen`() {
@@ -357,6 +462,10 @@ class ScannerScreenTest {
 }
 
 private const val PREVIEW = "preview"
+
+/** The 6T's status bar (its close button's top, 41 dp, less the top row's 12 dp padding) and the top of its preview, as measured. */
+private val SIX_T_STATUS_BAR = 29.dp
+private const val SIX_T_PREVIEW_TOP = 136f
 
 /** [content] at [fontScale] times the system text size. */
 @Composable

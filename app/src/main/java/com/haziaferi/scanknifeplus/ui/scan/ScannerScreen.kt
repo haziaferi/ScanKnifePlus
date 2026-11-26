@@ -1,9 +1,8 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,7 +40,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,11 +77,14 @@ import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.io.File
+import kotlinx.coroutines.delay
 
 /**
  * What the Scanner shows, in plain values, so the screen can be drawn without a camera.
  *
- * @property holdProgress how far auto-capture's hold has run, from 0 to 1; the shutter's ring shows it while [holdingSteady].
+ * @property holdProgress how far auto-capture's hold has run, from 0 to 1; the shutter's ring shows it while [holdingSteady]. Read only where
+ *   the ring is drawn, so its steps (about ten a second) do not recompose the screen.
+ * @property ringCloses how many auto-captures have fired; each new one runs the ring to full before it clears.
  */
 internal data class ScannerUi(
     val mode: CaptureMode = CaptureMode.SINGLE,
@@ -86,7 +94,8 @@ internal data class ScannerUi(
     val torchAvailable: Boolean = false,
     val torchOn: Boolean = false,
     val holdingSteady: Boolean = false,
-    val holdProgress: Float = 0f,
+    val holdProgress: () -> Float = { 0f },
+    val ringCloses: Int = 0,
     val lowLight: Boolean = false,
     val count: Int = 0,
     val latestPage: File? = null,
@@ -124,12 +133,8 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
     val k = LocalScanPalette.current.camera
     val single = ui.mode == CaptureMode.SINGLE
     val holding = ui.autoCapture && ui.liveDetection && ui.holdingSteady
-    // Smooths the steps between analysis results (about ten a second); a hold that ends empties the ring at once.
-    val ring by animateFloatAsState(
-        if (holding) ui.holdProgress else 0f,
-        animationSpec = if (holding) tween(RING_STEP_MS, easing = LinearEasing) else snap(),
-        label = "hold"
-    )
+    // A dimmed shutter would not fire, so it shows no hold.
+    val ring = rememberHoldRing(holding && ui.shutterEnabled, ui.holdProgress, ui.ringCloses)
     Box(Modifier.fillMaxSize().background(k.cam)) {
         when {
             ui.permissionGranted -> preview()
@@ -196,6 +201,8 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
             }
             // Without the permission the prompt stands alone; nothing could be captured anyway.
             if (ui.permissionGranted) ModeSelector(ui, actions.onMode)
+            // The banners with buttons come first, so at large text they stay clear of the footer.
+            CameraMessages(ui, actions)
             if (holding) {
                 Row(
                     Modifier
@@ -230,12 +237,12 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
-            CameraMessages(ui, actions)
         }
 
         if (ui.permissionGranted) BoxWithConstraints(
             Modifier
                 .align(Alignment.BottomCenter)
+                .testTag(SCANNER_FOOTER_TAG)
                 .fillMaxWidth()
                 .background(k.cam)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -248,7 +255,7 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                 PageStack(ui, actions.onReview, side.align(Alignment.CenterStart))
                 DoneButton(ui.count > 0, actions.onReview, side.align(Alignment.CenterEnd))
             }
-            Shutter(single, ui.shutterEnabled, if (holding) ({ ring }) else null, actions.onShutter, Modifier.align(Alignment.Center))
+            Shutter(single, ui.shutterEnabled, ring, actions.onShutter, Modifier.align(Alignment.Center))
         }
     }
 }
@@ -306,6 +313,45 @@ private const val RING_STEP_MS = 100
 
 /** The test tag the shutter carries while it draws the hold's ring. */
 internal const val SHUTTER_RING_TAG = "shutterRing"
+
+/** The test tag of the footer under the shutter. */
+internal const val SCANNER_FOOTER_TAG = "scannerFooter"
+
+/**
+ * The shutter's ring for a hold: it follows [progress] while [holding], easing over each step between analysis results. On each new
+ * [closes] (an auto-capture firing) it runs to full, stays a moment and clears; a hold that breaks empties it at once. Returns the ring's
+ * value to draw, or null while there is none. [progress] is read only here and in the drawing, so the hold does not recompose the screen.
+ */
+@Composable
+private fun rememberHoldRing(holding: Boolean, progress: () -> Float, closes: Int): (() -> Float)? {
+    val ring = remember { Animatable(0f) }
+    val latest by rememberUpdatedState(progress)
+    // A fire that happened before the screen came is not closed again.
+    var closed by remember { mutableIntStateOf(closes) }
+    val closing = closes != closed
+    val step = tween<Float>(RING_STEP_MS, easing = LinearEasing)
+    // Keyed on one phase, so the cue ending mid-close does not restart the close.
+    val phase = when {
+        closing -> RingPhase.CLOSING
+        holding -> RingPhase.HOLDING
+        else -> RingPhase.NONE
+    }
+    LaunchedEffect(phase) {
+        when (phase) {
+            RingPhase.CLOSING -> {
+                ring.animateTo(1f, step)
+                delay(RING_STEP_MS.toLong())
+                ring.snapTo(0f)
+                closed = closes
+            }
+            RingPhase.HOLDING -> snapshotFlow { latest() }.collect { ring.animateTo(it, step) }
+            RingPhase.NONE -> ring.snapTo(0f)
+        }
+    }
+    return if (phase == RingPhase.NONE) null else ({ ring.value })
+}
+
+private enum class RingPhase { NONE, HOLDING, CLOSING }
 
 /**
  * The shutter. With [ring] (auto-capture's hold, 0 to 1) an arc in the live outline's colour fills its border clockwise from the top. The ring
