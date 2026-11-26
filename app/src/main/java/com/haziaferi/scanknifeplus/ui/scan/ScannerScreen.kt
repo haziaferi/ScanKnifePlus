@@ -1,6 +1,9 @@
 package com.haziaferi.scanknifeplus.ui.scan
 
 import androidx.annotation.StringRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,11 +40,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -62,8 +77,15 @@ import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 import com.paperknifeplus.app.ui.theme.inlineTarget
 import java.io.File
+import kotlinx.coroutines.delay
 
-/** What the Scanner shows, in plain values, so the screen can be drawn without a camera. */
+/**
+ * What the Scanner shows, in plain values, so the screen can be drawn without a camera.
+ *
+ * @property holdProgress how far auto-capture's hold has run, from 0 to 1; the shutter's ring shows it while [holdingSteady]. Read only where
+ *   the ring is drawn, so its steps (about ten a second) do not recompose the screen.
+ * @property ringCloses how many auto-captures have been taken; each new one runs the ring to full before it clears.
+ */
 internal data class ScannerUi(
     val mode: CaptureMode = CaptureMode.SINGLE,
     val canChangeMode: Boolean = true,
@@ -72,6 +94,8 @@ internal data class ScannerUi(
     val torchAvailable: Boolean = false,
     val torchOn: Boolean = false,
     val holdingSteady: Boolean = false,
+    val holdProgress: () -> Float = { 0f },
+    val ringCloses: Int = 0,
     val lowLight: Boolean = false,
     val count: Int = 0,
     val latestPage: File? = null,
@@ -99,14 +123,18 @@ internal class ScannerActions(
 )
 
 /**
- * The Scanner (prototype "Scanner", proposal 3f): the camera [preview] full screen under a close button, the auto-capture and torch toggles, the
- * holding-steady cue (only with auto-capture on), the capture modes and a footer with the shutter exactly centred between the page stack and
- * Done (3a). Colours are the palette's camera colours, which are the same in Light and OLED.
+ * The Scanner (prototype "Scanner", proposal 3f): the camera [preview] full screen under a close button, the auto-capture and torch toggles,
+ * the capture modes in a band below them, the holding-steady cue (only with auto-capture on) and a solid footer with the shutter exactly
+ * centred between the page stack and Done (3a). While the page is held steady a ring on the shutter fills over the hold. Everything over the
+ * picture sits on the camera colour at 75% (offBg). Colours are the palette's camera colours, which are the same in Light and OLED.
  */
 @Composable
 internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Composable BoxScope.() -> Unit) {
     val k = LocalScanPalette.current.camera
     val single = ui.mode == CaptureMode.SINGLE
+    val holding = ui.autoCapture && ui.liveDetection && ui.holdingSteady
+    // A dimmed shutter would not fire, so it shows no hold.
+    val ring = rememberHoldRing(holding && ui.shutterEnabled, ui.holdProgress, ui.ringCloses)
     Box(Modifier.fillMaxSize().background(k.cam)) {
         when {
             ui.permissionGranted -> preview()
@@ -115,7 +143,11 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
         }
 
         Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            // A small gap under the row: at large text every dp down to the band's end covers the picture.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, end = 8.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 val close = stringResource(R.string.scan_close)
                 Box(
                     Modifier
@@ -167,13 +199,17 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                     }
                 }
             }
-            if (ui.autoCapture && ui.liveDetection && ui.holdingSteady) {
+            // Without the permission the prompt stands alone; nothing could be captured anyway.
+            if (ui.permissionGranted) ModeSelector(ui, actions.onMode)
+            // The banners with buttons come first, so at large text they stay clear of the footer.
+            CameraMessages(ui, actions)
+            if (holding) {
                 Row(
                     Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(top = 24.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(k.cam.copy(alpha = 0.65f))
+                        .background(k.offBg)
                         .semantics { liveRegion = LiveRegionMode.Polite }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -196,34 +232,30 @@ internal fun ScannerScreen(ui: ScannerUi, actions: ScannerActions, preview: @Com
                         .align(Alignment.CenterHorizontally)
                         .padding(top = 12.dp, start = 16.dp, end = 16.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(k.cam.copy(alpha = 0.65f))
+                        .background(k.offBg)
                         .semantics { liveRegion = LiveRegionMode.Polite }
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
-            CameraMessages(ui, actions)
         }
 
-        // Without the permission the prompt stands alone; nothing could be captured anyway.
-        if (ui.permissionGranted) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            ModeSelector(ui, actions.onMode)
-            Spacer(Modifier.size(12.dp))
-            BoxWithConstraints(
-                Modifier
-                    .fillMaxWidth()
-                    .background(k.ctrlOffBg)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .heightIn(min = 144.dp)
-                    .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp)
-            ) {
-                if (!single) {
-                    // Each side slot ends where the centred shutter begins, so neither reaches its hit area (R14 rule 4).
-                    val side = Modifier.widthIn(max = (maxWidth - SHUTTER) / 2)
-                    PageStack(ui, actions.onReview, side.align(Alignment.CenterStart))
-                    DoneButton(ui.count > 0, actions.onReview, side.align(Alignment.CenterEnd))
-                }
-                Shutter(single, ui.shutterEnabled, actions.onShutter, Modifier.align(Alignment.Center))
+        if (ui.permissionGranted) BoxWithConstraints(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .testTag(SCANNER_FOOTER_TAG)
+                .fillMaxWidth()
+                .background(k.cam)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .heightIn(min = 144.dp)
+                .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp)
+        ) {
+            if (!single) {
+                // Each side slot ends where the centred shutter begins, so neither reaches its hit area (R14 rule 4).
+                val side = Modifier.widthIn(max = (maxWidth - SHUTTER) / 2)
+                PageStack(ui, actions.onReview, side.align(Alignment.CenterStart))
+                DoneButton(ui.count > 0, actions.onReview, side.align(Alignment.CenterEnd))
             }
+            Shutter(single, ui.shutterEnabled, ring, actions.onShutter, Modifier.align(Alignment.Center))
         }
     }
 }
@@ -233,11 +265,11 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
     val k = LocalScanPalette.current.camera
     val group = stringResource(R.string.scan_mode_group)
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+        // The band is the segments alone, each with 4 dp above and below its label: every dp of it covers the picture at large text.
         FlowRow(
             Modifier
-                .clip(RoundedCornerShape(28.dp))
-                .background(k.cam.copy(alpha = 0.6f))
-                .padding(4.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(k.offBg)
                 .selectableGroup()
                 .semantics { contentDescription = group },
             horizontalArrangement = Arrangement.Center
@@ -252,31 +284,98 @@ private fun ModeSelector(ui: ScannerUi, onMode: (CaptureMode) -> Unit) {
                     Modifier
                         .heightIn(min = TargetStep.ACT.drawn)
                         .clip(RoundedCornerShape(24.dp))
-                        .then(if (selected) Modifier.background(k.onCam.copy(alpha = 0.22f)) else Modifier)
+                        .then(if (selected) Modifier.background(k.onBg) else Modifier)
                         .selectable(selected = selected, enabled = ui.canChangeMode || selected, role = Role.RadioButton) { onMode(mode) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val alpha = if (ui.canChangeMode || selected) 1f else 0.6f
-                    Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = k.onCam.copy(alpha = alpha))
+                    val color = when {
+                        selected -> k.onFg
+                        ui.canChangeMode -> k.onCam
+                        else -> k.onCam.copy(alpha = LOCKED_MODE_ALPHA)
+                    }
+                    Text(stringResource(label), style = MaterialTheme.typography.labelLarge, color = color)
                 }
             }
         }
     }
 }
 
+/** The label alpha of a capture mode locked after the first shot (disabled). */
+internal const val LOCKED_MODE_ALPHA = 0.6f
+
 /** The shutter (T1), drawn larger than its step. */
 private val SHUTTER = 76.dp
+private val SHUTTER_BORDER = 4.dp
 
+/** How long the ring takes to reach each new hold progress: about the time between two analysis results. */
+private const val RING_STEP_MS = 100
+
+/** The test tag the shutter carries while it draws the hold's ring. */
+internal const val SHUTTER_RING_TAG = "shutterRing"
+
+/** The test tag of the footer under the shutter. */
+internal const val SCANNER_FOOTER_TAG = "scannerFooter"
+
+/**
+ * The shutter's ring for a hold: it follows [progress] while [holding], easing over each step between analysis results. On each new
+ * [closes] (an auto-capture firing) it runs to full, stays a moment and clears; a hold that breaks empties it at once. Returns the ring's
+ * value to draw, or null while there is none. [progress] is read only here and in the drawing, so the hold does not recompose the screen.
+ */
 @Composable
-private fun Shutter(single: Boolean, enabled: Boolean, onShutter: () -> Unit, modifier: Modifier) {
+private fun rememberHoldRing(holding: Boolean, progress: () -> Float, closes: Int): (() -> Float)? {
+    val ring = remember { Animatable(0f) }
+    val latest by rememberUpdatedState(progress)
+    // A fire that happened before the screen came is not closed again.
+    var closed by remember { mutableIntStateOf(closes) }
+    val closing = closes != closed
+    val step = tween<Float>(RING_STEP_MS, easing = LinearEasing)
+    // Keyed on one phase, so the cue ending mid-close does not restart the close.
+    val phase = when {
+        closing -> RingPhase.CLOSING
+        holding -> RingPhase.HOLDING
+        else -> RingPhase.NONE
+    }
+    LaunchedEffect(phase) {
+        when (phase) {
+            RingPhase.CLOSING -> {
+                ring.animateTo(1f, step)
+                delay(RING_STEP_MS.toLong())
+                ring.snapTo(0f)
+                closed = closes
+            }
+            RingPhase.HOLDING -> snapshotFlow { latest() }.collect { ring.animateTo(it, step) }
+            RingPhase.NONE -> ring.snapTo(0f)
+        }
+    }
+    return if (phase == RingPhase.NONE) null else ({ ring.value })
+}
+
+private enum class RingPhase { NONE, HOLDING, CLOSING }
+
+/**
+ * The shutter. With [ring] (auto-capture's hold, 0 to 1) an arc in the live outline's colour fills its border clockwise from the top. The ring
+ * is state, not an announcement: the holding-steady cue already speaks, and a progress value would be read out at every step.
+ */
+@Composable
+private fun Shutter(single: Boolean, enabled: Boolean, ring: (() -> Float)?, onShutter: () -> Unit, modifier: Modifier) {
     val k = LocalScanPalette.current.camera
     val description = stringResource(if (single) R.string.scan_shutter_single else R.string.scan_shutter)
     Box(
         modifier
             .size(SHUTTER)
+            .then(
+                if (ring == null) Modifier else Modifier.testTag(SHUTTER_RING_TAG).drawWithContent {
+                    drawContent()
+                    val stroke = SHUTTER_BORDER.toPx()
+                    drawArc(
+                        k.outline, startAngle = -90f, sweepAngle = 360f * ring(), useCenter = false, topLeft = Offset(stroke / 2, stroke / 2),
+                        size = Size(size.width - stroke, size.height - stroke), style = Stroke(stroke)
+                    )
+                }
+            )
             .clip(CircleShape)
-            .border(4.dp, k.shutter.copy(alpha = if (enabled) 1f else 0.5f), CircleShape)
+            .border(SHUTTER_BORDER, k.shutter.copy(alpha = if (enabled) 1f else 0.5f), CircleShape)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .clickable(enabled = enabled, role = Role.Button, onClick = onShutter),
         contentAlignment = Alignment.Center

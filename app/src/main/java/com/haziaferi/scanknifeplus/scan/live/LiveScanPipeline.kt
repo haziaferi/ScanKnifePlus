@@ -23,7 +23,7 @@ class CaptureRequest(val quad: Quad?)
 /**
  * The non-visual part of OpenScan's live-scan screen: every third analysis frame -> [FrameAdapter] grayscale -> [LowLightDetector] and
  * [LiveScanController] -> [QuadSmoother] -> [AutoCaptureDetector] -> [Listener.onAutoCapture], with the smoother and auto-capture advancing on
- * [clock] whenever a result arrives, plus an app-side holding-steady cue ([isHoldingSteady]). [onFrame] runs on the analysis thread and every
+ * [clock] whenever a result arrives, plus an app-side holding-steady cue ([isHoldingSteady]) and its progress ([holdProgress]). [onFrame] runs on the analysis thread and every
  * other method on any thread.
  */
 class LiveScanPipeline internal constructor(
@@ -60,6 +60,12 @@ class LiveScanPipeline internal constructor(
          * [setZooming] or [beginCapture], or on the analysis thread when the frames come from another camera.
          */
         fun onHoldingSteadyChanged(steady: Boolean) {}
+
+        /**
+         * How far the hold has run towards the auto-capture, from 0 to 1, for the shutter's ring: 0 whenever the document is not
+         * [holding steady][onHoldingSteadyChanged], and 1 just before [onAutoCapture]. Runs on the threads [onHoldingSteadyChanged] runs on.
+         */
+        fun onHoldProgressChanged(progress: Float) {}
 
         /**
          * The document has been held still long enough: take the still now. The capture is already begun (as by [beginCapture]), so the caller
@@ -108,6 +114,14 @@ class LiveScanPipeline internal constructor(
      */
     @Volatile
     var isHoldingSteady = false
+        private set
+
+    /**
+     * How far auto-capture's hold has run ([AutoCaptureDetector.holdProgress]) while [isHoldingSteady], else 0; the value last passed to
+     * [Listener.onHoldProgressChanged].
+     */
+    @Volatile
+    var holdProgress = 0f
         private set
 
     /** Whether a capture is in progress, from [beginCapture] (or an auto-capture) until [endCapture]. */
@@ -212,6 +226,16 @@ class LiveScanPipeline internal constructor(
         shutterOpen = false
     }
 
+    /**
+     * Drops the track and the hold, as when the Scanner is shown again after Review: the old outline, the cue and the ring clear, and a page
+     * where the last one lay needs a full new hold before auto-capture fires.
+     */
+    fun resetTrack(): Unit = synchronized(lock) {
+        if (disposed) return
+        smoother.reset()
+        resetHoldingSteady()
+    }
+
     /** Stops detection. Once this returns no listener callback runs and every other method does nothing. */
     fun dispose() {
         synchronized(lock) {
@@ -236,15 +260,25 @@ class LiveScanPipeline internal constructor(
         // An auto-capture begins inside this call and ends the cue itself, so the cue is read from the detector afterwards.
         autoCapture.onQuadUpdate(quad)
         setHoldingSteady(!capturing && autoCapture.stillQuadCount >= HOLDING_STEADY_QUADS)
+        setHoldProgress(if (isHoldingSteady) autoCapture.holdProgress else 0f)
     }
 
     // Under lock.
-    private fun resetHoldingSteady() = setHoldingSteady(false)
+    private fun resetHoldingSteady() {
+        setHoldProgress(0f)
+        setHoldingSteady(false)
+    }
 
     private fun setHoldingSteady(steady: Boolean) {
         if (disposed || isHoldingSteady == steady) return
         isHoldingSteady = steady
         listener.onHoldingSteadyChanged(steady)
+    }
+
+    private fun setHoldProgress(progress: Float) {
+        if (disposed || holdProgress == progress) return
+        holdProgress = progress
+        listener.onHoldProgressChanged(progress)
     }
 
     // Called by the auto-capture detector, under lock.
@@ -256,6 +290,8 @@ class LiveScanPipeline internal constructor(
 
     // Called by the auto-capture detector, under lock.
     private fun onAutoCaptureStable() {
+        // The ring closes as the capture fires; a capture already under way gets no stale full ring.
+        if (!capturing) setHoldProgress(autoCapture.holdProgress)
         val request = beginCapture() ?: return
         listener.onAutoCapture(request)
     }

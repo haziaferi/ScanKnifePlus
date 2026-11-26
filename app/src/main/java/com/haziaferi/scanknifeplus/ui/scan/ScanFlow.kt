@@ -303,6 +303,8 @@ private fun Scanner(
             torchAvailable = cam.torchAvailable,
             torchOn = cam.torchOn,
             holdingSteady = model.holdingSteady,
+            holdProgress = model::holdProgress,
+            ringCloses = model.ringCloses,
             lowLight = model.lowLight,
             count = model.count,
             latestPage = model.pages.lastOrNull()?.let { model.fileOf(it.image) },

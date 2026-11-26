@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -116,11 +117,11 @@ internal class ScanFlowModel(
 
         override fun onHoldingSteadyChanged(steady: Boolean) = onMain { holdingSteady = steady }
 
+        override fun onHoldProgressChanged(progress: Float) = onMain { holdProgress = progress }
+
         override fun onLowLightChanged(lowLight: Boolean) = onMain { this@ScanFlowModel.lowLight = lowLight }
 
-        override fun onAutoCapture(request: CaptureRequest) = onMain {
-            if (phase == ScanPhase.SCANNER && !closed) shoot(request) else pipeline.endCapture()
-        }
+        override fun onAutoCapture(request: CaptureRequest) = onMain { autoCaptured(request) }
     })
 
     var phase by mutableStateOf(ScanPhase.SCANNER)
@@ -133,6 +134,14 @@ internal class ScanFlowModel(
     var quad by mutableStateOf<Quad?>(null)
         private set
     var holdingSteady by mutableStateOf(false)
+        private set
+
+    /** How far auto-capture's hold has run, from 0 to 1, for the shutter's ring; 0 while the page is not held steady. */
+    var holdProgress by mutableFloatStateOf(0f)
+        private set
+
+    /** How many auto-captures the Scanner has taken; the shutter's ring closes on each. One that cannot be taken does not count. */
+    var ringCloses by mutableIntStateOf(0)
         private set
 
     /** Whether the scene is too dark for reliable detection (scanner-core's LowLightDetector, through the pipeline). */
@@ -271,6 +280,19 @@ internal class ScanFlowModel(
         pipeline.setAutoCaptureEnabled(autoCapture)
     }
 
+    /**
+     * The pipeline's auto-capture, on the main thread: taken when the Scanner can shoot, and the shutter's ring closes on it (it arrives
+     * with the cue's end, so the ring has not cleared yet); otherwise the capture ends unused.
+     */
+    internal fun autoCaptured(request: CaptureRequest) {
+        if (phase != ScanPhase.SCANNER || closed || !canShoot) {
+            pipeline.endCapture()
+            return
+        }
+        ringCloses++
+        shoot(request)
+    }
+
     /** The manual shutter; ignored while a capture is under way. */
     fun shutter() {
         if (!canShoot) return
@@ -353,6 +375,8 @@ internal class ScanFlowModel(
             commitDelete()
         }
         notice = null
+        // The track from before Review is stale: no old outline, cue or part-filled ring, and no capture off the old hold.
+        pipeline.resetTrack()
         phase = ScanPhase.SCANNER
     }
 

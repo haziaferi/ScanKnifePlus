@@ -63,6 +63,11 @@ class LiveScanPipelineTest {
             events += "steady=$steady"
             onSteady(steady)
         }
+        // Kept apart from events, so the event orders other tests check stay as they were.
+        val progress = mutableListOf<Float>()
+        override fun onHoldProgressChanged(progress: Float) {
+            this.progress += progress
+        }
         override fun onAutoCapture(request: CaptureRequest) {
             captures += request
             events += "capture"
@@ -386,6 +391,77 @@ class LiveScanPipelineTest {
         assertFalse(pipeline.isHoldingSteady)
         assertEquals(listOf("steady=true", "steady=false"), recorder.events.filter { it.startsWith("steady") })
         assertEquals("steady=false", recorder.events[recorder.events.indexOf("capture") - 1])
+    }
+
+    @Test
+    fun `the hold's progress rises while holding steady, is full as the capture fires and empties as it begins`() {
+        detect(doc, times = 7)
+        assertEquals(0, recorder.captures.size)
+        // Holding steady from the second quad: 100 ms of the 700 ms hold, then 100 ms more with each result.
+        assertEquals(6, recorder.progress.size)
+        for ((i, p) in recorder.progress.withIndex()) assertEquals("step $i", (i + 1) / 7f, p, 1e-6f)
+        assertEquals(6 / 7f, pipeline.holdProgress, 1e-6f)
+        detect(doc)
+        assertEquals("the capture fires at the same detection as before", 1, recorder.captures.size)
+        assertEquals(listOf(1f, 0f), recorder.progress.takeLast(2))
+        assertEquals(0f, pipeline.holdProgress)
+    }
+
+    @Test
+    fun `back on the scanner the old track and hold are gone, and the page needs a full new hold`() {
+        detect(doc, times = 3)
+        assertTrue(pipeline.isHoldingSteady)
+        assertTrue(pipeline.holdProgress > 0f)
+        pipeline.resetTrack()
+        assertFalse(pipeline.isHoldingSteady)
+        assertEquals(0f, pipeline.holdProgress)
+        assertNull(pipeline.smoothedQuad)
+        assertEquals(0f, recorder.progress.last())
+
+        clock.now += 5_000_000 // time spent in Review
+        detect(doc, times = 7)
+        assertEquals("the same page in the same place still needs 700 ms", 0, recorder.captures.size)
+        detect(doc)
+        assertEquals(1, recorder.captures.size)
+    }
+
+    @Test
+    fun `the hold's progress empties when the page moves`() {
+        val card = Quad(Pt(0.1, 0.3), Pt(0.4, 0.3), Pt(0.4, 0.6), Pt(0.1, 0.6))
+        detect(card, times = 3)
+        assertTrue(pipeline.holdProgress > 0f)
+        for (step in 1..8) {
+            val dx = 0.05 * step
+            detect(Quad(Pt(0.1 + dx, 0.3), Pt(0.4 + dx, 0.3), Pt(0.4 + dx, 0.6), Pt(0.1 + dx, 0.6)))
+        }
+        assertEquals(0f, pipeline.holdProgress)
+        assertEquals(0f, recorder.progress.last())
+    }
+
+    @Test
+    fun `the hold's progress empties when zooming, with auto-capture off and through the cooldown`() {
+        detect(doc, times = 3)
+        assertTrue(pipeline.holdProgress > 0f)
+        pipeline.setZooming(true)
+        assertEquals("zooming", 0f, pipeline.holdProgress)
+        pipeline.setZooming(false)
+
+        detect(doc, times = 2)
+        assertTrue(pipeline.holdProgress > 0f)
+        pipeline.setAutoCaptureEnabled(false)
+        assertEquals("auto-capture off", 0f, pipeline.holdProgress)
+        detect(doc, times = 3)
+        assertEquals("auto-capture off", 0f, pipeline.holdProgress)
+        pipeline.setAutoCaptureEnabled(true)
+
+        assertNotNull(pipeline.beginCapture())
+        pipeline.notifyCaptured()
+        pipeline.endCapture()
+        repeat(19) { // 1.9 s, still inside the 2 s cooldown
+            detect(doc)
+            assertEquals("in the cooldown", 0f, pipeline.holdProgress)
+        }
+        assertEquals("every change reached the listener", pipeline.holdProgress, recorder.progress.last())
     }
 
     @Test
