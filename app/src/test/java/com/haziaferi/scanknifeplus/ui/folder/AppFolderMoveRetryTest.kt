@@ -230,14 +230,15 @@ class AppFolderMoveRetryTest {
     /** The copy-pending flag as the moves set it, in order: each move sets it when it starts and again when it ends. */
     private val pending = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
 
+    private val flag = object : CopyPending {
+        override fun get() = false
+        override fun set(pending: Boolean) {
+            this@AppFolderMoveRetryTest.pending += pending
+        }
+    }
+
     private fun background(maker: PdfMaker): AppFolder {
         assertTrue(FolderAccess(context).adopt(treeUri))
-        val flag = object : CopyPending {
-            override fun get() = false
-            override fun set(pending: Boolean) {
-                this@AppFolderMoveRetryTest.pending += pending
-            }
-        }
         val folder = AppFolder(
             context, CoroutineScope(Dispatchers.IO), Dispatchers.IO, FolderAccess(context), library, maker, copyPending = flag, sweep = {}, files = files
         )
@@ -303,5 +304,85 @@ class AppFolderMoveRetryTest {
         folder.refresh()
         assertEquals(listOf("outside.pdf"), folder.listed.map { it.name })
         assertEquals(1, folder.history!!.items!!.count { it.name == "picked.pdf" })
+    }
+
+    @Test
+    fun `a file saved elsewhere into a subfolder of the folder stays listed, as the folder's listing does not show it`() {
+        File(folderRoot, "Receipts").mkdirs()
+        File(folderRoot, "Receipts/x.pdf").writeText("x")
+        val sub = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/Receipts/x.pdf")
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        files.record(sub, "x.pdf", "merge")
+        folder.refresh()
+        assertEquals(listOf("x.pdf"), folder.listed.map { it.name })
+        assertEquals(0, folder.history!!.items!!.count { it.name == "x.pdf" })
+    }
+
+    @Test
+    fun `a save during a running move is made in the app at once, and moves at the next launch`() {
+        scan("Lease")
+        val held = Held(base)
+        val folder = background(held.maker)
+        folder.copyScansIn()
+        assertTrue(held.entered.await(10, TimeUnit.SECONDS))
+        val started = System.currentTimeMillis()
+        val spot = folder.create("now.pdf")!!
+        assertTrue("it did not wait for the move", System.currentTimeMillis() - started < 2_000)
+        assertEquals(File(files.dir, "now.pdf"), files.fileOf(spot.uri))
+        assertEquals(com.paperknifeplus.app.R.string.tool_saved_in_app_later, spot.notice)
+        assertTrue(folder.moveRunning)
+        held.gate.countDown()
+        waitFor { !folder.moveRunning }
+    }
+
+    @Test
+    fun `a second holder's move waits for an earlier holder's, and its Delete is held back meanwhile`() {
+        scan("Lease")
+        val merged = keep("merged.pdf")
+        val held = Held(base)
+        val first = background(held.maker)
+        first.copyScansIn()
+        assertTrue(held.entered.await(10, TimeUnit.SECONDS))
+        // The activity came back with a new holder while the first one's move still runs; its launch work waits for the folder.
+        val second = AppFolder(
+            context, CoroutineScope(Dispatchers.IO), Dispatchers.IO, FolderAccess(context), library, held.maker, copyPending = flag, sweep = {}, files = files
+        )
+        second.start()
+        assertTrue(second.moveRunning)
+        second.copyScansIn()
+        var deleted: Boolean? = null
+        second.deleteSaved(merged) { deleted = it }
+        Thread.sleep(300)
+        assertNull("Delete waits for the earlier holder's move", deleted)
+        held.gate.countDown()
+        waitFor { pending.size >= 4 && deleted != null && !second.moveRunning }
+        Thread.sleep(300)
+        // Each move started only once the one before had ended (the second holder's launch may add one more).
+        val flags = pending.toList()
+        assertEquals(flags.toString(), List(flags.size) { it % 2 == 0 }, flags)
+        assertEquals(1, held.most)
+        assertEquals(setOf("Lease.pdf", "merged.pdf"), top())
+        assertEquals(false, deleted)
+    }
+
+    @Test
+    fun `an index that cannot be read keeps a scan's PDF found in the app there, and every grant`() {
+        val id = scan("Lease")
+        val name = ExportNames.exportFileName("Lease", id) + ".pdf"
+        files.dir.mkdirs()
+        File(files.dir, name).writeText("saved scan")
+        val picked = Uri.fromFile(File(base, "picked.pdf").apply { writeText("picked") })
+        resolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val index = File(base, "unreadable-index.json").apply { mkdirs() } // a read fails every time
+        val fresh = SavedFiles(files.dir, index, ScanFiles.authority(context), resolver)
+        val folder = appFolder(saved = fresh)
+        assertFalse(fresh.damaged)
+        assertTrue(fresh.partial)
+        assertTrue(fresh.entries().single { it.file == name }.held)
+        assertTrue(resolver.persistedUriPermissions.any { it.uri == picked })
+        assertTrue(folder.chooseNow())
+        assertEquals("only the scan's own PDF", listOf("made for $id"), folderRoot.listFiles().orEmpty().filter { it.isFile }.map { it.readText() })
+        assertTrue(File(files.dir, name).isFile)
     }
 }

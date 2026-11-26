@@ -11,7 +11,6 @@ import android.util.Log
 import androidx.annotation.WorkerThread
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
@@ -81,6 +80,12 @@ class SavedFiles(
     // The index could not be read at all this run (not parsed wrong): it is left as it is, and nothing is written over it.
     @Volatile
     private var unreadable = false
+
+    /**
+     * True when this run started without the full list: the index was damaged ([damaged]) or could not be read. The launch check then keeps
+     * every grant, and a caller keeps in the app what it cannot tell was moved before (a scan's PDF found without its row).
+     */
+    val partial: Boolean get() = damaged || unreadable
 
     /** Calls [listener] with the whole list after each change, on the thread that made it; the returned function stops that. */
     fun listen(listener: (List<SavedEntry>) -> Unit): () -> Unit {
@@ -483,9 +488,10 @@ class SavedFiles(
     }
 
     /**
-     * Whether [uri] still names a file, told only on a definite answer: a file:// path that is not there, a provider that answers with no
-     * row, one that says the document is not found, or a revoked grant mean [Openable.GONE]; a provider that is missing, gives no answer or
-     * fails another way (an SD card out, a cloud app updating) means [Openable.UNKNOWN], and the row stays.
+     * Whether [uri] still names a file, told only on a definite answer: a file:// path that is not there, a provider that answers the query
+     * with no row, or a revoked grant mean [Openable.GONE]. A provider that is missing, answers no cursor or fails another way (a document
+     * on an SD card or USB drive that is out answers no cursor, and FileNotFound for its missing root; a cloud app updating) means
+     * [Openable.UNKNOWN], and the row and its grant stay.
      */
     private fun openable(uri: Uri): Openable {
         if (uri.scheme == ContentResolver.SCHEME_FILE) return if (uri.path?.let { File(it).isFile } == true) Openable.OPEN else Openable.GONE
@@ -497,16 +503,8 @@ class SavedFiles(
             when (answered) {
                 true -> Openable.OPEN
                 false -> Openable.GONE
-                // No cursor: a documents provider answers a missing document so, but so does one that is not running. With the provider
-                // there, opening tells them apart.
-                null -> {
-                    val provider = resolver.acquireUnstableContentProviderClient(uri.authority ?: return Openable.UNKNOWN) ?: return Openable.UNKNOWN
-                    provider.close()
-                    resolver.openFileDescriptor(uri, "r")?.use { Openable.OPEN } ?: Openable.UNKNOWN
-                }
+                null -> Openable.UNKNOWN
             }
-        } catch (e: FileNotFoundException) {
-            Openable.GONE
         } catch (e: SecurityException) {
             Openable.GONE
         } catch (e: Exception) {

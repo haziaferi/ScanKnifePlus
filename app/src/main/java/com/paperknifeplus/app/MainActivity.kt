@@ -305,7 +305,7 @@ class MainActivity : ComponentActivity() {
                                         // Only while files wait in the app and no folder is chosen (a folder out of reach has its own warning).
                                         onMoveToFolder = { openFolder(null) }.takeIf { folder.offersMove },
                                         onDelete = { folder.deleteSaved(it) },
-                                        canDelete = folder.copying == null
+                                        canDelete = !folder.moveRunning
                                     )
                                 }
                             }

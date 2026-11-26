@@ -188,6 +188,37 @@ class SaveTargetTest {
     }
 
     @Test
+    fun `leaving the screen while its file is made opens no picker, keeps no file and does not crash`() {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val made = java.util.Collections.synchronizedList(mutableListOf<File>())
+        val saved = files // read here: the rule's activity is reachable from the main thread only
+        val slow = SavePlaces { name ->
+            entered.countDown()
+            gate.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            saved.create(name)?.also { made += it }?.let { SaveSpot(saved.uriOf(it)) }
+        }
+        val shown = androidx.compose.runtime.mutableStateOf(true)
+        rule.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides picker(null)) {
+                if (shown.value) {
+                    CompositionLocalProvider(LocalSavePlaces provides slow) { target = rememberSaveTarget("application/pdf") { got += it } }
+                }
+            }
+        }
+        rule.runOnUiThread { target.launch("gone.pdf") }
+        rule.waitUntil(10_000) { entered.count == 0L } // the file is being made
+        rule.runOnUiThread { shown.value = false }
+        rule.waitForIdle()
+        gate.countDown()
+        rule.waitUntil(10_000) { made.isNotEmpty() && !made.single().exists() }
+        rule.waitForIdle()
+        assertEquals(0, pickerLaunches)
+        assertTrue(got.isEmpty())
+        assertTrue("no row left", files.entries().isEmpty())
+    }
+
+    @Test
     fun `a folder that could not make the file has the save kept in the app, with its own notice`() {
         assertTrue(FolderAccess(context).adopt(treeUri))
         show(appFolder())

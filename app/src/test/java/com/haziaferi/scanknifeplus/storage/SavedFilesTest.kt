@@ -1,7 +1,11 @@
 package com.haziaferi.scanknifeplus.storage
 
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.test.core.app.ApplicationProvider
@@ -15,6 +19,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 
 /** The index of saved files and the files kept in the app (ledger L8): unique names, restarts, a damaged index, the grant cap and the checks. */
@@ -333,17 +338,40 @@ class SavedFilesTest {
     }
 
     @Test
-    fun `a document its provider no longer finds is gone, and one it serves stays`() {
+    fun `a provider that answers no cursor and cannot open the document, as for a drive that is out, keeps the row and its grant`() {
         val folder = File(base, "documents").apply { mkdirs() }
         TestDocumentsProvider.install(folder)
         File(folder, "there.pdf").writeText("there")
         val files = files()
         val there = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/there.pdf")
-        val missing = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/missing.pdf")
+        // Its provider answers no cursor for it, and FileNotFound on opening it, as for a document on a removed SD card.
+        val out = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/on-the-card.pdf")
         files.record(there, "there.pdf", "merge")
-        files.record(missing, "missing.pdf", "merge")
+        files.record(out, "on-the-card.pdf", "merge")
+        assertEquals(0, files.prune())
+        assertEquals(setOf("there.pdf", "on-the-card.pdf"), files.entries().map { it.name }.toSet())
+        assertTrue(out in held())
+    }
+
+    /** A provider that answers every query with a cursor and no row: the document is not there. */
+    class EmptyAnswerProvider : ContentProvider() {
+        override fun onCreate() = true
+        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor = MatrixCursor(p ?: arrayOf("_display_name"))
+        override fun getType(uri: Uri): String? = null
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, s: String?, a: Array<out String>?) = 0
+        override fun update(uri: Uri, v: ContentValues?, s: String?, a: Array<out String>?) = 0
+    }
+
+    @Test
+    fun `a provider that answers that the document is not there drops the row and releases its grant`() {
+        Robolectric.setupContentProvider(EmptyAnswerProvider::class.java, "com.haziaferi.scanknifeplus.test.empty")
+        val files = files()
+        val gone = Uri.parse("content://com.haziaferi.scanknifeplus.test.empty/doc/1")
+        files.record(gone, "gone.pdf", "merge")
         assertEquals(1, files.prune())
-        assertEquals(listOf("there.pdf"), files.entries().map { it.name })
+        assertEquals(emptyList<SavedEntry>(), files.entries())
+        assertFalse(gone in held())
     }
 
     @Test

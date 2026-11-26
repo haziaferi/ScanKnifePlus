@@ -31,8 +31,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.inlineTarget
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -63,19 +67,34 @@ class SaveTarget internal constructor(
     private var making = false
     private var elsewhere = false
 
-    /** Saves an output named [name] where saves go now, or with the picker when there is no such place (or inside [elsewhere]). */
+    /**
+     * Saves an output named [name] where saves go now, or with the picker when there is no such place (or inside [elsewhere]). A screen
+     * that goes while the file is being made gets nothing: the file is deleted again, and no picker opens on a launcher that is gone.
+     */
     fun launch(name: String) {
         if (elsewhere) return launchElsewhere(name)
         if (making) return
         making = true
         scope.launch {
+            val screen = coroutineContext[Job]
             val spot = try {
-                withContext(Dispatchers.IO) { places().create(name) }
+                // Not cancelled half way, so a file made just as the screen goes is known and removed, here or below.
+                withContext(Dispatchers.IO + NonCancellable) {
+                    places().create(name)?.takeUnless { made ->
+                        (screen?.isActive == false).also { gone -> if (gone) deleteCreatedDocument(context, made.uri) }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e // never a picker for a screen that is gone
             } catch (e: Exception) {
                 Log.w(TAG, "No place for $name", e)
                 null // the picker still saves it
             } finally {
                 making = false
+            }
+            if (!isActive) {
+                spot?.let { withContext(Dispatchers.IO + NonCancellable) { deleteCreatedDocument(context, it.uri) } }
+                return@launch
             }
             if (spot == null) {
                 picker.launch(name)
