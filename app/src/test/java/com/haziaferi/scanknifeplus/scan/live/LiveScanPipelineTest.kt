@@ -408,6 +408,24 @@ class LiveScanPipelineTest {
     }
 
     @Test
+    fun `back on the scanner the old track and hold are gone, and the page needs a full new hold`() {
+        detect(doc, times = 3)
+        assertTrue(pipeline.isHoldingSteady)
+        assertTrue(pipeline.holdProgress > 0f)
+        pipeline.resetTrack()
+        assertFalse(pipeline.isHoldingSteady)
+        assertEquals(0f, pipeline.holdProgress)
+        assertNull(pipeline.smoothedQuad)
+        assertEquals(0f, recorder.progress.last())
+
+        clock.now += 5_000_000 // time spent in Review
+        detect(doc, times = 7)
+        assertEquals("the same page in the same place still needs 700 ms", 0, recorder.captures.size)
+        detect(doc)
+        assertEquals(1, recorder.captures.size)
+    }
+
+    @Test
     fun `the hold's progress empties when the page moves`() {
         val card = Quad(Pt(0.1, 0.3), Pt(0.4, 0.3), Pt(0.4, 0.6), Pt(0.1, 0.6))
         detect(card, times = 3)

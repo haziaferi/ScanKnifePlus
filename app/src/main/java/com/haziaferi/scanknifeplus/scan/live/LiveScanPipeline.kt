@@ -226,6 +226,16 @@ class LiveScanPipeline internal constructor(
         shutterOpen = false
     }
 
+    /**
+     * Drops the track and the hold, as when the Scanner is shown again after Review: the old outline, the cue and the ring clear, and a page
+     * where the last one lay needs a full new hold before auto-capture fires.
+     */
+    fun resetTrack(): Unit = synchronized(lock) {
+        if (disposed) return
+        smoother.reset()
+        resetHoldingSteady()
+    }
+
     /** Stops detection. Once this returns no listener callback runs and every other method does nothing. */
     fun dispose() {
         synchronized(lock) {

@@ -375,6 +375,8 @@ internal class ScanFlowModel(
             commitDelete()
         }
         notice = null
+        // The track from before Review is stale: no old outline, cue or part-filled ring, and no capture off the old hold.
+        pipeline.resetTrack()
         phase = ScanPhase.SCANNER
     }
 
