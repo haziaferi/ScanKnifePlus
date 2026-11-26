@@ -84,7 +84,7 @@ import kotlinx.coroutines.delay
  *
  * @property holdProgress how far auto-capture's hold has run, from 0 to 1; the shutter's ring shows it while [holdingSteady]. Read only where
  *   the ring is drawn, so its steps (about ten a second) do not recompose the screen.
- * @property ringCloses how many auto-captures have fired; each new one runs the ring to full before it clears.
+ * @property ringCloses how many auto-captures have been taken; each new one runs the ring to full before it clears.
  */
 internal data class ScannerUi(
     val mode: CaptureMode = CaptureMode.SINGLE,

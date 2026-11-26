@@ -117,17 +117,11 @@ internal class ScanFlowModel(
 
         override fun onHoldingSteadyChanged(steady: Boolean) = onMain { holdingSteady = steady }
 
-        override fun onHoldProgressChanged(progress: Float) = onMain {
-            holdProgress = progress
-            // A full hold comes just before the auto-capture, ahead of the cue ending, so the ring can close before it clears.
-            if (progress == 1f) ringCloses++
-        }
+        override fun onHoldProgressChanged(progress: Float) = onMain { holdProgress = progress }
 
         override fun onLowLightChanged(lowLight: Boolean) = onMain { this@ScanFlowModel.lowLight = lowLight }
 
-        override fun onAutoCapture(request: CaptureRequest) = onMain {
-            if (phase == ScanPhase.SCANNER && !closed) shoot(request) else pipeline.endCapture()
-        }
+        override fun onAutoCapture(request: CaptureRequest) = onMain { autoCaptured(request) }
     })
 
     var phase by mutableStateOf(ScanPhase.SCANNER)
@@ -146,7 +140,7 @@ internal class ScanFlowModel(
     var holdProgress by mutableFloatStateOf(0f)
         private set
 
-    /** How many holds have run full, each just as its auto-capture fires; the shutter's ring closes on each. */
+    /** How many auto-captures the Scanner has taken; the shutter's ring closes on each. One that cannot be taken does not count. */
     var ringCloses by mutableIntStateOf(0)
         private set
 
@@ -284,6 +278,19 @@ internal class ScanFlowModel(
         autoCapture = !autoCapture
         prefs.autoCapture = autoCapture
         pipeline.setAutoCaptureEnabled(autoCapture)
+    }
+
+    /**
+     * The pipeline's auto-capture, on the main thread: taken when the Scanner can shoot, and the shutter's ring closes on it (it arrives
+     * with the cue's end, so the ring has not cleared yet); otherwise the capture ends unused.
+     */
+    internal fun autoCaptured(request: CaptureRequest) {
+        if (phase != ScanPhase.SCANNER || closed || !canShoot) {
+            pipeline.endCapture()
+            return
+        }
+        ringCloses++
+        shoot(request)
     }
 
     /** The manual shutter; ignored while a capture is under way. */

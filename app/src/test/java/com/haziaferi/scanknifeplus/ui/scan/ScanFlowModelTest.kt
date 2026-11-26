@@ -17,6 +17,7 @@ import com.haziaferi.scanknifeplus.scan.export.ScanPdfExporter
 import com.haziaferi.scanknifeplus.scan.library.BookCaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.CaptureWriter
 import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
+import com.haziaferi.scanknifeplus.scan.live.CaptureRequest
 import com.haziaferi.scanknifeplus.scan.session.ScanSession
 import com.haziaferi.scanknifeplus.scanner.cv.BookPage
 import com.haziaferi.scanknifeplus.scanner.cv.BookSplit
@@ -308,6 +309,21 @@ class ScanFlowModelTest {
 
         m.retry(m.failure!!)
         waitUntil("the retried page in Review") { m.phase == ScanPhase.REVIEW && m.pages.size == 1 }
+    }
+
+    @Test
+    fun `the shutter's ring closes only on an auto-capture the scanner takes`() {
+        val m = model(takePicture = { dir -> File(dir, "shot.jpg").apply { writeText("page") } })
+        m.shoot("flaky")
+        waitUntil("the failure") { m.failure != null }
+        assertFalse(m.canShoot)
+        m.autoCaptured(CaptureRequest(null))
+        assertEquals("a dimmed shutter takes nothing, so its ring does not close", 0, m.ringCloses)
+
+        m.dismiss(m.failure!!)
+        waitUntil("the dismissal") { m.canShoot }
+        m.autoCaptured(CaptureRequest(null))
+        assertEquals("a capture the scanner takes closes the ring", 1, m.ringCloses)
     }
 
     @Test

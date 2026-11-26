@@ -399,15 +399,10 @@ class ScannerScreenTest {
         assertFalse("six sevenths of a hold leave the end open", closed())
 
         rule.mainClock.autoAdvance = false
-        // ScanFlowModel's order as auto-capture fires: the full hold, then the cue ends and the shutter dims for the shot.
-        onUi {
-            progress.floatValue = 1f
-            ui = ui.copy(ringCloses = 1)
-        }
-        rule.mainClock.advanceTimeByFrame()
+        // As auto-capture fires, one main-thread batch: the hold empties, the cue ends, the capture is taken and the shutter dims for it.
         onUi {
             progress.floatValue = 0f
-            ui = ui.copy(holdingSteady = false, shutterEnabled = false)
+            ui = ui.copy(holdingSteady = false, ringCloses = 1, shutterEnabled = false)
         }
         rule.mainClock.advanceTimeBy(120)
         rule.onNodeWithTag(SHUTTER_RING_TAG).assertExists()
