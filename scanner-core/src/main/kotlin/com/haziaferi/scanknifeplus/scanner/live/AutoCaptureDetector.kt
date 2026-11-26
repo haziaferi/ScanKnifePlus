@@ -69,6 +69,13 @@ class AutoCaptureDetector(
     val stillQuadCount: Int
         get() = window.size
 
+    /**
+     * How far the current hold has run towards [MIN_STABLE_DURATION_MICROS], from 0 to 1: the span from its oldest quad to its newest, so 0
+     * whenever [stillQuadCount] is 0 or 1, and 1 by the time [onStable] fires. Reading it changes nothing.
+     */
+    val holdProgress: Float
+        get() = if (window.isEmpty()) 0f else ((window.last().at - window.first().at).toFloat() / MIN_STABLE_DURATION_MICROS).coerceIn(0f, 1f)
+
     /** Feed each new detection result; pass null for a frame where nothing was detected. */
     fun onQuadUpdate(quad: Quad?) {
         if (!enabled || isInCooldown || quad == null) {

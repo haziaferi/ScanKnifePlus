@@ -261,7 +261,7 @@ private fun BookLabels(quad: Quad, count: Int, widthDp: Float, heightDp: Float) 
                 stringResource(R.string.scan_page_label, n),
                 style = MaterialTheme.typography.labelMedium,
                 color = k.onCam,
-                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(k.cam.copy(alpha = 0.6f)).padding(horizontal = 12.dp, vertical = 4.dp)
+                modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(k.offBg).padding(horizontal = 12.dp, vertical = 4.dp)
             )
         }
     }

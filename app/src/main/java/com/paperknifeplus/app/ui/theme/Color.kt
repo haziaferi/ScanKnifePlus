@@ -13,9 +13,10 @@ val PaperPink = Color(0xFFF43F5E)
  * @property cam viewfinder and Scanner background.
  * @property onCam text and icons on [cam]; also the label of an inactive control.
  * @property shutter the shutter ring and button.
- * @property ctrlOffBg the control bar over the preview.
- * @property offBg an inactive toggle (auto-capture, mode) over the preview.
- * @property onBg an active toggle; [onFg] is its label.
+ * @property ctrlOffBg the controls over a page shown full screen (the page viewer's close, share, counter and select).
+ * @property offBg the backing of everything the Scanner draws over the preview: the close button, a toggle while off, the capture modes'
+ *   band, the cues and the Book mode page labels. [cam] at 75%, so [onCam] on it keeps 4.5:1 over a white page.
+ * @property onBg an active toggle and the selected capture mode; [onFg] is its label.
  * @property torchBg the torch toggle while the torch is on; [torchFg] is its icon.
  * @property doneBg the Done button and the page-count badge; [doneFg] is their label (7:1).
  * @property outline the live document outline over the preview (3:1 over a black and a mid-grey preview).
@@ -99,21 +100,21 @@ data class ScanPalette(
 
 private val StillWaterCamera = CameraColors(
     cam = Color(0xFF0D1110), onCam = Color(0xFFECEFEE), shutter = Color(0xFFECEFEE), ctrlOffBg = Color(0xFF0D1110).copy(alpha = 0.55f),
-    offBg = Color(0xFF0D1110).copy(alpha = 0.45f), onBg = Color(0xFFECEFEE), onFg = Color(0xFF0D1110), torchBg = Color(0xFFFFD5A3),
+    offBg = Color(0xFF0D1110).copy(alpha = 0.75f), onBg = Color(0xFFECEFEE), onFg = Color(0xFF0D1110), torchBg = Color(0xFFFFD5A3),
     torchFg = Color(0xFF0D1110), doneBg = Color(0xFF7FB5A6), doneFg = Color(0xFF0D1110), outline = Color(0xFF7DF5CF),
     split = Color(0xFFFFD98A)
 )
 
 private val RoseCamera = CameraColors(
     cam = Color(0xFF0C0C0E), onCam = Color(0xFFCDCDCF), shutter = Color(0xFFCDCDCF), ctrlOffBg = Color(0xFF0C0C0E).copy(alpha = 0.55f),
-    offBg = Color(0xFF0C0C0E).copy(alpha = 0.45f), onBg = Color(0xFFCDCDCF), onFg = Color(0xFF0C0C0E), torchBg = Color(0xFFEDC492),
+    offBg = Color(0xFF0C0C0E).copy(alpha = 0.75f), onBg = Color(0xFFCDCDCF), onFg = Color(0xFF0C0C0E), torchBg = Color(0xFFEDC492),
     torchFg = Color(0xFF0C0C0E), doneBg = Color(0xFFEB9699), doneFg = Color(0xFF0C0C0E), outline = Color(0xFF7DF5CF),
     split = Color(0xFFFFE08A)
 )
 
 private val GraphiteCamera = CameraColors(
     cam = Color(0xFF0D0E10), onCam = Color(0xFFE9E9ED), shutter = Color(0xFFE9E9ED), ctrlOffBg = Color(0xFF0D0E10).copy(alpha = 0.55f),
-    offBg = Color(0xFF0D0E10).copy(alpha = 0.45f), onBg = Color(0xFFE9E9ED), onFg = Color(0xFF0D0E10), torchBg = Color(0xFFF2C997),
+    offBg = Color(0xFF0D0E10).copy(alpha = 0.75f), onBg = Color(0xFFE9E9ED), onFg = Color(0xFF0D0E10), torchBg = Color(0xFFF2C997),
     torchFg = Color(0xFF0D0E10), doneBg = Color(0xFF9DA6D0), doneFg = Color(0xFF0D0E10), outline = Color(0xFFA8E8FF),
     split = Color(0xFFFFD98A)
 )

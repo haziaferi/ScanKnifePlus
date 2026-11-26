@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -116,6 +117,8 @@ internal class ScanFlowModel(
 
         override fun onHoldingSteadyChanged(steady: Boolean) = onMain { holdingSteady = steady }
 
+        override fun onHoldProgressChanged(progress: Float) = onMain { holdProgress = progress }
+
         override fun onLowLightChanged(lowLight: Boolean) = onMain { this@ScanFlowModel.lowLight = lowLight }
 
         override fun onAutoCapture(request: CaptureRequest) = onMain {
@@ -133,6 +136,10 @@ internal class ScanFlowModel(
     var quad by mutableStateOf<Quad?>(null)
         private set
     var holdingSteady by mutableStateOf(false)
+        private set
+
+    /** How far auto-capture's hold has run, from 0 to 1, for the shutter's ring; 0 while the page is not held steady. */
+    var holdProgress by mutableFloatStateOf(0f)
         private set
 
     /** Whether the scene is too dark for reliable detection (scanner-core's LowLightDetector, through the pipeline). */
