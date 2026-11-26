@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
@@ -355,7 +356,7 @@ class LinksViewTest {
         rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
         assertNull(suggested)
         assertFalse(output.exists())
-        assertTrue(SessionManager.history.isEmpty())
+        assertTrue(SavedFiles.of(context).apply { awaitWrites() }.entries().isEmpty())
     }
 
     /** [TestPdfs.linksAndScript] with only its links, or only its script. */
@@ -413,7 +414,7 @@ class LinksViewTest {
         counted("Scripts that run on their own", expected.scripts).assertExists()
         rule.onNodeWithText("2 pages").assertExists()
         PDDocument.load(output).use { assertTrue(removeLinks(it).isEmpty) }
-        assertEquals("links", SessionManager.history.single().toolId)
+        assertEquals("links", SavedFiles.of(context).apply { awaitWrites() }.entries().single().tool)
     }
 
     @Test
@@ -561,7 +562,7 @@ class LinksViewTest {
         rule.waitForIdle()
         assertNull(suggested)
         assertFalse(output.exists())
-        assertTrue(SessionManager.history.isEmpty())
+        assertTrue(SavedFiles.of(context).apply { awaitWrites() }.entries().isEmpty())
     }
 
     @Test

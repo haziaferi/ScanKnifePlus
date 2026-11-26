@@ -159,9 +159,9 @@ fun LinksView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME)) { uri ->
+    val saveLauncher = rememberSaveTarget(PDF_MIME) { uri ->
         val source = sourceUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         val pass = password
         val chosen = options
         currentState = ToolState.PROCESSING
@@ -220,6 +220,7 @@ fun LinksView(
                             val error = if (useRange && rangeEdited) rangeError(range) else null
                             val blocker = linksBlocker(useRange, range, rangeEdited, counts.removal(options))
                             ToolConfigLayout(
+                                save = saveLauncher,
                                 action = stringResource(blocker ?: R.string.links_remove_links),
                                 savesNewPdf = true,
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-no-links", "pdf")) },

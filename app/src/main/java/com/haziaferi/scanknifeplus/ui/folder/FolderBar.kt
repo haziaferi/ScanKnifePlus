@@ -45,22 +45,33 @@ import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
 
 /**
- * Home's folder bar (2b) on the bar token, apart from the ground: where files are saved, with Change; "Choose a folder" without one; that
- * the folder cannot be reached, with Choose again; or the copy of the scans into a new folder, with its progress. The whole bar opens Folder
- * setup (T2); the state is said in words, never by colour alone.
+ * Home's folder bar (2b) on the bar token, apart from the ground: where files are saved, with Change; without a folder, that files are saved
+ * in the app, with Move to folder while [appFiles] are kept there and Choose folder otherwise; that the folder cannot be reached, with Choose
+ * again; or the copy of the scans into a new folder, with its progress. History shows the same bar over its list while files wait to move.
+ * The whole bar opens Folder setup (T2); the state is said in words, never by colour alone.
  */
 @Composable
-fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Modifier, appFiles: Boolean = false) {
     val palette = LocalScanPalette.current
     val name = folderName(status) ?: stringResource(R.string.folder_your_folder)
     val (icon, text, action) = when (status) {
-        FolderStatus.NotChosen -> Triple(Icons.Outlined.CreateNewFolder, AnnotatedString(stringResource(R.string.folder_bar_choose)), null)
+        FolderStatus.NotChosen -> Triple(
+            Icons.Outlined.CreateNewFolder,
+            AnnotatedString(stringResource(R.string.folder_bar_in_app)),
+            if (appFiles) R.string.folder_bar_move else R.string.folder_setup_choose
+        )
         is FolderStatus.Ready ->
             Triple(Icons.Outlined.FolderOpen, boldName(stringResource(R.string.folder_bar_saving, name), name), R.string.folder_bar_change)
         is FolderStatus.ChooseAgain ->
             Triple(Icons.Outlined.FolderOff, boldName(stringResource(R.string.folder_bar_unreachable, name), name), R.string.folder_bar_choose_again)
-        is FolderStatus.Copying ->
-            Triple(Icons.Outlined.FolderOpen, boldName(pluralStringResource(R.plurals.folder_bar_copying, status.count, status.count, name), name), null)
+        is FolderStatus.Copying -> {
+            val copying = if (status.files > 0) {
+                pluralStringResource(R.plurals.folder_bar_moving, status.count + status.files, status.count + status.files, name)
+            } else {
+                pluralStringResource(R.plurals.folder_bar_copying, status.count, status.count, name)
+            }
+            Triple(Icons.Outlined.FolderOpen, boldName(copying, name), null)
+        }
     }
     Column(
         modifier = modifier
@@ -145,9 +156,16 @@ internal fun noticeText(res: Resources, notice: FolderNotice): String? = when (n
         if (notice.keptCopies > 0) R.plurals.folder_conflicts_kept else R.plurals.folder_conflicts_merged, notice.count, notice.count
     )
     is FolderNotice.Copied -> when {
+        notice.unmoved > 0 -> res.getQuantityString(R.plurals.folder_move_failed, notice.unmoved, notice.unmoved)
         notice.failed > 0 -> res.getQuantityString(R.plurals.folder_copy_failed, notice.failed, notice.failed)
+        // One toast for the whole move: the scans written count among the files moved.
+        notice.moved > 0 -> (notice.moved + notice.written).let { res.getQuantityString(R.plurals.folder_moved, it, it) }
         notice.written > 0 -> res.getQuantityString(R.plurals.folder_copied, notice.written, notice.written)
         else -> null
     }
-    is FolderNotice.CopyStopped -> res.getQuantityString(R.plurals.folder_copy_stopped, notice.left, notice.left)
+    is FolderNotice.CopyStopped -> if (notice.files > 0) {
+        (notice.left + notice.files).let { res.getQuantityString(R.plurals.folder_move_stopped, it, it) }
+    } else {
+        res.getQuantityString(R.plurals.folder_copy_stopped, notice.left, notice.left)
+    }
 }

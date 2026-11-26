@@ -85,8 +85,7 @@ import com.haziaferi.scanknifeplus.ui.scan.ScanFlow
 import com.paperknifeplus.app.ui.components.AboutView
 import com.paperknifeplus.app.ui.components.HistoryView
 import com.paperknifeplus.app.ui.components.HomeView
-import com.paperknifeplus.app.ui.components.LocalOutputFolder
-import com.paperknifeplus.app.ui.components.OutputFolder
+import com.paperknifeplus.app.ui.components.LocalSavePlaces
 import com.paperknifeplus.app.ui.components.PreferencesManager
 import com.paperknifeplus.app.ui.components.SettingsView
 import com.paperknifeplus.app.ui.components.ToolCatalog
@@ -219,7 +218,6 @@ class MainActivity : ComponentActivity() {
                     currentTool = FOLDER_ROUTE
                 }
 
-                val outputFolder = remember(folder) { OutputFolder(folder::copyOutput) }
                 FolderNotices(folder)
                 // Files a sync app changed while the app was away show when it comes back.
                 LifecycleResumeEffect(folder) {
@@ -291,7 +289,9 @@ class MainActivity : ComponentActivity() {
                                         onOpenPreview = openPreview,
                                         folder = folder.status,
                                         onFolder = { openFolder(null) },
-                                        recentFolder = folder.history?.items
+                                        recentFolder = folder.history?.items,
+                                        saved = folder.saved,
+                                        appFiles = folder.offersMove
                                     )
                                     HISTORY_ROUTE -> HistoryView(
                                         onItemClick = { uri, name, count ->
@@ -300,7 +300,11 @@ class MainActivity : ComponentActivity() {
                                         },
                                         folder = folder.history,
                                         onChooseFolder = { openFolder(null) },
-                                        onRefresh = { folder.refresh() }
+                                        onRefresh = { folder.refresh() },
+                                        saved = folder.saved,
+                                        // Only while files wait in the app and no folder is chosen (a folder out of reach has its own warning).
+                                        onMoveToFolder = { openFolder(null) }.takeIf { folder.offersMove },
+                                        onDelete = { folder.deleteSaved(it) }
                                     )
                                 }
                             }
@@ -395,9 +399,9 @@ class MainActivity : ComponentActivity() {
                                         }
                                         ScanFlow(onClose = leave, onSaved = leave, importUris = importUris, folder = folder)
                                     }
-                                    // Any other route is a tool id; its saved outputs are copied into the folder too (answer 5).
+                                    // Any other route is a tool id; its saves go into the folder, else into the app (ledger L8).
                                     else -> ToolCatalog.byId(route)?.let { tool ->
-                                        CompositionLocalProvider(LocalOutputFolder provides outputFolder) {
+                                        CompositionLocalProvider(LocalSavePlaces provides folder) {
                                             key(tool.id) { tool.screen(ToolLaunch(toolInitialUri, toolInitialPassword, closeTool, openPreview)) }
                                         }
                                     }

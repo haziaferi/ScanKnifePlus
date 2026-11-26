@@ -66,6 +66,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.haziaferi.scanknifeplus.scan.ScanFiles
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
 import com.haziaferi.scanknifeplus.ui.folder.folderName
 import com.paperknifeplus.app.R
@@ -237,7 +238,11 @@ fun SettingsView(
             SheetBody(stringResource(R.string.settings_clear_history_confirm_body))
             Button(
                 onClick = {
+                    // The files saved elsewhere leave the list (their grants go) and the session's rows with them; no file is deleted, and
+                    // the files kept in the app stay listed, as History is the only way to reach them.
                     SessionManager.clearHistory()
+                    val files = SavedFiles.of(context)
+                    scope.launch { withContext(Dispatchers.IO) { files.clearList() } }
                     close()
                     Toast.makeText(context, historyCleared, Toast.LENGTH_SHORT).show()
                 },

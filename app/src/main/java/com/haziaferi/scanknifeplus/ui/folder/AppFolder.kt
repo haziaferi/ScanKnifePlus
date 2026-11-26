@@ -26,11 +26,19 @@ import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.storage.ConflictReport
 import com.haziaferi.scanknifeplus.storage.FolderAccess
 import com.haziaferi.scanknifeplus.storage.FolderListing
+import com.haziaferi.scanknifeplus.storage.FolderNames
 import com.haziaferi.scanknifeplus.storage.FolderState
 import com.haziaferi.scanknifeplus.storage.FolderStore
+import com.haziaferi.scanknifeplus.storage.Migration
 import com.haziaferi.scanknifeplus.storage.PdfMaker
+import com.haziaferi.scanknifeplus.storage.SavedEntry
+import com.haziaferi.scanknifeplus.storage.SavedFiles
+import com.haziaferi.scanknifeplus.storage.SavedPlace
 import com.haziaferi.scanknifeplus.storage.ScanFolder
 import com.haziaferi.scanknifeplus.storage.WriteResult
+import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.components.SavePlaces
+import com.paperknifeplus.app.ui.components.SaveSpot
 import java.io.File
 import java.io.IOException
 import kotlin.coroutines.CoroutineContext
@@ -49,8 +57,8 @@ sealed interface FolderStatus {
     /** A folder was chosen but cannot be written to: only saving into it waits until it is chosen again. */
     data class ChooseAgain(val name: String?) : FolderStatus
 
-    /** The first copy of the scans on this phone into a newly chosen folder is running. */
-    data class Copying(val name: String?, val count: Int) : FolderStatus
+    /** The first copy of the [count] scans on this phone, and the move of the [files] kept in the app, into a newly chosen folder is running. */
+    data class Copying(val name: String?, val count: Int, val files: Int = 0) : FolderStatus
 }
 
 /** A message the app shows once, as a toast, then clears with [AppFolder.noticeShown]. */
@@ -58,17 +66,18 @@ sealed interface FolderNotice {
     /** Sync conflicts were settled; [keptCopies] of them left a conflict copy beside the file. */
     data class Conflicts(val count: Int, val keptCopies: Int) : FolderNotice
 
-    data class Copied(val written: Int, val failed: Int) : FolderNotice
+    /** Scans [written] into the folder and [failed]; files kept in the app [moved] into it and those [unmoved], which stay in the app. */
+    data class Copied(val written: Int, val failed: Int, val moved: Int = 0, val unmoved: Int = 0) : FolderNotice
 
-    /** The copy into the folder stopped because the folder could no longer be reached; [left] scans were not copied. */
-    data class CopyStopped(val left: Int) : FolderNotice
+    /** The copy into the folder stopped because the folder could no longer be reached; [left] scans and [files] kept in the app stay. */
+    data class CopyStopped(val left: Int, val files: Int = 0) : FolderNotice
 }
 
-/** How the copy of a tool output into the folder went ([AppFolder.copyOutput]). */
+/** How the copy of a file at a URI into the folder went ([AppFolder.copyOutput]). */
 enum class OutputCopy {
     COPIED,
 
-    /** No folder is chosen: outputs are only saved with the picker. */
+    /** No folder is chosen. */
     NO_FOLDER,
 
     /** The folder cannot be reached: it has to be chosen again. */
@@ -125,9 +134,10 @@ fun ScanPdfExporter.pdfMaker(size: PdfPageSize = PdfPageSize.DEFAULT, password: 
     PdfMaker { id, deliver -> writePdf(id, null, ExportQuality.DEFAULT, size, password, text = text, deliver = deliver) != null }
 
 /**
- * The app's view of the user's folder ([FolderAccess]) as Compose state: whether it can be used, its name, History's [listing] of it, and the
- * one-time copy of the scans on this phone after a folder is chosen ([choose]). Folder work runs on [io], one call at a time in the storage
- * layer; state is written on [scope]'s thread, the main thread in the app. Reading never waits for a write to be possible.
+ * The app's view of the user's folder ([FolderAccess]) and of the files it saved ([files]) as Compose state: whether the folder can be used,
+ * its name, History's [listing] of it and the [saved] files, and the one-time copy of the scans on this phone, with the move of the files
+ * kept in the app, after a folder is chosen ([choose]). It is also where the tools' saves go ([create]). Folder work runs on [io], one call
+ * at a time in the storage layer; state is written on [scope]'s thread, the main thread in the app. Reading never waits for a write.
  */
 class AppFolder(
     context: Context,
@@ -139,10 +149,22 @@ class AppFolder(
     private val setupSeen: SetupSeen = PrefsSetupSeen(context),
     private val copyPending: CopyPending = PrefsCopyPending(context),
     private val sweep: () -> Unit = { access.sweep() },
-) {
+    private val files: SavedFiles = SavedFiles.of(context),
+) : SavePlaces {
     // Completed once the launch sweep has run: WorkingCopies.sweep must finish before any session or copy into the folder starts.
     private val swept = CompletableDeferred<Unit>()
     private val resolver: ContentResolver = context.contentResolver
+    private var pruned = 0L
+
+    /** Every file the app saved, newest first, as the index last said ([SavedFiles]); empty until the launch work has read it. */
+    var saved by mutableStateOf<List<SavedEntry>>(emptyList())
+        private set
+
+    /** How many files are kept in the app, which "Move to folder" moves into a folder once one is chosen. */
+    val appFiles: Int get() = saved.count { it.place == SavedPlace.APP }
+
+    /** Whether Home's folder bar and History offer "Move to folder": files wait in the app and no folder is chosen. */
+    val offersMove: Boolean get() = appFiles > 0 && status == FolderStatus.NotChosen
 
     /** The folder as last checked; null until the first check. */
     var state by mutableStateOf<FolderState?>(if (access.treeUri() == null) FolderState.NotChosen else null)
@@ -160,6 +182,9 @@ class AppFolder(
     var copying by mutableStateOf<Int?>(null)
         private set
 
+    /** How many files kept in the app the running copy moves into the folder. */
+    private var moving by mutableStateOf(0)
+
     /** How many scans this phone holds, which a newly chosen folder receives; counted at each [refresh]. */
     var scansOnPhone by mutableStateOf(0)
         private set
@@ -167,8 +192,16 @@ class AppFolder(
     var notice by mutableStateOf<FolderNotice?>(null)
         private set
 
+    private val stopListening = files.listen { list ->
+        scope.launch {
+            saved = list
+            // A tool's output just saved into the folder shows in History's listing; the move lists the folder once, when it is done.
+            if (list.firstOrNull()?.place == SavedPlace.FOLDER && copying == null && state is FolderState.Ready) load(resolve = false)
+        }
+    }
+
     val status: FolderStatus get() {
-        copying?.let { return FolderStatus.Copying(name, it) }
+        copying?.let { return FolderStatus.Copying(name, it, moving) }
         return when (state) {
             FolderState.NotChosen -> FolderStatus.NotChosen
             FolderState.ChooseAgain -> FolderStatus.ChooseAgain(name)
@@ -177,7 +210,7 @@ class AppFolder(
         }
     }
 
-    /** History's view of the folder; null while no folder is chosen, so History shows this session's outputs. */
+    /** History's view of the folder; null while no folder is chosen, so History shows the [saved] files alone. */
     val history: HistoryFolder? by derivedStateOf {
         when (val s = state) {
             FolderState.NotChosen -> null
@@ -194,13 +227,14 @@ class AppFolder(
     /** Whether Folder setup opens by itself at launch: no folder chosen, and its "Not now" never tapped. */
     val offersSetup: Boolean get() = access.treeUri() == null && !setupSeen.get()
 
-    /** "Not now" on Folder setup: each file is saved with the picker, and setup no longer opens by itself. */
+    /** "Not now" on Folder setup: files are kept in the app, and setup no longer opens by itself. */
     fun dismissSetup() = setupSeen.set()
 
     /**
-     * The launch work, off the main thread: the sweep of working copies the folder already holds, then the folder's sync conflicts, reported
-     * once, then the first listing, then a copy into the folder that an earlier launch left unfinished. Run once per launch; scan sessions and
-     * copies into the folder wait for the sweep ([awaitSwept]).
+     * The launch work, off the main thread: the sweep of working copies the folder already holds, the check of the saved files
+     * ([SavedFiles.recover], then [SavedFiles.prune]), then the folder's sync conflicts, reported once, then the first listing, then a copy
+     * into the folder that an earlier launch left unfinished, or the move of files kept in the app while the folder could not be reached. Run
+     * once per launch; scan sessions and copies into the folder wait for the sweep ([awaitSwept]).
      */
     fun start() {
         scope.launch {
@@ -209,19 +243,55 @@ class AppFolder(
             } finally {
                 swept.complete(Unit)
             }
+            saved = withContext(io) {
+                files.recover()
+                files.prune()
+                files.entries()
+            }
+            pruned = System.currentTimeMillis()
             load(resolve = true)
             // Create-only, so scans the stopped copy already wrote, or a scan since saved into the folder, are not written twice.
-            if (copyPending.get() && state is FolderState.Ready) copyScans()
+            if ((copyPending.get() || appFiles > 0) && state is FolderState.Ready) copyScans()
         }
     }
 
     /** Returns once the launch sweep of [start] has run. */
     suspend fun awaitSwept() = swept.await()
 
-    /** Checks the folder again and lists it; with [resolve], first settles its sync conflicts and reports them. */
+    /**
+     * Checks the folder again and lists it; with [resolve], first settles its sync conflicts and reports them. At most once a minute it also
+     * drops the files saved elsewhere that can no longer be opened.
+     */
     fun refresh(resolve: Boolean = false) {
-        scope.launch { load(resolve) }
+        scope.launch {
+            if (System.currentTimeMillis() - pruned > PRUNE_EVERY_MS) {
+                pruned = System.currentTimeMillis()
+                withContext(io) { files.prune() }
+            }
+            load(resolve)
+        }
     }
+
+    /**
+     * Where a tool's save goes now: a new file at the folder's top level when it is ready, else in the app; when the folder was chosen but
+     * cannot take the file, in the app with the notice that it moves there later. Null when not even the app can make it. Blocking.
+     */
+    @WorkerThread
+    override fun create(name: String): SaveSpot? = when (val s = access.state()) {
+        FolderState.NotChosen -> inApp(name, null)
+        FolderState.ChooseAgain -> inApp(name, R.string.tool_saved_in_app)
+        is FolderState.Ready -> s.folder.createOutput(name)?.let { SaveSpot(s.store.uri(it.id)) } ?: inApp(name, R.string.tool_saved_in_app)
+    }
+
+    private fun inApp(name: String, notice: Int?): SaveSpot? = files.create(name)?.let { SaveSpot(files.uriOf(it), notice) }
+
+    /** Deletes the file kept in the app that [entry] lists, then its row (History's Delete); [onDone] says whether it went. */
+    fun deleteSaved(entry: SavedEntry, onDone: (Boolean) -> Unit = {}) {
+        scope.launch { onDone(withContext(io) { files.delete(entry.id) }) }
+    }
+
+    /** Stops following the saved files' changes; for the end of the holder. */
+    fun close() = stopListening()
 
     /**
      * Adopts [treeUri] from the folder picker and tells [onResult] whether it could (false keeps the folder as it was: it cannot be written
@@ -247,10 +317,9 @@ class AppFolder(
     }
 
     /**
-     * Copies a tool output the user saved with the picker at [uri] to the folder's top level under the name the picker gave it (`-2` and so
-     * on when that is taken), creating a file only, then lists the folder again so History shows it; [onResult] tells how it went. A file the
-     * picker saved inside the folder is not copied. Runs on this object's scope, so leaving the tool does not stop it. The saved output is
-     * only read, never changed.
+     * Copies the file at [uri] to the folder's top level under the name its provider gives it (`-2` and so on when that is taken), creating a
+     * file only, then lists the folder again so History shows it; [onResult] tells how it went. A file inside the folder already is not
+     * copied. Runs on this object's scope, so leaving the screen that asked does not stop it. The file is only read, never changed.
      */
     fun copyOutput(uri: Uri, onResult: (OutputCopy) -> Unit) {
         scope.launch {
@@ -348,25 +417,74 @@ class AppFolder(
         awaitSwept()
         val ready = state as? FolderState.Ready ?: return
         val count = scansOnPhone - skip.size
-        if (count <= 0) {
+        val kept = withContext(io) { files.entries() }.filter { it.place == SavedPlace.APP }
+        if (count <= 0 && kept.isEmpty()) {
             copyPending.set(false)
             return
         }
-        copying = count
+        copying = count.coerceAtLeast(0)
+        moving = kept.count { it.scan == null }
         // Set before the copy, so a copy the system ends with the app is run again at the next launch too.
         copyPending.set(true)
-        val migration = try {
-            withContext(io) { ready.folder.migrate(pdf, skip) }
+        val move = try {
+            withContext(io) { moveIn(ready, skip) }
         } finally {
             copying = null
+            moving = 0
         }
-        copyPending.set(migration.folderUnavailable)
-        notice = if (migration.folderUnavailable) {
-            FolderNotice.CopyStopped(migration.failed.size)
+        val migration = move.migration
+        copyPending.set(migration.folderUnavailable || move.left > 0)
+        notice = if (migration.folderUnavailable || move.left > 0) {
+            FolderNotice.CopyStopped(migration.failed.size, move.left)
         } else {
-            FolderNotice.Copied(migration.written.size, migration.failed.size)
+            FolderNotice.Copied(migration.written.size, migration.failed.size, move.moved, move.unmoved)
         }
         load(resolve = false)
+    }
+
+    /** What [moveIn] did: the scans' [migration], the files kept in the app [moved] and [unmoved], and those [left] when the folder went. */
+    private class Move(val migration: Migration, val moved: Int, val unmoved: Int, val left: Int)
+
+    /**
+     * Copies the scans on this phone into the folder ([ScanFolder.migrate]), then moves the files kept in the app into it. A scan's PDF kept in
+     * the app is the PDF its scan is written back with, so the folder gets it as saved (its page size, password and text), and it goes once
+     * written back. Every other file is copied to the top level and deleted from the app only once the folder holds it at its full size; a
+     * file that fails stays, row and all, for the next launch, and the move stops when the folder can no longer be reached. Blocking.
+     */
+    @WorkerThread
+    private fun moveIn(ready: FolderState.Ready, skip: Set<String>): Move {
+        val kept = files.entries().filter { it.place == SavedPlace.APP }
+        val withScan = kept.filter { e -> e.scan?.let { library.exists(it) } == true }
+        val pdfOf = withScan.associate { it.scan!! to files.fileOf(it) }
+        val maker = PdfMaker { id, deliver -> pdfOf[id]?.takeIf { it.isFile }?.let(deliver) ?: pdf.make(id, deliver) }
+        val migration = ready.folder.migrate(maker, skip)
+        withScan.filter { it.scan in migration.written }.forEach { files.moved(it.id, null) }
+        val rest = kept - withScan.toSet()
+        if (migration.folderUnavailable) return Move(migration, 0, 0, rest.size)
+        var moved = 0
+        var unmoved = 0
+        for ((i, entry) in rest.withIndex()) {
+            val file = files.fileOf(entry)
+            if (file == null || !file.isFile) {
+                files.delete(entry.id) // nothing left to move: the row goes
+                continue
+            }
+            val name = entry.name.takeIf { FolderNames.isSafe(it) && !FolderNames.isHidden(it) } ?: file.name
+            when (val result = ready.folder.copyOutput(name) { file.inputStream() }) {
+                is WriteResult.Written -> {
+                    val there = ready.folder.topFile(result.name)
+                    if (there != null && there.size == file.length()) {
+                        files.moved(entry.id, ready.store.uri(there.id))
+                        moved++
+                    } else {
+                        unmoved++
+                    }
+                }
+                WriteResult.FolderUnavailable -> return Move(migration, moved, unmoved, rest.size - i)
+                is WriteResult.Incomplete, WriteResult.Failed -> unmoved++
+            }
+        }
+        return Move(migration, moved, unmoved, 0)
     }
 
     /** The folder's name as the user knows it: the path for the phone's own storage, else the name its provider reports. Blocking. */
@@ -395,12 +513,15 @@ class AppFolder(
     private companion object {
         const val TAG = "AppFolder"
         const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
+        const val PRUNE_EVERY_MS = 60_000L
     }
 }
 
 /** Keeps the app's [AppFolder] across configuration changes and starts its launch work once, when first created. */
 class FolderHolder(app: Application) : AndroidViewModel(app) {
     val folder = AppFolder(app, viewModelScope, setupSeen = setupSeenOf(app)).also { it.start() }
+
+    override fun onCleared() = folder.close()
 
     companion object {
         /** Where the app's [SetupSeen] comes from; tests of the whole app replace it, as Robolectric can carry preferences between tests. */

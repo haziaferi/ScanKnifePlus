@@ -172,9 +172,9 @@ fun WatermarkView(
         }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val watermarks = placedWatermarks
@@ -294,6 +294,7 @@ fun WatermarkView(
                     ToolState.CONFIGURING -> {
                         val hasWatermark = placedWatermarks.isNotEmpty()
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = if (hasWatermark) stringResource(R.string.action_save_pdf) else stringResource(R.string.watermark_select_a_page_to_watermark),
                             onAction = { if (hasWatermark) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-watermarked", "pdf")) },
                             actionEnabled = hasWatermark,

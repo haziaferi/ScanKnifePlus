@@ -313,7 +313,7 @@ class ScanFolder(
         binding.confirmed != WorkingCopies.sha256(stored.bytes)
     }
 
-    /** Copies a tool output the user already saved elsewhere to the top level as [name] (or `<base>-2<ext>` and so on), creating it only. */
+    /** Copies a saved file, such as one kept in the app, to the top level as [name] (or `<base>-2<ext>` and so on), creating it only. */
     @WorkerThread
     fun copyOutput(name: String, open: () -> InputStream): WriteResult = synchronized(LOCK) {
         if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return WriteResult.Failed
@@ -325,6 +325,33 @@ class ScanFolder(
         } catch (e: IOException) {
             Log.w(TAG, "Copying the output $name failed", e)
             if (store.isAvailable()) WriteResult.Failed else WriteResult.FolderUnavailable
+        }
+    }
+
+    /**
+     * Creates an empty file at the top level for a tool output named [name] (or `<base>-2<ext>` and so on when that is taken), which the tool
+     * then writes; a name the provider changed on the way is kept, as it never replaces a file. Null when it cannot be created.
+     */
+    @WorkerThread
+    fun createOutput(name: String): FolderFile? = synchronized(LOCK) {
+        if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return null
+        try {
+            val top = store.list(store.rootId)
+            fileOf(store.createFile(store.rootId, FolderNames.free(name) { n -> top.any { it.name.equals(n, ignoreCase = true) } }))
+        } catch (e: IOException) {
+            Log.w(TAG, "Creating the output $name failed", e)
+            null
+        }
+    }
+
+    /** The top-level file named exactly [name], its size measured from the file; null when there is none or the folder cannot be read. */
+    @WorkerThread
+    fun topFile(name: String): FolderFile? = synchronized(LOCK) {
+        try {
+            store.list(store.rootId).firstOrNull { it.name == name && !it.isFolder }?.let { fileOf(it).copy(size = store.sizeOf(it.id)) }
+        } catch (e: IOException) {
+            Log.w(TAG, "Cannot look for $name", e)
+            null
         }
     }
 

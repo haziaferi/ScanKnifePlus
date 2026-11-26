@@ -231,9 +231,9 @@ fun CropView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME)) { uri ->
+    val saveLauncher = rememberSaveTarget(PDF_MIME) { uri ->
         val source = sourceUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         val pass = password
         val area = frame
         // The button is enabled only for a valid range (cropBlocker).
@@ -300,6 +300,7 @@ fun CropView(
                             val error = if (useRange && rangeEdited) rangeError(range) else null
                             val blocker = cropBlocker(frame, useRange, range, rangeEdited)
                             ToolConfigLayout(
+                                save = saveLauncher,
                                 action = stringResource(blocker ?: R.string.crop_crop_pdf),
                                 savesNewPdf = true,
                                 onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-cropped", "pdf")) },

@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.paperknifeplus.app.R
 import java.io.File
 import java.io.IOException
@@ -49,10 +50,19 @@ fun isToolFailure(e: Throwable): Boolean = e is Exception || e is OutOfMemoryErr
 fun toolFailureText(context: Context, e: Throwable): String =
     toolText(context, R.string.tool_error, if (e is OutOfMemoryError) toolText(context, R.string.tool_out_of_memory) else e.message)
 
-/** Removes a document the system file picker created for an output that then failed or was cancelled. Never throws. */
+/**
+ * Removes the file a save created for an output that then failed or was cancelled, wherever its [SaveTarget] made it: in the app (unless
+ * it is listed, so a saved file is never removed this way), in the user's folder or with the system picker. Never throws. Blocking.
+ */
 fun deleteCreatedDocument(context: Context, uri: Uri) {
     try {
-        if (DocumentsContract.isDocumentUri(context, uri)) DocumentsContract.deleteDocument(context.contentResolver, uri)
+        val files = SavedFiles.of(context)
+        if (files.fileOf(uri) != null) {
+            files.discard(uri)
+        } else if (DocumentsContract.isTreeUri(uri) || DocumentsContract.isDocumentUri(context, uri)) {
+            // A document of the user's folder is named through its tree, which isDocumentUri accepts only for a provider it can resolve.
+            DocumentsContract.deleteDocument(context.contentResolver, uri)
+        }
     } catch (e: Exception) {
         // Providers throw anything from FileNotFoundException to UnsupportedOperationException here; a leftover empty file is all that is lost.
         Log.w(TAG, "Could not remove the unfinished $uri", e)

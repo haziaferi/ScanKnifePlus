@@ -111,9 +111,9 @@ fun PdfToImageView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/zip") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         scope.launch(Dispatchers.IO) {
@@ -168,6 +168,7 @@ fun PdfToImageView(
                 }
                 ToolState.CONFIGURING -> {
                     ToolConfigLayout(
+                        save = saveLauncher,
                         action = stringResource(R.string.pdf2img_convert_pages_to, selectedPages.size, format),
                         onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName), "zip")) },
                         actionEnabled = selectedPages.isNotEmpty(),

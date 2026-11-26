@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.haziaferi.scanknifeplus.storage.SavedEntry
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.haziaferi.scanknifeplus.ui.folder.FolderBar
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderStatus
@@ -70,10 +73,11 @@ private const val RECENT_COUNT = 3
 private const val IMAGE_TYPES = "image/*"
 
 /**
- * Home: header (wordmark, All tools, Settings), the folder bar (2b, [folder], opening Folder setup with [onFolder]), the scan card and the
- * Recent list (1a, 3c, 3d): the newest files of the folder ([recentFolder]) when one is listed, else this session's outputs. The card's upper
- * part starts a scan ([onScan], as the bottom bar's Scan does; rule 3), and below it Import photos (the system picker, then the scan flow
- * with the picked images) and Open PDF (the system picker, then the reader); the accent stays on Scan, the active tab and the Scan tag.
+ * Home: header (wordmark, All tools, Settings), the folder bar (2b, [folder], opening Folder setup with [onFolder]; Move to folder while
+ * [appFiles] wait in the app), the scan card and the Recent list (1a, 3c, 3d), which follows History: the newest files of the folder
+ * ([recentFolder]) when one is listed, else this session's outputs, with the files [saved] in the app or elsewhere. The card's upper part
+ * starts a scan ([onScan], as the bottom bar's Scan does; rule 3), and below it Import photos (the system picker, then the scan flow with the
+ * picked images) and Open PDF (the system picker, then the reader); the accent stays on Scan, the active tab and the Scan tag.
  */
 @Composable
 fun HomeView(
@@ -85,7 +89,9 @@ fun HomeView(
     onOpenPreview: (Uri, String, Int) -> Unit,
     folder: FolderStatus = FolderStatus.NotChosen,
     onFolder: () -> Unit = {},
-    recentFolder: List<FolderItem>? = null
+    recentFolder: List<FolderItem>? = null,
+    saved: List<SavedEntry> = emptyList(),
+    appFiles: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -104,12 +110,12 @@ fun HomeView(
     Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
         HomeHeader(onAllTools = onAllTools, onSettings = onSettings)
         Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-            FolderBar(folder, onClick = onFolder)
+            FolderBar(folder, onClick = onFolder, appFiles = appFiles)
             ScanCard(onScan = onScan, onImportPhotos = { pickPhotos.launch(IMAGE_TYPES) }, onOpenPdf = { pickPdf.launch("application/pdf") })
             if (recentFolder != null) {
-                FolderRecentList(recentFolder.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
+                FolderRecentList(recentFolder, onSeeAll = onSeeAll, onOpenPreview = onOpenPreview, saved = saved)
             } else {
-                RecentList(SessionManager.history.take(RECENT_COUNT), onSeeAll = onSeeAll, onOpenPreview = onOpenPreview)
+                RecentList(SessionManager.history, onSeeAll = onSeeAll, onOpenPreview = onOpenPreview, saved = saved)
             }
         }
     }
@@ -204,44 +210,61 @@ private fun CardButton(label: String, onClick: () -> Unit, modifier: Modifier = 
     }
 }
 
-/** The newest outputs; a PDF opens in the reader, any other file opens History, where it can be shared. */
+/** The newest of this session's outputs ([recent]) and the [saved] files, as History lists them without a folder. */
 @Composable
-internal fun RecentList(recent: List<ActivityEntry>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
-    val context = LocalContext.current
+internal fun RecentList(
+    recent: List<ActivityEntry>,
+    onSeeAll: () -> Unit,
+    onOpenPreview: (Uri, String, Int) -> Unit,
+    saved: List<SavedEntry> = emptyList()
+) {
     RecentHeader(stringResource(R.string.home_recent), onSeeAll)
-    if (recent.isEmpty()) {
-        RecentEmpty()
-        return
-    }
-    EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-        recent.forEachIndexed { index, entry ->
-            if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            EntryRow(
-                entry = entry,
-                onClick = entry.uri?.let { uri ->
-                    {
-                        if (canOpenInReader(historyEntryMime(context.contentResolver, uri))) onOpenPreview(uri, entry.name, entry.pageCount)
-                        else onSeeAll()
-                    }
-                }
-            )
-        }
-    }
+    RecentRows(historyRows(null, withFolder = false, saved, recent), onSeeAll, onOpenPreview)
 }
 
-/** The folder's newest files ("Recent in your folder"); a PDF opens in the reader, anything else opens History. */
+/** The folder's newest files ("Recent in your folder") and the [saved] files apart from it, as History lists them with the folder. */
 @Composable
-internal fun FolderRecentList(recent: List<FolderItem>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
+internal fun FolderRecentList(
+    recent: List<FolderItem>,
+    onSeeAll: () -> Unit,
+    onOpenPreview: (Uri, String, Int) -> Unit,
+    saved: List<SavedEntry> = emptyList()
+) {
     RecentHeader(stringResource(R.string.home_recent_folder), onSeeAll)
-    if (recent.isEmpty()) {
+    RecentRows(historyRows(recent, withFolder = true, saved, emptyList()), onSeeAll, onOpenPreview)
+}
+
+/** The first [RECENT_COUNT] of [rows]; a PDF opens in the reader, any other file opens History, where it can be shared. */
+@Composable
+private fun RecentRows(rows: List<HistoryRow>, onSeeAll: () -> Unit, onOpenPreview: (Uri, String, Int) -> Unit) {
+    val context = LocalContext.current
+    if (rows.isEmpty()) {
         RecentEmpty()
         return
     }
     EntryList(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-        recent.forEachIndexed { index, item ->
+        rows.take(RECENT_COUNT).forEachIndexed { index, row ->
             if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-            val uri = item.uri
-            FolderRow(item, onClick = if (uri != null && canOpenInReader(item.mime)) ({ onOpenPreview(uri, item.name, 0) }) else onSeeAll)
+            when (row) {
+                is HistoryRow.Session -> EntryRow(
+                    entry = row.entry,
+                    onClick = row.entry.uri?.let { uri ->
+                        {
+                            if (canOpenInReader(historyEntryMime(context.contentResolver, uri))) onOpenPreview(uri, row.entry.name, row.entry.pageCount)
+                            else onSeeAll()
+                        }
+                    }
+                )
+                is HistoryRow.Folder -> {
+                    val uri = row.item.uri
+                    FolderRow(row.item, onClick = if (uri != null && canOpenInReader(row.item.mime)) ({ onOpenPreview(uri, row.item.name, 0) }) else onSeeAll)
+                }
+                is HistoryRow.Saved -> {
+                    val uri = remember(row.entry) { SavedFiles.of(context).uriOf(row.entry) }
+                    val pdf = canOpenInReader(savedMime(row.entry))
+                    SavedRow(row.entry, onClick = if (uri != null && pdf) ({ onOpenPreview(uri, row.entry.name, row.entry.pages) }) else onSeeAll)
+                }
+            }
         }
     }
 }

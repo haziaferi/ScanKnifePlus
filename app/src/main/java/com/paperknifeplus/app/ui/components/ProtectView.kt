@@ -86,9 +86,9 @@ fun ProtectView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         scope.launch {
@@ -135,6 +135,7 @@ fun ProtectView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.protect_protect_pdf),
                             savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-protected", "pdf")) },

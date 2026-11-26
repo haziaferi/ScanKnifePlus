@@ -1,6 +1,7 @@
 package com.paperknifeplus.app.ui.components
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -45,6 +46,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -144,8 +146,11 @@ fun SuccessView(
     }
 }
 
-/** What Android reports of a saved file: its [size] in bytes and the name of the [folder] it is in, each null when it is not reported. */
-internal data class ResultPlace(val size: Long?, val folder: String?)
+/**
+ * What Android reports of a saved file: its [size] in bytes and the name of the [folder] it is in, each null when it is not reported; or
+ * that it is kept [inApp].
+ */
+internal data class ResultPlace(val size: Long?, val folder: String?, val inApp: Boolean = false)
 
 private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
 private const val DOWNLOADS = "com.android.providers.downloads.documents"
@@ -189,16 +194,22 @@ internal fun resultPlace(resolver: ContentResolver, uri: Uri): ResultPlace {
     return ResultPlace(size?.takeIf { it > 0 }, resultFolder(uri))
 }
 
+/** [resultPlace] for [uri], or the size of a file kept in the app, read from the file. Blocking. */
+@WorkerThread
+internal fun resultPlace(context: Context, uri: Uri): ResultPlace =
+    SavedFiles.of(context).fileOf(uri)?.let { ResultPlace(it.length().takeIf { size -> size > 0 }, null, inApp = true) }
+        ?: resultPlace(context.contentResolver, uri)
+
 /**
- * The line under the result's name (rule 14): "1.2 MB · Download" (the size in the locale's format), the size or the folder alone when only
- * one is known, nothing for neither. Read off the main thread, it shows once known and takes no room until then.
+ * The line under the result's name (rule 14): "1.2 MB · Download" (the size in the locale's format; "In the app" for a file kept there), the
+ * size or the folder alone when only one is known, nothing for neither. Read off the main thread, it shows once known and takes no room until then.
  */
 @Composable
 private fun ResultPlaceLine(uri: Uri) {
     val context = LocalContext.current
-    val place by produceState<ResultPlace?>(null, uri) { value = withContext(Dispatchers.IO) { resultPlace(context.contentResolver, uri) } }
+    val place by produceState<ResultPlace?>(null, uri) { value = withContext(Dispatchers.IO) { resultPlace(context, uri) } }
     val size = place?.size?.let { Formatter.formatShortFileSize(context, it) }
-    val folder = place?.folder
+    val folder = if (place?.inApp == true) stringResource(R.string.tool_result_in_app) else place?.folder
     val line = if (size != null && folder != null) stringResource(R.string.tool_result_size_folder, size, folder) else size ?: folder
     if (line != null) Text(line, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.meta)
 }

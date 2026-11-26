@@ -50,10 +50,10 @@ class FolderScreensTest {
         setup(scans = 3, onChoose = { chosen++ }, onNotNow = { later++ })
         rule.onNodeWithText("Choose where your documents live").assertExists()
         rule.onNodeWithText("Nothing is uploaded by the app", substring = true).assertExists()
-        rule.onNodeWithText("Scan sources/ · pages you can edit later").assertExists()
+        rule.onNodeWithText("Scan sources/Example scan/ · pages you can edit later").assertExists()
         rule.onNodeWithText("The 3 scans already on this phone will be copied into the folder. Existing files are never overwritten.").assertExists()
         rule.onNodeWithText("Choose folder").performClick()
-        rule.onNodeWithText("Not now · save each file with the picker").performClick()
+        rule.onNodeWithText("Not now · keep files in the app").performClick()
         assertEquals(1, chosen)
         assertEquals(1, later)
     }
@@ -92,7 +92,7 @@ class FolderScreensTest {
         assertEquals("a picker that has not answered ends nothing", 0, done)
 
         assertTrue(folder.offersSetup)
-        rule.onNodeWithText("Not now · save each file with the picker").performClick()
+        rule.onNodeWithText("Not now · keep files in the app").performClick()
         assertEquals(1, done)
         assertFalse(folder.offersSetup)
     }
@@ -108,7 +108,7 @@ class FolderScreensTest {
         assertEquals(1, opened)
 
         status.value = FolderStatus.NotChosen
-        rule.onNodeWithText("Choose a folder").assertExists()
+        rule.onNodeWithText("Saved in the app until you choose a folder").assertExists()
         rule.onNodeWithText("Change").assertDoesNotExist()
 
         status.value = FolderStatus.ChooseAgain("Documents/Scans")

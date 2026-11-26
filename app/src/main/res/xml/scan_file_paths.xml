@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Paths the FileProvider may share: only the cache folder for share copies. Nothing else in app storage is reachable. -->
+<!-- Paths the FileProvider may share: the cache folder for share copies, and the files kept in the app (SavedFiles). Nothing else in app storage is reachable. -->
 <paths>
     <cache-path name="shared" path="shared/" />
+    <files-path name="saved" path="saved/" />
 </paths>

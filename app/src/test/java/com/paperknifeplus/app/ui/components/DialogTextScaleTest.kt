@@ -127,7 +127,7 @@ abstract class DialogWalk(private val fontScale: Float) {
     @Test
     fun `the Save PDF dialog`() {
         show { SaveDialog(onSave = {}, onDismiss = {}) }
-        check("the Save PDF dialog", R.string.scan_save_title, listOf(R.string.scan_cancel, R.string.scan_save_choose), R.string.scan_save_choose)
+        check("the Save PDF dialog", R.string.scan_save_title, listOf(R.string.scan_cancel, R.string.scan_leave_save), R.string.scan_leave_save)
     }
 
     @Test

@@ -84,15 +84,17 @@ fun PdfToTextView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveTxtLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+    val saveTxtLauncher = rememberSaveTarget("text/plain") { uri ->
         uri?.let { saveUri ->
             val text = extractedText
             scope.launch(Dispatchers.IO) {
                 try {
                     context.contentResolver.requireOutputStream(saveUri).use { it.write(text.toByteArray()) }
+                    val name = getUriDetails(context, saveUri).name
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, toolText(context, R.string.pdf2text_saved_as_txt), Toast.LENGTH_SHORT).show()
-                        outputs.copy(saveUri)
+                        // A file now, beside the session's row of the text read: listed with the other saved files.
+                        outputs.saved(saveUri, name, toolText(context, R.string.pdf2text_saved_as_txt), Icons.Outlined.Description)
                     }
                 } catch (e: CancellationException) {
                     deleteCreatedDocument(context, saveUri)
@@ -208,6 +210,11 @@ fun PdfToTextView(
                                     }
                                 }
                             }
+                            // Under the save button, at its end edge, as under every tool's save.
+                            SaveElsewhereButton(
+                                onClick = { saveTxtLauncher.launchElsewhere(outputFileName(pdfBaseName(fileName), "txt")) },
+                                modifier = Modifier.align(Alignment.End).padding(end = 8.dp)
+                            )
 
                             Surface(
                                 modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),

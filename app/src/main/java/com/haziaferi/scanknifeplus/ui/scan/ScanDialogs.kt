@@ -44,6 +44,7 @@ import com.paperknifeplus.app.ui.components.DialogButton
 import com.paperknifeplus.app.ui.components.DialogButtonKind
 import com.paperknifeplus.app.ui.components.DialogButtons
 import com.paperknifeplus.app.ui.components.DialogTitle
+import com.paperknifeplus.app.ui.components.SaveElsewhereButton
 import com.paperknifeplus.app.ui.components.SegmentedChoice
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -108,7 +109,7 @@ internal fun FilterDialog(current: String?, onPick: (String) -> Unit, onDismiss:
  * The export options before saving: page size (Fit included) and an optional password, where empty means none (decision 6a), then Make
  * searchable ([searchable] to start with) and, while it is on, the OCR language ([language] to start with), the Reading layout (Automatic each
  * time) and the .txt copy ([txt] to start with). The PDF is then saved into the user's [folder] when one is chosen (its name, shown here), else
- * where the system file picker says.
+ * kept in the app ("Save scan"), with [onSaveElsewhere] under the commit for where the system file picker says.
  */
 @Composable
 internal fun SaveDialog(
@@ -118,6 +119,7 @@ internal fun SaveDialog(
     searchable: Boolean = true,
     txt: Boolean = false,
     language: OcrLanguage = OcrLanguage.ENGLISH,
+    onSaveElsewhere: ((SaveOptions) -> Unit)? = null,
 ) {
     var size by remember { mutableStateOf(PdfPageSize.DEFAULT) }
     var password by remember { mutableStateOf("") }
@@ -126,6 +128,7 @@ internal fun SaveDialog(
     var reading by remember { mutableStateOf(OcrReading.AUTOMATIC) }
     var alsoTxt by remember { mutableStateOf(txt) }
     val usable = remember(password) { ScanExport.isUsablePassword(password) }
+    val options = { SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { DialogTitle(stringResource(R.string.scan_save_title)) },
@@ -149,17 +152,19 @@ internal fun SaveDialog(
                     OptionChoice(R.string.scan_ocr_reading, OcrReading.entries, reading, ::readingLabel) { reading = it }
                     SwitchRow(R.string.scan_ocr_txt, null, alsoTxt) { alsoTxt = it }
                 }
-                val where = if (folder == null) stringResource(R.string.scan_save_where) else stringResource(R.string.scan_save_into, folder)
+                val where = if (folder == null) stringResource(R.string.folder_bar_in_app) else stringResource(R.string.scan_save_into, folder)
                 Text(where, style = MaterialTheme.typography.bodySmall, color = LocalScanPalette.current.mu)
             }
         },
         confirmButton = {
-            DialogButtons {
-                DialogButton(R.string.scan_cancel, onClick = onDismiss)
-                val save = if (folder == null) R.string.scan_save_choose else R.string.scan_save_folder
-                DialogButton(save, enabled = usable, kind = DialogButtonKind.COMMIT) {
-                    onSave(SaveOptions(size, password, if (makeSearchable) TextOptions(ocrLanguage, reading, alsoTxt) else null))
+            Column(horizontalAlignment = Alignment.End) {
+                DialogButtons {
+                    DialogButton(R.string.scan_cancel, onClick = onDismiss)
+                    // Without a folder the commit keeps the scan in the app, in the words of the leave prompt's Save scan.
+                    val save = if (folder == null) R.string.scan_leave_save else R.string.scan_save_folder
+                    DialogButton(save, enabled = usable, kind = DialogButtonKind.COMMIT) { onSave(options()) }
                 }
+                if (onSaveElsewhere != null) SaveElsewhereButton(onClick = { onSaveElsewhere(options()) }, enabled = usable)
             }
         }
     )

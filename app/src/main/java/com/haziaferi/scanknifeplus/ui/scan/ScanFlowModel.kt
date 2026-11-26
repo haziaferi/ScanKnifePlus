@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.provider.DocumentsContract
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -43,6 +42,7 @@ import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.storage.ScanFolder
 import com.haziaferi.scanknifeplus.storage.WriteResult
 import com.haziaferi.scanknifeplus.ui.folder.pdfMaker
+import com.paperknifeplus.app.ui.components.deleteCreatedDocument
 import java.io.File
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
@@ -478,14 +478,17 @@ internal class ScanFlowModel(
         }
     }
 
-    /** Writes the waiting .txt copy into [dest], the document its file picker created, then closes the flow and calls [onDone]. */
-    fun saveText(dest: Uri, onDone: () -> Unit) {
+    /**
+     * Writes the waiting .txt copy into [dest], a file made in the app or by its file picker, then closes the flow and calls [onDone] with
+     * whether it was written.
+     */
+    fun saveText(dest: Uri, onDone: (Boolean) -> Unit) {
         val (_, text) = textToSave ?: return
         textToSave = null
         scope.launch {
-            withContext(io) { export.saveText(dest, text) }
+            val written = withContext(io) { export.saveText(dest, text) }
             close()
-            onDone()
+            onDone(written)
         }
     }
 
@@ -567,17 +570,9 @@ internal class ScanFlowModel(
         withContext(io) { OcrCache(library, id).clear() }
     }
 
-    /** Deletes [dest], a document the save picker created for options that were lost (the app was killed meanwhile), so no empty PDF stays. */
+    /** Deletes [dest], a file made for a save whose options were lost (the app was killed meanwhile), so no empty PDF stays. */
     fun dropTarget(dest: Uri) {
-        scope.launch {
-            withContext(io) {
-                try {
-                    if (DocumentsContract.isDocumentUri(appContext, dest)) DocumentsContract.deleteDocument(appContext.contentResolver, dest)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not remove the unused $dest", e)
-                }
-            }
-        }
+        scope.launch { withContext(io) { deleteCreatedDocument(appContext, dest) } }
     }
 
     /** Leaves the flow without saving a PDF (decision 6): [keep] keeps the pages in the scan library, otherwise they are discarded. */

@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +40,7 @@ import com.haziaferi.scanknifeplus.scan.ScanPreferences
 import com.haziaferi.scanknifeplus.scan.camera.CameraError
 import com.haziaferi.scanknifeplus.scan.camera.ScanCameraState
 import com.haziaferi.scanknifeplus.storage.FolderState
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.haziaferi.scanknifeplus.storage.ScanFolder
 import com.haziaferi.scanknifeplus.storage.WriteResult
 import com.haziaferi.scanknifeplus.ui.folder.AppFolder
@@ -46,10 +48,15 @@ import com.haziaferi.scanknifeplus.ui.folder.CheckingFolderDialog
 import com.haziaferi.scanknifeplus.ui.folder.FolderBlockedDialog
 import com.haziaferi.scanknifeplus.ui.folder.rememberFolderPicker
 import com.paperknifeplus.app.R
+import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * The document scanner: Scanner (or Review of the picked [importUris]), then Review, then a PDF saved into the user's [folder], or with the
- * system file picker when none is chosen; a folder out of reach holds only the save, until it is chosen again. [onSaved] runs once saved,
+ * The document scanner: Scanner (or Review of the picked [importUris]), then Review, then a PDF saved into the user's [folder], or kept in
+ * the app when none is chosen (Save elsewhere asks the system file picker); a folder out of reach holds only the save, until it is chosen
+ * again. [onSaved] runs once saved,
  * [onClose] when the user leaves without saving (after the keep-or-discard prompt); the screen is held in portrait throughout.
  */
 @Composable
@@ -108,30 +115,49 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         holder.model = null
         onSaved()
     }
-    // The .txt copy waits in the model too; cancelling its picker just skips it.
-    val textPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(TXT_MIME)) { uri ->
+    val files = remember(context) { SavedFiles.of(context) }
+    val scope = rememberCoroutineScope()
+    // The .txt copy waits in the model too; cancelling its picker just skips it. One kept in the app is listed with the scan's PDF.
+    val onTextTarget: (Uri?) -> Unit = { uri ->
         when {
             model.textToSave == null -> uri?.let(model::dropTarget)
             uri == null -> {
                 model.skipText()
                 saved()
             }
-            else -> model.saveText(uri) { saved() }
+            else -> model.saveText(uri) { written ->
+                files.fileOf(uri)?.takeIf { written }?.let { files.recordLater(uri, it.name, SCAN_ENTRY_TOOL) }
+                saved()
+            }
+        }
+    }
+    val textPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(TXT_MIME), onTextTarget)
+    // A file kept in the app, made off the main thread, then written as the picker's would be; the picker asks when it cannot be made.
+    fun inApp(name: String, picker: () -> Unit, onTarget: (Uri?) -> Unit) {
+        scope.launch {
+            val file = withContext(Dispatchers.IO) { files.create(name) }
+            if (file == null) picker() else onTarget(files.uriOf(file))
         }
     }
     // The options wait in the model, which outlives an activity recreated while the picker is open; saved state could reach the disk.
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME)) { uri ->
+    val onPdfTarget: (Uri?) -> Unit = { uri ->
         val options = model.pendingSave
         model.pendingSave = null
         when {
             uri == null -> {}
             options == null -> model.dropTarget(uri)
-            else -> model.save(uri, options) {
+            else -> model.save(uri, options) { pdf ->
                 val text = model.textToSave
-                if (text != null) textPicker.launch(text.first) else saved()
+                when {
+                    text == null -> saved()
+                    // Saved in the app, so its .txt copy is too; saved with the picker, the picker asks for the .txt as well.
+                    files.fileOf(pdf.uri) != null -> inApp(text.first, { textPicker.launch(text.first) }, onTextTarget)
+                    else -> textPicker.launch(text.first)
+                }
             }
         }
     }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(PDF_MIME), onPdfTarget)
 
     // Saving into the folder: the options wait in the model, as for the picker, while the folder may have to be chosen again first.
     val saveToFolder: (ScanFolder) -> Unit = { target ->
@@ -222,20 +248,27 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
         val into = folder?.takeIf { state != null && state != FolderState.NotChosen }?.let { it.name ?: yourFolder }
         val prefs = remember(context) { ScanPreferences(context) }
         val locale = LocalLocale.current.platformLocale
-        SaveDialog(folder = into, searchable = prefs.searchable, txt = prefs.saveText, language = defaultOcrLanguage(locale), onSave = { options ->
+        // Without a folder the scan's PDF is kept in the app; Save elsewhere asks the picker, as every save did before (ledger L8).
+        val save = { options: SaveOptions, elsewhere: Boolean ->
             saveOptions = false
             prefs.searchable = options.text != null
             options.text?.let { prefs.saveText = it.txt }
             val name = model.pdfName
             if (name != null) {
                 model.pendingSave = options
-                when (state) {
-                    is FolderState.Ready -> saveToFolder(state.folder)
-                    FolderState.ChooseAgain -> folderBlocked = true
-                    else -> picker.launch(name)
+                when {
+                    elsewhere -> picker.launch(name)
+                    state is FolderState.Ready -> saveToFolder(state.folder)
+                    state == FolderState.ChooseAgain -> folderBlocked = true
+                    else -> inApp(name, { picker.launch(name) }, onPdfTarget)
                 }
             }
-        }, onDismiss = { saveOptions = false })
+        }
+        SaveDialog(
+            folder = into, searchable = prefs.searchable, txt = prefs.saveText, language = defaultOcrLanguage(locale),
+            onSave = { save(it, false) }, onDismiss = { saveOptions = false },
+            onSaveElsewhere = if (into == null) ({ save(it, true) }) else null
+        )
     }
     if (folderBlocked && chooseAgain != null) {
         FolderBlockedDialog(folder.name, onChooseAgain = {
