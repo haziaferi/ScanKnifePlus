@@ -51,7 +51,6 @@ class SavedFilesProvider : ContentProvider() {
         /** Deletes the files kept in the app and their index, so no later test finds them (it may get this test's data folder). */
         fun forget(context: Context) {
             val files = SavedFiles.of(context)
-            files.awaitWrites()
             files.dir.deleteRecursively()
             context.filesDir.listFiles().orEmpty().filter { it.name.startsWith("saved-index.json") }.forEach { it.delete() }
         }

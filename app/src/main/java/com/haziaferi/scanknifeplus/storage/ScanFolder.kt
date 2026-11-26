@@ -319,7 +319,7 @@ class ScanFolder(
         if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return WriteResult.Failed
         try {
             val top = store.list(store.rootId)
-            val free = FolderNames.free(name) { n -> top.any { it.name.equals(n, ignoreCase = true) } }
+            val free = FolderNames.free(FolderNames.fit(name)) { n -> top.any { it.name.equals(n, ignoreCase = true) } }
             writeNew(store.rootId, free, top) { out -> open().use { it.copyTo(out) } }
             WriteResult.Written(free, emptyList())
         } catch (e: IOException) {
@@ -337,20 +337,26 @@ class ScanFolder(
         if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return null
         try {
             val top = store.list(store.rootId)
-            fileOf(store.createFile(store.rootId, FolderNames.free(name) { n -> top.any { it.name.equals(n, ignoreCase = true) } }))
+            fileOf(store.createFile(store.rootId, FolderNames.free(FolderNames.fit(name)) { n -> top.any { it.name.equals(n, ignoreCase = true) } }))
         } catch (e: IOException) {
             Log.w(TAG, "Creating the output $name failed", e)
             null
         }
     }
 
-    /** The top-level file named exactly [name], its size measured from the file; null when there is none or the folder cannot be read. */
+    /**
+     * The top-level file named exactly [name] if it holds just what [local] holds: the same size, measured from the file, and the same
+     * SHA-256. Null when there is none, it differs, or the folder cannot be read.
+     */
     @WorkerThread
-    fun topFile(name: String): FolderFile? = synchronized(LOCK) {
+    fun holds(name: String, local: File): FolderFile? = synchronized(LOCK) {
         try {
-            store.list(store.rootId).firstOrNull { it.name == name && !it.isFolder }?.let { fileOf(it).copy(size = store.sizeOf(it.id)) }
+            val entry = store.list(store.rootId).firstOrNull { it.name == name && !it.isFolder } ?: return null
+            if (store.sizeOf(entry.id) != local.length()) return null
+            val same = store.openRead(entry.id).use(WorkingCopies::sha256) == local.inputStream().use(WorkingCopies::sha256)
+            fileOf(entry).takeIf { same }
         } catch (e: IOException) {
-            Log.w(TAG, "Cannot look for $name", e)
+            Log.w(TAG, "Cannot compare $name", e)
             null
         }
     }

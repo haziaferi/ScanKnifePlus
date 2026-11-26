@@ -486,6 +486,14 @@ fun SignView(
                                         Text(stringResource(R.string.action_save), style = MaterialTheme.typography.labelLarge)
                                     }
                                 }
+                                // Under the page view's Save too, as under the screen's own (ledger L8).
+                                SaveElsewhereButton(
+                                    onClick = {
+                                        lightboxPage = null
+                                        saveLauncher.launchElsewhere(outputFileName(pdfBaseName(fileName) + "-signed", "pdf"))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         }
                     }

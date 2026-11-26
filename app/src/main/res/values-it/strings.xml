@@ -344,6 +344,8 @@
     <string name="tool_process_more">Elabora altri file</string>
     <string name="tool_back_to_tools">Torna agli strumenti</string>
     <string name="tool_saved_in_app">Impossibile raggiungere la cartella, quindi il file è stato salvato nell\'app. Verrà spostato nella cartella quando la sceglierai di nuovo.</string>
+    <string name="tool_saved_in_app_later">Impossibile salvare nella cartella, quindi il file è stato salvato nell\'app. Verrà spostato nella cartella alla prossima apertura dell\'app.</string>
+    <string name="folder_list_rebuilt">Non è stato possibile leggere l\'elenco dei file salvati, quindi è stato ricreato dai file conservati nell\'app. Potrebbero mancare i file salvati altrove.</string>
     <string name="tool_save_elsewhere">Salva altrove…</string>
     <string name="tool_result_in_app">Nell\'app</string>
     <string name="tool_step_choose_pdf">Scegli un PDF</string>

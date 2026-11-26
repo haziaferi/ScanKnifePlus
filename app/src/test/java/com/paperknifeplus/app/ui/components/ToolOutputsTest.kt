@@ -62,7 +62,6 @@ class ToolOutputsTest {
     fun `a saved output is listed in the index under the tool's id, not in the session, and nothing is said`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "merged.pdf")
         rule.runOnUiThread { outputs().saved(uri, "merged.pdf", "2 files joined", Icons.Filled.Description, 4) }
-        files.awaitWrites()
 
         val entry = files.entries().single()
         assertEquals("merge", entry.tool)
@@ -76,7 +75,6 @@ class ToolOutputsTest {
     @Test
     fun `an output that is not a saved file is only this session's`() {
         rule.runOnUiThread { outputs().record("report.pdf", "120 chars", Icons.Filled.Description) }
-        files.awaitWrites()
         assertEquals(1, SessionManager.history.size)
         assertTrue(files.entries().isEmpty())
     }
@@ -94,7 +92,6 @@ class ToolOutputsTest {
         rule.onNodeWithText("Repair PDF").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair complete")).fetchSemanticsNodes().isNotEmpty() }
         rule.waitForIdle()
-        files.awaitWrites()
 
         assertEquals("repair", files.entries().single().tool)
         assertNull("no folder message", ShadowToast.getTextOfLatestToast())

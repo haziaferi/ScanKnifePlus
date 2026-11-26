@@ -238,7 +238,6 @@ class ScanFlowSaveTest {
         rule.waitUntil(10_000) { saved == 1 }
         val files = SavedFiles.of(context)
         assertEquals("page\n", File(files.dir, name.removeSuffix(".pdf") + ".txt").readText())
-        files.awaitWrites()
         assertEquals(listOf(SavedPlace.APP), files.entries().filter { it.name.endsWith(".txt") }.map { it.place })
         assertFalse("no picker for the PDF or its text", startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
     }

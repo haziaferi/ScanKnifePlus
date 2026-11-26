@@ -329,6 +329,8 @@
     <string name="tool_process_more">Process more files</string>
     <string name="tool_back_to_tools">Back to tools</string>
     <string name="tool_saved_in_app">Couldn\'t reach your folder, so this was saved in the app. It moves there when you choose the folder again.</string>
+    <string name="tool_saved_in_app_later">Couldn\'t save in your folder, so this was saved in the app. It moves there the next time the app opens.</string>
+    <string name="folder_list_rebuilt">The list of your saved files couldn\'t be read, so it was made again from the files kept in the app. Files saved elsewhere may be missing from it.</string>
     <string name="tool_save_elsewhere">Save elsewhere…</string>
     <string name="tool_result_in_app">In the app</string>
     <string name="tool_step_choose_pdf">Choose a PDF</string>

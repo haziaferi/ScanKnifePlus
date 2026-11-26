@@ -51,12 +51,14 @@ fun toolFailureText(context: Context, e: Throwable): String =
     toolText(context, R.string.tool_error, if (e is OutOfMemoryError) toolText(context, R.string.tool_out_of_memory) else e.message)
 
 /**
- * Removes the file a save created for an output that then failed or was cancelled, wherever its [SaveTarget] made it: in the app (unless
- * it is listed, so a saved file is never removed this way), in the user's folder or with the system picker. Never throws. Blocking.
+ * Removes the file a save created for an output that then failed or was cancelled, wherever its [SaveTarget] made it: in the app, in the
+ * user's folder or with the system picker. One already listed is a finished save (a cancel that came after it was listed) and stays. Never
+ * throws. Blocking.
  */
 fun deleteCreatedDocument(context: Context, uri: Uri) {
     try {
         val files = SavedFiles.of(context)
+        if (files.listed(uri)) return
         if (files.fileOf(uri) != null) {
             files.discard(uri)
         } else if (DocumentsContract.isTreeUri(uri) || DocumentsContract.isDocumentUri(context, uri)) {

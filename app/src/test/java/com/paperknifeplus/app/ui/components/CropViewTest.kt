@@ -262,7 +262,7 @@ class CropViewTest {
             assertEquals(listOf(false, true, false, true, true), cropped)
             assertBox(listOf(153f, 0f, 612f, 792f), doc.getPage(1).cropBox)
         }
-        assertEquals("crop", SavedFiles.of(context).apply { awaitWrites() }.entries().single().tool)
+        assertEquals("crop", SavedFiles.of(context).entries().single().tool)
     }
 
     @Test

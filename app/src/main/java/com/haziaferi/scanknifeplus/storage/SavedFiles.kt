@@ -4,19 +4,20 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
-import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 
 /** Where a saved file lives: [APP] in the app's own `saved/` folder, [FOLDER] in the user's folder, [ELSEWHERE] where the system picker put it. */
@@ -26,6 +27,10 @@ enum class SavedPlace { APP, FOLDER, ELSEWHERE }
  * One file the app saved, as History lists it across restarts. [tool] is the tool's catalog id, `scan` for a scan, or empty when not known;
  * [size] is in bytes (null when its provider does not say) and [time] epoch ms. An [SavedPlace.APP] file is [file] in `saved/`; the others
  * are reached by [uri]. [scan] is the scan library id of a scan's PDF kept in the app, which the move into a folder writes back with its scan.
+ *
+ * The move into a folder notes [folderName] once its copy is there, so a retry checks that copy instead of making another; a row in the
+ * folder whose [file] is still set could not delete the app's copy yet. [pending] marks a file a save has made but not finished (the token
+ * of the app run that makes it), and [held] one that stays in the app on purpose: the move leaves it alone.
  */
 data class SavedEntry(
     val id: String,
@@ -38,7 +43,13 @@ data class SavedEntry(
     val file: String? = null,
     val uri: Uri? = null,
     val scan: String? = null,
-)
+    val folderName: String? = null,
+    val pending: String? = null,
+    val held: Boolean = false,
+) {
+    /** A finished file kept in the app, listed and offered to the move into a folder unless [held]. */
+    val inApp: Boolean get() = place == SavedPlace.APP && pending == null
+}
 
 /**
  * The files the app saved: those kept in the app, as files in [dir] (`files/saved/`, which uninstalling deletes and the FileProvider shares
@@ -56,10 +67,20 @@ class SavedFiles(
     private var rows: MutableList<SavedEntry>? = null
     private val listeners = CopyOnWriteArrayList<(List<SavedEntry>) -> Unit>()
 
-    /** True once a load found the index unreadable: it was set aside as `.bad` and the list started empty; the files in [dir] were kept. */
+    /** Marks this app run's unfinished saves, so the launch check removes only those an earlier run left. */
+    private val run = UUID.randomUUID().toString()
+
+    /**
+     * True once a load found the index unreadable: it was set aside as `.bad` and the list started again from the files in [dir]. The grants
+     * of files saved elsewhere are then kept, as no row says which they were.
+     */
     @Volatile
     var damaged = false
         private set
+
+    // The index could not be read at all this run (not parsed wrong): it is left as it is, and nothing is written over it.
+    @Volatile
+    private var unreadable = false
 
     /** Calls [listener] with the whole list after each change, on the thread that made it; the returned function stops that. */
     fun listen(listener: (List<SavedEntry>) -> Unit): () -> Unit {
@@ -67,7 +88,7 @@ class SavedFiles(
         return { listeners -= listener }
     }
 
-    /** Every saved file, newest first. */
+    /** Every saved file, newest first, unfinished saves included (see [SavedEntry.pending]). */
     @WorkerThread
     fun entries(): List<SavedEntry> = synchronized(LOCK) { loaded().toList() }
 
@@ -83,36 +104,47 @@ class SavedFiles(
     }
 
     /** The file of an [SavedPlace.APP] [entry], or null for one elsewhere. */
-    fun fileOf(entry: SavedEntry): File? = entry.file?.takeIf { entry.place == SavedPlace.APP && FolderNames.isSafe(it) }?.let { File(dir, it) }
+    fun fileOf(entry: SavedEntry): File? = entry.file?.takeIf { FolderNames.isSafe(it) }?.let { File(dir, it) }
 
-    /**
-     * Creates a new empty file in [dir] for an output named [name], or `<base>-2<ext>` and so on when that name is taken by a file or a
-     * listed entry (in any case), so nothing is ever written over. Null when it cannot be created.
-     */
+    /** Whether a finished save is listed at [uri]: a file a failed save's clean-up must then leave alone. */
     @WorkerThread
-    fun create(name: String): File? = synchronized(LOCK) {
-        val wanted = name.replace('/', '_').replace('\\', '_').trimStart('.').ifBlank { FALLBACK_NAME }
-        try {
-            if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No folder $dir")
-            val taken = dir.list().orEmpty().mapTo(HashSet()) { it.lowercase() }
-            loaded().mapNotNullTo(taken) { it.file?.lowercase() }
-            repeat(MAX_TRIES) {
-                val free = FolderNames.free(wanted) { it.lowercase() in taken }
-                val file = File(dir, free)
-                if (file.createNewFile()) return file
-                taken += free.lowercase()
-            }
-            null
-        } catch (e: IOException) {
-            Log.w(TAG, "Cannot create $wanted", e)
-            null
-        }
+    fun listed(uri: Uri): Boolean {
+        val file = fileOf(uri)?.name
+        return synchronized(LOCK) { loaded().any { it.pending == null && (if (file != null) it.file == file else it.uri == uri) } }
     }
 
     /**
-     * Lists the file a save wrote at [uri] as [name], made by [tool] with [pages] pages: kept in the app when [uri] is one of [dir]'s, in the
-     * folder for a document of a folder tree, else elsewhere, whose persisted read grant (and write, where offered) is taken. A file listed
-     * already is listed again as new. [scan] is kept for a scan's PDF kept in the app only.
+     * Creates a new empty file in [dir] for an output named [name], or `<base>-2<ext>` and so on when that name is taken by a file or a
+     * listed entry (in any case), so nothing is ever written over; a name too long for a file system is cut first. Its row says the save is
+     * unfinished until [record] lists it. Null when it cannot be created.
+     */
+    @WorkerThread
+    fun create(name: String): File? {
+        val list = synchronized(LOCK) {
+            val wanted = FolderNames.fit(name.replace('/', '_').replace('\\', '_').trimStart('.').ifBlank { FALLBACK_NAME })
+            val file = try {
+                if (!dir.isDirectory && !dir.mkdirs()) throw IOException("No folder $dir")
+                val taken = dir.list().orEmpty().mapTo(HashSet()) { it.lowercase() }
+                loaded().mapNotNullTo(taken) { it.file?.lowercase() }
+                generateSequence { FolderNames.free(wanted) { it.lowercase() in taken }.also { taken += it.lowercase() } }.take(MAX_TRIES)
+                    .map { File(dir, it) }.firstOrNull { it.createNewFile() }
+            } catch (e: IOException) {
+                Log.w(TAG, "Cannot create $wanted", e)
+                null
+            } ?: return null
+            val all = loaded()
+            all.add(0, SavedEntry(UUID.randomUUID().toString(), file.name, UNKNOWN_TOOL, 0, 0, clock(), SavedPlace.APP, file.name, pending = run))
+            write(all)
+            file to all.toList()
+        }
+        notify(list.second)
+        return list.first
+    }
+
+    /**
+     * Lists the file a save wrote at [uri] as [name], made by [tool] with [pages] pages, before it returns: kept in the app when [uri] is one
+     * of [dir]'s, in the folder for a document of a folder tree, else elsewhere, whose persisted read grant (and write, where offered) is
+     * taken. A file listed already is listed again as new. [scan] is kept for a scan's PDF kept in the app only.
      */
     @WorkerThread
     fun record(uri: Uri, name: String, tool: String, pages: Int = 0, scan: String? = null): SavedEntry {
@@ -141,23 +173,6 @@ class SavedFiles(
         return entry
     }
 
-    /** [record] on the index's own background thread, in order, for a caller on the main thread. */
-    fun recordLater(uri: Uri, name: String, tool: String, pages: Int = 0, scan: String? = null) {
-        WRITER.execute {
-            try {
-                record(uri, name, tool, pages, scan)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not list $name", e)
-            }
-        }
-    }
-
-    /** Waits until every [recordLater] asked for so far has run. */
-    @VisibleForTesting
-    fun awaitWrites() {
-        WRITER.submit {}.get()
-    }
-
     /** Deletes the file of the [SavedPlace.APP] entry [id], then its row; false (and the row kept) when the file stays. */
     @WorkerThread
     fun delete(id: String): Boolean {
@@ -174,9 +189,18 @@ class SavedFiles(
         return true
     }
 
+    /** The move into a folder copied [entry] there as [folderName]; noted before it is checked, so a retry checks that copy first. */
+    @WorkerThread
+    fun wrote(id: String, folderName: String) = change(id) { if (it.place == SavedPlace.APP) it.copy(folderName = folderName) else it }
+
+    /** [entry] stays in the app on purpose (its scan's folder holds that scan already): the move leaves it alone from now on. */
+    @WorkerThread
+    fun hold(id: String) = change(id) { it.copy(held = true) }
+
     /**
-     * The [SavedPlace.APP] entry [id] now has its copy in the user's folder at [folderUri] (the caller has checked it): its file is deleted
-     * first, then the row says [SavedPlace.FOLDER]. Without [folderUri] the folder holds it under its scan (written back), and the row goes.
+     * The [SavedPlace.APP] entry [id] now has its copy in the user's folder at [folderUri] (the caller has checked it): the row says
+     * [SavedPlace.FOLDER], then the app's copy is deleted; one that cannot be deleted stays named in the row, for the launch check to delete,
+     * and is never copied again. Without [folderUri] the folder holds it under its scan (written back), and the row goes with the file.
      */
     @WorkerThread
     fun moved(id: String, folderUri: Uri?) {
@@ -185,8 +209,15 @@ class SavedFiles(
             val at = all.indexOfFirst { it.id == id && it.place == SavedPlace.APP }
             if (at < 0) return
             val file = fileOf(all[at])
-            if (file != null && file.exists() && !file.delete()) return
-            if (folderUri == null) all.removeAt(at) else all[at] = all[at].copy(place = SavedPlace.FOLDER, file = null, uri = folderUri)
+            if (folderUri == null) {
+                if (file != null && file.exists() && !file.delete()) return
+                all.removeAt(at)
+            } else {
+                all[at] = all[at].copy(place = SavedPlace.FOLDER, uri = folderUri)
+                write(all)
+                val gone = file == null || !file.exists() || file.delete()
+                if (gone) all[at] = all[at].copy(file = null)
+            }
             cap(all)
             write(all)
             all.toList()
@@ -210,11 +241,14 @@ class SavedFiles(
         return gone.size
     }
 
-    /** Drops the rows of files saved elsewhere that [opens] can no longer open, releasing their grants. Checked without holding the list. */
+    /**
+     * Drops the rows of files saved elsewhere that [check] says are gone, releasing their grants; one it cannot tell about (a provider that
+     * does not answer now) stays. Checked without holding the list.
+     */
     @WorkerThread
-    fun prune(opens: (Uri) -> Boolean = ::canOpen): Int {
+    fun prune(check: (Uri) -> Openable = ::openable): Int {
         val elsewhere = entries().filter { it.place == SavedPlace.ELSEWHERE && it.uri != null }
-        val dead = elsewhere.filter { !opens(it.uri!!) }.map { it.id }.toSet()
+        val dead = elsewhere.filter { check(it.uri!!) == Openable.GONE }.map { it.id }.toSet()
         if (dead.isEmpty()) return 0
         val (gone, list) = synchronized(LOCK) {
             val all = loaded()
@@ -229,57 +263,116 @@ class SavedFiles(
     }
 
     /**
-     * The launch check: a file in [dir] that no row names (left by an index that could not be read, or a save the app was closed during) is
-     * listed again, unless it is empty; a persisted grant that no row holds is released, a tree grant aside. Returns how many files it listed.
+     * The launch check: an unfinished save an earlier run left (see [SavedEntry.pending]) is removed with its file; an app copy the move could
+     * not delete is deleted now; a file in [dir] that no row names (left by an index that could not be read) is listed again unless it is
+     * empty, and [held] says which of those must stay in the app; a persisted grant no row holds is released, a tree grant aside, unless the
+     * index was damaged. Returns how many files it listed again.
      */
     @WorkerThread
-    fun recover(): Int {
+    fun recover(held: (String) -> Boolean = { false }): Int {
         val (adopted, list) = synchronized(LOCK) {
             val all = loaded()
-            val named = all.mapNotNullTo(HashSet()) { it.file }
-            val orphans = dir.listFiles().orEmpty().filter { it.isFile && it.name !in named && !FolderNames.isHidden(it.name) && it.length() > 0 }
-            for (f in orphans) {
-                all += SavedEntry(UUID.randomUUID().toString(), f.name, UNKNOWN_TOOL, f.length(), 0, f.lastModified(), SavedPlace.APP, f.name)
+            var changed = false
+            for (e in all.filter { it.pending != null && it.pending != run }) {
+                fileOf(e)?.delete()
+                all.remove(e)
+                changed = true
             }
-            if (orphans.isNotEmpty()) {
+            for ((i, e) in all.withIndex()) {
+                if (e.place == SavedPlace.FOLDER && e.file != null) {
+                    val file = fileOf(e)
+                    if (file == null || !file.exists() || file.delete()) {
+                        all[i] = e.copy(file = null)
+                        changed = true
+                    }
+                }
+            }
+            val named = all.mapNotNullTo(HashSet()) { it.file }
+            val orphans = dir.listFiles().orEmpty().filter { it.isFile && it.name !in named && !FolderNames.isHidden(it.name) }
+            for (f in orphans.filter { it.length() == 0L }) f.delete()
+            val kept = orphans.filter { it.length() > 0 }
+            for (f in kept) {
+                all += SavedEntry(
+                    UUID.randomUUID().toString(), f.name, UNKNOWN_TOOL, f.length(), 0, f.lastModified(), SavedPlace.APP, f.name, held = held(f.name)
+                )
+            }
+            if (kept.isNotEmpty() || changed) {
                 all.sortByDescending { it.time }
                 write(all)
             }
-            orphans.size to all.toList()
+            kept.size to all.toList()
         }
-        val listed = list.filter { it.place == SavedPlace.ELSEWHERE }.mapNotNullTo(HashSet()) { it.uri }
-        for (p in resolver.persistedUriPermissions.toList()) {
-            if (p.uri !in listed && !DocumentsContract.isTreeUri(p.uri)) releaseGrant(p.uri)
+        if (!damaged && !unreadable) {
+            val listed = list.filter { it.place == SavedPlace.ELSEWHERE }.mapNotNullTo(HashSet()) { it.uri }
+            for (p in resolver.persistedUriPermissions.toList()) {
+                if (p.uri !in listed && !DocumentsContract.isTreeUri(p.uri)) releaseGrant(p.uri)
+            }
         }
-        if (adopted > 0) notify(list)
+        notify(list)
         return adopted
     }
 
-    /** Deletes [uri]'s file in [dir] if no row names it: an output a failed save created. False for any other URI. */
+    /** Deletes [uri]'s file in [dir] and its unfinished row, unless a finished save is listed there: an output a failed save made. */
     @WorkerThread
     fun discard(uri: Uri): Boolean {
         val file = fileOf(uri) ?: return false
-        synchronized(LOCK) {
-            if (loaded().any { it.place == SavedPlace.APP && it.file == file.name }) return false
-            return file.delete()
+        val list = synchronized(LOCK) {
+            val all = loaded()
+            if (all.any { it.file == file.name && it.pending == null }) return false
+            all.removeAll { it.file == file.name }
+            write(all)
+            file.delete()
+            all.toList()
         }
+        notify(list)
+        return true
     }
 
     // Everything below runs under LOCK.
 
+    private fun change(id: String, update: (SavedEntry) -> SavedEntry) {
+        val list = synchronized(LOCK) {
+            val all = loaded()
+            val at = all.indexOfFirst { it.id == id }
+            if (at < 0) return
+            all[at] = update(all[at])
+            write(all)
+            all.toList()
+        }
+        notify(list)
+    }
+
     private fun loaded(): MutableList<SavedEntry> = rows ?: load().also { rows = it }
 
-    /** The index as written; its `.tmp` when a write was cut between deleting the old and renaming the new (a host that cannot rename over). */
+    /**
+     * The index as written; its `.tmp` when a write was cut between deleting the old and renaming the new (a host that cannot rename over).
+     * A read that fails is tried again; only an index that reads but does not parse is set aside as `.bad`.
+     */
     private fun load(): MutableList<SavedEntry> {
         val tmp = File(index.path + FolderNames.TMP)
         val source = when {
-            index.isFile -> index
-            tmp.isFile -> tmp
+            index.exists() -> index
+            tmp.exists() -> tmp
             else -> return mutableListOf()
         }
+        var text: String? = null
+        for (attempt in 1..READ_TRIES) {
+            text = try {
+                source.readText()
+            } catch (e: IOException) {
+                Log.w(TAG, "Reading the index of saved files failed (try $attempt)", e)
+                null
+            }
+            if (text != null) break
+        }
+        if (text == null) {
+            // Unreadable for now, not damaged: kept as it is for the next run, so this run lists what it finds and writes nothing over it.
+            unreadable = true
+            return mutableListOf()
+        }
         return try {
-            parse(source.readText())
-        } catch (e: Exception) {
+            parse(text)
+        } catch (e: JSONException) {
             Log.w(TAG, "The index of saved files cannot be read; it is kept as .bad and the list starts again", e)
             damaged = true
             val bad = File(index.path + BAD)
@@ -307,9 +400,12 @@ class SavedFiles(
                 pages = o.optInt("pages"),
                 time = o.optLong("time"),
                 place = place,
-                file = file.takeIf { place == SavedPlace.APP },
+                file = file.takeIf { place != SavedPlace.ELSEWHERE && FolderNames.isSafe(it.orEmpty()) },
                 uri = uri.takeIf { place != SavedPlace.APP },
                 scan = o.optStringOrNull("scan"),
+                folderName = o.optStringOrNull("folderName"),
+                pending = o.optStringOrNull("pending"),
+                held = o.optBoolean("held"),
             )
         }
         list.sortByDescending { it.time }
@@ -318,12 +414,14 @@ class SavedFiles(
 
     /** Writes [all] as the index: in full as `.tmp`, synced, then renamed into place. A failure is logged; the next write tries again. */
     private fun write(all: List<SavedEntry>) {
+        if (unreadable) return
         val array = JSONArray()
         for (e in all) {
             array.put(
                 JSONObject().put("id", e.id).put("name", e.name).put("tool", e.tool).put("size", e.size ?: JSONObject.NULL)
                     .put("pages", e.pages).put("time", e.time).put("place", e.place.name).put("file", e.file ?: JSONObject.NULL)
                     .put("uri", e.uri?.toString() ?: JSONObject.NULL).put("scan", e.scan ?: JSONObject.NULL)
+                    .put("folderName", e.folderName ?: JSONObject.NULL).put("pending", e.pending ?: JSONObject.NULL).put("held", e.held)
             )
         }
         val bytes = JSONObject().put("version", VERSION).put("entries", array).toString().toByteArray(Charsets.UTF_8)
@@ -345,7 +443,8 @@ class SavedFiles(
     private fun cap(all: MutableList<SavedEntry>): List<Uri> {
         all.sortByDescending { it.time }
         val dropped = mutableListOf<SavedEntry>()
-        for (place in listOf(SavedPlace.ELSEWHERE, SavedPlace.FOLDER)) dropped += all.filter { it.place == place }.drop(ELSEWHERE_CAP)
+        // A row in the folder whose app copy is still to delete stays, so that copy is never left without a row.
+        for (place in listOf(SavedPlace.ELSEWHERE, SavedPlace.FOLDER)) dropped += all.filter { it.place == place && it.file == null }.drop(ELSEWHERE_CAP)
         all.removeAll(dropped.toSet())
         return dropped.filter { it.place == SavedPlace.ELSEWHERE }.mapNotNull { it.uri }
     }
@@ -358,7 +457,7 @@ class SavedFiles(
                 resolver.takePersistableUriPermission(uri, flags)
                 return
             } catch (e: SecurityException) {
-                // not offered with these flags: try read alone, else the row stays until its file can no longer be opened
+                // not offered with these flags: try read alone, else the row stays until its file is known to be gone
             }
         }
     }
@@ -383,22 +482,47 @@ class SavedFiles(
         null // the provider does not say; the row shows no size
     }
 
-    /** Whether [uri] still names a file: its provider answers for it (with the grant still held), or a file:// path exists. */
-    private fun canOpen(uri: Uri): Boolean = try {
-        if (uri.scheme == ContentResolver.SCHEME_FILE) {
-            uri.path?.let { File(it).isFile } == true
-        } else {
-            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { it.moveToFirst() } == true
+    /**
+     * Whether [uri] still names a file, told only on a definite answer: a file:// path that is not there, a provider that answers with no
+     * row, one that says the document is not found, or a revoked grant mean [Openable.GONE]; a provider that is missing, gives no answer or
+     * fails another way (an SD card out, a cloud app updating) means [Openable.UNKNOWN], and the row stays.
+     */
+    private fun openable(uri: Uri): Openable {
+        if (uri.scheme == ContentResolver.SCHEME_FILE) return if (uri.path?.let { File(it).isFile } == true) Openable.OPEN else Openable.GONE
+        return try {
+            val projection = arrayOf(OpenableColumns.DISPLAY_NAME)
+            // The Bundle form where it exists, as SafFolderStore queries: a documents provider is asked in it over IPC anyway.
+            val cursor = if (Build.VERSION.SDK_INT >= 26) resolver.query(uri, projection, null, null) else resolver.query(uri, projection, null, null, null)
+            val answered = cursor?.use { it.moveToFirst() }
+            when (answered) {
+                true -> Openable.OPEN
+                false -> Openable.GONE
+                // No cursor: a documents provider answers a missing document so, but so does one that is not running. With the provider
+                // there, opening tells them apart.
+                null -> {
+                    val provider = resolver.acquireUnstableContentProviderClient(uri.authority ?: return Openable.UNKNOWN) ?: return Openable.UNKNOWN
+                    provider.close()
+                    resolver.openFileDescriptor(uri, "r")?.use { Openable.OPEN } ?: Openable.UNKNOWN
+                }
+            }
+        } catch (e: FileNotFoundException) {
+            Openable.GONE
+        } catch (e: SecurityException) {
+            Openable.GONE
+        } catch (e: Exception) {
+            Openable.UNKNOWN
         }
-    } catch (e: Exception) {
-        false // a revoked grant or a document that is gone; providers throw anything from SecurityException to IllegalArgumentException
     }
+
+    /** What a check of a file saved elsewhere found. */
+    enum class Openable { OPEN, GONE, UNKNOWN }
 
     companion object {
         private const val TAG = "SavedFiles"
         private const val VERSION = 1
         private const val BAD = ".bad"
         private const val MAX_TRIES = 20
+        private const val READ_TRIES = 3
         private const val FALLBACK_NAME = "output"
 
         /** The folder in the app's files, and its name in the FileProvider's URIs (res/xml/scan_file_paths.xml). */
@@ -416,8 +540,6 @@ class SavedFiles(
 
         /** One lock for every instance, as two over the same folder would race on its names and its index. */
         private val LOCK = Any()
-
-        private val WRITER = Executors.newSingleThreadExecutor { Thread(it, "saved-files").apply { isDaemon = true } }
 
         private var shared: Pair<Context, SavedFiles>? = null
 

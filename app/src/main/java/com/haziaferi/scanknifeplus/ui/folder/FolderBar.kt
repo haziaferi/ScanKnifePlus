@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.components.DialogButton
@@ -84,12 +86,43 @@ fun FolderBar(status: FolderStatus, onClick: () -> Unit, modifier: Modifier = Mo
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(icon, contentDescription = null, tint = if (status is FolderStatus.Ready) palette.barOk else palette.tx, modifier = Modifier.size(20.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.tx, modifier = Modifier.weight(1f))
-            if (action != null) Text(stringResource(action), style = MaterialTheme.typography.labelMedium, color = palette.barMu)
-        }
+        TextThenAction(
+            icon = { Icon(icon, contentDescription = null, tint = if (status is FolderStatus.Ready) palette.barOk else palette.tx, modifier = Modifier.size(20.dp)) },
+            text = { Text(text, style = MaterialTheme.typography.bodyMedium, color = palette.tx) },
+            action = action?.let { { Text(stringResource(it), style = MaterialTheme.typography.labelMedium, color = palette.barMu) } }
+        )
         if (status is FolderStatus.Copying) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/**
+ * [icon], [text] and, at the end edge, [action]: on one line while the text fits it whole beside the action; otherwise the action goes under
+ * the text, which keeps the whole width beside the icon, so it never wraps into a narrow column. Mirrors right to left.
+ */
+@Composable
+private fun TextThenAction(icon: @Composable () -> Unit, text: @Composable () -> Unit, action: (@Composable () -> Unit)?) {
+    Layout(contents = listOf(icon, text, action ?: {})) { (iconM, textM, actionM), constraints ->
+        val gap = 12.dp.roundToPx()
+        val total = constraints.maxWidth
+        val iconP = iconM.map { it.measure(Constraints()) }
+        val iconW = iconP.sumOf { it.width }
+        val actionW = actionM.sumOf { it.maxIntrinsicWidth(Constraints.Infinity) }
+        val textRoom = (total - iconW - gap).coerceAtLeast(0)
+        val besideRoom = (textRoom - if (actionM.isEmpty()) 0 else gap + actionW).coerceAtLeast(0)
+        val beside = actionM.isEmpty() || textM.sumOf { it.maxIntrinsicWidth(Constraints.Infinity) } <= besideRoom
+        val textP = textM.map { it.measure(Constraints(maxWidth = if (beside) besideRoom else textRoom)) }
+        val actionP = actionM.map { it.measure(Constraints(maxWidth = textRoom)) }
+        val textH = textP.maxOfOrNull { it.height } ?: 0
+        val iconH = iconP.maxOfOrNull { it.height } ?: 0
+        val actionH = actionP.maxOfOrNull { it.height } ?: 0
+        val firstLine = maxOf(textH, iconH, if (beside) actionH else 0)
+        val under = 4.dp.roundToPx()
+        val height = if (beside || actionP.isEmpty()) firstLine else firstLine + under + actionH
+        layout(total, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            iconP.forEach { it.placeRelative(0, (firstLine - it.height) / 2) }
+            textP.forEach { it.placeRelative(iconW + gap, (firstLine - it.height) / 2) }
+            actionP.forEach { it.placeRelative(total - it.width, if (beside) (firstLine - it.height) / 2 else firstLine + under) }
+        }
     }
 }
 
@@ -137,7 +170,7 @@ fun CheckingFolderDialog(onCheck: () -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/** Shows the folder's pending [AppFolder.notice] once, as a toast, then clears it. */
+/** Shows the folder's pending [AppFolder.notice] once, as a toast, then clears it; and, once, that the list of saved files was rebuilt. */
 @Composable
 fun FolderNotices(folder: AppFolder) {
     val context = LocalContext.current
@@ -146,6 +179,14 @@ fun FolderNotices(folder: AppFolder) {
         if (notice != null) {
             noticeText(context.resources, notice)?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
             folder.noticeShown()
+        }
+    }
+    val rebuilt = folder.rebuilt
+    val rebuiltText = stringResource(R.string.folder_list_rebuilt)
+    LaunchedEffect(rebuilt) {
+        if (rebuilt) {
+            Toast.makeText(context, rebuiltText, Toast.LENGTH_LONG).show()
+            folder.rebuiltShown()
         }
     }
 }

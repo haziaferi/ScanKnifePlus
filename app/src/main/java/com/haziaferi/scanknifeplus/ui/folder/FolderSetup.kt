@@ -53,7 +53,6 @@ import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.haziaferi.scanknifeplus.storage.SavedPlace
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.ui.theme.LocalScanPalette
 import com.paperknifeplus.app.ui.theme.TargetStep
@@ -115,7 +114,7 @@ fun FolderSetup(folder: AppFolder, onDone: () -> Unit) {
             onDone()
         },
         // A scan's PDF kept in the app goes in with its scan, which the scans' line counts.
-        appFiles = folder.saved.count { it.place == SavedPlace.APP && it.scan == null }
+        appFiles = folder.saved.count { it.inApp && !it.held && it.scan == null }
     )
 }
 

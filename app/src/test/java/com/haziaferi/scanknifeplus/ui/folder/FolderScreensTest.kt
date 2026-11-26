@@ -125,7 +125,7 @@ class FolderScreensTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
-    fun `at 2x text the folder bar wraps its text and keeps Change beside it`() {
+    fun `at 2x text the folder bar wraps its text and keeps Change clear of it, beside or under it`() {
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
                 FolderBar(FolderStatus.Ready("Documents/Scans/Receipts and letters"), onClick = {})
@@ -133,7 +133,7 @@ class FolderScreensTest {
         }
         val text = rule.onNodeWithText("Saving to Documents/Scans/Receipts and letters", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val change = rule.onNodeWithText("Change", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("Change overlaps the text", text.right <= change.left)
+        assertTrue("Change overlaps the text", text.right <= change.left || text.bottom <= change.top)
         assertTrue("the text wraps instead of clipping", text.height > change.height)
     }
 }

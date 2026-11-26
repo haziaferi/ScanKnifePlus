@@ -167,7 +167,7 @@ sealed interface HistoryRow {
  * (those in the folder are its listing's); without one, those saved files and this session's rows ([session]).
  */
 internal fun historyRows(folderItems: List<FolderItem>?, withFolder: Boolean, saved: List<SavedEntry>, session: List<ActivityEntry>): List<HistoryRow> {
-    val files = saved.filter { it.place != SavedPlace.FOLDER }.map { HistoryRow.Saved(it) }
+    val files = saved.filter { it.place != SavedPlace.FOLDER && it.pending == null }.map { HistoryRow.Saved(it) }
     val rest = if (withFolder) folderItems.orEmpty().map { HistoryRow.Folder(it) } else session.map { HistoryRow.Session(it) }
     return (files + rest).sortedByDescending { it.time }
 }
@@ -180,7 +180,8 @@ internal fun SavedFiles.uriOf(entry: SavedEntry): Uri? = fileOf(entry)?.let(::ur
  * first, narrowed by the search over file names and the filter chips, in a list that scrolls inside the screen. A folder that cannot be read
  * shows a warning with [onChooseFolder] over the files saved apart from it, never an empty list. [onRefresh] runs each time History shows,
  * so the list follows changes a sync made. [onMoveToFolder], while files wait in the app for a folder, shows the folder bar's line over the
- * list; a file kept in the app has Delete, which asks first, then hands it to [onDelete].
+ * list; a file kept in the app has Delete, which asks first, then hands it to [onDelete], and is disabled while [canDelete] is false (a move
+ * into the folder runs).
  */
 @Composable
 fun HistoryView(
@@ -190,7 +191,8 @@ fun HistoryView(
     onRefresh: () -> Unit = {},
     saved: List<SavedEntry> = emptyList(),
     onMoveToFolder: (() -> Unit)? = null,
-    onDelete: (SavedEntry) -> Unit = {}
+    onDelete: (SavedEntry) -> Unit = {},
+    canDelete: Boolean = true
 ) {
     val refresh by rememberUpdatedState(onRefresh)
     LaunchedEffect(Unit) { refresh() }
@@ -239,7 +241,9 @@ fun HistoryView(
             item(key = "filters") { FilterChips(options = filters, selected = filter, onSelect = { chosen = it }) }
             // A folder still being read says so, never an empty list; the files saved apart from it show meanwhile.
             if (folder != null && !unreadable && folder.items == null) item(key = "reading") { EmptyMessage(stringResource(R.string.history_reading)) }
-            historyItems(rows, filter, query, onItemClick, emptyMessage = !(folder != null && folder.items == null && !unreadable)) { deleting = it }
+            historyItems(rows, filter, query, onItemClick, emptyMessage = !(folder != null && folder.items == null && !unreadable), canDelete) {
+                deleting = it
+            }
         }
     }
     deleting?.let { entry ->
@@ -303,6 +307,7 @@ private fun LazyListScope.historyItems(
     query: String,
     onItemClick: (Uri, String, Int) -> Unit,
     emptyMessage: Boolean,
+    canDelete: Boolean,
     onDelete: (SavedEntry) -> Unit
 ) {
     val shown = rows.filter { filter.matches(it) && matchesQuery(it.name, query) }
@@ -314,7 +319,7 @@ private fun LazyListScope.historyItems(
         CardSlice(first = index == 0, last = index == shown.lastIndex) {
             when (row) {
                 is HistoryRow.Folder -> FolderHistoryRow(row.item, onItemClick)
-                is HistoryRow.Saved -> SavedHistoryRow(row.entry, onItemClick, onDelete)
+                is HistoryRow.Saved -> SavedHistoryRow(row.entry, onItemClick, canDelete, onDelete)
                 is HistoryRow.Session -> SessionHistoryRow(row.entry, onItemClick)
             }
         }
@@ -355,7 +360,7 @@ private fun FolderHistoryRow(item: FolderItem, onItemClick: (Uri, String, Int) -
 
 /** A file the app saved: a PDF opens in the reader, every file shares, and one kept in the app has Delete (T3) under it. */
 @Composable
-private fun SavedHistoryRow(entry: SavedEntry, onItemClick: (Uri, String, Int) -> Unit, onDelete: (SavedEntry) -> Unit) {
+private fun SavedHistoryRow(entry: SavedEntry, onItemClick: (Uri, String, Int) -> Unit, canDelete: Boolean, onDelete: (SavedEntry) -> Unit) {
     val context = LocalContext.current
     val uri = remember(entry) { SavedFiles.of(context).uriOf(entry) }
     val mime = savedMime(entry)
@@ -365,7 +370,7 @@ private fun SavedHistoryRow(entry: SavedEntry, onItemClick: (Uri, String, Int) -
             onClick = uri?.takeIf { canOpenInReader(mime) }?.let { { onItemClick(it, entry.name, entry.pages) } },
             onShare = uri?.let { { shareFile(context, it, entry.name, mime) } }
         )
-        if (entry.place == SavedPlace.APP) DeleteSavedButton(entry.name) { onDelete(entry) }
+        if (entry.place == SavedPlace.APP) DeleteSavedButton(entry.name, canDelete) { onDelete(entry) }
     }
 }
 
@@ -374,19 +379,23 @@ internal fun savedMime(entry: SavedEntry): String = URLConnection.guessContentTy
 
 /** Delete (T3) under a file kept in the app, read as "Delete [name]"; level with the row's name. */
 @Composable
-private fun DeleteSavedButton(name: String, onClick: () -> Unit) {
+private fun DeleteSavedButton(name: String, enabled: Boolean, onClick: () -> Unit) {
     val label = stringResource(R.string.action_delete_named, name)
     Box(
         modifier = Modifier
             .padding(start = 52.dp, bottom = 4.dp)
             .inlineTarget()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label }
             .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(stringResource(R.string.history_delete), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+        Text(
+            stringResource(R.string.history_delete),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

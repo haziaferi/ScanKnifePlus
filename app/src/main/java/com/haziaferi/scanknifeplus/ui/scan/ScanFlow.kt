@@ -126,7 +126,7 @@ fun ScanFlow(onClose: () -> Unit, onSaved: () -> Unit, importUris: List<Uri> = e
                 saved()
             }
             else -> model.saveText(uri) { written ->
-                files.fileOf(uri)?.takeIf { written }?.let { files.recordLater(uri, it.name, SCAN_ENTRY_TOOL) }
+                files.fileOf(uri)?.takeIf { written }?.let { files.record(uri, it.name, SCAN_ENTRY_TOOL) }
                 saved()
             }
         }

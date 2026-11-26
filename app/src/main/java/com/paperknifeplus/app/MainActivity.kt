@@ -290,7 +290,7 @@ class MainActivity : ComponentActivity() {
                                         folder = folder.status,
                                         onFolder = { openFolder(null) },
                                         recentFolder = folder.history?.items,
-                                        saved = folder.saved,
+                                        saved = folder.listed,
                                         appFiles = folder.offersMove
                                     )
                                     HISTORY_ROUTE -> HistoryView(
@@ -301,10 +301,11 @@ class MainActivity : ComponentActivity() {
                                         folder = folder.history,
                                         onChooseFolder = { openFolder(null) },
                                         onRefresh = { folder.refresh() },
-                                        saved = folder.saved,
+                                        saved = folder.listed,
                                         // Only while files wait in the app and no folder is chosen (a folder out of reach has its own warning).
                                         onMoveToFolder = { openFolder(null) }.takeIf { folder.offersMove },
-                                        onDelete = { folder.deleteSaved(it) }
+                                        onDelete = { folder.deleteSaved(it) },
+                                        canDelete = folder.copying == null
                                     )
                                 }
                             }

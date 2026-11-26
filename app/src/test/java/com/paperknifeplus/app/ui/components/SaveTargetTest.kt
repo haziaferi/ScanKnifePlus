@@ -9,6 +9,8 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -186,6 +188,35 @@ class SaveTargetTest {
     }
 
     @Test
+    fun `a folder that could not make the file has the save kept in the app, with its own notice`() {
+        assertTrue(FolderAccess(context).adopt(treeUri))
+        show(appFolder())
+        // A name the folder will not take (hidden there), which the app keeps under a plain name.
+        val uri = save(".hidden.pdf")
+        assertEquals(File(files.dir, "hidden.pdf"), files.fileOf(uri))
+        assertEquals(context.getString(R.string.tool_saved_in_app_later), ShadowToast.getTextOfLatestToast())
+        assertTrue(folderRoot.list().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `a save listed before its tool's clean-up ran is kept, in the folder as in the app`() {
+        assertTrue(FolderAccess(context).adopt(treeUri))
+        show(appFolder())
+        val inFolder = save("done.pdf")
+        files.record(inFolder, "done.pdf", "merge")
+        deleteCreatedDocument(context, inFolder)
+        assertTrue(File(folderRoot, "done.pdf").isFile)
+    }
+
+    @Test
+    fun `a tool's saved file is listed, grant and all, before saved returns`() {
+        val picked = Uri.fromFile(File(base, "picked.pdf").apply { writeText("picked") })
+        rule.runOnUiThread { ToolOutputs("merge", context).saved(picked, "picked.pdf", "", Icons.Filled.Done) }
+        assertEquals(picked, files.entries().single().uri)
+        assertTrue(context.contentResolver.persistedUriPermissions.any { it.uri == picked })
+    }
+
+    @Test
     fun `a failed save with the picker removes the document the picker made`() {
         val (uri, file) = TestPdfs.createdDocument(context, "failed.pdf")
         deleteCreatedDocument(context, uri)
@@ -215,7 +246,6 @@ class SaveTargetTest {
         rule.onNodeWithText("Save elsewhere…").assertExists()
         rule.onNodeWithText("Repair PDF").performClick()
         rule.waitUntil(30_000) { rule.onAllNodes(hasText("Repair complete")).fetchSemanticsNodes().isNotEmpty() }
-        files.awaitWrites()
 
         val entry = files.entries().single()
         assertEquals(SavedPlace.APP, entry.place)
@@ -233,6 +263,16 @@ class SaveTargetTest {
         assertTrue(sources.size > 20)
         val direct = sources.filter { it.name != "SaveTarget.kt" && "CreateDocument" in it.readText() }.map { it.name }
         assertEquals(emptyList<String>(), direct)
-        assertTrue(sources.count { "rememberSaveTarget(" in it.readText() } >= 23)
+        // The views themselves: SaveTarget.kt, which defines it, does not count.
+        val views = sources.filter { it.name != "SaveTarget.kt" && "rememberSaveTarget(" in it.readText() }
+        assertEquals(23, views.size)
+        // Save elsewhere under every primary save button: each launch of a view's saveLauncher has a launchElsewhere beside it, or is the
+        // action of a ToolConfigLayout that adds one (save = saveLauncher), as in Sign's and Watermark's page view.
+        for (view in views) {
+            val text = view.readText()
+            val launches = Regex("""saveLauncher\.launch\(""").findAll(text).count()
+            val elsewhere = Regex("""saveLauncher\.launchElsewhere\(|save = saveLauncher""").findAll(text).count()
+            assertTrue("${view.name}: $launches saves, $elsewhere ways elsewhere", elsewhere >= launches)
+        }
     }
 }

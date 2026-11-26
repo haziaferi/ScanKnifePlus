@@ -222,7 +222,7 @@ class SavedFilesTest {
     }
 
     @Test
-    fun `a moved file leaves the app before its row says it is in the folder, and a scan's PDF goes with its row`() {
+    fun `a moved file is in the folder by its row and gone from the app, and a scan's PDF goes with its row`() {
         val files = files()
         val tool = files.keep("tool.pdf")
         val folderUri = Uri.parse("content://tree.authority/tree/root/document/root%2Ftool.pdf")
@@ -250,8 +250,111 @@ class SavedFilesTest {
         files.keep("b.pdf")
         stop()
         files.keep("c.pdf")
-        assertEquals(listOf(1, 2), heard)
+        assertEquals("a save is heard as it starts and as it is listed", listOf(1, 1, 2, 2), heard)
         assertNotNull(files.entries().firstOrNull())
+    }
+
+    @Test
+    fun `a save not finished is marked, hidden from the finished list, and an earlier run's is removed at launch`() {
+        val files = files()
+        val half = files.create("half.pdf")!!.apply { writeText("half") }
+        val row = files.entries().single()
+        assertNotNull(row.pending)
+        assertFalse(row.inApp)
+        assertFalse(files.listed(files.uriOf(half)))
+        assertEquals("this run's own unfinished save stays", 0, files.recover())
+        assertTrue(half.exists())
+
+        val nextRun = files()
+        nextRun.recover()
+        assertFalse(half.exists())
+        assertEquals(emptyList<SavedEntry>(), nextRun.entries())
+    }
+
+    @Test
+    fun `an empty file without its row is removed at launch, and a finished one is listed`() {
+        val files = files()
+        File(dir.apply { mkdirs() }, "empty.pdf").createNewFile()
+        File(dir, "whole.pdf").writeText("whole")
+        assertEquals(1, files.recover())
+        assertFalse(File(dir, "empty.pdf").exists())
+        assertEquals(listOf("whole.pdf"), files.entries().map { it.name })
+    }
+
+    @Test
+    fun `a name too long for a file system is cut, with room for -2 and tmp, never inside a character`() {
+        val files = files()
+        val long = "é".repeat(140) + ".pdf" // 284 bytes in UTF-8
+        val first = files.create(long)!!
+        val second = files.create(long)!!
+        for (f in listOf(first, second)) assertTrue(f.name, (f.name + ".tmp").toByteArray().size <= 255)
+        assertTrue(first.name.endsWith(".pdf") && first.name.startsWith("é"))
+        assertTrue(second.name.endsWith("-2.pdf"))
+        assertEquals(first.name.removeSuffix(".pdf"), FolderNames.fit(long).removeSuffix(".pdf"))
+    }
+
+    @Test
+    fun `after a damaged index the launch check keeps every grant, and says which files stay in the app`() {
+        val picked = elsewhere("picked.pdf")
+        resolver.takePersistableUriPermission(picked, read)
+        File(dir.apply { mkdirs() }, "scan.pdf").writeText("a scan's PDF")
+        index.writeText("{ not json")
+        val files = files()
+        files.recover { it == "scan.pdf" }
+        assertTrue(files.damaged)
+        assertTrue(picked in held())
+        assertTrue(files.entries().single().held)
+    }
+
+    @Test
+    fun `an index that cannot be read is left as it is, and nothing is written over it`() {
+        index.mkdirs() // a read fails every time, which is not damage
+        val files = files()
+        assertEquals(emptyList<SavedEntry>(), files.entries())
+        assertFalse(files.damaged)
+        files.keep("a.pdf")
+        assertTrue(index.isDirectory)
+        assertFalse(File(index.path + ".bad").exists())
+    }
+
+    @Test
+    fun `a file saved elsewhere is dropped only on a definite answer that it is gone`() {
+        val files = files()
+        val gone = elsewhere("gone.pdf")
+        val unknown = Uri.parse("content://no.such.provider/doc/1")
+        files.record(gone, "gone.pdf", "merge")
+        files.record(unknown, "far.pdf", "merge")
+        File(gone.path!!).delete()
+        assertEquals(1, files.prune())
+        assertEquals(listOf("far.pdf"), files.entries().map { it.name })
+        // A provider that fails some other way keeps the row too.
+        assertEquals(0, files.prune { SavedFiles.Openable.UNKNOWN })
+        assertEquals(1, files.prune { SavedFiles.Openable.GONE })
+    }
+
+    @Test
+    fun `a document its provider no longer finds is gone, and one it serves stays`() {
+        val folder = File(base, "documents").apply { mkdirs() }
+        TestDocumentsProvider.install(folder)
+        File(folder, "there.pdf").writeText("there")
+        val files = files()
+        val there = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/there.pdf")
+        val missing = DocumentsContract.buildDocumentUri(TestDocumentsProvider.AUTHORITY, "${TestDocumentsProvider.ROOT}/missing.pdf")
+        files.record(there, "there.pdf", "merge")
+        files.record(missing, "missing.pdf", "merge")
+        assertEquals(1, files.prune())
+        assertEquals(listOf("there.pdf"), files.entries().map { it.name })
+    }
+
+    @Test
+    fun `a finished save is listed by its URI, wherever it is, so its clean-up leaves it alone`() {
+        val files = files()
+        val out = elsewhere("picked.pdf")
+        assertFalse(files.listed(out))
+        files.record(out, "picked.pdf", "merge")
+        assertTrue(files.listed(out))
+        val kept = files.keep("kept.pdf")
+        assertTrue(files.listed(files.uriOf(File(dir, kept.file!!))))
     }
 
     private companion object {

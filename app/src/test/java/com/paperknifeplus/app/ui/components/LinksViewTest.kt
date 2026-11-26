@@ -356,7 +356,7 @@ class LinksViewTest {
         rule.onNodeWithText(PASSWORD_LINE).assertDoesNotExist()
         assertNull(suggested)
         assertFalse(output.exists())
-        assertTrue(SavedFiles.of(context).apply { awaitWrites() }.entries().isEmpty())
+        assertTrue(SavedFiles.of(context).entries().isEmpty())
     }
 
     /** [TestPdfs.linksAndScript] with only its links, or only its script. */
@@ -414,7 +414,7 @@ class LinksViewTest {
         counted("Scripts that run on their own", expected.scripts).assertExists()
         rule.onNodeWithText("2 pages").assertExists()
         PDDocument.load(output).use { assertTrue(removeLinks(it).isEmpty) }
-        assertEquals("links", SavedFiles.of(context).apply { awaitWrites() }.entries().single().tool)
+        assertEquals("links", SavedFiles.of(context).entries().single().tool)
     }
 
     @Test
@@ -562,7 +562,7 @@ class LinksViewTest {
         rule.waitForIdle()
         assertNull(suggested)
         assertFalse(output.exists())
-        assertTrue(SavedFiles.of(context).apply { awaitWrites() }.entries().isEmpty())
+        assertTrue(SavedFiles.of(context).entries().isEmpty())
     }
 
     @Test

@@ -93,7 +93,7 @@ class SearchableViewTest {
         rule.onNodeWithText("2 pages read.").assertExists()
         val text = PDDocument.load(output).use { PDFTextStripper().getText(it) }
         assertTrue(text, "page 1" in text && "page 2" in text)
-        assertEquals("searchable", SavedFiles.of(context).apply { awaitWrites() }.entries().first().tool)
+        assertEquals("searchable", SavedFiles.of(context).entries().first().tool)
         assertEquals(1, engine.closes)
     }
 
@@ -130,7 +130,7 @@ class SearchableViewTest {
         assertEquals(1, engine.cancels)
         assertEquals(1, engine.reads.size)
         assertFalse(output.exists())
-        assertTrue(SavedFiles.of(context).apply { awaitWrites() }.entries().isEmpty())
+        assertTrue(SavedFiles.of(context).entries().isEmpty())
     }
 
     @Test

@@ -190,11 +190,13 @@ object SessionManager {
  */
 class ToolOutputs(private val toolId: String, private val context: Context) {
     /**
-     * A file the tool saved at [uri] (where its [SaveTarget] put it) as [name], with [pageCount] pages, listed off the main thread. History
-     * draws it from its row (its date, size and tool), so [summary] and [icon], which describe a session row, are not kept for it.
+     * A file the tool saved at [uri] (where its [SaveTarget] put it) as [name], with [pageCount] pages, listed (and a picker file's grant
+     * taken) before this returns, so a kill or a cancel right after it never loses the row or deletes the listed file. History draws it from
+     * its row (its date, size and tool), so [summary] and [icon], which describe a session row, are not kept for it. Blocks briefly.
      */
-    fun saved(uri: Uri, name: String, summary: String, icon: ImageVector, pageCount: Int = 0) =
-        SavedFiles.of(context).recordLater(uri, name, toolId, pageCount)
+    fun saved(uri: Uri, name: String, summary: String, icon: ImageVector, pageCount: Int = 0) {
+        SavedFiles.of(context).record(uri, name, toolId, pageCount)
+    }
 
     /** An output that is not a file the user saved (text shown on screen): this session's History only. */
     fun record(name: String, summary: String, icon: ImageVector, uri: Uri? = null, pageCount: Int = 0) =
@@ -595,7 +597,7 @@ class ToolAction(val label: String, val enabled: Boolean = true, val onClick: ()
  * (none under a T3, whose own margin and hit area take that room, so the bar costs the screen as little as it can).
  */
 @Composable
-fun ToolActionBar(bottom: Dp = 20.dp, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun ToolActionBar(modifier: Modifier = Modifier, bottom: Dp = 20.dp, content: @Composable ColumnScope.() -> Unit) {
     Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom), content = content)
