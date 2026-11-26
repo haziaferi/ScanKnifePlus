@@ -55,6 +55,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,6 +84,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
@@ -493,7 +500,9 @@ fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
  * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
  * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
  * to save ([secondary], T2) shows it beside the action, the two one height. A tool that saves one new PDF says so in a line over the action
- * ([savesNewPdf], R6). An action that saves through [save] gets "Save elsewhere…" (T3) under it, which runs it with the system picker.
+ * ([savesNewPdf], R6). An action that saves through [save] gets "Save elsewhere…" (T3) under it, which runs it with the system picker. When
+ * pinning that would leave the content less than half the window (large text on a short phone), or over a page grid at large text, it goes to the
+ * end of the scrolling content instead, or under a page grid's file card ([LocalSaveElsewhere]), so every page stays in reach (rule 10).
  */
 @Composable
 fun ToolConfigLayout(
@@ -508,10 +517,30 @@ fun ToolConfigLayout(
     save: SaveTarget? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val density = LocalDensity.current
+    val window = LocalWindowInfo.current.containerSize.height
+    var total by remember { mutableIntStateOf(0) }
+    var bar by remember { mutableIntStateOf(0) }
+    val slot = remember { SaveElsewhereSlot() }
+    // Judged with the button pinned, wherever it is now, so the choice never flips back and forth.
+    val t3 = with(density) { TargetStep.ACT.hit.roundToPx() }
+    val pinnedBar = if (slot.inContent) bar + t3 else bar
+    // A page grid at large text needs room for a whole page, which half the window may not give (a page in one column is taller).
+    val squeezed = total - pinnedBar < window / 2 || !scroll && density.fontScale >= LARGE_TEXT
+    val inContent = save != null && total > 0 && (scroll || slot.claimed) && squeezed
+    SideEffect { slot.inContent = inContent }
+    val elsewhere: @Composable () -> Unit = {
+        if (save != null) SaveElsewhereButton(onClick = { save.elsewhere(onAction) }, enabled = actionEnabled, modifier = Modifier.padding(vertical = 8.dp))
+    }
     // Above the keyboard, so a text field never hides the action (the window draws edge to edge).
-    Column(modifier.fillMaxSize().imePadding()) {
-        Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), content = content)
-        ToolActionBar {
+    Column(modifier.fillMaxSize().imePadding().onSizeChanged { total = it.height }) {
+        CompositionLocalProvider(LocalSaveElsewhere provides slot.takeIf { save != null }?.also { it.content = elsewhere }) {
+            Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                content()
+                if (inContent && scroll) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { elsewhere() }
+            }
+        }
+        ToolActionBar(bottom = if (save != null && !inContent) 0.dp else 20.dp, modifier = Modifier.onSizeChanged { bar = it.height }) {
             if (savesNewPdf) {
                 Text(
                     stringResource(R.string.tool_saves_new_pdf),
@@ -533,22 +562,43 @@ fun ToolConfigLayout(
                     )
                 }
             }
-            if (save != null) {
+            if (save != null && !inContent) {
                 SaveElsewhereButton(onClick = { save.elsewhere(onAction) }, enabled = actionEnabled, modifier = Modifier.align(Alignment.CenterHorizontally))
             }
         }
     }
 }
 
+/**
+ * Where [ToolConfigLayout] keeps its "Save elsewhere…" when the bar cannot: a page grid that can show it under its header [claimed] it while
+ * composing, and shows [content] while [inContent].
+ */
+class SaveElsewhereSlot internal constructor() {
+    var claimed by mutableStateOf(false)
+        internal set
+    var inContent by mutableStateOf(false)
+        internal set
+    internal var content: @Composable () -> Unit = {}
+}
+
+/** The [SaveElsewhereSlot] of the tool screen around a lazy page grid, which shows its button under its header when it moves there. */
+val LocalSaveElsewhere = staticCompositionLocalOf<SaveElsewhereSlot?> { null }
+
+/** The text scale from which a page grid keeps its tool's Save elsewhere after its last page, so a whole page always fits in view. */
+private const val LARGE_TEXT = 1.5f
+
 /** A second action of a tool screen: [label], [onClick], and whether it is [enabled]. */
 class ToolAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
 
-/** The strip under a tool screen that holds its pinned actions: a top rule, then [content] on the background. */
+/**
+ * The strip under a tool screen that holds its pinned actions: a top rule, then [content] on the background, [bottom] over its lower edge
+ * (none under a T3, whose own margin and hit area take that room, so the bar costs the screen as little as it can).
+ */
 @Composable
-fun ToolActionBar(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+fun ToolActionBar(bottom: Dp = 20.dp, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp), content = content)
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom), content = content)
     }
 }
 

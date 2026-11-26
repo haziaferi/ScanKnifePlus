@@ -13,6 +13,10 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -40,6 +44,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -50,7 +55,8 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Ledger L8's new controls at twice the text size, on the 6T's 384 dp and on 320 dp, in English and Italian: "Save elsewhere…" sits
- * directly under each tool's save button and under the Save dialog's commit, and History's Move to folder line, Home's folder bar and the
+ * directly under each tool's save button (a page grid's under its file card, at this text size) and under the Save dialog's commit, and
+ * History's Move to folder line, Home's folder bar and the
  * Delete dialog show whole. Each check holds every target to its step with no overlap ([assertTargetsFit]) and finds its text uncut.
  */
 @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
@@ -105,6 +111,12 @@ abstract class StorageLayout {
         val button = target(elsewhere)
         val least = with(rule.density) { TargetStep.ACT.hit.toPx() } - 0.5f
         assertTrue("$where: Save elsewhere is ${button.hit}", button.hit.height >= least && button.hit.width >= least)
+        // A page grid at large text keeps it under its file card, so a whole page always fits in view (rule 10): it scrolls with the pages.
+        if (generateSequence(button.parent) { it.parent }.any { SemanticsActions.ScrollBy in it.config }) {
+            assertWhole(elsewhere)
+            rule.assertTargetsFit(rule.density, "$where at 2.0x")
+            return
+        }
         val above = rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).fetchSemanticsNodes()
             .filter { it.id != button.id && it.hit.bottom <= button.hit.top + 0.5f && it.hit.right > button.hit.left && it.hit.left < button.hit.right }
             .maxByOrNull { it.hit.bottom }
@@ -237,3 +249,59 @@ class StorageLayoutItalianTest : StorageLayout()
 @RunWith(RobolectricTestRunner::class)
 @Config(fontScale = 2f, qualifiers = "it-w320dp-h2400dp")
 class StorageLayoutItalianSmallPhoneTest : StorageLayout()
+
+/**
+ * At twice the text size on a short 320 x 640 dp phone, in Italian, pinning Save elsewhere would squeeze the screen's content under half
+ * the window, so it waits at the end of the scrolling content (Crop) or under the page grid's file card (Rearrange): swipes bring it into view,
+ * a whole T3 target, and the pinned bar keeps only the save button.
+ */
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(fontScale = 2f, qualifiers = "it-w320dp-h640dp")
+class StorageLayoutShortPhoneTest {
+    @get:Rule(order = 0)
+    val pump = ComposeSnapshotPump()
+
+    @get:Rule(order = 1)
+    val rule = createComposeRule()
+
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Before
+    fun setUp() = PDFBoxResourceLoader.init(context)
+
+    private fun reachable(id: String) {
+        val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(3), "short-$id.pdf")
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
+                PaperKnifePlusTheme { ToolCatalog.byId(id)!!.screen(ToolLaunch(uri, null, onBack = {}, onOpenPreview = { _, _, _ -> })) }
+            }
+        }
+        val label = context.getString(R.string.tool_save_elsewhere)
+        rule.waitUntil(60_000) { rule.onAllNodes(hasText("Document", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        rule.waitForIdle()
+        val window = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        repeat(30) {
+            val node = rule.onAllNodes(hasText(label) and hasClickAction()).fetchSemanticsNodes().firstOrNull()
+            val view = rule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().maxByOrNull { it.boundsInRoot.height }!!.boundsInRoot
+            if (node != null && node.boundsInRoot.height >= node.size.height - 0.5f && node.boundsInRoot.bottom <= view.bottom + 0.5f &&
+                node.touchBoundsInRoot.bottom <= window.bottom + 0.5f
+            ) {
+                val least = with(rule.density) { TargetStep.ACT.hit.toPx() } - 0.5f
+                assertTrue("$id: Save elsewhere is ${node.touchBoundsInRoot}", node.touchBoundsInRoot.height >= least)
+                assertTrue("$id: it scrolls with the content", generateSequence(node.parent) { it.parent }.any { SemanticsActions.ScrollBy in it.config })
+                rule.assertTargetsFit(rule.density, "$id on a short phone")
+                return
+            }
+            // Short swipes, so none passes it by.
+            rule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().maxByOrNull { it.boundsInRoot.height }!!.let { scroll ->
+                rule.onNode(SemanticsMatcher("the screen's scroll") { it.id == scroll.id }).performTouchInput { swipeUp(startY = centerY + 60f, endY = centerY - 60f) }
+            }
+            rule.waitForIdle()
+        }
+        fail("$id: Save elsewhere stays out of reach")
+    }
+
+    @Test fun `Crop's Save elsewhere is at the end of its content`() = reachable("crop")
+    @Test fun `Rearrange's Save elsewhere is under its file card`() = reachable("rearrange")
+}

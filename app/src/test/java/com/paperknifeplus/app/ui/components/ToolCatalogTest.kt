@@ -98,8 +98,13 @@ class ToolCatalogTest {
             assertEquals(screen, expected, ids)
             for (used in ids) assertEquals(used, ToolCatalog.byId(used)?.id)
         }
-        val writers = sourceDir("").walkTopDown().filter { it.extension == "kt" && it.readText().contains("SessionManager.addEntry(") }.map { it.name }
-        assertEquals(setOf("Tool.kt", "ScanExport.kt"), writers.toSet())
+        val sources = sourceDir("").walkTopDown().filter { it.extension == "kt" }.toList()
+        val writers = sources.filter { it.readText().contains("SessionManager.addEntry(") }.map { it.name }
+        // Ledger L8: this session's list holds only what a tool read on screen; saved files go into the index.
+        assertEquals(setOf("Tool.kt"), writers.toSet())
+        val listing = Regex("""\.record(Later)?\(""")
+        val indexWriters = sources.filter { it.name != "SavedFiles.kt" && "SavedFiles" in it.readText() && listing.containsMatchIn(it.readText()) }
+        assertEquals(setOf("Tool.kt", "ScanExport.kt", "ScanFlow.kt"), indexWriters.map { it.name }.toSet())
     }
 
     @Test

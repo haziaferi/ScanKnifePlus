@@ -224,6 +224,10 @@ private fun PageTileGrid(
     hint: PageHoldHint,
     tile: @Composable (index: Int, place: Modifier) -> Unit
 ) {
+    // A tool screen's Save elsewhere… comes here, under the header, when its pinned bar has no room for it: after the last row it would
+    // keep the last page from coming whole into view on a short screen.
+    val elsewhere = LocalSaveElsewhere.current
+    SideEffect { elsewhere?.claimed = true }
     Column(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -233,6 +237,11 @@ private fun PageTileGrid(
             contentPadding = PaddingValues(bottom = if (hint.shown) 0.dp else TILE_GAP)
         ) {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }, contentType = "header") { Column(content = header) }
+            if (elsewhere != null && elsewhere.inContent) {
+                item(key = "save-elsewhere", span = { GridItemSpan(maxLineSpan) }, contentType = "save-elsewhere") {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { elsewhere.content() }
+                }
+            }
             items(count, key = key) { index ->
                 val start = index % 2 == 0
                 val place = Modifier.padding(start = if (start) TILE_SIDE else 0.dp, end = if (start) 0.dp else TILE_SIDE, top = if (index < 2) top else TILE_GAP)

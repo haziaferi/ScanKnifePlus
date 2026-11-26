@@ -15,6 +15,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ocr.OcrLanguage
@@ -103,9 +104,9 @@ class SearchableViewTest {
         rule.assertOneChoice(listOf("Automatic", "Tables", "Receipts"))
         rule.segment("English").assertIsSelected()
         rule.segment("Automatic").assertIsSelected()
-        rule.segment("Italian").performClick().assertIsSelected()
+        rule.segment("Italian").performScrollTo().performClick().assertIsSelected()
         rule.segment("English").assertIsNotSelected()
-        rule.segment("Tables").performClick().assertIsSelected()
+        rule.segment("Tables").performScrollTo().performClick().assertIsSelected()
         rule.segment("Automatic").assertIsNotSelected()
 
         rule.onNodeWithText("Make searchable").performClick()

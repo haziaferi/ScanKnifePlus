@@ -12,6 +12,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.edit
@@ -183,7 +184,7 @@ class AppFolder(
         private set
 
     /** How many files kept in the app the running copy moves into the folder. */
-    private var moving by mutableStateOf(0)
+    private var moving by mutableIntStateOf(0)
 
     /** How many scans this phone holds, which a newly chosen folder receives; counted at each [refresh]. */
     var scansOnPhone by mutableStateOf(0)
