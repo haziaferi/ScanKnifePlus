@@ -29,6 +29,7 @@ class KeptFilesProvider : DocumentsProvider() {
 
     @Volatile
     private var told: List<String>? = null
+    private val telling = Any()
 
     // Listens from the start: the system picker keeps each provider's roots until told they changed, so a provider that listened only
     // once queried would leave the picker showing no root after the first file is kept (or a stale one after the move). Cheap: it makes
@@ -88,7 +89,8 @@ class KeptFilesProvider : DocumentsProvider() {
 
     /** The finished file kept in the app whose row is [documentId], or FileNotFoundException for any other id. */
     private fun keptFile(documentId: String): Pair<SavedEntry, File> =
-        kept().firstOrNull { it.first.id == documentId } ?: throw FileNotFoundException(documentId)
+        // No id in the message: a tool in this process shows it in its error toast.
+        kept().firstOrNull { it.first.id == documentId } ?: throw FileNotFoundException("not kept in the app")
 
     /** The finished files kept in the app, held ones included, whose file is there; newest first, one row per file. */
     private fun kept(): List<Pair<SavedEntry, File>> {
@@ -107,12 +109,16 @@ class KeptFilesProvider : DocumentsProvider() {
             synchronized(this) {
                 if (heard !== files) {
                     val authority = authority(context)
-                    files.listen { all ->
-                        val now = all.filter { it.inApp }.map { it.id }
-                        if (now != told) {
-                            told = now
-                            context.contentResolver.notifyChange(DocumentsContract.buildRootsUri(authority), null, false)
-                            context.contentResolver.notifyChange(DocumentsContract.buildChildDocumentsUri(authority, ROOT_DOC), null, false)
+                    // SavedFiles calls listeners after its lock, so two changes can arrive out of order: the list is read again here, one
+                    // change at a time, rather than taken from the call, so what the picker was last told is never an older list.
+                    files.listen {
+                        synchronized(telling) {
+                            val now = files.entries().filter { it.inApp }.map { it.id }
+                            if (now != told) {
+                                told = now
+                                context.contentResolver.notifyChange(DocumentsContract.buildRootsUri(authority), null, false)
+                                context.contentResolver.notifyChange(DocumentsContract.buildChildDocumentsUri(authority, ROOT_DOC), null, false)
+                            }
                         }
                     }
                     heard = files

@@ -339,6 +339,7 @@
     <string name="tool_step_choose_pdfs">Choose PDFs</string>
     <string name="tool_step_choose_images">Choose images</string>
     <string name="tool_step_choose_body">From your folder or anywhere on this phone</string>
+    <string name="tool_step_choose_body_kept">From the files kept in the app or anywhere on this phone</string>
     <string name="tool_step_options">Set the options</string>
     <string name="tool_step_save">Save the result</string>
     <string name="tool_step_save_body">Your original file stays as it is</string>
@@ -500,6 +501,7 @@
     <string name="tool_preparing">Preparing document…</string>
     <string name="tool_share_failed">Can\'t share this file</string>
     <string name="tool_unreadable">Can\'t read this PDF.</string>
+    <string name="tool_file_gone">This file is no longer there.</string>
     <string name="bookmarks_add_bookmark">Add bookmark</string>
     <string name="bookmarks_bookmarks">%1$s bookmarks</string>
     <string name="bookmarks_document_updated_successfully">Document updated successfully</string>

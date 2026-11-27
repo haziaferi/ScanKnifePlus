@@ -186,6 +186,21 @@ class KeptFilesProviderTest {
     }
 
     @Test
+    fun `a file moved out since it was picked is refused without its id in the message a tool would show`() {
+        val merged = keep("merged.pdf")
+        val uri = doc(merged.id)
+        assertTrue(files.delete(merged.id))
+        val e = try {
+            resolver.openInputStream(uri)!!.close()
+            null
+        } catch (e: FileNotFoundException) {
+            e
+        }
+        assertNotNull(e)
+        assertTrue(e!!.message.orEmpty(), merged.id !in e.message.orEmpty())
+    }
+
+    @Test
     fun `the root offers only the kept files' types, so an image picker leaves it out`() {
         keep("merged.pdf")
         keep("pages.zip")

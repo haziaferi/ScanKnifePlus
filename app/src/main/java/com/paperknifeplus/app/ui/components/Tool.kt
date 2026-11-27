@@ -442,7 +442,8 @@ fun ToolEmptyState(
                     )
                 }
                 HorizontalDivider(color = colors.outline)
-                ToolStep(1, chooseStep, stringResource(R.string.tool_step_choose_body))
+                // With no folder listed, the files to start from are those kept in the app, not the folder's.
+                ToolStep(1, chooseStep, stringResource(if (pdfs?.kept == true) R.string.tool_step_choose_body_kept else R.string.tool_step_choose_body))
                 ToolStep(2, stringResource(R.string.tool_step_options), task)
                 ToolStep(3, stringResource(R.string.tool_step_save), stringResource(R.string.tool_step_save_body))
             }

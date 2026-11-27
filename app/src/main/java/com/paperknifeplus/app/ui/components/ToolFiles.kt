@@ -8,6 +8,7 @@ import android.util.Log
 import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.paperknifeplus.app.R
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -46,9 +47,15 @@ fun ContentResolver.requireOutputStream(uri: Uri, mode: String = "wt"): OutputSt
  */
 fun isToolFailure(e: Throwable): Boolean = e is Exception || e is OutOfMemoryError
 
-/** The toast for a tool failure [e] ([isToolFailure]): "Error: " and its message, in the app's own words when it ran out of memory. */
-fun toolFailureText(context: Context, e: Throwable): String =
-    toolText(context, R.string.tool_error, if (e is OutOfMemoryError) toolText(context, R.string.tool_out_of_memory) else e.message)
+/**
+ * The toast for a tool failure [e] ([isToolFailure]): "Error: " and its message, in the app's own words when it ran out of memory or the
+ * file is gone (moved into the folder or deleted since it was chosen), whose message is a path or an id, not words.
+ */
+fun toolFailureText(context: Context, e: Throwable): String = when (e) {
+    is OutOfMemoryError -> toolText(context, R.string.tool_error, toolText(context, R.string.tool_out_of_memory))
+    is FileNotFoundException -> toolText(context, R.string.tool_file_gone)
+    else -> toolText(context, R.string.tool_error, e.message)
+}
 
 /**
  * Removes the file a save created for an output that then failed or was cancelled, wherever its [SaveTarget] made it: in the app, in the

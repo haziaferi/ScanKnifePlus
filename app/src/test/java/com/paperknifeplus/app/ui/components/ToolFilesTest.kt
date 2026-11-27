@@ -20,6 +20,13 @@ class ToolFilesTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
+    fun `a file gone since it was chosen is said in words, never as its path or id`() {
+        val gone = java.io.FileNotFoundException("/data/user/0/com.haziaferi.scanknifeplus/files/saved/Tax return.pdf")
+        assertEquals("This file is no longer there.", toolFailureText(context, gone))
+        assertEquals("Error: broken", toolFailureText(context, IOException("broken")))
+    }
+
+    @Test
     fun `pdfBaseName strips only a trailing pdf extension`() {
         assertEquals("Scan", pdfBaseName("Scan.PDF"))
         assertEquals("a.pdf", pdfBaseName("a.pdf.pdf"))
