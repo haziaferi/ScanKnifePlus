@@ -330,6 +330,8 @@
     <string name="history_delete_title">Eliminare questo file?</string>
     <string name="history_delete_body">“%1$s” è conservato solo nell\'app. L\'operazione non si può annullare.</string>
     <string name="home_recent_folder">Recenti nella tua cartella</string>
+    <string name="tool_recent_kept">Conservati nell\'app</string>
+    <string name="kept_root_summary">File conservati nell\'app</string>
     <string name="settings_folder">Cartella</string>
     <string name="settings_folder_none">Non scelta · i file restano nell\'app</string>
     <string name="settings_folder_unreachable">Impossibile raggiungere %1$s · sceglila di nuovo</string>
@@ -352,6 +354,7 @@
     <string name="tool_step_choose_pdfs">Scegli i PDF</string>
     <string name="tool_step_choose_images">Scegli le immagini</string>
     <string name="tool_step_choose_body">Dalla tua cartella o da qualunque posizione del telefono</string>
+    <string name="tool_step_choose_body_kept">Dai file conservati nell\'app o da qualunque posizione del telefono</string>
     <string name="tool_step_options">Imposta le opzioni</string>
     <string name="tool_step_save">Salva il risultato</string>
     <string name="tool_step_save_body">Il file originale resta com\'è</string>
@@ -513,6 +516,7 @@
     <string name="tool_preparing">Preparazione del documento…</string>
     <string name="tool_share_failed">Impossibile condividere questo file</string>
     <string name="tool_unreadable">Impossibile leggere questo PDF.</string>
+    <string name="tool_file_gone">Questo file non c\'è più.</string>
     <string name="bookmarks_add_bookmark">Aggiungi un segnalibro</string>
     <string name="bookmarks_bookmarks">%1$s segnalibri</string>
     <string name="bookmarks_document_updated_successfully">Documento aggiornato</string>
