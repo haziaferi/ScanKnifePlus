@@ -330,6 +330,8 @@
     <string name="history_delete_title">Eliminare questo file?</string>
     <string name="history_delete_body">“%1$s” è conservato solo nell\'app. L\'operazione non si può annullare.</string>
     <string name="home_recent_folder">Recenti nella tua cartella</string>
+    <string name="tool_recent_kept">Conservati nell\'app</string>
+    <string name="kept_root_summary">File conservati nell\'app</string>
     <string name="settings_folder">Cartella</string>
     <string name="settings_folder_none">Non scelta · i file restano nell\'app</string>
     <string name="settings_folder_unreachable">Impossibile raggiungere %1$s · sceglila di nuovo</string>

@@ -315,6 +315,8 @@
     <string name="history_delete_title">Delete this file?</string>
     <string name="history_delete_body">“%1$s” is kept only in the app. This can\'t be undone.</string>
     <string name="home_recent_folder">Recent in your folder</string>
+    <string name="tool_recent_kept">Kept in the app</string>
+    <string name="kept_root_summary">Files kept in the app</string>
     <string name="settings_folder">Folder</string>
     <string name="settings_folder_none">Not chosen · files are kept in the app</string>
     <string name="settings_folder_unreachable">Can\'t reach %1$s · choose it again</string>

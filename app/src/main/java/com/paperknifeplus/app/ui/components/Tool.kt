@@ -90,8 +90,7 @@ import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
 import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
-import com.haziaferi.scanknifeplus.ui.folder.FolderItem
-import com.haziaferi.scanknifeplus.ui.folder.folderPdfs
+import com.haziaferi.scanknifeplus.ui.folder.RecentPdfs
 import com.paperknifeplus.app.MainActivity
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdfImageLoader
@@ -395,21 +394,25 @@ fun ToolScreenBar(
     }
 }
 
-/** The PDFs of the user's folder for the empty tool screens, newest first; null while no folder is listed (none chosen, unreadable, reading). */
-val LocalFolderPdfs = staticCompositionLocalOf<@Composable () -> List<FolderItem>?> { { appFolderPdfs() } }
+/**
+ * The recent PDFs for the empty tool screens, newest first: the user's folder's while it is listed, the files kept in the app while no
+ * folder is listed (none chosen, or it can't be reached); null while the folder is read.
+ */
+val LocalFolderPdfs = staticCompositionLocalOf<@Composable () -> RecentPdfs?> { { appFolderPdfs() } }
 
 @Composable
-private fun appFolderPdfs(): List<FolderItem>? {
+private fun appFolderPdfs(): RecentPdfs? {
     // Only the app's own activity holds the folder (its FolderHolder, made in onCreate); any other host, such as a test, has none.
     val activity = LocalActivity.current as? MainActivity ?: return null
     val folder = remember(activity) { ViewModelProvider(activity)[FolderHolder::class.java].folder }
-    return folder.history?.items?.let { folderPdfs(it) }
+    return folder.toolPdfs
 }
 
 /**
  * The empty tool screen (1b, then 1c): a card naming the tool's [title] and its three steps ([chooseStep], [task], saving), then the newest
- * PDFs of the user's folder ([LocalFolderPdfs]), which [onOpenRecent] opens in the tool, and [chooseLabel] (T1, the picker) pinned at the
- * bottom. Without a listed folder, or without [onOpenRecent] (a tool that takes images), only the card shows.
+ * PDFs of the user's folder, or those kept in the app without a listed folder ([LocalFolderPdfs]), which [onOpenRecent] opens in the tool,
+ * and [chooseLabel] (T1, the picker) pinned at the bottom. With none to list, or without [onOpenRecent] (a tool that takes images), only
+ * the card shows.
  */
 @Composable
 fun ToolEmptyState(
@@ -422,7 +425,8 @@ fun ToolEmptyState(
     chooseStep: String = stringResource(R.string.tool_step_choose_pdf)
 ) {
     val colors = MaterialTheme.colorScheme
-    val recent = if (onOpenRecent != null) LocalFolderPdfs.current() else null
+    val pdfs = if (onOpenRecent != null) LocalFolderPdfs.current() else null
+    val recent = pdfs?.items
     ToolConfigLayout(action = chooseLabel, onAction = onChoose, actionIcon = Icons.Outlined.Description) {
         ToolCard(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -445,7 +449,7 @@ fun ToolEmptyState(
         }
         if (!recent.isNullOrEmpty() && onOpenRecent != null) {
             Text(
-                stringResource(R.string.home_recent_folder),
+                stringResource(if (pdfs?.kept == true) R.string.tool_recent_kept else R.string.home_recent_folder),
                 style = MaterialTheme.typography.titleMedium,
                 color = colors.onBackground,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).semantics { heading() }

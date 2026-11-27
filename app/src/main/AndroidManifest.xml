@@ -48,6 +48,18 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/scan_file_paths" />
         </provider>
+
+        <!-- The files kept in the app as a read-only location of the system picker; its root shows only while a file is kept. -->
+        <provider
+            android:name="com.haziaferi.scanknifeplus.storage.KeptFilesProvider"
+            android:authorities="${applicationId}.kept"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
     </application>
 
 </manifest>

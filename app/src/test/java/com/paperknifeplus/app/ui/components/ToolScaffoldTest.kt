@@ -29,6 +29,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
 import com.haziaferi.scanknifeplus.ui.folder.FolderKind
+import com.haziaferi.scanknifeplus.ui.folder.RecentPdfs
 import com.haziaferi.scanknifeplus.ui.folder.folderPdfs
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
 import com.paperknifeplus.app.testing.TestPdfs
@@ -60,7 +61,7 @@ class ToolScaffoldTest {
         FolderItem(name, name, kind, 1024, modified, uri)
 
     private fun emptyScreen(recent: List<FolderItem>?, onOpenRecent: ((Uri) -> Unit)? = {}) = rule.setContent {
-        CompositionLocalProvider(LocalFolderPdfs provides { recent }) {
+        CompositionLocalProvider(LocalFolderPdfs provides { recent?.let(::RecentPdfs) }) {
             ToolEmptyState(Icons.Outlined.Bolt, "Optimize any PDF document", "Make the file smaller", onChoose = {}, onOpenRecent = onOpenRecent)
         }
     }
@@ -108,7 +109,7 @@ class ToolScaffoldTest {
     fun `a tap on a recent PDF opens it in Compress`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(2), "recent.pdf")
         rule.setContent {
-            CompositionLocalProvider(LocalFolderPdfs provides { listOf(item("recent.pdf", uri = uri)) }) {
+            CompositionLocalProvider(LocalFolderPdfs provides { RecentPdfs(listOf(item("recent.pdf", uri = uri))) }) {
                 CompressView(onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }
@@ -163,7 +164,7 @@ class ToolScaffoldTest {
     fun `Merge opened with one recent file says another PDF is needed`() {
         val uri = TestPdfs.write(context.cacheDir, TestPdfs.plain(1), "only-one.pdf")
         rule.setContent {
-            CompositionLocalProvider(LocalFolderPdfs provides { listOf(item("only-one.pdf", uri = uri)) }) {
+            CompositionLocalProvider(LocalFolderPdfs provides { RecentPdfs(listOf(item("only-one.pdf", uri = uri))) }) {
                 MergeView(onBack = {}, onOpenPreview = { _, _, _ -> })
             }
         }

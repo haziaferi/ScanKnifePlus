@@ -3,6 +3,8 @@ package com.haziaferi.scanknifeplus.ui.folder
 import android.net.Uri
 import com.haziaferi.scanknifeplus.storage.FolderListing
 import com.haziaferi.scanknifeplus.storage.FolderNames
+import com.haziaferi.scanknifeplus.storage.SavedEntry
+import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
 import java.net.URLConnection
 
 /** What a History row of the folder is: a scan's PDF (or a scan whose PDF is not there), any other top-level file, or a conflict copy. */
@@ -54,6 +56,29 @@ fun folderItems(listing: FolderListing.Listed, uriOf: (String) -> Uri): List<Fol
 /** The empty tool screens' recent list: the first [limit] of [items] (newest first) that are PDFs to open, conflict copies left out. */
 fun folderPdfs(items: List<FolderItem>, limit: Int = 4): List<FolderItem> =
     items.filter { it.kind != FolderKind.CONFLICT && it.uri != null && it.mime == "application/pdf" }.take(limit)
+
+/** The empty tool screens' recent PDFs: the folder's, or with [kept] those kept in the app while no folder is listed. */
+data class RecentPdfs(val items: List<FolderItem>, val kept: Boolean = false)
+
+/**
+ * The empty tool screens' recent list for [history]: the folder's newest PDFs while it is listed; with no folder chosen, or one that can't
+ * be reached, the newest PDFs kept in the app among [saved], opened by [uriOf] (their FileProvider URI). Null while the folder is read.
+ */
+fun recentPdfs(history: HistoryFolder?, saved: List<SavedEntry>, uriOf: (SavedEntry) -> Uri?, limit: Int = 4): RecentPdfs? {
+    val items = history?.items
+    return when {
+        items != null -> RecentPdfs(folderPdfs(items, limit))
+        history == null || history.unreadable -> RecentPdfs(keptPdfs(saved, uriOf, limit), kept = true)
+        else -> null
+    }
+}
+
+/** The first [limit] of [saved] (newest first) that are finished PDFs kept in the app, as the folder's rows look. */
+fun keptPdfs(saved: List<SavedEntry>, uriOf: (SavedEntry) -> Uri?, limit: Int = 4): List<FolderItem> =
+    saved.asSequence().filter { it.inApp }.mapNotNull { e ->
+        val kind = if (e.tool == SCAN_ENTRY_TOOL) FolderKind.SCAN else FolderKind.TOOL
+        uriOf(e)?.let { FolderItem(e.id, e.name, kind, e.size, e.time, it) }
+    }.filter { it.mime == "application/pdf" }.take(limit).toList()
 
 /** History's view of the folder named [name]: [items] is null while it is read, and [unreadable] when it cannot be listed or must be chosen again. */
 data class HistoryFolder(val name: String?, val items: List<FolderItem>?, val unreadable: Boolean = false)

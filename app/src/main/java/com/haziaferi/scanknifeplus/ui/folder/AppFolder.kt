@@ -229,6 +229,9 @@ class AppFolder(
         }
     }
 
+    /** The empty tool screens' recent PDFs ([recentPdfs]): the folder's while it is listed, else the newest of the [saved] files kept in the app. */
+    val toolPdfs: RecentPdfs? by derivedStateOf { recentPdfs(history, saved, uriOf = { e -> files.fileOf(e)?.let(files::uriOf) }) }
+
     /** Whether Folder setup opens by itself at launch: no folder chosen, and its "Not now" never tapped. */
     val offersSetup: Boolean get() = access.treeUri() == null && !setupSeen.get()
 
