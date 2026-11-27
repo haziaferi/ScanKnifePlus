@@ -337,6 +337,27 @@ class AppFolderMoveRetryTest {
     }
 
     @Test
+    fun `a save into the folder the app died writing is deleted at the next launch, and a finished one stays`() {
+        val folder = appFolder()
+        assertTrue(folder.chooseNow())
+        val half = folder.create("half.pdf")!!
+        resolver.openOutputStream(half.uri)!!.use { it.write("half a pdf".toByteArray()) }
+        val whole = folder.create("whole.pdf")!!
+        resolver.openOutputStream(whole.uri)!!.use { it.write("a whole pdf".toByteArray()) }
+        files.record(whole.uri, "whole.pdf", "merge")
+        val failed = folder.create("failed.pdf")!!
+        com.paperknifeplus.app.ui.components.deleteCreatedDocument(context, failed.uri)
+        assertEquals(setOf("half.pdf", "whole.pdf"), top())
+        assertEquals("only the save still being written is unfinished", 1, files.entries().count { it.pending != null })
+
+        // The next run of the app, after it was killed while the tool wrote half.pdf.
+        val nextRun = SavedFiles(files.dir, File(context.filesDir, "saved-index.json"), ScanFiles.authority(context), resolver)
+        nextRun.recover()
+        assertEquals(setOf("whole.pdf"), top())
+        assertEquals(listOf("whole.pdf"), nextRun.entries().map { it.name })
+    }
+
+    @Test
     fun `a second holder's move waits for an earlier holder's, and its Delete is held back meanwhile`() {
         scan("Lease")
         val merged = keep("merged.pdf")

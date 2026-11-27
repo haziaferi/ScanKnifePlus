@@ -315,7 +315,7 @@
     <string name="history_empty_conflicts">Nessuna copia in conflitto. Qui compaiono le versioni conservate dopo un conflitto di sincronizzazione.</string>
     <string name="history_reading">Lettura della cartella…</string>
     <string name="history_unreadable_title">Impossibile leggere la cartella</string>
-    <string name="history_unreadable_body">ScanKnife+ non ha più accesso a %1$s, quindi per ora la Cronologia non può elencarne i file. I file sono ancora lì, e la scansione e gli strumenti continuano a funzionare; per salvare devi prima scegliere di nuovo la cartella.</string>
+    <string name="history_unreadable_body">ScanKnife+ non ha più accesso a %1$s, quindi per ora la Cronologia non può elencarne i file. I file sono ancora lì. Finché non scegli di nuovo la cartella, gli strumenti salvano nell\'app e il PDF delle scansioni resta in attesa.</string>
     <string name="history_choose_again">Scegli di nuovo la cartella</string>
     <string name="history_tag_scan">Scansione</string>
     <string name="history_tag_tool">Da strumento</string>

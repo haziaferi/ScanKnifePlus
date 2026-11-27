@@ -147,6 +147,21 @@ class SavedFiles(
     }
 
     /**
+     * Notes the file a save just made at [uri] in the user's folder, named [name], as unfinished until [record] lists it: if the app dies
+     * while the tool writes it, the launch check deletes the half-written file instead of leaving it in the folder.
+     */
+    @WorkerThread
+    fun begin(uri: Uri, name: String) {
+        val list = synchronized(LOCK) {
+            val all = loaded()
+            all.add(0, SavedEntry(UUID.randomUUID().toString(), name, UNKNOWN_TOOL, 0, 0, clock(), SavedPlace.FOLDER, uri = uri, pending = run))
+            write(all)
+            all.toList()
+        }
+        notify(list)
+    }
+
+    /**
      * Lists the file a save wrote at [uri] as [name], made by [tool] with [pages] pages, before it returns: kept in the app when [uri] is one
      * of [dir]'s, in the folder for a document of a folder tree, else elsewhere, whose persisted read grant (and write, where offered) is
      * taken. A file listed already is listed again as new. [scan] is kept for a scan's PDF kept in the app only.
@@ -279,7 +294,12 @@ class SavedFiles(
             val all = loaded()
             var changed = false
             for (e in all.filter { it.pending != null && it.pending != run }) {
-                fileOf(e)?.delete()
+                val file = fileOf(e)
+                if (file != null) {
+                    file.delete()
+                } else if (e.uri != null && !deleteUnfinished(e.uri)) {
+                    continue // the folder can't be reached now: the next launch tries again
+                }
                 all.remove(e)
                 changed = true
             }
@@ -317,10 +337,13 @@ class SavedFiles(
         return adopted
     }
 
-    /** Deletes [uri]'s file in [dir] and its unfinished row, unless a finished save is listed there: an output a failed save made. */
+    /**
+     * Deletes [uri]'s file in [dir] and its unfinished row, unless a finished save is listed there: an output a failed save made. For a
+     * document in the user's folder, which the caller deletes, only its unfinished row goes.
+     */
     @WorkerThread
     fun discard(uri: Uri): Boolean {
-        val file = fileOf(uri) ?: return false
+        val file = fileOf(uri) ?: return forgetUnfinished(uri)
         val list = synchronized(LOCK) {
             val all = loaded()
             if (all.any { it.file == file.name && it.pending == null }) return false
@@ -509,6 +532,30 @@ class SavedFiles(
             Openable.GONE
         } catch (e: Exception) {
             Openable.UNKNOWN
+        }
+    }
+
+    // Drops the unfinished row of a folder document [uri] that a failed save deleted; false when there was none.
+    private fun forgetUnfinished(uri: Uri): Boolean {
+        val list = synchronized(LOCK) {
+            val all = loaded()
+            if (!all.removeAll { it.uri == uri && it.pending != null }) return false
+            write(all)
+            all.toList()
+        }
+        notify(list)
+        return true
+    }
+
+    // Deletes a half-written folder document an earlier run left; true once it is gone (or definitely was), false to try again later.
+    private fun deleteUnfinished(uri: Uri): Boolean = when (openable(uri)) {
+        Openable.GONE -> true
+        Openable.UNKNOWN -> false
+        Openable.OPEN -> try {
+            DocumentsContract.deleteDocument(resolver, uri)
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot delete the unfinished $uri", e)
+            false
         }
     }
 

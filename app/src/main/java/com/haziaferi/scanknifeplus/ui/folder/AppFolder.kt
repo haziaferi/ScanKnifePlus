@@ -298,7 +298,9 @@ class AppFolder(
         is FolderState.Ready -> if (MOVE_LOCK.isLocked) {
             inApp(name, R.string.tool_saved_in_app_later)
         } else {
-            s.folder.createOutput(name)?.let { SaveSpot(s.store.uri(it.id)) } ?: inApp(name, R.string.tool_saved_in_app_later)
+            // Noted as unfinished, so a half-written file a kill leaves in the folder is deleted at the next launch.
+            s.folder.createOutput(name)?.let { made -> SaveSpot(s.store.uri(made.id)).also { files.begin(it.uri, made.name) } }
+                ?: inApp(name, R.string.tool_saved_in_app_later)
         }
     }
 

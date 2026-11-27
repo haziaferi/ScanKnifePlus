@@ -64,6 +64,7 @@ fun deleteCreatedDocument(context: Context, uri: Uri) {
         } else if (DocumentsContract.isTreeUri(uri) || DocumentsContract.isDocumentUri(context, uri)) {
             // A document of the user's folder is named through its tree, which isDocumentUri accepts only for a provider it can resolve.
             DocumentsContract.deleteDocument(context.contentResolver, uri)
+            files.discard(uri) // its unfinished row, if a save into the folder made it
         }
     } catch (e: Exception) {
         // Providers throw anything from FileNotFoundException to UnsupportedOperationException here; a leftover empty file is all that is lost.

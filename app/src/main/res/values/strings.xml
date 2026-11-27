@@ -300,7 +300,7 @@
     <string name="history_empty_conflicts">No conflict copies. Versions kept after a sync clash show here.</string>
     <string name="history_reading">Reading your folder…</string>
     <string name="history_unreadable_title">Can\'t read your folder</string>
-    <string name="history_unreadable_body">ScanKnife+ lost access to %1$s, so History can\'t list it right now. Your files are still there, and scanning and the tools keep working; saving waits until you choose the folder again.</string>
+    <string name="history_unreadable_body">ScanKnife+ lost access to %1$s, so History can\'t list it right now. Your files are still there. Until you choose the folder again, the tools save in the app and the PDF of a scan waits.</string>
     <string name="history_choose_again">Choose the folder again</string>
     <string name="history_tag_scan">Scan</string>
     <string name="history_tag_tool">Tool output</string>
