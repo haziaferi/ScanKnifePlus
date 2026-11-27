@@ -93,9 +93,9 @@ fun PdfToZipView(
         initialUri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/zip") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val sourceName = fileName
@@ -148,6 +148,7 @@ fun PdfToZipView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.pdf2zip_convert_and_save_zip),
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-pages", "zip")) }
                         ) {

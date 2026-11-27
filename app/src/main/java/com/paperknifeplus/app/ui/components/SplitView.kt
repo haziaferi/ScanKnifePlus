@@ -126,9 +126,9 @@ fun SplitView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = sourceUri
-        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || selectedUri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val pages = selectedPages
@@ -182,6 +182,7 @@ fun SplitView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = pluralStringResource(R.plurals.split_extract_pages, selectedPages.size, selectedPages.size),
                             savesNewPdf = true,
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-split", "pdf")) },

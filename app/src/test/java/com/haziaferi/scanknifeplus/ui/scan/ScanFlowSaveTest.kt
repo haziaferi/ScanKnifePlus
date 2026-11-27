@@ -33,10 +33,13 @@ import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
 import com.haziaferi.scanknifeplus.storage.FolderAccess
 import com.haziaferi.scanknifeplus.storage.FolderState
+import com.haziaferi.scanknifeplus.storage.SavedFiles
+import com.haziaferi.scanknifeplus.storage.SavedPlace
 import com.haziaferi.scanknifeplus.storage.TestDocumentsProvider
 import com.haziaferi.scanknifeplus.ui.folder.AppFolder
 import com.haziaferi.scanknifeplus.ui.folder.pdfMaker
 import com.paperknifeplus.app.testing.ComposeSnapshotPump
+import com.paperknifeplus.app.testing.SavedFilesProvider
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -118,6 +121,7 @@ class ScanFlowSaveTest {
         forgetFolder()
         ScanFiles.libraryDir(context).deleteRecursively()
         root.deleteRecursively()
+        SavedFilesProvider.forget(context)
     }
 
     /**
@@ -201,11 +205,41 @@ class ScanFlowSaveTest {
     }
 
     @Test
-    fun `without a folder Done asks the system picker where to save`() {
+    fun `without a folder Save scan keeps the scan's PDF in the app, and the scan in the library, without the picker`() {
+        SavedFilesProvider.install(context)
+        val model = flowInReview(appFolder().also { it.start() })
+        val name = pdfOf(model)
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Saved in the app until you choose a folder").assertExists()
+        rule.onNodeWithText("Save scan").performClick()
+        rule.waitUntil(10_000) { saved == 1 }
+        assertEquals("page", File(SavedFiles.of(context).dir, name).readText())
+        assertFalse("the picker did not open", startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
+        assertEquals(1, library.documents().size)
+    }
+
+    @Test
+    fun `without a folder Save elsewhere asks the system picker where to save`() {
         flowInReview(appFolder().also { it.start() })
         rule.onNodeWithText("Done").performClick()
-        rule.onNodeWithText("Choose where to save").performClick()
+        rule.onNodeWithText("Save elsewhere…").performClick()
         assertTrue(startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
+        assertFalse("nothing kept in the app", SavedFiles.of(context).dir.listFiles().orEmpty().any { it.length() > 0 })
+    }
+
+    @Test
+    fun `without a folder the txt copy is kept in the app beside the PDF and listed with it`() {
+        SavedFilesProvider.install(context)
+        ScanPreferences(context).saveText = true
+        val model = flowInReview(appFolder().also { it.start() })
+        val name = pdfOf(model)
+        rule.onNodeWithText("Done").performClick()
+        rule.onNodeWithText("Save scan").performClick()
+        rule.waitUntil(10_000) { saved == 1 }
+        val files = SavedFiles.of(context)
+        assertEquals("page\n", File(files.dir, name.removeSuffix(".pdf") + ".txt").readText())
+        assertEquals(listOf(SavedPlace.APP), files.entries().filter { it.name.endsWith(".txt") }.map { it.place })
+        assertFalse("no picker for the PDF or its text", startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
     }
 
     @Test
@@ -216,7 +250,7 @@ class ScanFlowSaveTest {
         flowInReview(folder)
         rule.onNodeWithText("Done").performClick()
         rule.onNodeWithText("Checking your folder…").assertExists()
-        rule.onNodeWithText("Choose where to save").assertDoesNotExist()
+        rule.onNodeWithText("Save scan").assertDoesNotExist()
         assertFalse("the picker did not open", startedActions().contains(Intent.ACTION_CREATE_DOCUMENT))
 
         rule.runOnUiThread { io.release() }
@@ -334,7 +368,7 @@ class ScanFlowSaveTest {
         flowInReview(appFolder().also { it.start() })
         rule.onNodeWithText("Done").performClick()
         rule.onNodeWithText("Also save the text as .txt").performScrollTo().assertIsOn()
-        rule.onNodeWithText("Choose where to save").performClick()
+        rule.onNodeWithText("Save elsewhere…").performClick()
         val pdfRequest = generateSequence { shadowOf(rule.activity).nextStartedActivityForResult }
             .first { it.intent.action == Intent.ACTION_CREATE_DOCUMENT }
         assertEquals("application/pdf", pdfRequest.intent.type)

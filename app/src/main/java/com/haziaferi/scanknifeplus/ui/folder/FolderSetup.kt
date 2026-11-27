@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -111,13 +112,16 @@ fun FolderSetup(folder: AppFolder, onDone: () -> Unit) {
         onNotNow = {
             if (folder.status == FolderStatus.NotChosen) folder.dismissSetup()
             onDone()
-        }
+        },
+        // A scan's PDF kept in the app goes in with its scan, which the scans' line counts.
+        appFiles = folder.saved.count { it.inApp && !it.held && it.scan == null }
     )
 }
 
 /**
- * Folder setup (prototype "Folder"): what the folder is for, what it will hold, the copy notice when [scansOnPhone] scans will be copied
- * in, "Choose folder" (T1) and the way out, which names what happens without a folder. [failed] shows that the last pick cannot be used.
+ * Folder setup (prototype "Folder"): what the folder is for, an example of what it will hold, the notice when [scansOnPhone] scans will be
+ * copied in and [appFiles] files kept in the app moved in, "Choose folder" (T1) and the way out, which names what happens without a folder.
+ * [failed] shows that the last pick cannot be used.
  */
 @Composable
 fun FolderSetupScreen(
@@ -126,7 +130,8 @@ fun FolderSetupScreen(
     choosing: Boolean,
     failed: Boolean,
     onChoose: () -> Unit,
-    onNotNow: () -> Unit
+    onNotNow: () -> Unit,
+    appFiles: Int = 0
 ) {
     val palette = LocalScanPalette.current
     val title = stringResource(R.string.folder_setup_title)
@@ -160,17 +165,28 @@ fun FolderSetupScreen(
                 Text(stringResource(R.string.folder_setup_body), style = MaterialTheme.typography.bodyLarge, color = palette.mu)
             }
             LayoutPreview(folderName(status))
-            if (scansOnPhone > 0) {
+            if (scansOnPhone > 0 || appFiles > 0) {
                 Row(
                     modifier = Modifier.fillMaxWidth().background(palette.sf2, RoundedCornerShape(14.dp)).padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(Icons.Outlined.Info, contentDescription = null, tint = palette.tx, modifier = Modifier.size(20.dp))
-                    Text(
-                        pluralStringResource(R.plurals.folder_setup_copy, scansOnPhone, scansOnPhone),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = palette.tx
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (scansOnPhone > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.folder_setup_copy, scansOnPhone, scansOnPhone),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = palette.tx
+                            )
+                        }
+                        if (appFiles > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.folder_setup_move, appFiles, appFiles),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = palette.tx
+                            )
+                        }
+                    }
                 }
             }
             if (failed) {
@@ -212,32 +228,41 @@ fun FolderSetupScreen(
     }
 }
 
-/** The folder as it will look: PDFs at the top level and the scans' editable pages in `Scan sources/`, each row named in text. */
+/**
+ * An example of the folder as it will look, under an "Example" label: PDFs at the top level and the scans' editable pages in `Scan sources/`,
+ * each row a plain sample name with a bullet of one neutral colour, so none reads as a file that is there.
+ */
 @Composable
 private fun LayoutPreview(name: String?) {
     val palette = LocalScanPalette.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(palette.sf, RoundedCornerShape(18.dp))
-            .border(1.dp, palette.bd, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(name ?: stringResource(R.string.folder_setup_preview_folder), style = MaterialTheme.typography.titleSmall, color = palette.tx)
-        PreviewRow(stringResource(R.string.folder_setup_preview_scan), palette.ac, palette.tx)
-        PreviewRow(stringResource(R.string.folder_setup_preview_tool), palette.ok, palette.tx)
-        PreviewRow(stringResource(R.string.folder_setup_preview_sources), palette.mu, palette.mu)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.folder_setup_example), style = MaterialTheme.typography.labelMedium, color = palette.mu)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(palette.sf, RoundedCornerShape(18.dp))
+                .border(1.dp, palette.bd, RoundedCornerShape(18.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(name ?: stringResource(R.string.folder_setup_preview_folder), style = MaterialTheme.typography.titleSmall, color = palette.tx)
+            PreviewRow(stringResource(R.string.folder_setup_preview_scan), palette.tx)
+            PreviewRow(stringResource(R.string.folder_setup_preview_tool), palette.tx)
+            PreviewRow(stringResource(R.string.folder_setup_preview_sources), palette.mu)
+        }
     }
 }
 
 @Composable
-private fun PreviewRow(text: String, dot: Color, color: Color) {
+private fun PreviewRow(text: String, color: Color) {
     Row(modifier = Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.size(8.dp).background(dot, CircleShape))
+        Box(Modifier.size(8.dp).background(LocalScanPalette.current.mu, CircleShape).testTag(EXAMPLE_BULLET))
         Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
     }
 }
+
+/** The test tag of each bullet of the example list. */
+internal const val EXAMPLE_BULLET = "folder-example-bullet"
 
 /** The name [status] carries, if any. */
 internal fun folderName(status: FolderStatus): String? = when (status) {

@@ -59,6 +59,33 @@ object FolderNames {
         return "$base-$n$ext"
     }
 
+    /**
+     * [name] with its base cut (never its extension, never inside a character) so that it, the `-N` a free name may add and the `.tmp` of an
+     * atomic write stay within the 255 bytes (UTF-8) a file system allows a name.
+     */
+    fun fit(name: String): String {
+        val limit = MAX_NAME_BYTES - SUFFIX_ROOM
+        if (bytes(name) <= limit) return name
+        val (base, ext) = split(name)
+        val room = limit - bytes(ext)
+        if (room <= 0) return cut(name, limit)
+        return cut(base, room) + ext
+    }
+
+    private fun cut(text: String, max: Int): String {
+        var end = text.length
+        while (end > 0 && bytes(text.substring(0, end)) > max) end -= if (end >= 2 && Character.isLowSurrogate(text[end - 1])) 2 else 1
+        return text.substring(0, end)
+    }
+
+    private fun bytes(text: String) = text.toByteArray(Charsets.UTF_8).size
+
+    /** A file system's longest name, in bytes. */
+    const val MAX_NAME_BYTES = 255
+
+    /** Room kept for a `-9999` free-name suffix and a `.tmp` (or `.bak`). */
+    private const val SUFFIX_ROOM = 9
+
     /** A single path segment that cannot point anywhere else: not empty, not `.` or `..`, no separators. */
     fun isSafe(name: String): Boolean = name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\\' !in name
 

@@ -73,7 +73,7 @@ fun ImageToPdfView(
         selectedUris = selectedUris + uris 
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         uri?.let { saveUri ->
             currentState = ToolState.PROCESSING
             val startTime = System.currentTimeMillis()
@@ -144,6 +144,7 @@ fun ImageToPdfView(
                     } else {
                         var selectedIndex by remember { mutableStateOf<Int?>(null) }
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.img2pdf_create_pdf_from_images, selectedUris.size),
                             onAction = { saveLauncher.launch(outputFileName("images", "pdf")) },
                             scroll = false

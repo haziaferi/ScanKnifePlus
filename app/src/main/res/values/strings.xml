@@ -97,8 +97,6 @@
     <string name="scan_password">Password (optional)</string>
     <string name="scan_password_hint">Leave empty to save without a password.</string>
     <string name="scan_password_invalid">This password can\'t protect a PDF. Remove control characters.</string>
-    <string name="scan_save_where">You choose the folder and the file name next.</string>
-    <string name="scan_save_choose">Choose where to save</string>
     <string name="scan_save_failed">The PDF couldn\'t be saved. Try again.</string>
     <string name="scan_leave_title">Save the scan?</string>
     <plurals name="scan_leave_body">
@@ -149,7 +147,7 @@
 
     <!-- History -->
     <string name="history_title">History</string>
-    <string name="history_subtitle">Files made in this session</string>
+    <string name="history_subtitle">Your saved files</string>
     <string name="history_filter_all">All</string>
     <string name="history_filter_scans">Scans</string>
     <string name="history_filter_tools">Tool outputs</string>
@@ -225,26 +223,36 @@
     <string name="folder_setup_title">Choose where your documents live</string>
     <string name="folder_setup_body">ScanKnife+ keeps every PDF as a normal file in a folder you pick, so Syncthing or any sync app can carry it to your other devices. Nothing is uploaded by the app.</string>
     <string name="folder_setup_preview_folder">Your folder</string>
-    <string name="folder_setup_preview_scan">scanknife-scan-2026-10-15-143205.pdf</string>
-    <string name="folder_setup_preview_tool">Tax return 2025 merged.pdf</string>
-    <string name="folder_setup_preview_sources">Scan sources/ · pages you can edit later</string>
+    <string name="folder_setup_example">Example</string>
+    <string name="folder_setup_preview_scan">Example scan.pdf</string>
+    <string name="folder_setup_preview_tool">Example merged.pdf</string>
+    <string name="folder_setup_preview_sources">Scan sources/Example scan/ · pages you can edit later</string>
     <plurals name="folder_setup_copy">
         <item quantity="one">The %d scan already on this phone will be copied into the folder. Existing files are never overwritten.</item>
         <item quantity="other">The %d scans already on this phone will be copied into the folder. Existing files are never overwritten.</item>
     </plurals>
+    <plurals name="folder_setup_move">
+        <item quantity="one">The %d file kept in the app moves into the folder.</item>
+        <item quantity="other">The %d files kept in the app move into the folder.</item>
+    </plurals>
     <string name="folder_setup_failed">ScanKnife+ can\'t save into that folder. Choose a folder it can write to.</string>
     <string name="folder_setup_choose">Choose folder</string>
-    <string name="folder_setup_not_now">Not now · save each file with the picker</string>
+    <string name="folder_setup_not_now">Not now · keep files in the app</string>
     <string name="folder_setup_later">Not now</string>
     <string name="folder_setup_keep">Keep the current folder</string>
     <string name="folder_bar_saving">Saving to %1$s</string>
     <string name="folder_bar_change">Change</string>
-    <string name="folder_bar_choose">Choose a folder</string>
+    <string name="folder_bar_in_app">Saved in the app until you choose a folder</string>
+    <string name="folder_bar_move">Move to folder</string>
     <string name="folder_bar_unreachable">Can\'t reach %1$s</string>
     <string name="folder_bar_choose_again">Choose again</string>
     <plurals name="folder_bar_copying">
         <item quantity="one">Copying %1$d scan into %2$s…</item>
         <item quantity="other">Copying %1$d scans into %2$s…</item>
+    </plurals>
+    <plurals name="folder_bar_moving">
+        <item quantity="one">Moving %1$d file into %2$s…</item>
+        <item quantity="other">Moving %1$d files into %2$s…</item>
     </plurals>
     <plurals name="folder_conflicts_kept">
         <item quantity="one">Settled %d sync clash in your folder. The other version is kept as a conflict copy in History.</item>
@@ -266,6 +274,18 @@
         <item quantity="one">Copying stopped: your folder can\'t be reached. %d scan stays on this phone; the copy tries again at the next launch.</item>
         <item quantity="other">Copying stopped: your folder can\'t be reached. %d scans stay on this phone; the copy tries again at the next launch.</item>
     </plurals>
+    <plurals name="folder_moved">
+        <item quantity="one">Moved %d file to your folder.</item>
+        <item quantity="other">Moved %d files to your folder.</item>
+    </plurals>
+    <plurals name="folder_move_failed">
+        <item quantity="one">%d file couldn\'t be moved to your folder. It stays in the app; the move tries again at the next launch.</item>
+        <item quantity="other">%d files couldn\'t be moved to your folder. They stay in the app; the move tries again at the next launch.</item>
+    </plurals>
+    <plurals name="folder_move_stopped">
+        <item quantity="one">Moving stopped: your folder can\'t be reached. %d file stays in the app; the move tries again at the next launch.</item>
+        <item quantity="other">Moving stopped: your folder can\'t be reached. %d files stay in the app; the move tries again at the next launch.</item>
+    </plurals>
     <string name="scan_folder_blocked_title">Can\'t reach your folder</string>
     <string name="scan_folder_blocked_body">ScanKnife+ lost access to %1$s, so the PDF can\'t be saved there yet. Your pages are kept. Choose the folder again, or save this PDF somewhere else with the picker.</string>
     <string name="scan_folder_blocked_choose">Choose the folder again</string>
@@ -280,7 +300,7 @@
     <string name="history_empty_conflicts">No conflict copies. Versions kept after a sync clash show here.</string>
     <string name="history_reading">Reading your folder…</string>
     <string name="history_unreadable_title">Can\'t read your folder</string>
-    <string name="history_unreadable_body">ScanKnife+ lost access to %1$s, so History can\'t list it right now. Your files are still there, and scanning and the tools keep working; saving waits until you choose the folder again.</string>
+    <string name="history_unreadable_body">ScanKnife+ lost access to %1$s, so History can\'t list it right now. Your files are still there. Until you choose the folder again, the tools save in the app and the PDF of a scan waits.</string>
     <string name="history_choose_again">Choose the folder again</string>
     <string name="history_tag_scan">Scan</string>
     <string name="history_tag_tool">Tool output</string>
@@ -291,9 +311,12 @@
     <string name="history_search">Search file names</string>
     <string name="history_search_clear">Clear search</string>
     <string name="history_search_empty">No file names match “%1$s”.</string>
+    <string name="history_delete">Delete</string>
+    <string name="history_delete_title">Delete this file?</string>
+    <string name="history_delete_body">“%1$s” is kept only in the app. This can\'t be undone.</string>
     <string name="home_recent_folder">Recent in your folder</string>
     <string name="settings_folder">Folder</string>
-    <string name="settings_folder_none">Not chosen · each file is saved with the picker</string>
+    <string name="settings_folder_none">Not chosen · files are kept in the app</string>
     <string name="settings_folder_unreachable">Can\'t reach %1$s · choose it again</string>
 
     <!-- Tool screens -->
@@ -305,7 +328,11 @@
     <string name="tool_done_in">Done in %1$s</string>
     <string name="tool_process_more">Process more files</string>
     <string name="tool_back_to_tools">Back to tools</string>
-    <string name="tool_copy_failed">Saved locally in the app. Could not access your folder.</string>
+    <string name="tool_saved_in_app">Couldn\'t reach your folder, so this was saved in the app. It moves there when you choose the folder again.</string>
+    <string name="tool_saved_in_app_later">Couldn\'t save in your folder, so this was saved in the app. It moves there the next time the app opens.</string>
+    <string name="folder_list_rebuilt">The list of your saved files couldn\'t be read, so it was made again from the files kept in the app. Files saved elsewhere may be missing from it.</string>
+    <string name="tool_save_elsewhere">Save elsewhere…</string>
+    <string name="tool_result_in_app">In the app</string>
     <string name="tool_step_choose_pdf">Choose a PDF</string>
     <string name="tool_step_choose_pdfs">Choose PDFs</string>
     <string name="tool_step_choose_images">Choose images</string>
@@ -362,9 +389,9 @@
     <string name="settings_about_app">About %1$s</string>
     <string name="settings_version">%1$s V%2$s</string>
     <string name="settings_clear_history_title">Clear history?</string>
-    <string name="settings_clear_history_confirm_body">This will permanently remove all entries from your history tab. This cannot be undone.</string>
-    <string name="settings_clear_history_confirm">Wipe everything</string>
-    <string name="settings_history_cleared">History wiped</string>
+    <string name="settings_clear_history_confirm_body">Removes files saved elsewhere from this list. The files stay where you saved them, and files kept in the app stay listed.</string>
+    <string name="settings_clear_history_confirm">Clear list</string>
+    <string name="settings_history_cleared">List cleared</string>
     <string name="settings_value_not_chosen">Not chosen</string>
     <string name="settings_value_not_set">Not set</string>
 

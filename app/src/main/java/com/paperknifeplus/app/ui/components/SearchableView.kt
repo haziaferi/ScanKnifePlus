@@ -153,11 +153,11 @@ internal fun SearchableView(
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> uri?.let { handleFileSelection(it) } }
     val pickPhotos = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { handlePhotos(it) }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { saveUri ->
-        if (saveUri == null) return@rememberLauncherForActivityResult
+    val saveLauncher = rememberSaveTarget("application/pdf") { saveUri ->
+        if (saveUri == null) return@rememberSaveTarget
         val source = selectedUri
         val images = photos
-        if (source == null && images.isEmpty()) return@rememberLauncherForActivityResult
+        if (source == null && images.isEmpty()) return@rememberSaveTarget
         val options = SearchableOptions(language, reading, redo)
         val password = unlockPassword
         val engine = { openEngine(context) }
@@ -250,6 +250,7 @@ internal fun SearchableView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.scan_ocr_searchable),
                             onAction = {
                                 val stem = if (photos.isNotEmpty()) "images" else pdfBaseName(fileName)

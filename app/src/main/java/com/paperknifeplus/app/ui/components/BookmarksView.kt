@@ -141,14 +141,14 @@ fun BookmarksView(
         }
     }
 
-    val extractLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val extractLauncher = rememberSaveTarget("application/pdf") { uri ->
         val marked = bookmarks
         if (uri != null) save(uri, { toolText(context, R.string.bookmarks_pages_extracted, it) }) { source, password ->
             extractBookmarkedPages(context, source, password, uri, marked)
         }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val edited = bookmarks
         if (uri != null) save(uri, { toolText(context, R.string.bookmarks_bookmarks, edited.size) }) { source, password ->
             rewritePdf(context, source, password, uri) { applyOutline(it, edited) }
@@ -180,6 +180,7 @@ fun BookmarksView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.action_save_pdf),
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-nav", "pdf")) },
                             scroll = false,

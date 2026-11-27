@@ -332,9 +332,9 @@ class MainActivityTest {
     fun `a first launch opens Folder setup, and Not now leaves it for Home for good`() {
         launch(setupSeen = false)
         waitFor("Choose where your documents live")
-        rule.onNode(hasText("Not now · save each file with the picker")).performClick()
+        rule.onNode(hasText("Not now · keep files in the app")).performClick()
         waitFor("Scan a document")
-        rule.onNode(hasText("Choose a folder")).assertExists()
+        rule.onNode(hasText("Saved in the app until you choose a folder")).assertExists()
 
         assertTrue("Not now is remembered", setup.seen)
         controller?.pause()?.stop()?.destroy()
@@ -353,7 +353,7 @@ class MainActivityTest {
     @Test
     fun `Folder setup opens from the folder bar and from Settings and goes back where it came from`() {
         launch()
-        rule.onNode(hasText("Choose a folder")).performClick()
+        rule.onNode(hasText("Saved in the app until you choose a folder")).performClick()
         waitFor("Choose where your documents live")
         rule.runOnUiThread { controller!!.get().onBackPressedDispatcher.onBackPressed() }
         waitFor("Scan a document")

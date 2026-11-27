@@ -3,7 +3,6 @@ package com.paperknifeplus.app.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
@@ -56,6 +55,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -79,12 +84,13 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import coil.compose.rememberAsyncImagePainter
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.haziaferi.scanknifeplus.ui.folder.FolderHolder
 import com.haziaferi.scanknifeplus.ui.folder.FolderItem
-import com.haziaferi.scanknifeplus.ui.folder.OutputCopy
 import com.haziaferi.scanknifeplus.ui.folder.folderPdfs
 import com.paperknifeplus.app.MainActivity
 import com.paperknifeplus.app.R
@@ -102,8 +108,8 @@ import kotlinx.coroutines.delay
 const val SCAN_ENTRY_TOOL = "scan"
 
 /**
- * One History entry. [id] is unique: it keys History's lazy list, so a row keeps its state when newer entries shift the list. [toolId] is
- * the [ToolCatalog] id of the tool that made it, [SCAN_ENTRY_TOOL] for scans.
+ * One History entry of this session. [id] is unique: it keys History's lazy list, so a row keeps its state when newer entries shift the
+ * list. [toolId] is the [ToolCatalog] id of the tool that made it, [SCAN_ENTRY_TOOL] for scans; [time] orders it among the saved files.
  */
 data class ActivityEntry(
     val id: String,
@@ -112,7 +118,8 @@ data class ActivityEntry(
     val size: String,
     val icon: ImageVector,
     val uri: Uri? = null,
-    val pageCount: Int = 0
+    val pageCount: Int = 0,
+    val time: Long = 0
 ) {
     val isScan: Boolean get() = toolId == SCAN_ENTRY_TOOL
 
@@ -161,12 +168,15 @@ class Tool(
     val screen: @Composable (ToolLaunch) -> Unit
 )
 
-/** This session's History, newest first. Compose state: change it on the main thread. Tools record through [ToolOutputs]. */
+/**
+ * This session's History rows that are not saved files (a text read on screen), newest first; saved files are listed by [SavedFiles] across
+ * restarts. Compose state: change it on the main thread. Tools record through [ToolOutputs].
+ */
 object SessionManager {
     val history = mutableStateListOf<ActivityEntry>()
 
     fun addEntry(name: String, toolId: String, size: String, icon: ImageVector, uri: Uri? = null, pageCount: Int = 0) {
-        history.add(0, ActivityEntry(UUID.randomUUID().toString(), name, toolId, size, icon, uri, pageCount))
+        history.add(0, ActivityEntry(UUID.randomUUID().toString(), name, toolId, size, icon, uri, pageCount, System.currentTimeMillis()))
     }
 
     fun clearHistory() {
@@ -174,42 +184,23 @@ object SessionManager {
     }
 }
 
-/** The user's folder as the tools see it: where an output saved with the system picker is copied too (user answer 5). */
-fun interface OutputFolder {
-    /** Copies the file at [uri] into the folder, off the main thread; [onResult] runs on the main thread. */
-    fun copy(uri: Uri, onResult: (OutputCopy) -> Unit)
-}
-
-/** The folder tool outputs are copied into; the shell provides the app's folder, and without it nothing is copied. */
-val LocalOutputFolder = staticCompositionLocalOf { OutputFolder { _, onResult -> onResult(OutputCopy.NO_FOLDER) } }
-
 /**
- * The one save path of the tools' outputs: each is recorded in History under [toolId], and each file the user saved with the system picker
- * is then copied into [folder]. The copy never blocks or undoes the picker save: a folder that cannot be reached, or a copy that fails, only
- * shows one short message. Call on the main thread.
+ * Where the tools' outputs are listed under [toolId]: a saved file in the index of saved files, which History reads across restarts, and a
+ * text shown on screen in this session's list. Call on the main thread.
  */
-class ToolOutputs(private val toolId: String, private val folder: OutputFolder, private val context: Context) {
-    /** An output the user saved with the picker at [uri]: History, then the copy into the folder. */
+class ToolOutputs(private val toolId: String, private val context: Context) {
+    /**
+     * A file the tool saved at [uri] (where its [SaveTarget] put it) as [name], with [pageCount] pages, listed (and a picker file's grant
+     * taken) before this returns, so a kill or a cancel right after it never loses the row or deletes the listed file. History draws it from
+     * its row (its date, size and tool), so [summary] and [icon], which describe a session row, are not kept for it. Blocks briefly.
+     */
     fun saved(uri: Uri, name: String, summary: String, icon: ImageVector, pageCount: Int = 0) {
-        record(name, summary, icon, uri, pageCount)
-        copy(uri)
+        SavedFiles.of(context).record(uri, name, toolId, pageCount)
     }
 
-    /** An output that is not a file the user saved (text shown on screen): History only. */
+    /** An output that is not a file the user saved (text shown on screen): this session's History only. */
     fun record(name: String, summary: String, icon: ImageVector, uri: Uri? = null, pageCount: Int = 0) =
         SessionManager.addEntry(name, toolId, summary, icon, uri, pageCount)
-
-    /** A further file the user saved from a result with the picker, already in History (the extracted text as .txt): the folder only. */
-    fun copy(uri: Uri) = folder.copy(uri) { result ->
-        copyMessage(result)?.let { Toast.makeText(context, context.getString(it), Toast.LENGTH_LONG).show() }
-    }
-}
-
-/** What the user is told after a copy into the folder: nothing when it worked or no folder is chosen. */
-@StringRes
-internal fun copyMessage(result: OutputCopy): Int? = when (result) {
-    OutputCopy.COPIED, OutputCopy.NO_FOLDER -> null
-    OutputCopy.CHOOSE_AGAIN, OutputCopy.FAILED -> R.string.tool_copy_failed
 }
 
 /**
@@ -218,12 +209,11 @@ internal fun copyMessage(result: OutputCopy): Int? = when (result) {
  */
 fun toolText(context: Context, @StringRes id: Int, vararg args: Any?): String = context.getString(id, *args)
 
-/** The [ToolOutputs] of the tool whose [ToolCatalog] id is [toolId], copying into [LocalOutputFolder]. */
+/** The [ToolOutputs] of the tool whose [ToolCatalog] id is [toolId]. */
 @Composable
 fun rememberToolOutputs(toolId: String): ToolOutputs {
     val context = LocalContext.current.applicationContext
-    val folder = LocalOutputFolder.current
-    return remember(toolId, folder, context) { ToolOutputs(toolId, folder, context) }
+    return remember(toolId, context) { ToolOutputs(toolId, context) }
 }
 
 /**
@@ -512,7 +502,9 @@ fun ToolCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
  * A tool screen with its rank-1 [action] (T1, [actionEnabled]) pinned full width at the bottom (2b), so no text size scrolls it away; the
  * [content] above it scrolls, or with [scroll] false fills the space and scrolls itself (a lazy grid of pages). A tool with a second way
  * to save ([secondary], T2) shows it beside the action, the two one height. A tool that saves one new PDF says so in a line over the action
- * ([savesNewPdf], R6).
+ * ([savesNewPdf], R6). An action that saves through [save] gets "Save elsewhere…" (T3) under it, which runs it with the system picker. When
+ * pinning that would leave the content less than half the window (large text on a short phone), or over a page grid at large text, it goes to the
+ * end of the scrolling content instead, or under a page grid's file card ([LocalSaveElsewhere]), so every page stays in reach (rule 10).
  */
 @Composable
 fun ToolConfigLayout(
@@ -524,12 +516,33 @@ fun ToolConfigLayout(
     scroll: Boolean = true,
     secondary: ToolAction? = null,
     savesNewPdf: Boolean = false,
+    save: SaveTarget? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val density = LocalDensity.current
+    val window = LocalWindowInfo.current.containerSize.height
+    var total by remember { mutableIntStateOf(0) }
+    var bar by remember { mutableIntStateOf(0) }
+    val slot = remember { SaveElsewhereSlot() }
+    // Judged with the button pinned, wherever it is now, so the choice never flips back and forth.
+    val t3 = with(density) { TargetStep.ACT.hit.roundToPx() }
+    val pinnedBar = if (slot.inContent) bar + t3 else bar
+    // A page grid at large text needs room for a whole page, which half the window may not give (a page in one column is taller).
+    val squeezed = total - pinnedBar < window / 2 || !scroll && density.fontScale >= LARGE_TEXT
+    val inContent = save != null && total > 0 && (scroll || slot.claimed) && squeezed
+    SideEffect { slot.inContent = inContent }
+    val elsewhere: @Composable () -> Unit = {
+        if (save != null) SaveElsewhereButton(onClick = { save.elsewhere(onAction) }, enabled = actionEnabled, modifier = Modifier.padding(vertical = 8.dp))
+    }
     // Above the keyboard, so a text field never hides the action (the window draws edge to edge).
-    Column(modifier.fillMaxSize().imePadding()) {
-        Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier), content = content)
-        ToolActionBar {
+    Column(modifier.fillMaxSize().imePadding().onSizeChanged { total = it.height }) {
+        CompositionLocalProvider(LocalSaveElsewhere provides slot.takeIf { save != null }?.also { it.content = elsewhere }) {
+            Column(Modifier.weight(1f).fillMaxWidth().then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)) {
+                content()
+                if (inContent && scroll) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { elsewhere() }
+            }
+        }
+        ToolActionBar(bottom = if (save != null && !inContent) 0.dp else 20.dp, modifier = Modifier.onSizeChanged { bar = it.height }) {
             if (savesNewPdf) {
                 Text(
                     stringResource(R.string.tool_saves_new_pdf),
@@ -551,19 +564,43 @@ fun ToolConfigLayout(
                     )
                 }
             }
+            if (save != null && !inContent) {
+                SaveElsewhereButton(onClick = { save.elsewhere(onAction) }, enabled = actionEnabled, modifier = Modifier.align(Alignment.CenterHorizontally))
+            }
         }
     }
 }
 
+/**
+ * Where [ToolConfigLayout] keeps its "Save elsewhere…" when the bar cannot: a page grid that can show it under its header [claimed] it while
+ * composing, and shows [content] while [inContent].
+ */
+class SaveElsewhereSlot internal constructor() {
+    var claimed by mutableStateOf(false)
+        internal set
+    var inContent by mutableStateOf(false)
+        internal set
+    internal var content: @Composable () -> Unit = {}
+}
+
+/** The [SaveElsewhereSlot] of the tool screen around a lazy page grid, which shows its button under its header when it moves there. */
+val LocalSaveElsewhere = staticCompositionLocalOf<SaveElsewhereSlot?> { null }
+
+/** The text scale from which a page grid keeps its tool's Save elsewhere after its last page, so a whole page always fits in view. */
+private const val LARGE_TEXT = 1.5f
+
 /** A second action of a tool screen: [label], [onClick], and whether it is [enabled]. */
 class ToolAction(val label: String, val enabled: Boolean = true, val onClick: () -> Unit)
 
-/** The strip under a tool screen that holds its pinned actions: a top rule, then [content] on the background. */
+/**
+ * The strip under a tool screen that holds its pinned actions: a top rule, then [content] on the background, [bottom] over its lower edge
+ * (none under a T3, whose own margin and hit area take that room, so the bar costs the screen as little as it can).
+ */
 @Composable
-fun ToolActionBar(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+fun ToolActionBar(modifier: Modifier = Modifier, bottom: Dp = 20.dp, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp), content = content)
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = bottom), content = content)
     }
 }
 

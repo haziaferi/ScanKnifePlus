@@ -17,6 +17,7 @@ import androidx.core.graphics.scale
 import androidx.exifinterface.media.ExifInterface
 import com.haziaferi.scanknifeplus.scan.capture.ImageCodec
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.paperknifeplus.app.R
 import com.paperknifeplus.app.data.image.PdDocumentPool
 import com.paperknifeplus.app.ui.theme.AppPalette
@@ -168,8 +169,13 @@ object BitmapPool {
     }
 }
 
+/** The name and size of the file at [uri]: read from the file for one kept in the app, else as its provider reports them. Blocking. */
 @SuppressLint("Range")
 fun getUriDetails(context: Context, uri: Uri): UriDetails {
+    SavedFiles.of(context).fileOf(uri)?.let { file ->
+        val length = file.length()
+        return UriDetails(file.name, formatSize(length), length)
+    }
     var name = "Document.pdf"
     var size = context.getString(R.string.tool_unknown_size)
     var bytes: Long = 0

@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import android.content.Context
 import android.net.Uri
 import androidx.activity.ComponentActivity
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import com.haziaferi.scanknifeplus.ocr.OcrLanguage
@@ -91,7 +93,7 @@ class SearchableViewTest {
         rule.onNodeWithText("2 pages read.").assertExists()
         val text = PDDocument.load(output).use { PDFTextStripper().getText(it) }
         assertTrue(text, "page 1" in text && "page 2" in text)
-        assertEquals("searchable", SessionManager.history.first().toolId)
+        assertEquals("searchable", SavedFiles.of(context).entries().first().tool)
         assertEquals(1, engine.closes)
     }
 
@@ -102,9 +104,9 @@ class SearchableViewTest {
         rule.assertOneChoice(listOf("Automatic", "Tables", "Receipts"))
         rule.segment("English").assertIsSelected()
         rule.segment("Automatic").assertIsSelected()
-        rule.segment("Italian").performClick().assertIsSelected()
+        rule.segment("Italian").performScrollTo().performClick().assertIsSelected()
         rule.segment("English").assertIsNotSelected()
-        rule.segment("Tables").performClick().assertIsSelected()
+        rule.segment("Tables").performScrollTo().performClick().assertIsSelected()
         rule.segment("Automatic").assertIsNotSelected()
 
         rule.onNodeWithText("Make searchable").performClick()
@@ -128,7 +130,7 @@ class SearchableViewTest {
         assertEquals(1, engine.cancels)
         assertEquals(1, engine.reads.size)
         assertFalse(output.exists())
-        assertTrue(SessionManager.history.isEmpty())
+        assertTrue(SavedFiles.of(context).entries().isEmpty())
     }
 
     @Test

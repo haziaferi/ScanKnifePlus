@@ -1,7 +1,6 @@
 package com.haziaferi.scanknifeplus.scan.export
 
 import android.net.Uri
-import android.os.Looper
 import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.capture.ImageSource
@@ -13,6 +12,8 @@ import com.haziaferi.scanknifeplus.scanner.cv.Quad
 import com.haziaferi.scanknifeplus.scanner.export.ExportQuality
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
 import com.haziaferi.scanknifeplus.scanner.filter.Filter
+import com.haziaferi.scanknifeplus.storage.SavedFiles
+import com.haziaferi.scanknifeplus.storage.SavedPlace
 import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
 import com.paperknifeplus.app.ui.components.SessionManager
 import java.io.File
@@ -25,7 +26,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
-import org.robolectric.Shadows.shadowOf
 
 /**
  * Which files a PDF is built from and how the work folder is handled. The fake assembler records the contents of the pages it was given, and
@@ -220,15 +220,15 @@ class ScanPdfExporterTest {
     }
 
     @Test
-    fun `a saved PDF is added to History on the main thread`() {
-        val saved = SavedPdf(Uri.fromFile(File(root, "Invoice.pdf")), 2)
+    fun `a saved PDF is listed among the saved files, as a scan saved elsewhere`() {
+        val saved = SavedPdf(Uri.fromFile(File(root, "Invoice.pdf")), 2, scan = "doc-1")
         ScanExport.addToHistory(RuntimeEnvironment.getApplication(), saved)
-        assertEquals(0, SessionManager.history.size) // posted, not yet run
-        shadowOf(Looper.getMainLooper()).idle()
-        val entry = SessionManager.history.single()
-        assertEquals(SCAN_ENTRY_TOOL, entry.toolId)
-        assertEquals("2 pages", entry.size)
+        val entry = SavedFiles.of(RuntimeEnvironment.getApplication()).entries().single()
+        assertEquals(SCAN_ENTRY_TOOL, entry.tool)
+        assertEquals(SavedPlace.ELSEWHERE, entry.place)
         assertEquals(saved.uri, entry.uri)
-        assertEquals(2, entry.pageCount)
+        assertEquals(2, entry.pages)
+        assertNull("only a scan's PDF kept in the app keeps its scan", entry.scan)
+        assertTrue(SessionManager.history.isEmpty())
     }
 }

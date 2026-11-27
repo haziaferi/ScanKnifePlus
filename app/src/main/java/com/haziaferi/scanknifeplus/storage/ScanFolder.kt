@@ -313,18 +313,51 @@ class ScanFolder(
         binding.confirmed != WorkingCopies.sha256(stored.bytes)
     }
 
-    /** Copies a tool output the user already saved elsewhere to the top level as [name] (or `<base>-2<ext>` and so on), creating it only. */
+    /** Copies a saved file, such as one kept in the app, to the top level as [name] (or `<base>-2<ext>` and so on), creating it only. */
     @WorkerThread
     fun copyOutput(name: String, open: () -> InputStream): WriteResult = synchronized(LOCK) {
         if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return WriteResult.Failed
         try {
             val top = store.list(store.rootId)
-            val free = FolderNames.free(name) { n -> top.any { it.name.equals(n, ignoreCase = true) } }
+            val free = FolderNames.free(FolderNames.fit(name)) { n -> top.any { it.name.equals(n, ignoreCase = true) } }
             writeNew(store.rootId, free, top) { out -> open().use { it.copyTo(out) } }
             WriteResult.Written(free, emptyList())
         } catch (e: IOException) {
             Log.w(TAG, "Copying the output $name failed", e)
             if (store.isAvailable()) WriteResult.Failed else WriteResult.FolderUnavailable
+        }
+    }
+
+    /**
+     * Creates an empty file at the top level for a tool output named [name] (or `<base>-2<ext>` and so on when that is taken), which the tool
+     * then writes; a name the provider changed on the way is kept, as it never replaces a file. Null when it cannot be created.
+     */
+    @WorkerThread
+    fun createOutput(name: String): FolderFile? = synchronized(LOCK) {
+        if (!FolderNames.isSafe(name) || FolderNames.isHidden(name)) return null
+        try {
+            val top = store.list(store.rootId)
+            fileOf(store.createFile(store.rootId, FolderNames.free(FolderNames.fit(name)) { n -> top.any { it.name.equals(n, ignoreCase = true) } }))
+        } catch (e: IOException) {
+            Log.w(TAG, "Creating the output $name failed", e)
+            null
+        }
+    }
+
+    /**
+     * The top-level file named exactly [name] if it holds just what [local] holds: the same size, measured from the file, and the same
+     * SHA-256. Null when there is none, it differs, or the folder cannot be read.
+     */
+    @WorkerThread
+    fun holds(name: String, local: File): FolderFile? = synchronized(LOCK) {
+        try {
+            val entry = store.list(store.rootId).firstOrNull { it.name == name && !it.isFolder } ?: return null
+            if (store.sizeOf(entry.id) != local.length()) return null
+            val same = store.openRead(entry.id).use(WorkingCopies::sha256) == local.inputStream().use(WorkingCopies::sha256)
+            fileOf(entry).takeIf { same }
+        } catch (e: IOException) {
+            Log.w(TAG, "Cannot compare $name", e)
+            null
         }
     }
 

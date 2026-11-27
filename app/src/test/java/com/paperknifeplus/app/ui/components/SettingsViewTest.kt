@@ -91,7 +91,7 @@ class SettingsViewTest {
         var opened = 0
         show(onFolder = { opened++ })
         rule.onNodeWithText("Not chosen").performClick()
-        rule.onNodeWithText("Not chosen · each file is saved with the picker").assertExists()
+        rule.onNodeWithText("Not chosen · files are kept in the app").assertExists()
         rule.onNodeWithText("Choose folder").performClick()
         assertEquals(1, opened)
     }
@@ -126,7 +126,7 @@ class SettingsViewTest {
         assertTrue(SessionManager.history.isNotEmpty())
 
         rule.onNodeWithText("Clear history").performClick()
-        rule.onNodeWithText("Wipe everything").performClick()
+        rule.onNodeWithText("Clear list").performClick()
         assertTrue(SessionManager.history.isEmpty())
         rule.onNodeWithText("Clear history?").assertDoesNotExist()
     }

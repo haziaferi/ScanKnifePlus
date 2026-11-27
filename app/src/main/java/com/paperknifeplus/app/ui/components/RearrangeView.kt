@@ -127,9 +127,9 @@ fun RearrangeView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = sourceUri
-        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || selectedUri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val order = pageOrder
@@ -182,6 +182,7 @@ fun RearrangeView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.action_save_pdf),
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-reordered", "pdf")) },
                             scroll = false

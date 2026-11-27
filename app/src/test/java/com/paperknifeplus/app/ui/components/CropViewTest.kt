@@ -1,5 +1,6 @@
 package com.paperknifeplus.app.ui.components
 
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import android.content.Context
 import android.net.Uri
 import androidx.activity.ComponentActivity
@@ -261,9 +262,7 @@ class CropViewTest {
             assertEquals(listOf(false, true, false, true, true), cropped)
             assertBox(listOf(153f, 0f, 612f, 792f), doc.getPage(1).cropBox)
         }
-        val entry = SessionManager.history.single()
-        assertEquals("crop", entry.toolId)
-        assertEquals("3 pages cropped", entry.size)
+        assertEquals("crop", SavedFiles.of(context).entries().single().tool)
     }
 
     @Test

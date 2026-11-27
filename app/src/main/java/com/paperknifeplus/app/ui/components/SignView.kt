@@ -189,9 +189,9 @@ fun SignView(
         }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val signatures = placedSignatures
@@ -224,9 +224,10 @@ fun SignView(
 
     var selectedSignatureFile by remember { mutableStateOf<File?>(null) }
 
-    val exportSignatureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+    // An export of a saved signature, not an output: always where the picker says, and not listed in History.
+    val exportSignatureLauncher = rememberSaveTarget("image/png") { uri ->
         val fileToExport = selectedSignatureFile
-        if (uri == null || fileToExport == null) return@rememberLauncherForActivityResult
+        if (uri == null || fileToExport == null) return@rememberSaveTarget
         scope.launch { Toast.makeText(context, exportSignature(context, fileToExport, uri), Toast.LENGTH_SHORT).show() }
     }
 
@@ -317,6 +318,7 @@ fun SignView(
                     ToolState.CONFIGURING -> {
                         val hasSigned = placedSignatures.isNotEmpty()
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = if (hasSigned) stringResource(R.string.action_save_pdf) else stringResource(R.string.sign_select_a_page_to_sign),
                             onAction = { if (hasSigned) saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-signed", "pdf")) },
                             actionEnabled = hasSigned,
@@ -484,6 +486,14 @@ fun SignView(
                                         Text(stringResource(R.string.action_save), style = MaterialTheme.typography.labelLarge)
                                     }
                                 }
+                                // Under the page view's Save too, as under the screen's own (ledger L8).
+                                SaveElsewhereButton(
+                                    onClick = {
+                                        lightboxPage = null
+                                        saveLauncher.launchElsewhere(outputFileName(pdfBaseName(fileName) + "-signed", "pdf"))
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         }
                     }
@@ -521,7 +531,7 @@ fun SignView(
                                     IconButton(
                                         onClick = {
                                             selectedSignatureFile = file
-                                            exportSignatureLauncher.launch(outputFileName("signature_${System.currentTimeMillis()}", "png"))
+                                            exportSignatureLauncher.launchElsewhere(outputFileName("signature_${System.currentTimeMillis()}", "png"))
                                         },
                                     ) {
                                         Icon(

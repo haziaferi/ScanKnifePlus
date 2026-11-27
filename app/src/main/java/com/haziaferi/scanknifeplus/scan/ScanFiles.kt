@@ -8,7 +8,8 @@ import java.util.UUID
 
 /**
  * Where the document scanner keeps its files, all in app-private storage: the scan library under `files/scans/` and its work folders under
- * `cache/`. The FileProvider exposes only the share copies in `cache/shared/` (res/xml/scan_file_paths.xml).
+ * `cache/`. Of these the FileProvider exposes only the share copies in `cache/shared/` (res/xml/scan_file_paths.xml), beside the files kept in
+ * the app (SavedFiles).
  */
 object ScanFiles {
     private const val SHARE_FOLDER = "shared"
@@ -52,6 +53,6 @@ object ScanFiles {
     /** The FileProvider authority declared in the manifest (`${applicationId}.fileprovider`). */
     fun authority(context: Context): String = "${context.packageName}.fileprovider"
 
-    /** A content URI other apps can read once granted; throws IllegalArgumentException for a file outside [shareDir]. */
+    /** A content URI other apps can read once granted; throws IllegalArgumentException for a file outside [shareDir] and SavedFiles' folder. */
     fun contentUri(context: Context, file: File): Uri = FileProvider.getUriForFile(context, authority(context), file)
 }

@@ -50,10 +50,10 @@ class FolderScreensTest {
         setup(scans = 3, onChoose = { chosen++ }, onNotNow = { later++ })
         rule.onNodeWithText("Choose where your documents live").assertExists()
         rule.onNodeWithText("Nothing is uploaded by the app", substring = true).assertExists()
-        rule.onNodeWithText("Scan sources/ · pages you can edit later").assertExists()
+        rule.onNodeWithText("Scan sources/Example scan/ · pages you can edit later").assertExists()
         rule.onNodeWithText("The 3 scans already on this phone will be copied into the folder. Existing files are never overwritten.").assertExists()
         rule.onNodeWithText("Choose folder").performClick()
-        rule.onNodeWithText("Not now · save each file with the picker").performClick()
+        rule.onNodeWithText("Not now · keep files in the app").performClick()
         assertEquals(1, chosen)
         assertEquals(1, later)
     }
@@ -92,7 +92,7 @@ class FolderScreensTest {
         assertEquals("a picker that has not answered ends nothing", 0, done)
 
         assertTrue(folder.offersSetup)
-        rule.onNodeWithText("Not now · save each file with the picker").performClick()
+        rule.onNodeWithText("Not now · keep files in the app").performClick()
         assertEquals(1, done)
         assertFalse(folder.offersSetup)
     }
@@ -108,7 +108,7 @@ class FolderScreensTest {
         assertEquals(1, opened)
 
         status.value = FolderStatus.NotChosen
-        rule.onNodeWithText("Choose a folder").assertExists()
+        rule.onNodeWithText("Saved in the app until you choose a folder").assertExists()
         rule.onNodeWithText("Change").assertDoesNotExist()
 
         status.value = FolderStatus.ChooseAgain("Documents/Scans")
@@ -125,7 +125,7 @@ class FolderScreensTest {
 
     @Test
     @GraphicsMode(GraphicsMode.Mode.NATIVE) // Real text measurement, so text wraps.
-    fun `at 2x text the folder bar wraps its text and keeps Change beside it`() {
+    fun `at 2x text the folder bar wraps its text and keeps Change clear of it, beside or under it`() {
         rule.setContent {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)) {
                 FolderBar(FolderStatus.Ready("Documents/Scans/Receipts and letters"), onClick = {})
@@ -133,7 +133,7 @@ class FolderScreensTest {
         }
         val text = rule.onNodeWithText("Saving to Documents/Scans/Receipts and letters", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val change = rule.onNodeWithText("Change", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("Change overlaps the text", text.right <= change.left)
+        assertTrue("Change overlaps the text", text.right <= change.left || text.bottom <= change.top)
         assertTrue("the text wraps instead of clipping", text.height > change.height)
     }
 }

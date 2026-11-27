@@ -83,9 +83,9 @@ fun ExtractImagesView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/zip") { uri ->
         val source = selectedUri
-        if (uri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val password = unlockPassword
@@ -145,6 +145,7 @@ fun ExtractImagesView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.extract_images_extract_images_zip),
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-assets", "zip")) }
                         ) {

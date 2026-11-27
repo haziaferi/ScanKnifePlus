@@ -98,8 +98,6 @@
     <string name="scan_password">Password (facoltativa)</string>
     <string name="scan_password_hint">Lascia vuoto per salvare senza password.</string>
     <string name="scan_password_invalid">Questa password non può proteggere un PDF. Togli i caratteri di controllo.</string>
-    <string name="scan_save_where">Subito dopo scegli la cartella e il nome del file.</string>
-    <string name="scan_save_choose">Scegli dove salvare</string>
     <string name="scan_save_failed">Non è stato possibile salvare il PDF. Riprova.</string>
     <string name="scan_leave_title">Salvare la scansione?</string>
     <plurals name="scan_leave_body">
@@ -152,7 +150,7 @@
 
     <!-- History -->
     <string name="history_title">Cronologia</string>
-    <string name="history_subtitle">File creati in questa sessione</string>
+    <string name="history_subtitle">I tuoi file salvati</string>
     <string name="history_filter_all">Tutti</string>
     <string name="history_filter_scans">Scansioni</string>
     <string name="history_filter_tools">Strumenti</string>
@@ -228,28 +226,40 @@
     <string name="folder_setup_title">Scegli dove tenere i tuoi documenti</string>
     <string name="folder_setup_body">ScanKnife+ tiene ogni PDF come un normale file in una cartella scelta da te, così Syncthing o qualunque app di sincronizzazione può portarlo sugli altri tuoi dispositivi. L\'app non carica niente online.</string>
     <string name="folder_setup_preview_folder">La tua cartella</string>
-    <string name="folder_setup_preview_scan">scanknife-scan-2026-10-15-143205.pdf</string>
-    <string name="folder_setup_preview_tool">Dichiarazione dei redditi 2025 unita.pdf</string>
-    <string name="folder_setup_preview_sources">Scan sources/ · pagine che puoi modificare in seguito</string>
+    <string name="folder_setup_example">Esempio</string>
+    <string name="folder_setup_preview_scan">Scansione di esempio.pdf</string>
+    <string name="folder_setup_preview_tool">Unione di esempio.pdf</string>
+    <string name="folder_setup_preview_sources">Scan sources/Scansione di esempio/ · pagine che puoi modificare in seguito</string>
     <plurals name="folder_setup_copy">
         <item quantity="one">La scansione già presente su questo telefono verrà copiata nella cartella. I file esistenti non vengono mai sovrascritti.</item>
         <item quantity="many">Le %d scansioni già presenti su questo telefono verranno copiate nella cartella. I file esistenti non vengono mai sovrascritti.</item>
         <item quantity="other">Le %d scansioni già presenti su questo telefono verranno copiate nella cartella. I file esistenti non vengono mai sovrascritti.</item>
     </plurals>
+    <plurals name="folder_setup_move">
+        <item quantity="one">Il file conservato nell\'app verrà spostato nella cartella.</item>
+        <item quantity="many">I %d file conservati nell\'app verranno spostati nella cartella.</item>
+        <item quantity="other">I %d file conservati nell\'app verranno spostati nella cartella.</item>
+    </plurals>
     <string name="folder_setup_failed">ScanKnife+ non può salvare in quella cartella. Scegline una in cui può scrivere.</string>
     <string name="folder_setup_choose">Scegli la cartella</string>
-    <string name="folder_setup_not_now">Non ora · salva ogni file con il selettore</string>
+    <string name="folder_setup_not_now">Non ora · conserva i file nell\'app</string>
     <string name="folder_setup_later">Non ora</string>
     <string name="folder_setup_keep">Mantieni la cartella attuale</string>
     <string name="folder_bar_saving">Salva in %1$s</string>
     <string name="folder_bar_change">Cambia</string>
-    <string name="folder_bar_choose">Scegli una cartella</string>
+    <string name="folder_bar_in_app">I file restano nell\'app finché non scegli una cartella</string>
+    <string name="folder_bar_move">Sposta nella cartella</string>
     <string name="folder_bar_unreachable">Impossibile raggiungere %1$s</string>
     <string name="folder_bar_choose_again">Scegli di nuovo</string>
     <plurals name="folder_bar_copying">
         <item quantity="one">Copia di %1$d scansione in %2$s…</item>
         <item quantity="many">Copia di %1$d scansioni in %2$s…</item>
         <item quantity="other">Copia di %1$d scansioni in %2$s…</item>
+    </plurals>
+    <plurals name="folder_bar_moving">
+        <item quantity="one">Spostamento di %1$d file in %2$s…</item>
+        <item quantity="many">Spostamento di %1$d file in %2$s…</item>
+        <item quantity="other">Spostamento di %1$d file in %2$s…</item>
     </plurals>
     <plurals name="folder_conflicts_kept">
         <item quantity="one">Risolto %d conflitto di sincronizzazione nella cartella. L\'altra versione è conservata come copia in conflitto in Cronologia.</item>
@@ -276,6 +286,21 @@
         <item quantity="many">Copia interrotta: la cartella non è raggiungibile. %d scansioni restano su questo telefono; la copia riprova al prossimo avvio.</item>
         <item quantity="other">Copia interrotta: la cartella non è raggiungibile. %d scansioni restano su questo telefono; la copia riprova al prossimo avvio.</item>
     </plurals>
+    <plurals name="folder_moved">
+        <item quantity="one">%d file spostato nella cartella.</item>
+        <item quantity="many">%d file spostati nella cartella.</item>
+        <item quantity="other">%d file spostati nella cartella.</item>
+    </plurals>
+    <plurals name="folder_move_failed">
+        <item quantity="one">Non è stato possibile spostare %d file nella cartella. Resta nell\'app; lo spostamento riprova al prossimo avvio.</item>
+        <item quantity="many">Non è stato possibile spostare %d file nella cartella. Restano nell\'app; lo spostamento riprova al prossimo avvio.</item>
+        <item quantity="other">Non è stato possibile spostare %d file nella cartella. Restano nell\'app; lo spostamento riprova al prossimo avvio.</item>
+    </plurals>
+    <plurals name="folder_move_stopped">
+        <item quantity="one">Spostamento interrotto: la cartella non è raggiungibile. %d file resta nell\'app; lo spostamento riprova al prossimo avvio.</item>
+        <item quantity="many">Spostamento interrotto: la cartella non è raggiungibile. %d file restano nell\'app; lo spostamento riprova al prossimo avvio.</item>
+        <item quantity="other">Spostamento interrotto: la cartella non è raggiungibile. %d file restano nell\'app; lo spostamento riprova al prossimo avvio.</item>
+    </plurals>
     <string name="scan_folder_blocked_title">Impossibile raggiungere la cartella</string>
     <string name="scan_folder_blocked_body">ScanKnife+ non ha più accesso a %1$s, quindi per ora il PDF non può essere salvato lì. Le pagine sono conservate. Scegli di nuovo la cartella, oppure salva questo PDF altrove con il selettore.</string>
     <string name="scan_folder_blocked_choose">Scegli di nuovo la cartella</string>
@@ -290,7 +315,7 @@
     <string name="history_empty_conflicts">Nessuna copia in conflitto. Qui compaiono le versioni conservate dopo un conflitto di sincronizzazione.</string>
     <string name="history_reading">Lettura della cartella…</string>
     <string name="history_unreadable_title">Impossibile leggere la cartella</string>
-    <string name="history_unreadable_body">ScanKnife+ non ha più accesso a %1$s, quindi per ora la Cronologia non può elencarne i file. I file sono ancora lì, e la scansione e gli strumenti continuano a funzionare; per salvare devi prima scegliere di nuovo la cartella.</string>
+    <string name="history_unreadable_body">ScanKnife+ non ha più accesso a %1$s, quindi per ora la Cronologia non può elencarne i file. I file sono ancora lì. Finché non scegli di nuovo la cartella, gli strumenti salvano nell\'app e il PDF delle scansioni resta in attesa.</string>
     <string name="history_choose_again">Scegli di nuovo la cartella</string>
     <string name="history_tag_scan">Scansione</string>
     <string name="history_tag_tool">Da strumento</string>
@@ -301,9 +326,12 @@
     <string name="history_search">Cerca nei nomi dei file</string>
     <string name="history_search_clear">Cancella la ricerca</string>
     <string name="history_search_empty">Nessun nome di file contiene “%1$s”.</string>
+    <string name="history_delete">Elimina</string>
+    <string name="history_delete_title">Eliminare questo file?</string>
+    <string name="history_delete_body">“%1$s” è conservato solo nell\'app. L\'operazione non si può annullare.</string>
     <string name="home_recent_folder">Recenti nella tua cartella</string>
     <string name="settings_folder">Cartella</string>
-    <string name="settings_folder_none">Non scelta · ogni file si salva con il selettore</string>
+    <string name="settings_folder_none">Non scelta · i file restano nell\'app</string>
     <string name="settings_folder_unreachable">Impossibile raggiungere %1$s · sceglila di nuovo</string>
 
     <!-- Tool screens -->
@@ -315,7 +343,11 @@
     <string name="tool_done_in">Fatto in %1$s</string>
     <string name="tool_process_more">Elabora altri file</string>
     <string name="tool_back_to_tools">Torna agli strumenti</string>
-    <string name="tool_copy_failed">Salvato nell\'app. Non è stato possibile accedere alla tua cartella.</string>
+    <string name="tool_saved_in_app">Impossibile raggiungere la cartella, quindi il file è stato salvato nell\'app. Verrà spostato nella cartella quando la sceglierai di nuovo.</string>
+    <string name="tool_saved_in_app_later">Impossibile salvare nella cartella, quindi il file è stato salvato nell\'app. Verrà spostato nella cartella alla prossima apertura dell\'app.</string>
+    <string name="folder_list_rebuilt">Non è stato possibile leggere l\'elenco dei file salvati, quindi è stato ricreato dai file conservati nell\'app. Potrebbero mancare i file salvati altrove.</string>
+    <string name="tool_save_elsewhere">Salva altrove…</string>
+    <string name="tool_result_in_app">Nell\'app</string>
     <string name="tool_step_choose_pdf">Scegli un PDF</string>
     <string name="tool_step_choose_pdfs">Scegli i PDF</string>
     <string name="tool_step_choose_images">Scegli le immagini</string>
@@ -374,9 +406,9 @@
     <string name="settings_about_app">Informazioni su %1$s</string>
     <string name="settings_version">%1$s V%2$s</string>
     <string name="settings_clear_history_title">Cancellare la cronologia?</string>
-    <string name="settings_clear_history_confirm_body">Tutte le voci della scheda Cronologia verranno rimosse per sempre. L\'operazione non si può annullare.</string>
-    <string name="settings_clear_history_confirm">Cancella tutto</string>
-    <string name="settings_history_cleared">Cronologia cancellata</string>
+    <string name="settings_clear_history_confirm_body">Toglie da questo elenco i file salvati altrove. I file restano dove li hai salvati e quelli conservati nell\'app rimangono nell\'elenco.</string>
+    <string name="settings_clear_history_confirm">Svuota l\'elenco</string>
+    <string name="settings_history_cleared">Elenco svuotato</string>
     <string name="settings_value_not_chosen">Non scelta</string>
     <string name="settings_value_not_set">Non impostato</string>
 

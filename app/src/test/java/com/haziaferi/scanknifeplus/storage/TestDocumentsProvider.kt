@@ -47,6 +47,7 @@ class TestDocumentsProvider : DocumentsProvider() {
         val file = fileOf(documentId)
         val target = unique(file.parentFile!!, displayName, file.isDirectory)
         if (!file.renameTo(target)) throw FileNotFoundException(documentId)
+        if (target.name == growOnRename) target.appendText("+")
         return documentId.substringBeforeLast('/') + "/" + target.name
     }
 
@@ -109,12 +110,16 @@ class TestDocumentsProvider : DocumentsProvider() {
         /** Report folders as not accepting new files, as a read-only volume does. */
         var readOnly = false
 
+        /** A file renamed into this name gains a byte, as a provider that changes a file after its write would: its size no longer matches. */
+        var growOnRename: String? = null
+
         /** Registers a provider serving [folder] with Robolectric's ContentResolver. */
         fun install(folder: File) {
             base = folder
             emptyForMissing = false
             crash = false
             readOnly = false
+            growOnRename = null
             val info = ProviderInfo().apply {
                 authority = AUTHORITY
                 exported = true

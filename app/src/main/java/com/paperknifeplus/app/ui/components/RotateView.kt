@@ -92,9 +92,9 @@ fun RotateView(
         uri?.let { handleFileSelection(it) }
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
         val source = sourceUri
-        if (uri == null || selectedUri == null || source == null) return@rememberLauncherForActivityResult
+        if (uri == null || selectedUri == null || source == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val rotations = pageRotations
@@ -147,6 +147,7 @@ fun RotateView(
                     }
                     ToolState.CONFIGURING -> {
                         ToolConfigLayout(
+                            save = saveLauncher,
                             action = stringResource(R.string.action_save_pdf),
                             onAction = { saveLauncher.launch(outputFileName(pdfBaseName(fileName) + "-rotated", "pdf")) },
                             scroll = false

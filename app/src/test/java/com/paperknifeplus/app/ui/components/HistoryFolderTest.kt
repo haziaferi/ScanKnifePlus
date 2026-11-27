@@ -143,7 +143,7 @@ class HistoryFolderTest {
             SessionManager.addEntry("merged.pdf", "merge", "2 files", Icons.Filled.Description)
         }
         history(null)
-        rule.onNodeWithText("Files made in this session").assertExists()
+        rule.onNodeWithText("Your saved files").assertExists()
         rule.onNodeWithText("Conflicts").assertDoesNotExist()
         rule.onNode(hasSetTextAction()).performTextInput("scan")
         rule.onNodeWithText("scan.pdf").assertExists()

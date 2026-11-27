@@ -4,13 +4,8 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.util.Log
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DocumentScanner
 import com.haziaferi.scanknifeplus.ocr.OcrPage
 import com.haziaferi.scanknifeplus.scan.ScanFiles
 import com.haziaferi.scanknifeplus.scan.library.ScanDocument
@@ -18,20 +13,21 @@ import com.haziaferi.scanknifeplus.scan.library.ScanLibrary
 import com.haziaferi.scanknifeplus.scanner.export.ExportNames
 import com.haziaferi.scanknifeplus.scanner.export.ExportQuality
 import com.haziaferi.scanknifeplus.scanner.export.PdfPageSize
+import com.haziaferi.scanknifeplus.storage.SavedFiles
 import com.paperknifeplus.app.ui.components.SCAN_ENTRY_TOOL
-import com.paperknifeplus.app.ui.components.SessionManager
+import com.paperknifeplus.app.ui.components.deleteCreatedDocument
 import com.paperknifeplus.app.ui.components.getUriDetails
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
 
-/** A PDF saved where the user chose: [uri] as the system file picker returned it, holding [pages] pages. */
-data class SavedPdf(val uri: Uri, val pages: Int)
+/** A PDF of scan [scan] saved at [uri] (a file kept in the app, or where the system file picker put it), holding [pages] pages. */
+data class SavedPdf(val uri: Uri, val pages: Int, val scan: String? = null)
 
 /**
- * The two ways a scan leaves the app, kept apart as in OpenScan: [save] writes where the user picked with the system file picker (never a
- * hard-coded Downloads folder) and records the PDF in History, and [share] writes a throwaway copy under `cache/shared/` for a share sheet.
- * Both block.
+ * The two ways a scan leaves the app, kept apart as in OpenScan: [save] writes into a file kept in the app or one the user picked with the
+ * system file picker (never a hard-coded Downloads folder) and records the PDF in History, and [share] writes a throwaway copy under
+ * `cache/shared/` for a share sheet. Both block.
  */
 class ScanExport(
     private val context: Context,
@@ -59,9 +55,9 @@ class ScanExport(
     }
 
     /**
-     * Writes document [id] (only [pageIds] if given) into [dest], a document the system file picker just created, and adds it to History; a
-     * [password] encrypts it as in [ScanPdfExporter.writePdf], and pages read in [text] get their text layer. Returns what was saved, or null on
-     * failure, in which case the empty document the picker created is deleted again.
+     * Writes document [id] (only [pageIds] if given) into [dest], a file just created in the app or by the system file picker, and adds it to
+     * History; a [password] encrypts it as in [ScanPdfExporter.writePdf], and pages read in [text] get their text layer. Returns what was
+     * saved, or null on failure, in which case the empty file is deleted again.
      */
     fun save(
         id: String,
@@ -81,12 +77,12 @@ class ScanExport(
             drop(dest)
             return null
         }
-        return SavedPdf(dest, pages).also(onSaved)
+        return SavedPdf(dest, pages, id).also(onSaved)
     }
 
     /**
-     * Writes [text] as UTF-8 into [dest], a document the system file picker just created for a scan's .txt copy; false on failure, in which case
-     * the empty document is deleted again.
+     * Writes [text] as UTF-8 into [dest], a file just created (in the app or by the system file picker) for a scan's .txt copy; false on
+     * failure, in which case the empty file is deleted again.
      */
     fun saveText(dest: Uri, text: String): Boolean = try {
         openTruncated(dest).use { it.write(text.toByteArray(Charsets.UTF_8)) }
@@ -109,13 +105,7 @@ class ScanExport(
         } ?: resolver.openOutputStream(dest, "w")) ?: throw IOException("Cannot write to $dest")
     }
 
-    private fun drop(dest: Uri) {
-        try {
-            if (DocumentsContract.isDocumentUri(context, dest)) DocumentsContract.deleteDocument(context.contentResolver, dest)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not remove the unfinished $dest", e)
-        }
-    }
+    private fun drop(dest: Uri) = deleteCreatedDocument(context, dest)
 
     /**
      * Writes document [id] (only [pageIds] if given, encrypted for [password] if given) to a copy for sharing and returns its content URI,
@@ -168,13 +158,9 @@ class ScanExport(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        /** Adds a saved scan to the PDF tools' History. History is Compose state, so the entry is added on the main thread. */
+        /** Lists a saved scan's PDF among the saved files History shows ([SavedFiles.record]), with its scan when kept in the app. Blocking. */
         fun addToHistory(context: Context, saved: SavedPdf) {
-            val name = getUriDetails(context, saved.uri).name
-            val label = if (saved.pages == 1) "1 page" else "${saved.pages} pages"
-            Handler(Looper.getMainLooper()).post {
-                SessionManager.addEntry(name, SCAN_ENTRY_TOOL, label, Icons.Filled.DocumentScanner, saved.uri, saved.pages)
-            }
+            SavedFiles.of(context).record(saved.uri, getUriDetails(context, saved.uri).name, SCAN_ENTRY_TOOL, saved.pages, saved.scan)
         }
     }
 }

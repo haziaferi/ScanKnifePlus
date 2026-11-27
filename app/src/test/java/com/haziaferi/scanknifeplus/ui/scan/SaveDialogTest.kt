@@ -53,7 +53,7 @@ class SaveDialogTest {
         }
     }
 
-    private fun save() = rule.onNodeWithText("Choose where to save").performClick()
+    private fun save() = rule.onNodeWithText("Save scan").performClick()
 
     /** V2: a choice's heading sits nearer its own control than the group above it, so it reads as that control's. */
     @Test

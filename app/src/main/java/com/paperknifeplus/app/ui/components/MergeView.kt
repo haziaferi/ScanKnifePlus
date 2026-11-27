@@ -148,8 +148,8 @@ fun MergeView(
         handleUris(uris)
     }
 
-    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    val saveLauncher = rememberSaveTarget("application/pdf") { uri ->
+        if (uri == null) return@rememberSaveTarget
         currentState = ToolState.PROCESSING
         val startTime = System.currentTimeMillis()
         val files = selectedFiles
@@ -215,6 +215,7 @@ fun MergeView(
                         val enoughFiles = selectedFiles.size > 1
                         val allUnlocked = selectedFiles.all { !it.isLocked || it.isUnlocked }
                         ToolConfigLayout(
+                            save = saveLauncher,
                             // The disabled action says what is missing: a second file (one recent file opens Merge with one), or a password.
                             action = when {
                                 !enoughFiles -> stringResource(R.string.merge_add_another_file)
