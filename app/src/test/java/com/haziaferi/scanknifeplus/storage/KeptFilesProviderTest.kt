@@ -101,7 +101,7 @@ class KeptFilesProviderTest {
         assertEquals(KeptFilesProvider.ROOT_DOC, root[Root.COLUMN_DOCUMENT_ID])
         assertEquals("ScanKnife+", root[Root.COLUMN_TITLE])
         assertEquals("Files kept in the app", root[Root.COLUMN_SUMMARY])
-        assertEquals("*/*", root[Root.COLUMN_MIME_TYPES])
+        assertEquals("only the kept files' types", "application/pdf", root[Root.COLUMN_MIME_TYPES])
     }
 
     @Test
@@ -118,11 +118,11 @@ class KeptFilesProviderTest {
         val listed = rows(children)
         assertEquals(setOf("merged.pdf", "held.pdf"), listed.map { it[Document.COLUMN_DISPLAY_NAME] }.toSet())
         assertTrue(listed.all { it[Document.COLUMN_FLAGS] == 0L })
-        val row = listed.single { it[Document.COLUMN_DOCUMENT_ID] == merged.file }
+        val row = listed.single { it[Document.COLUMN_DOCUMENT_ID] == merged.id }
         assertEquals("application/pdf", row[Document.COLUMN_MIME_TYPE])
         assertEquals(5L, row[Document.COLUMN_SIZE])
 
-        val one = rows(doc(merged.file!!)).single()
+        val one = rows(doc(merged.id)).single()
         assertEquals(0L, one[Document.COLUMN_FLAGS])
         assertEquals("merged.pdf", one[Document.COLUMN_DISPLAY_NAME])
         val root = rows(doc(KeptFilesProvider.ROOT_DOC)).single()
@@ -133,7 +133,7 @@ class KeptFilesProviderTest {
     @Test
     fun `a kept file opens for reading and for nothing else`() {
         val merged = keep("merged.pdf", "the merged bytes")
-        val uri = doc(merged.file!!)
+        val uri = doc(merged.id)
         assertEquals("the merged bytes", resolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() })
         for (mode in listOf("w", "rw", "wt", "rwt")) refused { resolver.openFileDescriptor(uri, mode)!!.close() }
         assertEquals("the merged bytes", File(files.dir, merged.file!!).readText())
@@ -145,7 +145,8 @@ class KeptFilesProviderTest {
         File(files.dir, "loose.pdf").writeText("not listed")
         File(context.filesDir, "x").writeText("outside")
         files.create("half.pdf")!!.writeText("half")
-        for (id in listOf("../x", "..", "loose.pdf", "half.pdf", "missing.pdf")) {
+        // A kept file's own name is not its document id either: ids are its row's UUID, which can't be guessed.
+        for (id in listOf("../x", "..", "merged.pdf", "loose.pdf", "half.pdf", "missing.pdf")) {
             refused { resolver.openInputStream(doc(id))!!.close() }
             // A documents provider answers a query it refuses with no cursor.
             assertNull(id, resolver.query(doc(id), null, null, null))
@@ -154,8 +155,8 @@ class KeptFilesProviderTest {
     }
 
     @Test
-    fun `the picker hears each change, so the root comes and goes with the files`() {
-        rootRows() // the first query starts listening
+    fun `the picker hears each change from the start, so the root comes and goes with the files`() {
+        // No query first: the system picker caches the roots, so the provider must tell it of the first kept file unasked.
         val shadow = shadowOf(resolver)
         fun heard(from: Int) = shadow.notifiedUris.drop(from).map { it.uri }.toSet()
         var before = shadow.notifiedUris.size
@@ -163,9 +164,32 @@ class KeptFilesProviderTest {
         assertTrue(heard(before).containsAll(setOf(roots, children)))
         assertEquals(1, rootRows().size)
         before = shadow.notifiedUris.size
+        files.create("next.pdf")!!.writeText("half")
+        assertTrue("a save still being written changes nothing the picker shows", heard(before).intersect(setOf(roots, children)).isEmpty())
+        before = shadow.notifiedUris.size
         assertTrue(files.delete(merged.id))
         assertTrue(heard(before).containsAll(setOf(roots, children)))
         assertEquals(emptyList<Any>(), rootRows())
+    }
+
+    @Test
+    fun `a later file of the same name is a new document, so a grant for the first never opens it`() {
+        val first = keep("report-compressed.pdf", "first")
+        val firstUri = doc(first.id)
+        assertEquals("first", resolver.openInputStream(firstUri)!!.use { it.readBytes().decodeToString() })
+        assertTrue(files.delete(first.id))
+        val second = keep("report-compressed.pdf", "second")
+        assertEquals("the name is free again", first.file, second.file)
+        assertTrue(first.id != second.id)
+        refused { resolver.openInputStream(firstUri)!!.close() }
+        assertEquals("second", resolver.openInputStream(doc(second.id))!!.use { it.readBytes().decodeToString() })
+    }
+
+    @Test
+    fun `the root offers only the kept files' types, so an image picker leaves it out`() {
+        keep("merged.pdf")
+        keep("pages.zip")
+        assertEquals("application/pdf\napplication/zip", rootRows().single()[Root.COLUMN_MIME_TYPES])
     }
 
     @Test

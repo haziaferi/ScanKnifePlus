@@ -17,20 +17,32 @@ import java.net.URLConnection
 /**
  * The files kept in the app as a location of the system picker (ledger 2026-11-27), so every tool takes them, Merge's multi-select
  * included. Read only: open and copy, never write, rename or delete. Its one root shows only while a finished file is kept in the app, and
- * is local only, with no Recent and no search, so kept files never surface in another app's Recent view unasked. A document is named by
- * its file's name in `saved/`; the root's own document is [ROOT_DOC], which no safe file name can be.
+ * is local only, with no Recent and no search, so kept files never surface in another app's Recent view unasked.
+ *
+ * A document is named by its row's id, a UUID never reused, so a grant another app was given for one file never opens a later file of the
+ * same name, and no id can be guessed; the root's own document is [ROOT_DOC], which no row id can be.
  */
 class KeptFilesProvider : DocumentsProvider() {
-    // The SavedFiles this provider hears; set on the first query, not in onCreate, which must stay cheap.
+    // The SavedFiles this provider hears, and the kept rows the picker was last told of.
     @Volatile
     private var heard: SavedFiles? = null
 
-    override fun onCreate() = true
+    @Volatile
+    private var told: List<String>? = null
+
+    // Listens from the start: the system picker keeps each provider's roots until told they changed, so a provider that listened only
+    // once queried would leave the picker showing no root after the first file is kept (or a stale one after the move). Cheap: it makes
+    // the SavedFiles object and reads nothing.
+    override fun onCreate(): Boolean {
+        files()
+        return true
+    }
 
     override fun queryRoots(projection: Array<out String>?): Cursor {
         val context = context!!
         val cursor = MatrixCursor(projection ?: ROOT_COLUMNS)
-        if (kept().isNotEmpty()) {
+        val kept = kept()
+        if (kept.isNotEmpty()) {
             cursor.newRow()
                 .add(Root.COLUMN_ROOT_ID, ROOT_ID)
                 .add(Root.COLUMN_DOCUMENT_ID, ROOT_DOC)
@@ -38,7 +50,8 @@ class KeptFilesProvider : DocumentsProvider() {
                 .add(Root.COLUMN_ICON, context.applicationInfo.icon)
                 .add(Root.COLUMN_TITLE, context.getString(R.string.app_name))
                 .add(Root.COLUMN_SUMMARY, context.getString(R.string.kept_root_summary))
-                .add(Root.COLUMN_MIME_TYPES, "*/*")
+                // Only the kept files' own types, so a picker for images leaves the root out instead of listing every file greyed.
+                .add(Root.COLUMN_MIME_TYPES, kept.map { (entry, file) -> mimeOf(entry, file) }.distinct().sorted().joinToString("\n"))
         }
         cursor.setNotificationUri(context.contentResolver, DocumentsContract.buildRootsUri(authority(context)))
         return cursor
@@ -73,11 +86,9 @@ class KeptFilesProvider : DocumentsProvider() {
         return ParcelFileDescriptor.open(keptFile(documentId).second, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
-    /** The finished file kept in the app named [documentId], or FileNotFoundException for any other id. */
-    private fun keptFile(documentId: String): Pair<SavedEntry, File> {
-        if (!FolderNames.isSafe(documentId)) throw FileNotFoundException(documentId)
-        return kept().firstOrNull { it.second.name == documentId } ?: throw FileNotFoundException(documentId)
-    }
+    /** The finished file kept in the app whose row is [documentId], or FileNotFoundException for any other id. */
+    private fun keptFile(documentId: String): Pair<SavedEntry, File> =
+        kept().firstOrNull { it.first.id == documentId } ?: throw FileNotFoundException(documentId)
 
     /** The finished files kept in the app, held ones included, whose file is there; newest first, one row per file. */
     private fun kept(): List<Pair<SavedEntry, File>> {
@@ -87,7 +98,8 @@ class KeptFilesProvider : DocumentsProvider() {
             .distinctBy { it.second.name }
     }
 
-    // Heard once per SavedFiles (one per process in the app): the picker follows each change, so the root comes and goes with the files.
+    // Heard once per SavedFiles (one per process in the app). The picker is told only when the kept rows change (a save starting, a
+    // picker save or a size noted leave them as they are), and with no network sync asked.
     private fun files(): SavedFiles {
         val context = context!!
         val files = SavedFiles.of(context)
@@ -95,9 +107,13 @@ class KeptFilesProvider : DocumentsProvider() {
             synchronized(this) {
                 if (heard !== files) {
                     val authority = authority(context)
-                    files.listen {
-                        context.contentResolver.notifyChange(DocumentsContract.buildRootsUri(authority), null)
-                        context.contentResolver.notifyChange(DocumentsContract.buildChildDocumentsUri(authority, ROOT_DOC), null)
+                    files.listen { all ->
+                        val now = all.filter { it.inApp }.map { it.id }
+                        if (now != told) {
+                            told = now
+                            context.contentResolver.notifyChange(DocumentsContract.buildRootsUri(authority), null, false)
+                            context.contentResolver.notifyChange(DocumentsContract.buildChildDocumentsUri(authority, ROOT_DOC), null, false)
+                        }
                     }
                     heard = files
                 }
@@ -107,20 +123,22 @@ class KeptFilesProvider : DocumentsProvider() {
     }
 
     private fun add(cursor: MatrixCursor, entry: SavedEntry, file: File) {
-        val name = entry.name.ifBlank { file.name }
         cursor.newRow()
-            .add(Document.COLUMN_DOCUMENT_ID, file.name)
-            .add(Document.COLUMN_DISPLAY_NAME, name)
-            .add(Document.COLUMN_MIME_TYPE, URLConnection.guessContentTypeFromName(name) ?: "application/octet-stream")
+            .add(Document.COLUMN_DOCUMENT_ID, entry.id)
+            .add(Document.COLUMN_DISPLAY_NAME, entry.name.ifBlank { file.name })
+            .add(Document.COLUMN_MIME_TYPE, mimeOf(entry, file))
             .add(Document.COLUMN_SIZE, file.length())
             .add(Document.COLUMN_LAST_MODIFIED, file.lastModified())
             .add(Document.COLUMN_FLAGS, 0)
     }
 
+    private fun mimeOf(entry: SavedEntry, file: File): String =
+        URLConnection.guessContentTypeFromName(entry.name.ifBlank { file.name }) ?: "application/octet-stream"
+
     companion object {
         const val ROOT_ID = "kept"
 
-        /** The root's document: not a safe file name, so never a kept file's. */
+        /** The root's document: not a UUID, so never a kept file's. */
         const val ROOT_DOC = "/"
 
         /** The provider's authority, as the manifest declares it. */
